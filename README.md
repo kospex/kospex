@@ -16,20 +16,35 @@ just clone some repo's into a directory as a starting point.
 Ideally, a structure like
 /BASE/GIT_SERVER/ORG/REPO
 
-Step 1: Clone kospex and Build the docker image
+### Step 1: Clone kospex and Build the docker image
 
 > ./build-image.sh
 
-Step 2 : Run the kospex shell
+### Step 2 : Run the kospex shell
 
 > shell-kospex.sh [GIT_DATA_DIRECTORY] [KOSPEX_DATA_DIR]
 
-Step 3: 
+### Step 3: sync some data and play with some commands
+
+> kospex sync [GIT_REPO]
+>
+> kospex developers -repo [GIT_REPO]
+>
+> kospex tech-landscape -metadata
 
 
 ## Git code layout for running analysis
 
+One option, if you're inspecting code on your own laptop is to use use your home directory. 
 
+~/kospex/ \
+~/code/github.com/ORG/REPO
+
+using the coommand from Step 2 this 
+
+> shell-kospex.sh ~/code ~/kospex
+
+While this might seem a little odd, it means all our git creds and apps are outside the docker container, and we just mount the local filesyste.
 
 ## Key Use Cases and features
 
@@ -42,7 +57,7 @@ Step 3:
 
 ## Queries to try
 
-List the developers in the given repo (no sync required)
+List the active developers (90 days) in the given repo (sync required)
 > kospex developers -repo=./REPO
 
 List the developers in the given repo_id (sync'ed data in the kospex DB)
@@ -52,12 +67,11 @@ use -days NUM for seen in the last # of days (e.g. 90 or 365)
 
 ### Identify technology landscape
 
-List the overall tech stack for a repo (using scc) (no sync required)
+List the overall tech stack for a repo (using scc)
 > kospex tech-landscape -repo=./REPO
 
 List the tech stack in the given repo_id (sync'ed data in the kospex DB)
 > kospex tech-landscape -repo_id=github.com&tilde;ORG&tilde;REPO
-
 
 ## Design principles
 
@@ -71,8 +85,8 @@ List the tech stack in the given repo_id (sync'ed data in the kospex DB)
 
 - Build out automated functional and regressions testing (Currently manual)
 - Build the ability to identify key person or offboarding risk
-
-
+- Improve use case documentation 
+- Build a docker image and publish to dockerhub (save building one yourself)
 
 ## Data extractions and assumptions
 
