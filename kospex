@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""This is the kospex command line tool."""
+import os
+import os.path
+import click
+from kospex_core import Kospex, GitRepo
+import kospex_utils as KospexUtils
+
+
+kospex = Kospex()
+
+@click.group()
+def cli():
+    """Kospex is a tool for assessing code and git repositories.
+    
+    It is designed to help understand the structure of code, who are developers and
+    changes over time.
+
+    For documentation on how commands run `kospex COMMAND --help`.
+    
+    """
+@cli.command("repo-summary")
+@click.argument('repo', type=click.Path(exists=True))
+def repo_summary(repo):
+    """ Provide a summary of the repository. """
+    kospex.repo_summary(repo)
+
+@cli.command("summary")
+def summary():
+    """ Provide a summary of the known repositories."""
+    kospex.summary()
+
+@cli.command("sync")
+@click.option('-previous', type=int, help='# Commits to sync from the oldest in kospex DB.')
+@click.argument('repo', type=GitRepo())
+def sync(repo, previous):
+    """Sync a single repo to the kospex DB.
+
+    Available switches:
+
+    -previous to get the previous N commits using the "-before" date
+
+    Future (not implemented yet) switches:
+
+    -before to specify the the commits before a date 
+    
+    -after to specify the the commits after a date
+    
+    -hash to get all the commits after a hash
+    
+    -before and -previous to get the previous N commits before a date
+    
+    -next to get the next N commits after the "-after" date
+    """
+    params = {}
+    params['previous'] = previous
+    kospex.sync_repo(repo, **params)
+
+@cli.command("sync-directory")
+@click.argument('directory', type=click.Path(exists=True))
+def sync_directory(directory):
+    """Sync all Git repos found in the data directory to the kospex DB."""
+    # Find all the repos in the directory
+    repos = KospexUtils.find_repos(directory)
+    for repo in repos:
+        print(f"Syncing {repo}")
+        kospex.sync_repo(repo)
+
+@cli.command("developers")
+@click.option('-repo', type=GitRepo(),
+              help='Git repo directory to assess, confirm sync status')
+@click.option('-days', type=int, default=90, help='Committed in the last X days.')
+@click.option('-repo_id', type=click.STRING)
+# pylint: disable=unused-argument
+def devs(repo, days, repo_id):
+    """ Information Stats about developers."""
+    params = locals()
+    click.echo(f'Searching for active developers (last {days} days)')
+    kospex.active_developers(**params)
+
+@cli.command("list-repos")
+@click.argument('directory', type=click.Path(exists=True))
+def find_repos(directory):
+    """List all git repositories found in the given directory."""
+    print("\nDirectory: " + os.path.abspath(directory))
+    kospex.list_repos(directory)
+
+@cli.command("tech-landscape")
+@click.option('-repo', type=GitRepo())
+@click.option('-repo_id', type=click.STRING)
+@click.option("-metadata", is_flag=True, default=False,
+              help="Use file metadata, NOT Git committed filenames.")
+# pylint: disable=unused-argument
+def tech_landscape(repo, repo_id, metadata):
+    """Show the tech landscape (file extensions or metadata)."""
+    kwargs = locals()
+    kospex.tech_landscape(**kwargs)
+
+@cli.command("sync-metadata")
+@click.option('-repo', type=GitRepo())
+@click.option('-directory', type=click.Path(exists=True))
+def sync_metadata(repo,directory):
+    """Sync file metadata for either a 'repo' or 'directory' of repos. """
+    #print(f"Finding repos in {directory}")
+    if directory and repo:
+        print("Please specify either a -repo or a -directory, not both.")
+    elif directory:
+        kospex.sync_metadata(directory)
+    elif repo:
+        kospex.file_metadata(repo)
+    else:
+        print("Please specify either a '-repo' or a '-directory'.")
+
+@cli.command("hotspot")
+@click.option('-repo', type=GitRepo())
+@click.option('-repo_id', type=click.STRING)
+@click.option("-by_file", is_flag=True, default=False, help="Calculate hotspot per file.")
+# pylint: disable=unused-argument
+def hotspot(repo, repo_id, by_file):
+    """Find hotspots in the given repo."""
+    params = locals()
+    if repo or repo_id:
+        kospex.hotspot(**params)
+    else:
+        print("Please specify either a '-repo' or a '-repo_id'.")
+
+if __name__ == '__main__':
+    cli()
