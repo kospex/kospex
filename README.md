@@ -84,7 +84,7 @@ _Most functions require the data to be synced._
 ### Show recent developers who've committed in X days
 
 List the active developers (90 days) in the given repo (sync required)
-> kospex developers -repo=./REPO
+> kospex developers -repo PATH/TO/REPO
 
 List the developers in the given repo_id (sync'ed data in the kospex DB)
 > kospex developers -repo_id=github.com&tilde;ORG&tilde;REPO
@@ -100,7 +100,7 @@ List the overall tech stack for all sync'ed repos (using scc)
 > kospex tech-landscape -metadata
 
 List the overall tech stack for a repo (using scc)
-> kospex tech-landscape -repo=./REPO
+> kospex tech-landscape -repo PATH/TO/REPO
 
 List the tech stack in the given repo_id (sync'ed data in the kospex DB)
 > kospex tech-landscape -repo_id=github.com&tilde;ORG&tilde;REPO
