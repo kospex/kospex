@@ -93,10 +93,10 @@ use -days NUM for seen in the last # of days (e.g. 90 or 365)
 
 ### Identify technology landscape
 
-List the overall tech stack for all sync'ed repo (using scc)
-> kospex tech-landscape -metadata
+List the overall tech stack, based on file extension, for all sync'ed repos
+> kospex tech-landscape
 
-List the overall tech stack for all sync'ed repo (using scc)
+List the overall tech stack for all sync'ed repos (using scc)
 > kospex tech-landscape -metadata
 
 List the overall tech stack for a repo (using scc)
