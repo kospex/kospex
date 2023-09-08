@@ -23,7 +23,7 @@ RUN curl -SL https://github.com/boyter/scc/releases/download/v3.1.0/scc_3.1.0_Li
 
 FROM rockylinux:9
 
-WORKDIR /data
+WORKDIR /repos
 
 COPY requirements.txt /build/requirements.txt
 COPY --from=builder /usr/local/bin /usr/local/bin 

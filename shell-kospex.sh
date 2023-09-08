@@ -78,16 +78,16 @@ if [ "$#" == 3  ]; then
     fi
 
     echo "About to run in [DEV]eloper mode"
-    echo docker run -it -v "$GIT_DATA_DIR":/data -v "$KOSPEX_DATA_DIR:/root/kospex" -v "$KOSPEX_DEV_PATH:/app" --rm kospex:latest
-    docker run -it -v "$GIT_DATA_DIR":/data -v "$KOSPEX_DATA_DIR:/root/kospex" -v "$KOSPEX_DEV_PATH:/app" --rm kospex:latest
+    echo docker run -it -v "$GIT_DATA_DIR":/repos -v "$KOSPEX_DATA_DIR:/root/kospex" -v "$KOSPEX_DEV_PATH:/app" --rm kospex:latest
+    docker run -it -v "$GIT_DATA_DIR":/repos -v "$KOSPEX_DATA_DIR:/root/kospex" -v "$KOSPEX_DEV_PATH:/app" --rm kospex:latest
 
 # NORMAL MODE
 else
 
     # Run in normal mode
     echo "About to run"
-    echo 'docker run -it -v "$GIT_DATA_DIR":/data -v "$KOSPEX_DATA_DIR:/root/kospex" --rm kospex:latest'
-    docker run -it -v "$GIT_DATA_DIR":/data -v "$KOSPEX_DATA_DIR:/root/kospex" --rm kospex:latest
+    echo 'docker run -it -v "$GIT_DATA_DIR":/repos -v "$KOSPEX_DATA_DIR:/root/kospex" --rm kospex:latest'
+    docker run -it -v "$GIT_DATA_DIR":/repos -v "$KOSPEX_DATA_DIR:/root/kospex" --rm kospex:latest
 
 fi
 
