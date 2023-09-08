@@ -50,35 +50,6 @@ class Kospex:
         """ Change back to the original directory """
         os.chdir(self.original_cwd)
 
-    def get_last_sync_hash(self, directory, table=None):
-        """
-        Get the most recent hash and committer_when of the repo directory,
-        which has been written to the kospex DB
-        """
-
-        self.set_repo_dir(directory)
-
-        if not table:
-            table = KospexSchema.TBL_COMMITS
-
-        if table not in [ KospexSchema.TBL_COMMITS, KospexSchema.TBL_COMMIT_FILES,
-                     KospexSchema.TBL_FILE_METADATA, KospexSchema.TBL_REPO_HOTSPOTS ]:
-            raise ValueError(f"Unknown table {table}")
-
-        # The table name checking above mitigate SQL injection by allowing only known values
-
-        # Get the oldest committer_when
-        sql_query = f"""SELECT hash, committer_when FROM {table} WHERE _repo_id = ?
-            ORDER BY committer_when ASC LIMIT 1"""
-
-        # Query return value might not have a 'next' method
-        # This code checks for that and returns None if there is no next
-        row = next(self.kospex_db.query(sql_query, [ self.git.get_repo_id() ]), None)
-
-        self.chdir_original()
-
-        return row
-
     def get_hash(self, **kwargs):
         """ Get a hash, based on search criteria.
          Must pass in either a valid repo with -repo or a repo_id with -repo_id 
@@ -199,6 +170,8 @@ class Kospex:
 
         self.file_metadata(directory)
 
+    
+
     def sync_commits(self, directory, **kwargs):
         """Sync the commits for the given directory to the kospex db,
         which are more recent than the last hash"""
@@ -217,6 +190,9 @@ class Kospex:
         self.kospex_db.table(KospexSchema.TBL_COMMITS).insert_all(data_rows)
 
         print("# commits:\t" + str(len(data_rows)))
+
+        ## TODO return the number of rows added, outside this function
+        # We can then limit the rows queried
 
         self.chdir_original()
 
@@ -497,9 +473,8 @@ class Kospex:
         git_hash = self.git.get_current_hash()
         repo_id = self.git.get_repo_id()
 
-        # get the last commit hash of the directory
-        # TODO update with get_hash method
-        last_sync = self.get_last_sync_hash(os.getcwd())
+        # Get the more recent commit hash of the directory from the kospex DB
+        last_sync = self.get_hash(repo_id=repo_id, newest=True)
 
         if last_sync and git_hash == last_sync['hash']:
 
@@ -511,7 +486,6 @@ class Kospex:
             GROUP BY 1
             ORDER BY 2
             '''
-            #self.kospex_db.row_factory = KospexSchema.dict_factory
             row = self.kospex_db.query(sql, [repo_id])
             result = next(row, None)
             print(result)
@@ -533,7 +507,7 @@ class Kospex:
                 self.git.add_git_to_dict(result), pk=['_repo_id', 'hash'])
 
         else:
-            print("\nRepo has NOT been sync'ed with Haruspex DB\nor out of sync with directory")
+            print("\nRepo is out of sync with Kospex DB")
             print(f"run 'kospex sync {repo_directory}' to sync the repo with the DB")
 
         self.chdir_original()
