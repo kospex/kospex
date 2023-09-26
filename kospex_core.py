@@ -126,11 +126,14 @@ class Kospex:
 
         self.chdir_original()
 
+        return len(data_rows)
+
     def sync_repo(self, directory, **kwargs):
         """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
 
         # If newer, sync them
         newer = False
+        first_sync = False
         # If we have a previous, we need to work backwards from the oldest commit we've sync'ed
         previous = kwargs.get('previous', None)
         if previous:
@@ -142,7 +145,17 @@ class Kospex:
             newer = True
             if last:
                 kwargs['after'] = last['committer_when']
+            else:
+                first_sync = True
 
+        # Think we need to  save the committer_when from 'commits' for the commit_files table
+        committer_when = last['committer_when']
+        # If we're doing a first sync, we need to get the newest commit from the repo directory
+        # Then we need to calculate the default number of days to sync as a date for committer_when
+        
+        # If first_sync - default last committer to 15 months
+        # Otherwise, for previous, we'll use the oldest committer_when from the commits table
+        # Then calculate the previous number of days to sync backwards until we hit it
         self.sync_commits(directory, **kwargs)
         # Get the updated last hash and committer_when
         updated = self.get_hash(repo=directory, oldest=True)
@@ -170,7 +183,6 @@ class Kospex:
 
         self.file_metadata(directory)
 
-    
 
     def sync_commits(self, directory, **kwargs):
         """Sync the commits for the given directory to the kospex db,
@@ -191,10 +203,10 @@ class Kospex:
 
         print("# commits:\t" + str(len(data_rows)))
 
-        ## TODO return the number of rows added, outside this function
-        # We can then limit the rows queried
-
         self.chdir_original()
+        
+        # Return the number of rows we've sync'ed
+        return len(data_rows)
 
     def get_one(self, query):
         """ helper function to return a single value from a query"""
@@ -506,6 +518,12 @@ class Kospex:
             self.kospex_db.table(KospexSchema.TBL_REPO_HOTSPOTS).upsert(
                 self.git.add_git_to_dict(result), pk=['_repo_id', 'hash'])
 
+            # TODO - remove this debug code
+            print(result)
+            metadata = self.get_last_metadata_files(repo_id)
+            for file in metadata:
+                print(file)
+
         else:
             print("\nRepo is out of sync with Kospex DB")
             print(f"run 'kospex sync {repo_directory}' to sync the repo with the DB")
@@ -534,9 +552,10 @@ class Kospex:
         commits._repo_id = commit_files._repo_id AND
         commits.hash = commit_files.hash
         GROUP BY 1'''
-        # Next, upsert the caluculated hotspot data into the file_metadata table
+        # Next, upsert the calculated hotspot data into the file_metadata table
         result = next(self.kospex_db.query(sql, [repo_id, repo_id, filename]), None)
         # If we don't have a result, then this file is not managed by git
+        # and most likely a local file which has not been committed
         if result:
             result['hash'] = git_hash
             self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert(
