@@ -32,11 +32,14 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Need to install python and git
 RUN dnf install python3-pip git -y && \
+    dnf upgrade python3 less -y && \
     pip3 install -r /build/requirements.txt && \
     dnf clean all
+# Needed the upgrade for python3 and less due to known vulnerabilities
 
 # Change the shell prompt to show current directory
-RUN echo 'export PS1="\w > "' >> /root/.bashrc
+RUN echo 'export PS1="\w > "' >> /root/.bashrc && \
+    echo 'kospex' >> /root/.bashrc
 
 # Copy the CLI app into the container
 COPY . /app/
