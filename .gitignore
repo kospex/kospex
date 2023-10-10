@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Unknown (but think it's deepcode or Snyk)
+.dccache
+
 # Distribution / packaging
 .Python
 build/

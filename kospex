@@ -5,7 +5,7 @@ import os.path
 import click
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
-
+import kospex_dependencies as KospexDeps
 
 kospex = Kospex()
 
@@ -123,6 +123,25 @@ def hotspot(repo, repo_id, by_file):
         kospex.hotspot(**params)
     else:
         print("Please specify either a '-repo' or a '-repo_id'.")
+
+@cli.command("deps")
+@click.option('-repo', type=GitRepo())
+@click.option('-file', type=click.Path(exists=True))
+def deps(repo, file):
+    """Find dependency file or assess a specific file."""
+    # TODO - clean up code and move to KospexDeps module, this is a hacky MVP
+    if repo:
+        os.chdir(repo)
+        results = KospexDeps.find_dependency_files(".")
+        if results:
+            for file_path, pkg_type in results:
+                print(f"File: {file_path} | Type: {pkg_type}")
+        else:
+            print("No package/dependency manager files found.")
+    elif file:
+        KospexDeps.assess(os.path.abspath(file))
+    else:
+        print("Please specify either a '-repo' or a '-file'.")
 
 if __name__ == '__main__':
     cli()
