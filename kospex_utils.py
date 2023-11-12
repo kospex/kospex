@@ -1,6 +1,7 @@
 """ Helper functions for kospex """
 import os
 import glob
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 KOSPEX_DB_FILENAME="kospex.db"
@@ -45,7 +46,8 @@ def extract_github_username(author_email):
     E.g. 123489589+gh-username@users.noreply.github.com
     Should produce gh-username
     """
-    return author_email.split("@")[0].split("+")[-1]
+    if author_email:
+        return author_email.split("@")[0].split("+")[-1]
 
 def find_repos(directory):
     """ Find all git repos in the directory and subdirectories"""
@@ -73,3 +75,29 @@ def validate_params(**kwargs):
 
     if kwargs.get('repo') and kwargs.get('repo_id'):
         raise ValueError("You can't specify both -repo (directory) and -repo_id")
+
+def days_ago(dt_str: str) -> float:
+    """ Convert an ISO datetime string to days ago"""
+    # Parse the datetime string
+    print(dt_str)
+    # TODO check why we need to do this.
+    dt_str = dt_str.replace("Z","+00:00")
+    #print(dt_str)
+    dt = datetime.fromisoformat(dt_str)
+
+    # Current datetime in UTC
+    now = datetime.now(timezone.utc)
+
+    # Calculate the difference in days
+    delta = now - dt
+    days_difference = delta.total_seconds() / (24 * 3600)
+
+    # Return the difference rounded to two decimal places
+    return round(days_difference, 2)
+
+def days_ago_iso_date(days):
+    """ Convert an integer 'days ago' to an ISO datetime string"""
+    days_ago = int(days)
+    #start_date = (datetime.utcnow() - timedelta(days=days)).isoformat() + 'Z'
+    start_date = (datetime.utcnow() - timedelta(days=days_ago)).isoformat()
+    return start_date

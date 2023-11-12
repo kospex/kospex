@@ -344,8 +344,9 @@ class KospexQuery:
 
         return results
 
-    def url_request(self, url, cache=60, timeout=10):
+    def url_request(self, url, cache=3600, timeout=10):
         """ Make a request to a URL, and use the cached version is less than [cache] seconds"""
+        # Set default cache to 1 hour (60mins * 60secs)
 
         # Check the cache first
         cache_sql = f'''SELECT content, timestamp FROM {KospexSchema.TBL_URL_CACHE} WHERE url = ?'''

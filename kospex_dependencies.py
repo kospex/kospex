@@ -111,7 +111,7 @@ class KospexDependencies:
     def get_cli_pretty_table(self):
         """ Return a pretty table for the CLI """
         table = PrettyTable()
-        table.field_names = ["package", "version", "days_ago", 
+        table.field_names = ["package", "version", "days_ago",
                         "published_at", "source_repo", "advisories", "default"]    
         table.align["package"] = "l"
         table.align["version"] = "r"
@@ -136,9 +136,10 @@ class KospexDependencies:
         """ Using deps.dev to assess and provide a summary of a 
             pip / PyPi requirements.txt compatible file """
 
-        packages = {}
+        #packages = {}
         today = datetime.datetime.now(datetime.timezone.utc)
         table = self.get_cli_pretty_table()
+        records = []
 
         # TODO - write functions to parse based on file type
         # (e.g. requirements.txt, pom.xml, packge.json, etc.)
@@ -146,6 +147,7 @@ class KospexDependencies:
             for line in pmf.readlines():
 
                 entry = []
+                row = {}
 
                 # Skip comments
                 if line.startswith('#'):
@@ -162,25 +164,41 @@ class KospexDependencies:
                     if url:
                         if repo_path:
                             entry.append(repo_path)
+                            row['package'] = repo_path
                         else:
                             entry.append(url)
+                            row['package'] = repo_path
                     else:
                         entry.append(line.strip())
+                        row['package'] = line.strip()
+
                     entry.extend(["Unknown", "Unknown", "Unknown",
                                 url, "Unknown", "Unknown"])
+                    row["version"] = "Unknown"
+                    row["days_ago"] = "Unknown"
+                    row["published_at"] = "Unknown"
+                    row["source_repo"] = url
+                    row["advisories"] = "unknown"
+                    row["default"] = "unknown"
                     table.add_row(entry)
+                    records.append(row)
                     continue
+
+                # Looks like a valid line, let's continue and parse it
 
                 package = line.split('==')[0]
                 version = line.split('==')[1].strip()
                 entry.append(package)
+                row['package'] = package
                 entry.append(version)
+                row['version'] = version
 
-                packages[package] = version
+                #packages[package] = version
                 info = self.deps_dev("pypi",package,version)
                 print(f"{package} : {version}")
                 if info is None:
                     print(f"Could not find {package} in deps.dev")
+
                     continue
                 #print(info.get("publishedAt"))
                 pub_date = info.get("publishedAt")
@@ -192,6 +210,7 @@ class KospexDependencies:
                 else:
                     entry.append("Unknown")
                 entry.append(info.get("publishedAt"))
+
                 source_repo = ""
                 if info.get("links") is not None:
                     for link in info.get("links"):
@@ -207,13 +226,14 @@ class KospexDependencies:
 
                 entry.append(info.get("isDefault"))
 
-                print()
+                #print()
                 table.add_row(entry)
+                records.append(row)
 
             print(table)
 
     def find_dependency_files(self,directory):
-        """ Find all dependency files (packagae managers) in a directory and its subdirectories."""
+        """ Find all dependency files (package managers) in a directory and its subdirectories."""
         # Map of filename to its package manager
         package_files = {
             'requirements.txt': 'PyPi',
