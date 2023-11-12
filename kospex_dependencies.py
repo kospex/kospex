@@ -4,6 +4,7 @@ import os
 import sys
 import re
 import json
+import csv
 from urllib.parse import urlparse
 import dateutil.parser
 import requests
@@ -66,7 +67,7 @@ class KospexDependencies:
     def get_latest_version(self,package):
         """ Get the latest version of a package from PyPI """
         url = f"https://pypi.org/pypi/{package}/json"
-        req = requests.get(url)
+        req = requests.get(url, timeout=10)
         if req.status_code == 200:
             return req.json()["info"]["version"]
         else:
@@ -122,7 +123,7 @@ class KospexDependencies:
         table.align["default"] = "r"
         return table
 
-    def assess(self, filename):
+    def assess(self, filename, results_file=None):
         """ Using deps.dev to assess and provide a summary of the package manager file """
 
         basefile = os.path.basename(filename)
@@ -130,9 +131,9 @@ class KospexDependencies:
             print(f"Only requirements.txt files are supported.  Found {basefile}")
             sys.exit(1)
         else:
-            self.pypi_assess(filename)
+            self.pypi_assess(filename,results_file=results_file)
 
-    def pypi_assess(self, filename):
+    def pypi_assess(self, filename,results_file=None):
         """ Using deps.dev to assess and provide a summary of a 
             pip / PyPi requirements.txt compatible file """
 
@@ -140,6 +141,9 @@ class KospexDependencies:
         today = datetime.datetime.now(datetime.timezone.utc)
         table = self.get_cli_pretty_table()
         records = []
+        table_rows = []
+
+        results_file = results_file if results_file else "results.csv"
 
         # TODO - write functions to parse based on file type
         # (e.g. requirements.txt, pom.xml, packge.json, etc.)
@@ -180,7 +184,8 @@ class KospexDependencies:
                     row["source_repo"] = url
                     row["advisories"] = "unknown"
                     row["default"] = "unknown"
-                    table.add_row(entry)
+                    #table.add_row(entry)
+                    table_rows.append(entry)
                     records.append(row)
                     continue
 
@@ -227,10 +232,20 @@ class KospexDependencies:
                 entry.append(info.get("isDefault"))
 
                 #print()
-                table.add_row(entry)
+                #table.add_row(entry)
+                table_rows.append(entry)
                 records.append(row)
 
-            print(table)
+        table.add_rows(table_rows)
+
+        if results_file:
+            print(f"Writing results to {results_file}")
+            with open(results_file, 'w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(table.field_names)
+                writer.writerows(table_rows)
+
+        print(table)
 
     def find_dependency_files(self,directory):
         """ Find all dependency files (package managers) in a directory and its subdirectories."""
