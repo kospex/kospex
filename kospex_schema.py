@@ -10,6 +10,8 @@ TBL_COMMIT_FILES = "commit_files"
 TBL_COMMIT_METADATA = "commit_metadata"
 TBL_FILE_METADATA = "file_metadata"
 TBL_REPO_HOTSPOTS = "repo_hotspots"
+TBL_DEPENDENCY_DATA = "dependency_data"
+TBL_URL_CACHE = "url_cache"
 
 # Table based upon Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
@@ -28,7 +30,8 @@ SQL_CREATE_COMMITS = f'''CREATE TABLE [{TBL_COMMITS}] (
     [_git_repo] TEXT,
     [_repo_id] TEXT,
     [_files] INTEGER,       -- number of files changed
-    [_cycle_time] INTEGER   -- time between author and commit in seconds
+    [_cycle_time] INTEGER,   -- time between author and commit in seconds
+    PRIMARY KEY(_repo_id,hash)
     )'''
 
 # Table based up Mergestat sync 'git-commit-stats'
@@ -43,7 +46,8 @@ SQL_CREATE_COMMIT_FILES = f'''CREATE TABLE [{TBL_COMMIT_FILES}] (
     [_git_server] TEXT,
     [_git_owner] TEXT,
     [_git_repo] TEXT,
-    [_repo_id] TEXT
+    [_repo_id] TEXT,
+    PRIMARY KEY(hash,file_path,_repo_id)
     )'''
 
 # This table will capture additional metadata about the files in the directory
@@ -99,6 +103,48 @@ SQL_CREATE_COMMIT_METADATA = f'''CREATE TABLE [{TBL_COMMIT_METADATA}] (
     [_repo_id] TEXT
     )'''
 
+# We're going to capture additional metadata about the commits
+SQL_CREATE_DEPENDENCY_DATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEPENDENCY_DATA}] (
+    [hash] TEXT,                    -- hash of the commit
+    [file_path] TEXT,               -- file path in the repo
+    [package_type] TEXT,            -- type of package (e.g. 'pip', or 'maven')
+    [package_name] TEXT,            -- name of the package
+    [package_version] TEXT,         -- version of the package
+    [published_at] TEXT,            -- date the package was published TEXT DEFAULT CURRENT_TIMESTAMP
+    [security_advisories] INTEGER,  -- security advisory (e.g. CVE-2021-1234)
+    [versions_behind] INTEGER,      -- number of versions behind
+    [source_repo] TEXT,             -- URL of the source repo for the package
+    [source] TEXT,                  -- what tool was used to get the metadata
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [_repo_id] TEXT,
+    PRIMARY KEY(_repo_id,hash,file_path,package_type,package_name,package_version)
+    )'''
+    # TODO - Double check the primary key, this feels execessive
+    # Potentially the file_path, hash and package_name would be enough
+
+#SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
+#    [url] TEXT, -- URL to cache
+#    content TEXT, 
+#    timestamp REAL,
+#    [hash] TEXT,                    -- hash of the commit
+#    [created_at] DEFAULT CURRENT_TIMESTAMP,
+#    [_git_server] TEXT,
+#    [_git_owner] TEXT,
+#    [_git_repo] TEXT,
+#    [_repo_id] TEXT,
+#    PRIMARY KEY(_repo_id,hash,file_path,package_type,package_name,package_version)
+#    )'''
+
+SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
+    [url] TEXT, -- URL to cache
+    [content] TEXT,
+    [timestamp] REAL,
+    PRIMARY KEY(url)
+    )'''
+
 # Functions for SQLite stuff
 
 def dict_factory(cursor, row):
@@ -125,5 +171,10 @@ def connect_or_create_kospex_db():
         kospex_db.execute(SQL_CREATE_COMMIT_METADATA)
         kospex_db.execute(SQL_CREATE_FILE_METADATA)
         kospex_db.execute(SQL_CREATE_REPO_HOTSPOTS)
+
+    # The following tables only are created if they don't exist
+    kospex_db.execute(SQL_CREATE_DEPENDENCY_DATA)
+    kospex_db.execute(SQL_CREATE_URL_CACHE)
+    # TODO - look at moving all table creates to "create if not exits"
 
     return kospex_db
