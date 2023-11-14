@@ -13,14 +13,21 @@ class KospexQuery:
         KospexUtils.init()
         self.kospex_db = Database(KospexUtils.get_kospex_db_path())
 
-    def summary(self):
+    def summary(self, days=None):
         """ Provide a summary of the known repositories."""
         summary_sql = """SELECT count(distinct(_repo_id)) 'repos', count(*) 'commits',
         count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers'
         FROM commits"""
+        params = []
+
+        if days:
+            from_date = KospexUtils.days_ago_iso_date(days)
+            summary_sql += " WHERE committer_when > ?"
+            params.append(from_date)
+        
         #for row in self.kospex_db.query(summary_sql):
         #    print(row)
-        data = next(self.kospex_db.query(summary_sql), None)
+        data = next(self.kospex_db.query(summary_sql, params), None)
         return data
 
     def repo_summary(self, repo_id):
@@ -75,6 +82,25 @@ class KospexQuery:
             data.append(row)
 
         return data
+
+    def repos_by_author(self, author_email):
+        """ Find repos for the given author_email."""
+
+        summary_sql = """SELECT _repo_id, count(*) 'commits', MAX(committer_when) 'last_commit'
+        FROM commits
+        WHERE author_email = ?
+        GROUP BY _repo_id
+        ORDER BY commits     DESC
+        """
+        data = []
+
+        for row in self.kospex_db.query(summary_sql, [author_email]):
+            row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
+            data.append(row)
+
+        return data
+
+
 
     def repos(self):
         """ Provide a summary of the known repositories."""
@@ -170,22 +196,24 @@ class KospexQuery:
             from_date = KospexUtils.days_ago_iso_date(days)
 
         authors = [] # list of authors from the sql query
-
-        summary_sql = """SELECT distinct(author_email), count(*) 'commits',
-        count(distinct(_repo_id)) 'repos', MAX(committer_when) 'last_commit'
-        FROM commits
-        GROUP BY author_email"""
+        where_clause = ""
 
         if from_date:
-            summary_sql += " WHERE committer_when > ?"
+            where_clause = "WHERE committer_when > ?"
             params.append(from_date)
+
+        summary_sql = f"""SELECT distinct(author_email), count(*) 'commits',
+        count(distinct(_repo_id)) 'repos', MAX(committer_when) 'last_commit'
+        FROM commits
+        {where_clause}
+        GROUP BY author_email"""
 
         #summary_sql = """SELECT _repo_id, count(distinct(author_email)) 'devs'
         #FROM commits
         #WHERE committer_when > ?
         #GROUP BY _repo_id
         #"""
-        data = self.kospex_db.query(summary_sql, [])
+        data = self.kospex_db.query(summary_sql, params)
         for row in data:
             row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
             authors.append(row)

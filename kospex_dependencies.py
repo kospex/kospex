@@ -143,7 +143,7 @@ class KospexDependencies:
         records = []
         table_rows = []
 
-        results_file = results_file if results_file else "results.csv"
+        #results_file = results_file if results_file else None
 
         # TODO - write functions to parse based on file type
         # (e.g. requirements.txt, pom.xml, packge.json, etc.)
