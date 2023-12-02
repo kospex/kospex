@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""This is the kospex command line tool."""
+import os
+import os.path
+import click
+from kospex_core import Kospex, GitRepo
+import kospex_utils as KospexUtils
+
+kospex = Kospex()
+
+@click.group()
+def cli():
+    """krunner (Kospex Runner) is a utility for running shell commands on multiple git repos.
+
+    For documentation on how commands run `krunner COMMAND --help`.
+    
+    """
+
+@cli.command("list-repos")
+@click.argument('directory', type=click.Path(exists=True))
+def find_repos(directory):
+    """List all git repositories found in the given directory."""
+    print("\nDirectory: " + os.path.abspath(directory))
+    kospex.list_repos(directory)
+
+@cli.command("trufflehog")
+@click.argument('directory', type=click.Path(exists=True))
+def trufflehog(directory):
+    """Run trufflehog on all git repositories found in the given directory."""
+    print("\nDirectory: " + os.path.abspath(directory))
+    dirs = KospexUtils.find_repos(directory)
+    cwd = os.getcwd()
+    for d in dirs:
+        print("\nRepo: " + d)
+        os.chdir(d)
+        os.system("trufflehog filesystem -j .")
+        os.chdir(cwd)
+
+@cli.command("grep")
+@click.option('-keyword', type=click.STRING, help="String to search for.")
+@click.argument('directory', type=click.Path(exists=True))
+def grep(keyword, directory):
+    """Run a 'grep' on all git repositories found in the given directory."""
+    print("\nDirectory: " + os.path.abspath(directory))
+    dirs = KospexUtils.find_repos(directory)
+    cwd = os.getcwd()
+    print("# repos: " + str(len(dirs)))
+    for d in dirs:
+        print("\nRepo: " + d)
+        os.chdir(d)
+        os.system(f"grep -Rn {keyword} *")
+        os.chdir(cwd)
+
+if __name__ == '__main__':
+    cli()
