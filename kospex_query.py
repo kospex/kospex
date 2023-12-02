@@ -8,10 +8,15 @@ import requests
 class KospexQuery:
     """kospex database query functionality"""
 
-    def __init__(self):
+    def __init__(self, kospex_db=None):
         # Initialize the kospex environment
         KospexUtils.init()
-        self.kospex_db = Database(KospexUtils.get_kospex_db_path())
+        self.kospex_db = kospex_db or Database(KospexUtils.get_kospex_db_path())
+        #
+        #if kospex_db:
+        #    self.kospex_db = kospex_db
+        #else:
+        #    self.kospex_db = Database(KospexUtils.get_kospex_db_path())
 
     def summary(self, days=None):
         """ Provide a summary of the known repositories."""
@@ -24,7 +29,7 @@ class KospexQuery:
             from_date = KospexUtils.days_ago_iso_date(days)
             summary_sql += " WHERE committer_when > ?"
             params.append(from_date)
-        
+
         #for row in self.kospex_db.query(summary_sql):
         #    print(row)
         data = next(self.kospex_db.query(summary_sql, params), None)
@@ -99,8 +104,6 @@ class KospexQuery:
             data.append(row)
 
         return data
-
-
 
     def repos(self):
         """ Provide a summary of the known repositories."""
@@ -186,6 +189,20 @@ class KospexQuery:
 
         return repos
 
+    def active_developer_set(self, days=90):
+        """ Look for distinct developers in the last 'days' """
+        from_date = KospexUtils.days_ago_iso_date(days)
+        devs = set()
+        summary_sql = """SELECT distinct(author_email)
+        FROM commits
+        WHERE committer_when > ?
+        """
+        data = self.kospex_db.query(summary_sql, (from_date,))
+        for row in data:
+            devs.add(row['author_email'])
+
+        return set(devs)
+
     def authors(self, days=None):
         """ Provide a summary of authors in the known repositories."""
 
@@ -223,7 +240,6 @@ class KospexQuery:
     def active_devs_by_repo(self, repo_id, days=90):
         """ Look for distinct developers in the last 'days' """
         from_date = KospexUtils.days_ago_iso_date(days)
-        print(from_date)
         summary_sql = """SELECT distinct(author_email) 'author_email', count(*) 'commits',
         MAX(committer_when) 'last_commit'
         FROM commits
@@ -237,6 +253,26 @@ class KospexQuery:
             row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
             results.append(row)
         #return data[0]['devs']
+        return results
+
+    def authors_by_repo(self, repo_id):
+        """ Provide a summary of authors in the provided repo."""
+        summary_sql = """SELECT author_email, count(*) 'commits', MIN(author_when) 'first_commit',
+        MAX(author_when) 'last_commit'
+        FROM commits
+        WHERE _repo_id = ?
+        GROUP BY author_email
+        ORDER BY commits DESC
+        """
+        data = self.kospex_db.query(summary_sql, [repo_id])
+        results = {}
+
+        for row in data:
+            if row['last_commit']:
+                row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
+            #row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
+            results[row['author_email']] = row
+
         return results
 
     def commit_ranges(self, repo_id=None):
@@ -400,3 +436,52 @@ class KospexQuery:
                 content = None
 
         return content
+
+    def get_repo_ids(self):
+        """return a list of repo_ids"""
+
+        sql = """SELECT DISTINCT(_repo_id)
+        FROM commits c
+        """
+        data = self.kospex_db.query(sql, [])
+        results = []
+        for row in data:
+            results.append(row['_repo_id'])
+        
+        return results
+
+    def author_tech(self, author_email=None, repo_id=None):
+        """ Return the tech stack for an author """
+
+        results = []
+        params = []
+
+        author_where = ""
+        if author_email:
+            params.append(author_email)
+            author_where = "AND c.author_email = ?"
+
+        repo_where = ""
+        if repo_id:
+            params.append(repo_id)
+            repo_where = "AND c._repo_id = ?"
+
+        # We're going to need a few lookups
+        # Potentially we could do this in a nasty join, but it's easier to read this way
+
+        # we need the number of distinct authors per file as well as the number of commits per file
+        sql = f"""SELECT DISTINCT(author_email) as author_email, _ext, count(*) 'commits',
+        MAX(author_when) 'last_commit', MIN(author_when) 'first_commit', 
+        COUNT(DISTINCT(c._repo_id)) 'repos'
+        FROM commit_files cf, commits c
+        WHERE cf._repo_id = c._repo_id 
+        AND cf.hash = c.hash {author_where} {repo_where}
+        GROUP BY author_email, _ext
+        ORDER BY commits DESC
+        """
+
+        data = self.kospex_db.query(sql, params)
+        for row in data:
+            results.append(row)
+
+        return results
