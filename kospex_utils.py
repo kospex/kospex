@@ -1,5 +1,6 @@
 """ Helper functions for kospex """
 import os
+import re
 import glob
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
@@ -79,7 +80,6 @@ def validate_params(**kwargs):
 def days_ago(dt_str: str) -> float:
     """ Convert an ISO datetime string to days ago"""
     # Parse the datetime string
-    print(dt_str)
     # TODO check why we need to do this.
     dt_str = dt_str.replace("Z","+00:00")
     #print(dt_str)
@@ -101,3 +101,54 @@ def days_ago_iso_date(days):
     #start_date = (datetime.utcnow() - timedelta(days=days)).isoformat() + 'Z'
     start_date = (datetime.utcnow() - timedelta(days=days_ago)).isoformat()
     return start_date
+
+def find_git_base(filename):
+    """
+    Find the base Git directory for a given file path.
+
+    :filename: The filename for which to find the Git base directory.
+    :return: The path to the base Git directory, or None if not found.
+    """
+    # Get the absolute path of the file
+    file_path = os.path.abspath(filename)
+
+    # Start checking from the directory of the file
+    directory = os.path.dirname(file_path)
+
+    while os.path.isdir(directory):
+        if os.path.isdir(os.path.join(directory, '.git')):
+            # Found the .git directory, return the current directory
+            return directory
+        # Move up one directory
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            # Reached the root directory without finding .git
+            return None
+        directory = parent
+
+
+    return None
+
+def development_status(days, active_limit=90, aging_limit=180, stale_limit=365):
+    """Get the development status of a repo based on the number of days since the last commit"""
+    if days <= active_limit:
+        return "Active"
+    elif active_limit < days <= aging_limit:
+        return "Aging"
+    elif aging_limit < days <= stale_limit:
+        return "Stale"
+    else:
+        return "Unmaintained"
+
+def parse_git_rename_event(event_str):
+    """ Parse a git rename event and return the new path"""
+    # Split the string into segments based on ' => ' within curly braces
+    segments = re.split(r'\{([^}]*)\}', event_str)
+
+    # Process each segment
+    for i in range(1, len(segments), 2):
+        old, new = segments[i].split(' => ')
+        segments[i] = new
+
+    # Reassemble the path
+    return ''.join(segments)
