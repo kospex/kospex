@@ -13,6 +13,9 @@ TBL_REPO_HOTSPOTS = "repo_hotspots"
 TBL_DEPENDENCY_DATA = "dependency_data"
 TBL_URL_CACHE = "url_cache"
 
+KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA, 
+                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE ]
+
 # Table based upon Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
 SQL_CREATE_COMMITS = f'''CREATE TABLE [{TBL_COMMITS}] (
@@ -43,6 +46,7 @@ SQL_CREATE_COMMIT_FILES = f'''CREATE TABLE [{TBL_COMMIT_FILES}] (
     [additions] INTEGER,
     [deletions] INTEGER,
     [committer_when] TEXT,
+    [path_change] TEXT,
     [_git_server] TEXT,
     [_git_owner] TEXT,
     [_git_repo] TEXT,
@@ -62,12 +66,14 @@ SQL_CREATE_FILE_METADATA = f'''CREATE TABLE [{TBL_FILE_METADATA}] (
     [Blanks] INTEGER,       -- Number of blank lines
     [Complexity] INTEGER,   -- Cyclomatic complexity
     [Bytes] INTEGER,        -- Number of bytes in the file
-    [hash] TEXT,            -- hash of the commit
+    [hash] TEXT,            -- hash of the current commit of the repo
     [tech_type] TEXT,       -- type of technology (e.g. 'python', or 'maven'). 
     [latest] INTEGER,       -- 1 if this is the latest version of the file, 0 otherwise
     [authors] INTEGER,      -- number of authors who've modified this file
     [commits] INTEGER,      -- number of commits that have been made to this file
-    [_mtime] INTEGER,       -- last modified time of the file
+    [_mtime] INTEGER,       -- last modified time of the file - TODO - may need to remove this
+    [committer_when] TEXT,  -- date of last commit
+    [_metadata_source] TEXT,-- what tool was used to get the metadata
     [_git_server] TEXT,
     [_git_owner] TEXT,
     [_git_repo] TEXT,
