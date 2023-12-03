@@ -10,6 +10,7 @@ from prettytable import PrettyTable, from_db_cursor
 from kospex_git import KospexGit, MissingGitDirectory
 import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
+import kospex_query as KospexQuery
 from kospex_mergestat import KospexMergeStat
 
 class GitRepo(click.ParamType):
@@ -33,7 +34,8 @@ class Kospex:
         self.repo_directory = None
         self.git = KospexGit()
         self.kospex_db = KospexSchema.connect_or_create_kospex_db()
-        self.mergestat = KospexMergeStat()
+        #self.mergestat = KospexMergeStat()
+        self.kospex_query = KospexQuery.KospexQuery(kospex_db=self.kospex_db)
 
     def set_repo_dir(self, directory):
         """ Set the repo directory """
@@ -128,6 +130,139 @@ class Kospex:
 
         return len(data_rows)
 
+    def get_latest_commit_datetime(self, repo_id):
+        """ Get the latest commit datetime for the given repo_id """
+        cursor = self.kospex_db.execute(
+                                    'SELECT MAX(committer_when) FROM commits WHERE _repo_id = ?',
+                                    (repo_id,))
+        latest_datetime = cursor.fetchone()[0]
+        return latest_datetime
+
+    #def sync_repo2(self, directory, **kwargs):
+    def sync_repo2(self, directory, limit=None, from_date=None, to_date=None):
+        """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
+        #def sync_commits(conn, git_dir, limit=None, from_date=None, to_date=None):
+
+        self.file_metadata(directory)
+        self.set_repo_dir(directory)
+        
+        #git_remote = get_git_remote()
+        #kgit = KospexGit()
+        #kgit.set_remote_url(git_remote)
+        #print(kgit.get_repo_id())
+
+        if not from_date:
+            latest_datetime = self.get_latest_commit_datetime(self.git.get_repo_id())
+            if latest_datetime:
+                from_date = latest_datetime
+
+        # Use hash (#) as a delimeter as names can contain spaces
+        cmd = ['git', 'log', '--pretty=format:%H#%aI#%cI#%aN#%aE#%cN#%cE', '--numstat']
+
+        if from_date and to_date:
+            cmd += ['--since={}'.format(from_date), '--until={}'.format(to_date)]
+            print(f'Syncing commits from {from_date} to {to_date}...')
+        elif from_date:
+            cmd += ['--since={}'.format(from_date)]
+            print("Syncing commits from {}...".format(from_date))
+        elif limit:
+            cmd += ['-n', str(limit)]
+            print(f'Syncing {limit} commits...')
+        else:
+            print('Syncing all commits...')
+
+        result = subprocess.run(cmd, capture_output=True, text=True).stdout.split('\n')
+
+        commits = []
+        commit = {}
+
+        for line in result:
+            if line:
+                if '\t' in line and len(line.split('\t')) == 3:
+                    # Check if the line represents file stats
+                    additions, deletions, filename = line.split('\t')
+                    if 'filenames' in commit:
+                        # The following checks for git rename events which change the filename
+                        # With a git rename event, the filename will be in the format of
+                        # old_filename => new_filename
+                        if "=>" in filename:
+                            fpath = KospexUtils.parse_git_rename_event(filename)
+                            path_change = filename
+                        else:
+                            fpath = filename
+                            path_change = None
+                        
+                        commit['filenames'].append({
+                            'file_path': fpath,
+                            'path_change': path_change,
+                            'additions': int(additions) if additions != '-' else 0,
+                            'deletions': int(deletions) if deletions != '-' else 0
+                        })
+                elif '#' in line:
+
+                    if commit:  # Save the previous commit
+                        commits.append(commit)
+
+                    hash_value, author_datetime, committer_datetime, author_name, author_email, committer_name, committer_email = line.split('#', 6)
+
+                    commit = {
+                        'hash': hash_value,
+                        'author_when': author_datetime,
+                        'committer_when': committer_datetime,
+                        'author_name': author_name,
+                        'author_email': author_email,
+                        'committer_name': committer_name,
+                        'committer_email': committer_email,
+                        'filenames': []
+                    }
+
+                else:
+                    commit['filenames'].append({'filename': line, 'additions': 0, 'deletions': 0})
+
+            else:
+                if commit:  # Save the last commit
+                    commits.append(commit)
+                commit = {}
+
+        #cursor = conn.cursor()
+
+        counter = 0
+        print("About to insert commits into the database...")
+
+        # Insert the commits to the database
+        for commit in commits:
+            counter += 1
+            # Insert the commit to the database
+            files = len(commit['filenames'])
+            commit['_files'] = files
+            commit = self.git.add_git_to_dict(commit)
+            commit_files = commit['filenames']
+            del commit['filenames']
+            self.kospex_db.table(KospexSchema.TBL_COMMITS).upsert(commit,pk=['_repo_id', 'hash'])
+
+            # Insert the filenames to the database
+            for file_info in commit_files:
+                file_info = self.git.add_git_to_dict(file_info)
+                file_info['hash'] = commit['hash']
+                file_info['_ext'] = KospexUtils.get_extension(file_info['file_path'])
+                file_info['committer_when'] = commit['committer_when']
+                self.kospex_db.table(KospexSchema.TBL_COMMIT_FILES).upsert(file_info,
+                                                                pk=['file_path', '_repo_id',
+                                                                    'hash'])
+
+            #print(f'Synced commit {commit["hash"]}...')
+            # we'll print a + for each commit and a newline every 80 commits
+            print('+', end='')
+            if (counter % 80) == 0:
+                print()
+            if (counter % 500) == 0:
+                print(f'\nSynced {counter} commits so far ...\n')
+
+        print()
+        print(f"Synced {len(commits)} total commits")
+
+        self.chdir_original()
+
     def sync_repo(self, directory, **kwargs):
         """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
 
@@ -152,7 +287,7 @@ class Kospex:
         committer_when = last['committer_when']
         # If we're doing a first sync, we need to get the newest commit from the repo directory
         # Then we need to calculate the default number of days to sync as a date for committer_when
-        
+
         # If first_sync - default last committer to 15 months
         # Otherwise, for previous, we'll use the oldest committer_when from the commits table
         # Then calculate the previous number of days to sync backwards until we hit it
@@ -183,7 +318,6 @@ class Kospex:
 
         self.file_metadata(directory)
 
-
     def sync_commits(self, directory, **kwargs):
         """Sync the commits for the given directory to the kospex db,
         which are more recent than the last hash"""
@@ -204,7 +338,7 @@ class Kospex:
         print("# commits:\t" + str(len(data_rows)))
 
         self.chdir_original()
-        
+
         # Return the number of rows we've sync'ed
         return len(data_rows)
 
@@ -222,12 +356,20 @@ class Kospex:
         print("")
 
         table = PrettyTable()
-        table.field_names = ["repo", "last_commit", "first_commit", "developers", "commits"]
+        table.field_names = ["repo", "status", "last_commit",
+                             "first_commit", "developers", "commits", "active", "present"]
         table.align["repo"] = "l"
+        table.align["status"] = "l"
         table.align["last_commit"] = "r"
         table.align["first_commit"] = "r"
         table.align["developers"] = "r"
         table.align["commits"] = "r"
+        table.align["active"] = "r"
+        table.align["present"] = "r"
+        table.sortby = "last_commit"
+
+        repo_active_devs = self.kospex_query.active_devs()
+        active_devs = self.kospex_query.active_developer_set()
 
         #print("Repository IDs")
         sql = '''SELECT distinct(_repo_id) as repo,
@@ -239,8 +381,14 @@ class Kospex:
                 GROUP BY 1'''
 
         for row in self.kospex_db.query(sql):
-            table.add_row([row["repo"], row["last_commit"], row["first_commit"],
-                           row["developers"], row["commits"]])
+            all_devs = self.kospex_query.authors_by_repo(row["repo"])
+            set_devs = set(all_devs)
+
+            table.add_row([row["repo"], KospexUtils.development_status(row["last_commit"]),
+                           row["last_commit"], row["first_commit"],
+                           row["developers"], row["commits"], repo_active_devs.get(row["repo"], 0),
+                            len(active_devs.intersection(set_devs))])
+                           #len(set_devs.intersection(active_devs))])
             #print(row)
 
         if table.rows:
@@ -310,15 +458,17 @@ class Kospex:
     def list_repos(self, directory):
         """ Print all the git repos in the specified directory and subdirectories"""
         table = PrettyTable()
-        table.field_names = ["Path", "Full path", "Remote"]
+        #table.field_names = ["Path", "Full path", "Remote"]
+        table.field_names = ["Path", "Remote"]
         table.align["Path"] = "l"
-        table.align["Full path"] = "l"
+        #table.align["Full path"] = "l"
         table.align["Remote"] = "l"
 
         results = KospexUtils.find_repos(directory)
         for file in results:
             self.git.set_repo(file)
-            table.add_row([file, os.path.abspath(file), self.git.get_remote_url()])
+            #table.add_row([file, os.path.abspath(file), self.git.get_remote_url()])
+            table.add_row([file, self.git.get_remote_url()])
 
         print(table)
 
@@ -434,6 +584,11 @@ class Kospex:
         if row:
             print(f"Already have metadata for {git_hash} and repo_id {str(repo_id)}")
         else:
+            # scc wont' analyse everything, so we need to do a file find for items not analysed
+            files = self.git.get_repo_files()
+            # This will be a dict of file paths and their metadata
+            
+
             # Check we've got scc installed
             installed = which('scc')
             if not installed:
