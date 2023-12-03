@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""This is the kospex reaper command line tool."""
+import os
+import os.path
+import click
+from kospex_core import Kospex
+
+kospex = Kospex()
+
+@click.group()
+def cli():
+    """kreaper (Kospex Reaper) is a utility for destroying and deleting thigs in the kospex DB.
+    
+    For documentation on how commands run `kreaper COMMAND --help`.
+    
+    """
+@cli.command("repo_ids")
+def repo_ids():
+    """ List the repo_ids (based on commits table)."""
+    for repo_id in kospex.kospex_query.get_repo_ids():
+        print(repo_id)
+
+@cli.command("delete")
+@click.option('-repo_id', type=click.STRING)
+def delete_repo(repo_id):
+    """ Delete a repo_id from all tables."""
+    if repo_id:
+        #kospex.delete_repo(repo_id)
+        print("Not implemented yet.")
+    else:
+        print("Please specify a repo_id to delete.")
+
+if __name__ == '__main__':
+    cli()
