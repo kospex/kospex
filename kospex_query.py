@@ -482,6 +482,10 @@ class KospexQuery:
 
         data = self.kospex_db.query(sql, params)
         for row in data:
+            row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
+            row['first_seen'] = KospexUtils.days_ago(row['first_commit'])
+            row['days_active'] = int(row.get('first_seen',0)) - int(row.get('last_seen',0))
+            print(row['days_active'])
             results.append(row)
 
         return results

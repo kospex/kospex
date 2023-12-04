@@ -46,7 +46,7 @@ SQL_CREATE_COMMIT_FILES = f'''CREATE TABLE [{TBL_COMMIT_FILES}] (
     [additions] INTEGER,
     [deletions] INTEGER,
     [committer_when] TEXT,
-    [path_change] TEXT,
+    [path_change] TEXT,     -- Raw git change path 
     [_git_server] TEXT,
     [_git_owner] TEXT,
     [_git_repo] TEXT,
