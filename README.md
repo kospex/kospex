@@ -1,7 +1,7 @@
 # kospex
 
 Kospex is a CLI which aims to _"look at the guts of your code"_ to help gain insights into your developers and technology landscape.
-It uses the excellent [Mergestat lite](https://github.com/mergestat/mergestat-lite) to extract data from git repositories. 
+It uses database structure from the excellent [Mergestat lite](https://github.com/mergestat/mergestat-lite) to model data from git repositories. 
 
 ## Installation, setup and usage
 
