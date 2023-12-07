@@ -447,7 +447,7 @@ class KospexQuery:
         results = []
         for row in data:
             results.append(row['_repo_id'])
-        
+
         return results
 
     def author_tech(self, author_email=None, repo_id=None):

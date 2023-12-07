@@ -13,7 +13,7 @@ TBL_REPO_HOTSPOTS = "repo_hotspots"
 TBL_DEPENDENCY_DATA = "dependency_data"
 TBL_URL_CACHE = "url_cache"
 
-KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA, 
+KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
                  TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE ]
 
 # Table based upon Mergestat sync 'git-commits'
@@ -133,7 +133,7 @@ SQL_CREATE_DEPENDENCY_DATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEPENDENCY_DAT
 
 #SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
 #    [url] TEXT, -- URL to cache
-#    content TEXT, 
+#    content TEXT,
 #    timestamp REAL,
 #    [hash] TEXT,                    -- hash of the commit
 #    [created_at] DEFAULT CURRENT_TIMESTAMP,

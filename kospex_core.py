@@ -104,31 +104,31 @@ class Kospex:
 
         return row
 
-    def sync_commit_files(self, directory, last, **kwargs):
-        """Sync the committed files for the given directory which are
-          more recent than the last hash"""
+    #def sync_commit_files(self, directory, last, **kwargs):
+    #    """Sync the committed files for the given directory which are
+    #      more recent than the last hash"""
 
-        self.set_repo_dir(directory)
+    #    self.set_repo_dir(directory)
 
-        data_rows = []
-        results = []
+    #    data_rows = []
+    #    results = []
 
-        if last:
-            kwargs['hash']=last['hash']
-        # results is the raw results from the query
-        results = self.mergestat.commit_files(**kwargs)
+    #    if last:
+    #        kwargs['hash']=last['hash']
+    #    # results is the raw results from the query
+    #    results = self.mergestat.commit_files(**kwargs)
 
-        for row in results:
-            row['_ext'] = KospexUtils.get_extension(row['file_path'])
-            data_rows.append(self.git.add_git_to_dict(row))
+    #    for row in results:
+    #        row['_ext'] = KospexUtils.get_extension(row['file_path'])
+    #        data_rows.append(self.git.add_git_to_dict(row))
 
-        self.kospex_db.table(KospexSchema.TBL_COMMIT_FILES).insert_all(data_rows)
+    #    self.kospex_db.table(KospexSchema.TBL_COMMIT_FILES).insert_all(data_rows)
 
-        print(f"# commit_files:\t {str(len(data_rows))}")
+    #    print(f"# commit_files:\t {str(len(data_rows))}")
 
-        self.chdir_original()
+    #    self.chdir_original()
 
-        return len(data_rows)
+    #    return len(data_rows)
 
     def get_latest_commit_datetime(self, repo_id):
         """ Get the latest commit datetime for the given repo_id """
@@ -191,7 +191,7 @@ class Kospex:
                         else:
                             fpath = filename
                             path_change = None
-                        
+
                         commit['filenames'].append({
                             'file_path': fpath,
                             'path_change': path_change,
@@ -263,84 +263,84 @@ class Kospex:
 
         self.chdir_original()
 
-    def sync_repo(self, directory, **kwargs):
-        """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
+    #def sync_repo(self, directory, **kwargs):
+    #    """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
 
         # If newer, sync them
-        newer = False
-        first_sync = False
-        # If we have a previous, we need to work backwards from the oldest commit we've sync'ed
-        previous = kwargs.get('previous', None)
-        if previous:
-            last = self.get_hash(repo=directory, oldest=True)
-            if last:
-                kwargs['before'] = last['committer_when']
-        else:
-            last = self.get_hash(repo=directory, newest=True)
-            newer = True
-            if last:
-                kwargs['after'] = last['committer_when']
-            else:
-                first_sync = True
+    #    newer = False
+    #    first_sync = False
+    #    # If we have a previous, we need to work backwards from the oldest commit we've sync'ed
+    #    previous = kwargs.get('previous', None)
+    #    if previous:
+    #        last = self.get_hash(repo=directory, oldest=True)
+    #        if last:
+    #            kwargs['before'] = last['committer_when']
+    #    else:
+    #        last = self.get_hash(repo=directory, newest=True)
+    #        newer = True
+    #        if last:
+    #            kwargs['after'] = last['committer_when']
+    #        else:
+    #            first_sync = True
 
         # Think we need to  save the committer_when from 'commits' for the commit_files table
-        committer_when = last['committer_when']
+    #    committer_when = last['committer_when']
         # If we're doing a first sync, we need to get the newest commit from the repo directory
         # Then we need to calculate the default number of days to sync as a date for committer_when
 
         # If first_sync - default last committer to 15 months
         # Otherwise, for previous, we'll use the oldest committer_when from the commits table
         # Then calculate the previous number of days to sync backwards until we hit it
-        self.sync_commits(directory, **kwargs)
+    #    self.sync_commits(directory, **kwargs)
         # Get the updated last hash and committer_when
-        updated = self.get_hash(repo=directory, oldest=True)
+    #    updated = self.get_hash(repo=directory, oldest=True)
 
         # We want to sync all the commit files for the commits we've just synced
-        params = {}
-        if newer:
-            last = self.get_hash(repo=directory, newest=True, table=KospexSchema.TBL_COMMIT_FILES)
-            if last:
-                params['after'] = last['committer_when']
+    #    params = {}
+    #    if newer:
+    #        last = self.get_hash(repo=directory, newest=True, table=KospexSchema.TBL_COMMIT_FILES)
+    #        if last:
+    #            params['after'] = last['committer_when']
 
-        if previous:
-            last = self.get_hash(repo=directory, oldest=True, table=KospexSchema.TBL_COMMIT_FILES)
+    #    if previous:
+    #        last = self.get_hash(repo=directory, oldest=True, table=KospexSchema.TBL_COMMIT_FILES)
             # Set a before date to the oldest commit_files table committer_when we've sync'ed
-            if last:
-                params['before'] = last.get('committer_when')
+    #        if last:
+    #            params['before'] = last.get('committer_when')
             # Set an after date to the oldest commit (from commits table) we've sync'ed
-            if updated:
-                params['after'] = updated.get('committer_when')
+    #        if updated:
+    #            params['after'] = updated.get('committer_when')
 
-        kwargs['previous'] = None
-        kwargs['next'] = None
-        last = None
-        self.sync_commit_files(directory, last, **params)
+    #    kwargs['previous'] = None
+    #    kwargs['next'] = None
+    #    last = None
+    #    self.sync_commit_files(directory, last, **params)
 
-        self.file_metadata(directory)
+    #    self.file_metadata(directory)
 
-    def sync_commits(self, directory, **kwargs):
-        """Sync the commits for the given directory to the kospex db,
-        which are more recent than the last hash"""
+    #def sync_commits(self, directory, **kwargs):
+    #    """Sync the commits for the given directory to the kospex db,
+    #    which are more recent than the last hash"""
 
-        self.set_repo_dir(directory)
-        print("Sync'ing repo directory: " + os.getcwd())
+    #    self.set_repo_dir(directory)
+    #    print("Sync'ing repo directory: " + os.getcwd())
 
         # results is the raw results from the query
-        results = self.mergestat.commits(**kwargs)
+    #    results = self.mergestat.commits(**kwargs)
         # data_rows will be the enriched data we'll insert into the kospex db
-        data_rows = []
+    #    data_rows = []
 
-        for row in results:
-            data_rows.append(self.git.add_git_to_dict(row))
+    #    for row in results:
+    #        data_rows.append(self.git.add_git_to_dict(row))
 
-        self.kospex_db.table(KospexSchema.TBL_COMMITS).insert_all(data_rows)
+    #    self.kospex_db.table(KospexSchema.TBL_COMMITS).insert_all(data_rows)
 
-        print("# commits:\t" + str(len(data_rows)))
+    #    print("# commits:\t" + str(len(data_rows)))
 
-        self.chdir_original()
+    #    self.chdir_original()
 
         # Return the number of rows we've sync'ed
-        return len(data_rows)
+    #    return len(data_rows)
 
     def get_one(self, query):
         """ helper function to return a single value from a query"""
@@ -535,40 +535,40 @@ class Kospex:
             for warning in sync_warnings:
                 print(warning)
 
-    def repo_summary(self, repo_dir):
-        """ Display a summary of the repo, for a specific repo directory.
-            The output includes the file extension, number of commits, % of commits."""
-        self.set_repo_dir(repo_dir)
-        results = []
-        extensions = {}
+    #def repo_summary(self, repo_dir):
+    #    """ Display a summary of the repo, for a specific repo directory.
+    #        The output includes the file extension, number of commits, % of commits."""
+    #    self.set_repo_dir(repo_dir)
+    #    results = []
+    #    extensions = {}
 
-        print(f"\nrepo ID: {str(self.git.get_repo_id())}")
+    #    print(f"\nrepo ID: {str(self.git.get_repo_id())}")
 
-        sql = '''select DISTINCT(file_path), count(*) as commits
-        FROM commits, stats('', commits.hash) GROUP BY 1'''
+    #    sql = '''select DISTINCT(file_path), count(*) as commits
+    #    FROM commits, stats('', commits.hash) GROUP BY 1'''
 
-        for row in self.mergestat.cursor().execute(sql):
-            row['_ext'] = KospexUtils.get_extension(row['file_path'])
-            results.append(row)
-            if row['_ext'] in extensions:
-                extensions[row['_ext']] += 1
-            else:
-                extensions[row['_ext']] = 1
+    #    for row in self.mergestat.cursor().execute(sql):
+    #        row['_ext'] = KospexUtils.get_extension(row['file_path'])
+    #        results.append(row)
+    #        if row['_ext'] in extensions:
+    #            extensions[row['_ext']] += 1
+    #        else:
+    #            extensions[row['_ext']] = 1
 
-        table = PrettyTable()
-        table.field_names = ["Extension", "#", "%"]
-        table.align["Extension"] = "l"
-        table.align["#"] = "r"
-        table.align["%"] = "r"
+    #    table = PrettyTable()
+    #    table.field_names = ["Extension", "#", "%"]
+    #    table.align["Extension"] = "l"
+    #    table.align["#"] = "r"
+    #    table.align["%"] = "r"
 
-        num_files = len(results)
+    #    num_files = len(results)
 
-        for ext, count in extensions.items():
-            percentage = (count / num_files) * 100
-            table.add_row([ext, count, f"{percentage:0.2f}"])
-        print(table)
-        print(f"Total files: {str(num_files)}\n")
-        self.chdir_original()
+    #    for ext, count in extensions.items():
+    #        percentage = (count / num_files) * 100
+    #        table.add_row([ext, count, f"{percentage:0.2f}"])
+    #    print(table)
+    #    print(f"Total files: {str(num_files)}\n")
+    #    self.chdir_original()
 
     def file_metadata(self, repo_directory):
         """ Get some basic metadata about the files in the repo using 'scc'"""
@@ -718,3 +718,17 @@ class Kospex:
             print(f"Syncing {filename}")
         else:
             print(f"{filename} is not managed by Git")
+
+    def get_krunner_directory(self):
+        """ Get the directory where the krunner files are stored """
+        # TODO - check the init process in KospexUtils .. need to be run on first run
+        krunner_path = os.path.expanduser("~/kospex/krunner")
+        if not os.path.exists(krunner_path):
+            os.makedirs(krunner_path)
+        return krunner_path
+
+    def generate_krunner_filename(self, function=None, ext="out"):
+        """ Get the path to a krunner file """
+        krunner_path = self.get_krunner_directory()
+        # TODO - do better path join method and validate no .. etc
+        return os.path.join(krunner_path, self.git.get_repo_id() + "."  + function + "." + ext)
