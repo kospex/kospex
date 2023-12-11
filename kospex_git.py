@@ -40,7 +40,7 @@ class KospexGit:
         dict: A dictionary containing the remote, org, repo, and remote_type.
         """
         # Regular expression to match the pattern
-        pattern = r'^(https?|git|ssh|rsync)\:\/\/(?:[\w.-]+@)?([\w.-]+)\/([\w.-]+)\/([\w.-]+)(?:\.git)?$'
+        pattern = r'^(https?|git|ssh)\:\/\/(?:[\w.-]+@)?([\w.-]+)\/([\w.-]+)\/([\w.-]+)(?:\.git)?$'
         match = re.match(pattern, url)
 
         if match:
