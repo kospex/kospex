@@ -5,10 +5,12 @@ import sys
 import re
 import json
 import csv
+import urllib
 from urllib.parse import urlparse
 import dateutil.parser
 import requests
 from prettytable import PrettyTable
+import kospex_schema as KospexSchema
 
 class KospexDependencies:
     """kospex database query functionality"""
@@ -22,9 +24,9 @@ class KospexDependencies:
 
     def deps_dev(self,package_type,package_name,version):
         """ Query the Deps.dev API for a package and version"""
-        #url = f"https://api.github.com/repos/{package_name}/releases/latest"
         base_url = "https://api.deps.dev/v3alpha/systems"
-        url = f"{base_url}/{package_type}/packages/{package_name}/versions/{version}"
+        encoded_name = urllib.parse.quote(package_name, safe='')
+        url = f"{base_url}/{package_type}/packages/{encoded_name}/versions/{version}"
         #/v3alpha/systems/{versionKey.system}/packages/{versionKey.name}/versions/{versionKey.version}
         #https://api.deps.dev/v3alpha/systems/pypi/packages/requests/versions/2.31.0
         # links -> which has a SOURCE_REPO label should be the git
@@ -32,18 +34,28 @@ class KospexDependencies:
         data = None
         if self.kospex_query:
             content = self.kospex_query.url_request(url)
-            data = json.loads(content)
+            if content:
+                data = json.loads(content)
         else:
             req = requests.get(url, timeout=10)
             if req.status_code == 200:
                 data = req.json()
 
         return data
-        #req = requests.get(url)
-        #if req.status_code == 200:
-        #    return req.json()
-        #else:
-        #    return None
+
+    def get_url_json(self, url, timeout=10, cache=True):
+        """ Get the contents of a URL, use the query cache if we can """
+        data = None
+
+        if self.kospex_query and cache:
+            content = self.kospex_query.url_request(url)
+            data = json.loads(content)
+        else:
+            req = requests.get(url, timeout=timeout)
+            if req.status_code == 200:
+                data = req.json()
+        return data
+
 
     def get_pypi_package_info(self,package):
         """ Get the latest version of a package from PyPI """
@@ -109,31 +121,165 @@ class KospexDependencies:
         pattern = r'^[a-zA-Z0-9-_]+==\d+(\.\d+)*$'
         return re.match(pattern, s) is not None
 
+    def get_table_field_names(self):
+        """ Return the field names for the CSV table """
+        return ["package_name", "package_version", "days_ago",
+                "published_at", "source_repo", "advisories", "default", "versions_behind"]
+
     def get_cli_pretty_table(self):
         """ Return a pretty table for the CLI """
         table = PrettyTable()
-        table.field_names = ["package", "version", "days_ago",
-                        "published_at", "source_repo", "advisories", "default"]    
-        table.align["package"] = "l"
-        table.align["version"] = "r"
+        #table.field_names = ["package", "version", "days_ago",
+        #                "published_at", "source_repo", "advisories", "default"]
+        table.field_names = self.get_table_field_names()
+        table.align["package_name"] = "l"
+        table.align["package_version"] = "r"
         table.align["days_ago"] = "r"
         table.align["published_at"] = "l"
         table.align["source_repo"] = "l"
         table.align["advisories"] = "r"
         table.align["default"] = "r"
+        table.align["versions_behind"] = "r"
         return table
 
-    def assess(self, filename, results_file=None):
+    def is_npm_package(self,filename):
+        """
+        Check if a filename looks like a package.json file, 
+        including lock and other common variants.
+    
+        Args:
+        filename (str): The filename to check.
+
+        Returns:
+        bool: True if it looks like a package.json variant, False otherwise.
+        """
+        # Regular expression to match package.json and its variants
+        pattern = r'^(.*-)?package(-lock)?(\.test|\.prod|\.dev)?\.json$'
+        basefile = os.path.basename(filename)
+        #pattern = r'^package\.json$'
+        return bool(re.match(pattern, basefile, re.IGNORECASE))
+
+    def assess(self, filename, results_file=None, repo_info={}):
         """ Using deps.dev to assess and provide a summary of the package manager file """
 
         basefile = os.path.basename(filename)
-        if basefile != "requirements.txt":
+        print(f"Assessing {basefile}")
+        if self.is_npm_package(filename):
+            print(f"Found npm package file: {basefile}")
+            self.npm_assess(filename,results_file=results_file,repo_info=repo_info)
+        elif basefile != "requirements.txt":
             print(f"Only requirements.txt files are supported.  Found {basefile}")
             sys.exit(1)
         else:
-            self.pypi_assess(filename,results_file=results_file)
+            self.pypi_assess(filename,results_file=results_file,repo_info=repo_info)
 
-    def pypi_assess(self, filename,results_file=None):
+    def get_values_array(self, input_dict, keys, default_value):
+        """ return an array of values from a dictionary, using the keys provided"""
+        return [input_dict.get(key, default_value) for key in keys]
+
+    def get_source_repo_info(self, package_info):
+        """ Get the source repo from a deps.dev package info dictionary """
+        source_repo = None
+
+        if package_info.get("links") is not None:
+            for link in package_info.get("links"):
+                if link.get("label") == "SOURCE_REPO":
+                    source_repo = link.get("url")
+
+        return source_repo
+
+    def get_advisories_count(self, package_info):
+        """ Return the number of security advisories from a deps.dev package info dictionary """
+        advisories = package_info.get("advisoryKeys")
+        if advisories:
+            return len(advisories)
+        else:
+            return 0
+
+    def write_csv(self, filename, table_rows, headers):
+        """ Utility method for writing a CSV file. """
+        with open(filename, 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(headers)
+            writer.writerows(table_rows)
+
+    def get_npm_dependency_dict(self, item, data):
+        """ parse a dependency details from the package.json json structure into a dictionary """
+        details = {}
+        today = datetime.datetime.now(datetime.timezone.utc)
+
+        details['package'] = item
+        details['version'] = data['dependencies'][item]
+        details['semantic'] = ""
+        # Handling semantic versioning
+        # https://dev.to/typescripttv/understanding-npm-versioning-3hn4
+        if "~" in details['version']:
+            # Using the tilde symbol, we would only receive updates at the patch level
+            details['version'] = details['version'].replace("~","")
+            details['semantic'] = "~"
+        if "^" in details['version']:
+            # The caret symbol indicates that npm should restrict upgrades to 
+            # patch or minor level updates
+            details['version'] = details['version'].replace("^","")
+            details['semantic'] = "^"
+
+        print(f"Checking {item} version {details['version']}")
+        deps_info = self.deps_dev("npm",item,details['version'])
+        pub_date = deps_info.get("publishedAt")
+        if pub_date:
+            pub_date = dateutil.parser.isoparse(deps_info.get("publishedAt"))
+            diff = today - pub_date
+            details["days_ago"] = diff.days
+        details["published_at"] = deps_info.get("publishedAt")
+        details["default"] = deps_info.get("isDefault")
+        # TODO - need to parse the source repo to create proper links for NPM .. looks 
+        # a little dirty with actual Git urls and not https to Github
+        details["source_repo"] = self.get_source_repo_info(deps_info)
+        details["advisories"] = self.get_advisories_count(deps_info)
+
+        # Get the versions behind info
+        days_info = self.get_versions_behind("npm",item,details['version'])
+        details['versions_behind'] = days_info.get("versions_behind","Unknown")
+
+        # TODO - this is a hacky way of duplicating the keys needed
+        details['package_name'] = details['package']
+        details['package_version'] = details['version']
+
+        return details
+
+    def npm_assess(self, filename, results_file=None,repo_info={}):
+        """ Using deps.dev to assess and provide a summary of a 
+            npm package.json compatible file """
+
+        #today = datetime.datetime.now(datetime.timezone.utc)
+        table = self.get_cli_pretty_table()
+        #records = []
+        table_rows = []
+
+        # We'll have no idea what encoding the file is in
+        # TODO - check if there is a sensible default encoding for npm files
+        # pylint: disable=unspecified-encoding
+        npm_file = open(filename)
+        data = json.load(npm_file)
+
+        for item in data['dependencies']:
+            details = self.get_npm_dependency_dict(item,data)
+            print(details)
+            table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
+
+        for item in data['devDependencies']:
+            print(f"Checking dev {item} version {data['devDependencies'][item]}")
+
+        table.add_rows(table_rows)
+        print(table)
+
+        if results_file:
+            self.write_csv(results_file, table_rows, self.get_table_field_names())
+
+
+    
+
+    def pypi_assess(self, filename,results_file=None,repo_info=None,store=True):
         """ Using deps.dev to assess and provide a summary of a 
             pip / PyPi requirements.txt compatible file """
 
@@ -146,13 +292,16 @@ class KospexDependencies:
         #results_file = results_file if results_file else None
 
         # TODO - write functions to parse based on file type
-        # (e.g. requirements.txt, pom.xml, packge.json, etc.)
+        # (e.g. requirements.txt, pom.xml, package.json, etc.)
         with open(filename, 'r', encoding="utf-8") as pmf:
             for line in pmf.readlines():
 
                 entry = []
                 row = {}
-
+                if repo_info:
+                    row = repo_info.copy()
+                row['package_type'] = 'PyPi'
+                
                 # Skip comments
                 if line.startswith('#'):
                     continue
@@ -194,16 +343,15 @@ class KospexDependencies:
                 package = line.split('==')[0]
                 version = line.split('==')[1].strip()
                 entry.append(package)
-                row['package'] = package
+                row['package_name'] = package
                 entry.append(version)
-                row['version'] = version
+                row['package_version'] = version
 
                 #packages[package] = version
                 info = self.deps_dev("pypi",package,version)
                 print(f"{package} : {version}")
                 if info is None:
                     print(f"Could not find {package} in deps.dev")
-
                     continue
                 #print(info.get("publishedAt"))
                 pub_date = info.get("publishedAt")
@@ -212,9 +360,12 @@ class KospexDependencies:
                     diff = today - pub_date
                     #print(f"days ago: {diff.days}")
                     entry.append(diff.days)
+                    row['days_ago'] = diff.days
                 else:
                     entry.append("Unknown")
+                    row['days_ago'] = "Unknown"
                 entry.append(info.get("publishedAt"))
+                row['published_at'] = pub_date
 
                 source_repo = ""
                 if info.get("links") is not None:
@@ -222,18 +373,29 @@ class KospexDependencies:
                         if link.get("label") == "SOURCE_REPO":
                             #print(link.get("url"))
                             source_repo = link.get("url")
+
                 entry.append(source_repo)
+                row['source_repo'] = source_repo
+
                 advisories = info.get("advisoryKeys")
                 if advisories:
                     entry.append(len(advisories))
+                    row['advisories'] = len(advisories)
                 else:
                     entry.append(0)
+                    row['advisories'] = 0
 
                 entry.append(info.get("isDefault"))
+                row['default'] = info.get("isDefault")
 
-                #print()
-                #table.add_row(entry)
-                table_rows.append(entry)
+                days_info = self.get_versions_behind("PyPi",package,version)
+                print(days_info)
+                row['versions_behind'] = days_info.get("versions_behind","Unknown")
+                print(f"rows {row['versions_behind']}")
+
+                #table_rows.append(entry)
+                table_rows.append(self.get_values_array(row, self.get_table_field_names(), '-'))
+
                 records.append(row)
 
         table.add_rows(table_rows)
@@ -244,6 +406,17 @@ class KospexDependencies:
                 writer = csv.writer(file)
                 writer.writerow(table.field_names)
                 writer.writerows(table_rows)
+
+        if store:
+            #self.store_results(records)
+            #print(records)
+            # TODO - see if there is better way of excluding this key
+            for r in records:
+                r.pop("days_ago",None)
+            self.kospex_db.table(KospexSchema.TBL_DEPENDENCY_DATA).upsert_all(
+                records,pk=['_repo_id', 'hash', "file_path",
+                            "package_type","package_name","package_version"])
+            print("Stored results to DB (should have)")
 
         print(table)
 
@@ -284,5 +457,107 @@ class KospexDependencies:
 
         return detected_files
 
+    def get_depsdev_info(self,package_manager, package_name, version):
 
-#today = datetime.datetime.now(datetime.timezone.utc)
+        # Define the base URL for deps.dev API
+        base_url = f"https://deps.dev/_/s/{package_manager}/p/{package_name}/v/{version}"
+
+        # Make a request to get package details
+        response = requests.get(base_url)
+        if response.status_code != 200:
+            raise Exception(f"Failed to get package details: {response.text}")
+
+        # Extract the package data
+        data = response.json()
+        return data
+
+    def version_fuzzy_match(self, from_config, from_depsdev):
+        """ Compare two version strings and return True if they are a match, False otherwise. """
+
+        # If the versions are exactly the same, return True
+        if from_config == from_depsdev:
+            return True
+
+        # change the version strings to lists of integers to remove 0 padding, 
+        # which doesn't always match properly e.g. 2022.07.13 != 2022.7.13        
+        parts = from_config.split(".")
+        #parts = [str(int(part)) for part in parts]
+        cleaned_parts = [part.lstrip("0") for part in parts]
+        ver_string = ".".join(cleaned_parts)
+
+        if ver_string == from_depsdev:
+            return True
+
+        if len(parts) == 2:
+            # Only 1 period like 3.4 we might need a .0 on the end to make it 3.4.0
+            ver_string = ".".join([ver_string, "0"])
+            if ver_string == from_depsdev:
+                return True
+
+        return False
+
+    def get_versions_behind(self,package_manager, package_name, version):
+        """ Use Deps.Dev API to get the versions behing the used version"""
+        # Define the base URL for deps.dev API
+        base_url = "https://api.deps.dev/v3alpha/systems"
+        encoded_name = urllib.parse.quote(package_name, safe='')
+        #url = f"{base_url}/{package_manager}/packages/{encoded_name}/versions/{version}"
+        # The following is the correct URL to get all versions
+        url = f"{base_url}/{package_manager}/packages/{encoded_name}"
+        #package_url = f"https://deps.dev/_/s/{package_manager}/p/{encoded_name}/v/{version}"
+
+        data = self.get_url_json(url)
+        versions = data.get('versions', [])
+        # We will need to sort the list, since the API returns the versions in a weird order
+        #print(json.dumps(versions, indent=2))
+        #print(len(versions))
+
+        # Handle the case where there is no publishedAt key, we need this key to sort later
+        for v in versions:
+            if not v.get("publishedAt"):
+                v['publishedAt'] = ''
+                # TODO - log when we have a missing publishedAt
+                # Perhaps track this metadata
+                #print(f"missing publishedAt for {v['versionKey']['version']}")
+            #print(v['versionKey']['version'])
+            #print(v.get("publishedAt"))
+
+        sorted_list = sorted(versions, key=lambda x: x['publishedAt'], reverse=True)
+        # Find the 'default' install version
+        #default_version = data.get("defaultVersion")
+        #print(json.dumps(sorted_list, indent=2))
+
+        details = {}
+        details['versions'] = len(sorted_list)
+
+        keys_before_default = 0
+        versions_behind = 0
+        found_default = False
+
+        for release in sorted_list:
+
+            if release["isDefault"]:
+                print(f"default {release['versionKey']['version']}")
+                found_default = True
+
+            if self.version_fuzzy_match(version, release['versionKey']['version']):
+                print(f"Found version {version}")
+                break
+
+            #if release['versionKey']['version'] == version:
+            #    print(f"Found version {version}")
+            #    break
+
+            #print(release['versionKey']['version'])
+
+            if not found_default:
+                keys_before_default += 1
+            else:
+                versions_behind += 1
+
+        print(f"Keys before default: {keys_before_default}")
+        print(f"Versions between: {versions_behind}")
+        details['versions_before_default'] = keys_before_default
+        details['versions_behind'] = versions_behind
+
+        return details
