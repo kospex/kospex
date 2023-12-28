@@ -3,6 +3,9 @@ import os
 import re
 import glob
 from datetime import datetime, timezone, timedelta
+import subprocess
+import shlex
+import csv
 from dotenv import load_dotenv
 
 KOSPEX_DB_FILENAME="kospex.db"
@@ -152,3 +155,137 @@ def parse_git_rename_event(event_str):
 
     # Reassemble the path
     return ''.join(segments)
+
+def get_last_commit_info(filename):
+    """ Get the last commit info for a given file"""
+    try:
+        # Get the last commit for the file
+        commit_info = subprocess.check_output(
+            shlex.split(f"git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict -- {filename}"),
+            encoding='utf-8'
+        )
+
+        # Split the output to get commit hash, author date, and committer date
+        commit_hash, author_date, committer_date = commit_info.strip().split('|', 2)
+
+        return {
+            'commit_hash': commit_hash,
+            'author_date': author_date,
+            'committer_date': committer_date,
+            'days_ago': days_ago(author_date),
+            'status': development_status(days_ago(author_date))
+        }
+
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}")
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return None
+
+def count_key_occurrences(array_of_dicts, key):
+    """ Count the number of occurrences of a key in an array of dictionaries"""
+    # This dictionary will store the count of occurrences for each value
+    value_counts = {}
+
+    for dictionary in array_of_dicts:
+        # Check if the key exists in the dictionary
+        if key in dictionary:
+            value = dictionary[key]
+            # Increment the count for this value
+            if value in value_counts:
+                value_counts[value] += 1
+            else:
+                value_counts[value] = 1
+
+    return value_counts
+
+
+def list_dict_2_csv(list_of_dicts, csv_file, headers=None):
+    """ Write a list of dictionaries to a csv file"""
+    # Get the keys from the first dictionary
+    keys = list_of_dicts[0].keys()
+    if headers:
+        keys = headers
+
+    # Open the csv file for writing
+    with open(csv_file, 'w', newline='') as output_file:
+        # Create a csv writer object
+        dict_writer = csv.DictWriter(output_file, keys)
+
+        # Write the header row
+        dict_writer.writeheader()
+
+        # Write the remaining rows
+        dict_writer.writerows(list_of_dicts)
+
+def get_directory_size(directory):
+    """
+    Get the size of a directory in kilobytes.
+
+    :param directory: Path to the directory
+    :return: Size of the directory in kilobytes
+    """
+    # Running the 'du' command with '-s' (summarize) and '-k' (kilobytes) options
+    result = subprocess.run(['du', '-sk', directory], 
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    if result.stderr:
+        raise OSError(f"Error in du command: {result.stderr}")
+
+    # The output is in the format "size\t directory\n", we split by tab and get the first element
+    size_kb = int(result.stdout.split()[0])
+    return size_kb
+
+def get_git_stats(directory, last_days):
+    if not os.path.isdir(os.path.join(directory, '.git')):
+        raise ValueError("The specified directory is not a Git repository.")
+
+    def run_git_command(args):
+        return subprocess.check_output(['git', '-C', directory] + args).decode().strip()
+
+    # Get first and last commit dates
+    #  git log --pretty=format:"%ci" --max-parents=0 HEAD
+    #first_commit_date = run_git_command(['log', '--reverse', '--format=%ci', '-1'])
+    first_commit_date = run_git_command(['log', '--pretty=format:%ci', '--max-parents=0', 'HEAD'])
+
+    last_commit_date = run_git_command(['log', '--format=%ci', '-1'])
+
+    # Count total number of commits
+    total_commits = int(run_git_command(['rev-list', '--count', 'HEAD']))
+    # Calculate the total size of the directory and the .git directory
+
+    total_size = get_directory_size(directory)
+
+    #total_size = sum(os.path.getsize(os.path.join(dirpath, filename))
+    #                 for dirpath, dirnames, filenames in os.walk(directory)
+    #                 for filename in filenames)
+
+    git_dir_size = get_directory_size(os.path.join(directory, '.git'))
+    #git_dir_size = sum(os.path.getsize(os.path.join(dirpath, filename))
+    #                   for dirpath, dirnames, filenames in os.walk(os.path.join(directory, '.git'))
+    #                   for filename in filenames)
+
+    # Size of the repo without .git data
+    repo_size_without_git = total_size - git_dir_size
+
+    # Count total and unique authors (based on their email address)
+    authors = run_git_command(['log', '--format=%aE'])
+    unique_authors = set(authors.splitlines())
+    total_authors = len(unique_authors)
+
+    # Count unique authors in the last X days
+    since_date = (datetime.now() - timedelta(days=last_days)).strftime('%Y-%m-%d')
+    recent_authors = run_git_command(['log', '--since', since_date, '--format=%aN'])
+    unique_recent_authors = len(set(recent_authors.splitlines()))
+
+    return {
+        'first_commit_date': first_commit_date,
+        'last_commit_date': last_commit_date,
+        'total_commits': total_commits,
+        'total_size': total_size,
+        'git_dir_size': git_dir_size,
+        'repo_size_without_git': repo_size_without_git,
+        'total_authors': total_authors,
+        'unique_recent_authors': unique_recent_authors
+    }
