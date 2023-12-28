@@ -291,7 +291,6 @@ class KospexDependencies:
         # (e.g. requirements.txt, pom.xml, package.json, etc.)
         with open(filename, 'r', encoding="utf-8") as pmf:
             for line in pmf.readlines():
-                #entry = []
                 row = {}
                 if repo_info:
                     row = repo_info.copy()
@@ -311,25 +310,18 @@ class KospexDependencies:
                     repo_path = self.extract_repo_path(url) if url else None
                     if url:
                         if repo_path:
-                    #        entry.append(repo_path)
                             row['package'] = repo_path
                         else:
-                    #        entry.append(url)
                             row['package'] = repo_path
                     else:
-                    #    entry.append(line.strip())
                         row['package'] = line.strip()
 
-                    #entry.extend(["Unknown", "Unknown", "Unknown",
-                    #            url, "Unknown", "Unknown"])
                     row["version"] = "Unknown"
                     row["days_ago"] = "Unknown"
                     row["published_at"] = "Unknown"
                     row["source_repo"] = url
                     row["advisories"] = "unknown"
                     row["default"] = "unknown"
-                    #table.add_row(entry)
-                    #table_rows.append(entry)
                     records.append(row)
                     continue
 
@@ -337,58 +329,42 @@ class KospexDependencies:
 
                 package = line.split('==')[0]
                 version = line.split('==')[1].strip()
-                #entry.append(package)
                 row['package_name'] = package
-                #entry.append(version)
                 row['package_version'] = version
 
-                #packages[package] = version
                 info = self.deps_dev("pypi",package,version)
                 print(f"{package} : {version}")
                 if info is None:
                     print(f"Could not find {package} in deps.dev")
                     continue
-                #print(info.get("publishedAt"))
                 pub_date = info.get("publishedAt")
                 if pub_date:
                     pub_date = dateutil.parser.isoparse(info.get("publishedAt"))
                     diff = today - pub_date
-                    #print(f"days ago: {diff.days}")
-                    #entry.append(diff.days)
                     row['days_ago'] = diff.days
                 else:
-                    #entry.append("Unknown")
                     row['days_ago'] = "Unknown"
-                #entry.append(info.get("publishedAt"))
                 row['published_at'] = pub_date
 
                 source_repo = ""
                 if info.get("links") is not None:
                     for link in info.get("links"):
                         if link.get("label") == "SOURCE_REPO":
-                            #print(link.get("url"))
                             source_repo = link.get("url")
 
-                #entry.append(source_repo)
                 row['source_repo'] = source_repo
 
                 advisories = info.get("advisoryKeys")
                 if advisories:
-                    #entry.append(len(advisories))
                     row['advisories'] = len(advisories)
                 else:
-                    #entry.append(0)
                     row['advisories'] = 0
 
-                #entry.append(info.get("isDefault"))
                 row['default'] = info.get("isDefault")
 
                 days_info = self.get_versions_behind("PyPi",package,version)
-                print(days_info)
                 row['versions_behind'] = days_info.get("versions_behind","Unknown")
-                print(f"rows {row['versions_behind']}")
 
-                #table_rows.append(entry)
                 table_rows.append(self.get_values_array(row, self.get_table_field_names(), '-'))
 
                 records.append(row)
