@@ -237,55 +237,107 @@ def get_directory_size(directory):
     size_kb = int(result.stdout.split()[0])
     return size_kb
 
-def get_git_stats(directory, last_days):
+#git rev-parse HEAD
+
+def get_git_hash(directory):
+    """ Get the git hash for a given directory using the 'git rev-parse HEAD' command"""
+    return run_git_command(directory,['rev-parse', 'HEAD'])
+
+def get_git_remote_url(directory):
+    """ Get the git remote url for a given directory using 
+    the 'git remote get-url origin' command"""
+    return run_git_command(directory,['remote', 'get-url', 'origin'])
+
+def run_git_command(directory, args):
+    """ Generic function to run a git command in a given directory"""
+    return subprocess.check_output(['git', '-C', directory] + args).decode().strip()
+
+def get_git_stats(directory, last_days=30):
+    """ Return some basicgit stats for a given directory"""
     if not os.path.isdir(os.path.join(directory, '.git')):
         raise ValueError("The specified directory is not a Git repository.")
 
-    def run_git_command(args):
-        return subprocess.check_output(['git', '-C', directory] + args).decode().strip()
+    #def run_git_command(args):
+    #    return subprocess.check_output(['git', '-C', directory] + args).decode().strip()
 
     # Get first and last commit dates
     #  git log --pretty=format:"%ci" --max-parents=0 HEAD
     #first_commit_date = run_git_command(['log', '--reverse', '--format=%ci', '-1'])
-    first_commit_date = run_git_command(['log', '--pretty=format:%ci', '--max-parents=0', 'HEAD'])
+    first_commit_date = run_git_command(directory,['log', '--pretty=format:%ci', '--max-parents=0', 'HEAD'])
 
-    last_commit_date = run_git_command(['log', '--format=%ci', '-1'])
+    last_commit_date = run_git_command(directory,['log', '--format=%ci', '-1'])
 
     # Count total number of commits
-    total_commits = int(run_git_command(['rev-list', '--count', 'HEAD']))
+    total_commits = int(run_git_command(directory,['rev-list', '--count', 'HEAD']))
     # Calculate the total size of the directory and the .git directory
+
+    # Get Git remote URL
+    git_remote_url = run_git_command(directory,['remote', 'get-url', 'origin'])
+
+    # Get the long hash
+    current_hash = get_git_hash(directory)#,['rev-parse', 'HEAD'])
+
+    # Get Git remote URL
+    #git_remote_url = run_git_command(directory,['remote', 'get-url', 'origin'])
+    git_remote_url = get_git_remote_url(directory)
 
     total_size = get_directory_size(directory)
 
-    #total_size = sum(os.path.getsize(os.path.join(dirpath, filename))
-    #                 for dirpath, dirnames, filenames in os.walk(directory)
-    #                 for filename in filenames)
-
     git_dir_size = get_directory_size(os.path.join(directory, '.git'))
-    #git_dir_size = sum(os.path.getsize(os.path.join(dirpath, filename))
-    #                   for dirpath, dirnames, filenames in os.walk(os.path.join(directory, '.git'))
-    #                   for filename in filenames)
 
     # Size of the repo without .git data
     repo_size_without_git = total_size - git_dir_size
 
     # Count total and unique authors (based on their email address)
-    authors = run_git_command(['log', '--format=%aE'])
+    authors = run_git_command(directory,['log', '--format=%aE'])
     unique_authors = set(authors.splitlines())
     total_authors = len(unique_authors)
 
     # Count unique authors in the last X days
     since_date = (datetime.now() - timedelta(days=last_days)).strftime('%Y-%m-%d')
-    recent_authors = run_git_command(['log', '--since', since_date, '--format=%aN'])
+    recent_authors = run_git_command(directory,['log', '--since', since_date, '--format=%aN'])
     unique_recent_authors = len(set(recent_authors.splitlines()))
 
     return {
-        'first_commit_date': first_commit_date,
-        'last_commit_date': last_commit_date,
+        'first_commit': first_commit_date,
+        'last_commit': last_commit_date,
         'total_commits': total_commits,
+        'hash': current_hash, 
+        'remote_url': git_remote_url,
         'total_size': total_size,
         'git_dir_size': git_dir_size,
         'repo_size_without_git': repo_size_without_git,
         'total_authors': total_authors,
         'unique_recent_authors': unique_recent_authors
     }
+
+def parse_sql_create_columns(sql):
+    ''' A function to return a dict of column names and types from a SQL CREATE statement
+    Regular expression to find column names and types
+    It looks for patterns like [column_name] data_type, '''
+    pattern = r'\[(.+?)\]\s+(\w+)'
+
+    # Find all matches in the SQL statement
+    matches = re.findall(pattern, sql)
+
+    # Create a dictionary with column names and types
+    column_types = {column: datatype for column, datatype in matches}
+
+    return column_types
+
+def parse_sql_primary_keys(sql):
+    # Regular expression to find the primary key definition
+    # It looks for the pattern PRIMARY KEY(column1, column2, ...)
+    pattern = r'PRIMARY KEY\((.+?)\)'
+    
+    # Find the primary key definition in the SQL statement
+    match = re.search(pattern, sql)
+
+    # Extract the column names from the primary key definition
+    # Splitting by comma to get individual columns
+    primary_keys = match.group(1).split(',') if match else []
+
+    # Removing potential whitespace and brackets around column names
+    primary_keys = [key.strip().strip('[]') for key in primary_keys]
+    
+    return primary_keys

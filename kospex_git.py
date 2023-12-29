@@ -2,7 +2,9 @@
 import os
 import re
 from pathlib import Path
-import pygit2
+#import pygit2
+import kospex_utils as KospexUtils
+
 
 class KospexGit:
     """Git metadata class for kospex"""
@@ -90,19 +92,22 @@ class KospexGit:
 
     def set_repo(self, repo_dir):
         """ Extract the git metadata (remote, hash) from the repo directory """
-        self.pygit2 = pygit2.Repository(repo_dir)
+        #self.pygit2 = pygit2.Repository(repo_dir)
         self.repo_dir = repo_dir # Expecting this as a full path
 
         # Get the current hash
         try:
-            self.current_hash = self.pygit2[self.pygit2.head.target].hex
+            #self.current_hash = self.pygit2[self.pygit2.head.target].hex
+            self.current_hash = KospexUtils.get_git_hash(repo_dir)
             self.has_head = True
         except Exception:
             print(f"No 'HEAD' for {repo_dir}")
             self.current_hash = "NO_HEAD"
         # If we don't have a head, it's probably a new repo without any commits
         # The following getting of origin remote still works on a new repo with no commits
-        self.set_remote_url(self.pygit2.remotes["origin"].url)
+        #self.set_remote_url(self.pygit2.remotes["origin"].url)
+        self.set_remote_url(KospexUtils.get_git_remote_url(repo_dir))
+
 
     def get_current_hash(self):
         """ return the current git hash """
