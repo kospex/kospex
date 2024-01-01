@@ -7,13 +7,13 @@ RUN apt-get update && \
 # Install mergestat-lite and the .so file for python binding to do sqlite style queries
 # For the moment, we'll grab the latest CLI but there' an issue with the .so file so we have to grab an older version
 # See https://github.com/mergestat/mergestat-lite/issues/372
-RUN curl -SL https://github.com/mergestat/mergestat-lite/releases/download/v0.6.1/mergestat-linux-amd64.tar.gz | tar -xzC /usr/local/bin/ \
-&& rm /usr/local/bin/libmergestat.so
+#RUN curl -SL https://github.com/mergestat/mergestat-lite/releases/download/v0.6.1/mergestat-linux-amd64.tar.gz | tar -xzC /usr/local/bin/ \
+#&& rm /usr/local/bin/libmergestat.so
 
 # Currently need to use the older version (0.5.10) as the .so file is not working in the latest version
-RUN curl -SL https://github.com/mergestat/mergestat-lite/releases/download/v0.5.10/mergestat-linux-amd64.tar.gz | tar -xzC /tmp/ \
-&& mv /tmp/libmergestat.so /usr/local/bin/ \
-&& rm /tmp/mergestat 
+#RUN curl -SL https://github.com/mergestat/mergestat-lite/releases/download/v0.5.10/mergestat-linux-amd64.tar.gz | tar -xzC /tmp/ \
+#&& mv /tmp/libmergestat.so /usr/local/bin/ \
+#&& rm /tmp/mergestat 
 
 # As far as counting lines of code and complexity, we'll use SCC
 # https://github.com/boyter/scc
