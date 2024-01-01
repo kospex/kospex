@@ -12,9 +12,11 @@ TBL_FILE_METADATA = "file_metadata"
 TBL_REPO_HOTSPOTS = "repo_hotspots"
 TBL_DEPENDENCY_DATA = "dependency_data"
 TBL_URL_CACHE = "url_cache"
+TBL_KRUNNER = "krunner"
+TBL_OBSERVATIONS = "observations"
 
 KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
-                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE ]
+                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE, TBL_KRUNNER ]
 
 # Table based upon Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
@@ -113,14 +115,17 @@ SQL_CREATE_COMMIT_METADATA = f'''CREATE TABLE [{TBL_COMMIT_METADATA}] (
 SQL_CREATE_DEPENDENCY_DATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEPENDENCY_DATA}] (
     [hash] TEXT,                    -- hash of the commit
     [file_path] TEXT,               -- file path in the repo
-    [package_type] TEXT,            -- type of package (e.g. 'pip', or 'maven')
+    [package_type] TEXT,            -- type of package (e.g. 'PyPi', or 'maven')
     [package_name] TEXT,            -- name of the package
     [package_version] TEXT,         -- version of the package
-    [published_at] TEXT,            -- date the package was published TEXT DEFAULT CURRENT_TIMESTAMP
-    [security_advisories] INTEGER,  -- security advisory (e.g. CVE-2021-1234)
+    [package_use] TEXT,             -- free form, most likely direct, development, testing
+    [published_at] TEXT,            -- date the package was published 
+    [advisories] INTEGER,           -- # of security security advisories
     [versions_behind] INTEGER,      -- number of versions behind
     [source_repo] TEXT,             -- URL of the source repo for the package
+    [default] TEXT,                 -- If this is the default version to be installed of the package
     [source] TEXT,                  -- what tool was used to get the metadata
+    [latest] INTEGER,               -- 1 if this is the entry for this file, package etc, 0 otherwise
     [created_at] DEFAULT CURRENT_TIMESTAMP,
     [_git_server] TEXT,
     [_git_owner] TEXT,
@@ -130,6 +135,38 @@ SQL_CREATE_DEPENDENCY_DATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEPENDENCY_DAT
     )'''
     # TODO - Double check the primary key, this feels execessive
     # Potentially the file_path, hash and package_name would be enough
+
+SQL_CREATE_KRUNNER = f'''CREATE TABLE  IF NOT EXISTS [{TBL_KRUNNER}] (
+    [hash] TEXT,        -- hash of the commit
+    [file_path] TEXT,   -- file path in the repo
+    [format] TEXT,      -- format type e.g. JSON, JSONL, CSV, LINE
+    [data] TEXT,        -- Data / output from the command
+    [source] TEXT,      -- what tool/function was used to get the metadata
+    [command] TEXT,     -- command ran to get the data (optional)
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [_repo_id] TEXT,
+    PRIMARY KEY(_repo_id,hash,file_path)
+    )'''
+
+SQL_CREATE_OBSERVATION = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
+    [hash] TEXT,            -- hash of the commit
+    [file_path] TEXT,       -- file path in the repo
+    [format] TEXT,          -- format type e.g. JSON, JSONL, CSV, LINE
+    [data] TEXT,            -- Data / output from the command
+    [source] TEXT,          -- what tool/function was used to get the metadata
+    [observation_type] TEXT, -- should be one of the repo, file, 
+    [line_number] INTEGER,  -- line number in the file (optional)
+    [command] TEXT,     -- command ran to get the data (optional)
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [_repo_id] TEXT,
+    PRIMARY KEY(_repo_id,hash,file_path)
+    )'''
 
 #SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
 #    [url] TEXT, -- URL to cache
@@ -149,6 +186,20 @@ SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
     [content] TEXT,
     [timestamp] REAL,
     PRIMARY KEY(url)
+    )'''
+
+SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE IF NOT EXISTS [{TBL_OBSERVATIONS}] (
+    [file_path] TEXT,      -- file path in the repo
+    [data] TEXT,           -- Data / output from the command, or line details
+    [line_number] INTEGER, -- line number of the observation, if applicable
+    [observed_at] TEXT,    -- date and time the observation was made
+    [source] TEXT,         -- what tool/function was used to get the metadata,
+    [hash] TEXT,
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [_repo_id] TEXT,
+    PRIMARY KEY(file_path,_repo_id,hash)
     )'''
 
 # Functions for SQLite stuff
@@ -181,6 +232,8 @@ def connect_or_create_kospex_db():
     # The following tables only are created if they don't exist
     kospex_db.execute(SQL_CREATE_DEPENDENCY_DATA)
     kospex_db.execute(SQL_CREATE_URL_CACHE)
+    kospex_db.execute(SQL_CREATE_KRUNNER)
+    kospex_db.execute(SQL_CREATE_OBSERVATIONS)
     # TODO - look at moving all table creates to "create if not exits"
 
     return kospex_db
