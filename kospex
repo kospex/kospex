@@ -5,7 +5,8 @@ import os.path
 import click
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
-import kospex_dependencies as KospexDeps
+from kospex_query import KospexQuery
+from kospex_dependencies import KospexDependencies
 
 kospex = Kospex()
 
@@ -19,42 +20,51 @@ def cli():
     For documentation on how commands run `kospex COMMAND --help`.
     
     """
-@cli.command("repo-summary")
-@click.argument('repo', type=click.Path(exists=True))
-def repo_summary(repo):
-    """ Provide a summary of the repository. """
-    kospex.repo_summary(repo)
+#@cli.command("repo-summary")
+#@click.argument('repo', type=click.Path(exists=True))
+#def repo_summary(repo):
+#    """ Provide a summary of the repository. """
+#    kospex.repo_summary(repo)
 
 @cli.command("summary")
-def summary():
+@click.option('-out', type=click.STRING,help="filename to write CSV results to.")
+def summary(out):
     """ Provide a summary of the known repositories."""
-    kospex.summary()
+    kospex.summary(results_file=out)
 
 @cli.command("sync")
-@click.option('-previous', type=int, help='# Commits to sync from the oldest in kospex DB.')
 @click.argument('repo', type=GitRepo())
-def sync(repo, previous):
-    """Sync a single repo to the kospex DB.
+def sync(repo):
+    """Sync a single repo to the kospex DB, using the native git commands."""
+    params = locals()
+    print(params)
+    kospex.sync_repo(repo)
 
-    Available switches:
-
-    -previous to get the previous N commits using the "-before" date
-
-    Future (not implemented yet) switches:
-
-    -before to specify the the commits before a date 
-    
-    -after to specify the the commits after a date
-    
-    -hash to get all the commits after a hash
-    
-    -before and -previous to get the previous N commits before a date
-    
-    -next to get the next N commits after the "-after" date
-    """
-    params = {}
-    params['previous'] = previous
-    kospex.sync_repo(repo, **params)
+#@cli.command("sync")
+#@click.option('-previous', type=int, help='# Commits to sync from the oldest in kospex DB.')
+#@click.argument('repo', type=GitRepo())
+#def sync(repo, previous):
+#    """Sync a single repo to the kospex DB.
+#
+#    Available switches:
+#
+#    -previous to get the previous N commits using the "-before" date
+#
+#    Future (not implemented yet) switches:
+#
+#    -before to specify the the commits before a date
+#
+#    -after to specify the the commits after a date
+#
+#    -hash to get all the commits after a hash
+#
+#    -before and -previous to get the previous N commits before a date
+#
+#    -next to get the next N commits after the "-after" date
+#    """
+#    params = {}
+#   params['previous'] = previous
+#    kospex.sync_repo(repo, **params)
 
 @cli.command("sync-directory")
 @click.argument('directory', type=click.Path(exists=True))
@@ -63,7 +73,7 @@ def sync_directory(directory):
     # Find all the repos in the directory
     repos = KospexUtils.find_repos(directory)
     for repo in repos:
-        print(f"Syncing {repo}")
+        print(f"\nSyncing {repo}")
         kospex.sync_repo(repo)
 
 @cli.command("developers")
@@ -113,7 +123,7 @@ def sync_metadata(repo,directory):
 
 @cli.command("hotspot")
 @click.option('-repo', type=GitRepo())
-@click.option('-repo_id', type=click.STRING)
+@click.option('-repo_id', type=click.Path())
 @click.option("-by_file", is_flag=True, default=False, help="Calculate hotspot per file.")
 # pylint: disable=unused-argument
 def hotspot(repo, repo_id, by_file):
@@ -127,21 +137,73 @@ def hotspot(repo, repo_id, by_file):
 @cli.command("deps")
 @click.option('-repo', type=GitRepo())
 @click.option('-file', type=click.Path(exists=True))
-def deps(repo, file):
-    """Find dependency file or assess a specific file."""
-    # TODO - clean up code and move to KospexDeps module, this is a hacky MVP
-    if repo:
+@click.option('-directory', type=click.Path())
+@click.option('-out', type=click.STRING,help="filename to write CSV results to.")
+def deps(repo, file, directory, out):
+    """Find dependency files or assess a specific file."""
+    kquery = KospexQuery()
+    kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
+    if directory:
+        # TODO: check if we really need both -repo and -directory
+        results = kdeps.find_dependency_files(directory)
+        if results:
+            for file_path, pkg_type in results:
+                print(f"File: {file_path} | Type: {pkg_type}")
+                print(KospexUtils.find_git_base(file_path))
+    elif repo:
         os.chdir(repo)
-        results = KospexDeps.find_dependency_files(".")
+        results = kdeps.find_dependency_files(".")
         if results:
             for file_path, pkg_type in results:
                 print(f"File: {file_path} | Type: {pkg_type}")
         else:
             print("No package/dependency manager files found.")
     elif file:
-        KospexDeps.assess(os.path.abspath(file))
+        file_path = os.path.abspath(file)
+        kospex.set_repo_dir(KospexUtils.find_git_base(file))
+        repo_info = kospex.git.add_git_to_dict({})
+        repo_info['hash'] = kospex.git.get_current_hash()
+        repo_info['file_path'] = file
+        print(f"Assessing {repo_info}")
+        kdeps.assess(file_path,results_file=out,repo_info=repo_info)
     else:
-        print("Please specify either a '-repo' or a '-file'.")
+        print("Please specify either a '-repo', '-directory' or a '-file'.")
+
+@cli.command("deps-check")
+def check_deps():
+    """ Test function to check deps behind"""
+    kquery = KospexQuery()
+    kdeps = KospexDependencies(kospex_query=kquery)
+    package_manager = "npm"
+    package_name = "react"
+    version = "16.8.0"
+    #print(kdeps.get_versions_behind(package_manager, package_name, version))
+    #print("PyPi")
+    #print("PyPi", "certifi", "2023.7.22")
+    #print(kdeps.get_versions_behind("PyPi", "certifi", "2023.7.22"))
+    print("XXX")
+    print(kdeps.get_versions_behind("PyPi", "sqlite-utils", "3.30"))
+    #print(kdeps.get_versions_behind("PyPi", "idna", "3.4"))
+
+@cli.command("author-tech")
+@click.option('-author_email', type=click.STRING)
+@click.option('-repo_id', type=click.STRING)
+# pylint: disable=unused-argument
+def author_tech(author_email,repo_id):
+    """Show the tech landscape for a given author."""
+    kwargs = locals()
+    print(kwargs)
+    results = kospex.kospex_query.author_tech(**kwargs)
+    for result in results:
+        print(result)
+
+@cli.command("test")
+@click.option('-repo', type=GitRepo())
+def ktestdeps(repo):
+    """ Test function """
+    kospex.set_repo_dir(repo)
+    print(kospex.git.get_repo_files())
+
 
 if __name__ == '__main__':
     cli()

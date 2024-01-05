@@ -11,7 +11,7 @@ from kospex_git import KospexGit, MissingGitDirectory
 import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
 import kospex_query as KospexQuery
-from kospex_mergestat import KospexMergeStat
+#from kospex_mergestat import KospexMergeStat
 
 class GitRepo(click.ParamType):
     """ Custom click param type for git repos """
@@ -139,7 +139,7 @@ class Kospex:
         return latest_datetime
 
     #def sync_repo2(self, directory, **kwargs):
-    def sync_repo2(self, directory, limit=None, from_date=None, to_date=None):
+    def sync_repo(self, directory, limit=None, from_date=None, to_date=None):
         """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
         #def sync_commits(conn, git_dir, limit=None, from_date=None, to_date=None):
 
@@ -346,7 +346,7 @@ class Kospex:
         """ helper function to return a single value from a query"""
         return str(self.kospex_db.execute(query).fetchone()[0])
 
-    def summary(self):
+    def summary(self, results_file=None):
         """ Display some basic stats what has been sync'ed from repos to the kospex db."""
         print("\nKospex Summary\nChecking status ...\n")
         print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
@@ -368,6 +368,8 @@ class Kospex:
         table.align["present"] = "r"
         table.sortby = "last_commit"
 
+        results = []
+
         repo_active_devs = self.kospex_query.active_devs()
         active_devs = self.kospex_query.active_developer_set()
 
@@ -383,16 +385,24 @@ class Kospex:
         for row in self.kospex_db.query(sql):
             all_devs = self.kospex_query.authors_by_repo(row["repo"])
             set_devs = set(all_devs)
+            row["status"] = KospexUtils.development_status(row["last_commit"])
+            row["active"] = repo_active_devs.get(row["repo"], 0)
+            row["present"] = len(set_devs.intersection(active_devs))
 
-            table.add_row([row["repo"], KospexUtils.development_status(row["last_commit"]),
+            table.add_row([row["repo"], row["status"],
                            row["last_commit"], row["first_commit"],
-                           row["developers"], row["commits"], repo_active_devs.get(row["repo"], 0),
-                            len(active_devs.intersection(set_devs))])
+                           row["developers"], row["commits"], row["active"], row["present"] ])
                            #len(set_devs.intersection(active_devs))])
             #print(row)
+            results.append(row)
+
+        if results_file:
+            KospexUtils.list_dict_2_csv(results, results_file)
+            print("Writing CSV results to file: " + results_file)
 
         if table.rows:
             print(table)
+            print(KospexUtils.count_key_occurrences(results, "status"))
         else:
             print("No repositories found in the kospex DB\n")
 
@@ -587,7 +597,6 @@ class Kospex:
             # scc wont' analyse everything, so we need to do a file find for items not analysed
             files = self.git.get_repo_files()
             # This will be a dict of file paths and their metadata
-            
 
             # Check we've got scc installed
             installed = which('scc')
