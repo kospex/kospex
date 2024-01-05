@@ -76,15 +76,6 @@ class KospexDependencies:
         else:
             return None
 
-    def get_latest_version(self,package):
-        """ Get the latest version of a package from PyPI """
-        url = f"https://pypi.org/pypi/{package}/json"
-        req = requests.get(url, timeout=10)
-        if req.status_code == 200:
-            return req.json()["info"]["version"]
-        else:
-            return None
-
     def extract_github_url(self,s):
         """
         Extracts and returns the GitHub URL from a string.

@@ -32,7 +32,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Build using Rocky Linux
 
 # Need to install python and git
-RUN dnf install python3-pip git -y && \
+RUN dnf install -y python3-pip git && \
     dnf upgrade python3 less -y && \
     pip3 install -r /build/requirements.txt && \
     dnf clean all
