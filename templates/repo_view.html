@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bootstrap Web App</title>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+{% include 'header.html' %}
+
+<div class="container mt-5">
+
+    <h1 class="mb-4">{{ repo_id }}</h1>
+
+    <a href="/commits/?repo_id={{ repo_id }}">View Commits for {{ repo_id }}</a>
+    <br>
+    <br>
+    
+
+    <div class="row">
+        <!-- # of Repos -->
+        <div class="col-4">
+            <div class="card">
+
+                <div class="card-body text-center">
+                    <h4>Active</h4>
+                    <h2>{{ ranges['active'] }}</h2>
+                </div>
+            </div>
+        </div>
+
+        <!-- # of Commits -->
+        <div class="col-4">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4>Aging</h4>
+                    <h2>{{ ranges['aging'] }}</h2>
+                </div>
+            </div>
+        </div>
+
+        <!-- # of Commits -->
+        <div class="col-4">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4>Older</h4>
+                    <h2>{{ ranges['older'] }}</h2>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <br/>
+    View repo <a href="/hotspots/{{ repo_id }}">Hotspots</a>
+
+</div>
+
+
+
+<div class="container mt-5">
+
+    <h2 class="mb-4">Author Summary</h2>
+    <table class="table" id="author_table">
+        <thead>
+            <tr>
+                <th>Author</th>
+                <th># Commits</th>
+                <th>Last seen</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in summary %}
+            <tr>
+                <td>{{ row['author_email'] }}</td>
+                <td><a href="/commits/{{repo_id}}?author_email={{ row['author_email'] }}">{{ row['commits'] }}</a></td>
+                <td>{{ row['days_ago'] }}</td>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if landscape %}
+    <br/>
+    <h2 class="mb-4">Technology Landscape</h2>
+    <table class="table" id="tech_table">
+        <thead>
+            <tr>
+                <th>Tech</th>
+                <th># Files</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in landscape %}
+            <tr>
+                <td><a href="/tech/{{ row['Language'] }}?repo_id={{ repo_id }}">{{ row['Language'] }}</a></td>
+                <td>{{ row['count'] }}</td>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% else %}
+    <br/>
+    <br/>
+    <strong>No Technology Landscape found for repo</strong>
+    {% endif %}
+
+    <h2 class="mb-4">Author email domains</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Author domain</th>
+                <th>#</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for domain in email_domains %}
+            <tr>
+                <td>{{ domain['domain'] }}</td>
+                <td>{{ domain['addresses'] }}</td>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+
+{% include '_footer_scripts.html' %}
+{% include '_datatable_scripts.html' %}
+<script>
+
+    $(document).ready( function () {
+        $('#author_table').DataTable({
+            order: [[1, 'desc']]
+        });
+        $('#tech_table').DataTable({
+            order: [[2, 'asc']]
+        });
+    } );
+
+</script>
+
+</body>
+</html>
