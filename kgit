@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """This is the kospex git CLI helper tool."""
-import click
 import time
+import os
+import click
 from kospex_core import GitRepo
 import kospex_utils as KospexUtils
+from kospex_git import KospexGit
+
+KospexUtils.init()
 
 @click.group()
 def cli():
@@ -32,6 +36,33 @@ def status(repo):
     et = time.time()
     elapsed_time = et - st
     print('Execution time:', elapsed_time, 'seconds')
+
+@cli.command("clone")
+@click.argument('repo',  type=click.STRING)
+def clone(repo):
+    """Clone the given repo into our KOSPEX_CODE directory."""
+    # We're going to shell out to git to do the clone
+    repo_dir = os.getenv("KOSPEX_CODE")
+    if not os.path.isdir(repo_dir):
+        exit("KOSPEX_CODE directory not found: " + repo_dir)
+
+    os.chdir(repo_dir)
+    parts = KospexGit().extract_git_url_parts(repo)
+    remote_org_dir = f"{parts['remote']}/{parts['org']}"
+
+    if not os.path.isdir(remote_org_dir):
+        print("Creating directory: " + remote_org_dir)
+        os.makedirs(remote_org_dir)
+    else:
+        print("Directory exists: " + remote_org_dir)
+
+    os.chdir(remote_org_dir)
+    if os.path.isdir(parts['repo']):
+        print("Repo exists: " + parts['repo'])
+        print("Trying pulling latest changes instead ...")
+    else:
+        print("Cloning repo: " + repo)
+        os.system(f"git clone {repo}")
 
 if __name__ == '__main__':
     cli()

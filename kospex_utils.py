@@ -24,6 +24,14 @@ def init():
             os.mkdir(kospex_home)
     load_config(f"{kospex_home}/kospex.env")
 
+    # Set up some basic around the kospex code where all the repos live
+    if os.getenv("KOSPEX_CODE") is None:
+        kospex_code = os.path.expanduser("~/code")
+        os.environ["KOSPEX_CODE"] = kospex_code
+
+    if not os.path.isdir(os.getenv("KOSPEX_CODE")):
+        print(f"WARNING: KOSPEX_CODE directory '{kospex_code} does not exist!")
+
 def get_kospex_db_path():
     """ Get the kospex database """
     default_kospex_db = os.path.expanduser(f"~/kospex/{KOSPEX_DB_FILENAME}")
@@ -326,10 +334,11 @@ def parse_sql_create_columns(sql):
     return column_types
 
 def parse_sql_primary_keys(sql):
+    ''' A function to return a list of primary keys from a SQL CREATE statement'''
     # Regular expression to find the primary key definition
     # It looks for the pattern PRIMARY KEY(column1, column2, ...)
     pattern = r'PRIMARY KEY\((.+?)\)'
-    
+
     # Find the primary key definition in the SQL statement
     match = re.search(pattern, sql)
 
@@ -339,5 +348,5 @@ def parse_sql_primary_keys(sql):
 
     # Removing potential whitespace and brackets around column names
     primary_keys = [key.strip().strip('[]') for key in primary_keys]
-    
+
     return primary_keys
