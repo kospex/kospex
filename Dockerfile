@@ -19,7 +19,8 @@ RUN apt-get update && \
 # https://github.com/boyter/scc
 # The book "software design x-rays" book mentions CLOC, 
 # but SCC wasn't invented then (or widespread)
-RUN curl -SL https://github.com/boyter/scc/releases/download/v3.1.0/scc_3.1.0_Linux_x86_64.tar.gz | tar -xzC /usr/local/bin/ 
+#RUN curl -SL https://github.com/boyter/scc/releases/download/v3.1.0/scc_3.1.0_Linux_x86_64.tar.gz | tar -xzC /usr/local/bin/ 
+RUN curl -SL https://github.com/boyter/scc/releases/download/v3.2.0/scc_Linux_x86_64.tar.gz | tar -xzC /usr/local/bin/
 
 FROM rockylinux:9
 
