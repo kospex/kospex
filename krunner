@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""This is the kospex command line tool."""
+"""This is the kospex runner tool - run the same command on all repos."""
 import os
 import os.path
 import click
-from kospex_core import Kospex, GitRepo
+from kospex_core import Kospex
 import kospex_utils as KospexUtils
+from kospex_dependencies import KospexDependencies
 
 kospex = Kospex()
 
@@ -32,8 +33,11 @@ def trufflehog(directory):
     cwd = os.getcwd()
     for d in dirs:
         print("\nRepo: " + d)
-        os.chdir(d)
-        os.system("trufflehog filesystem -j .")
+        kospex.set_repo_dir(d)
+        fname = kospex.generate_krunner_filename(function="TRUFFLEHOG",ext="json")
+        command = f"trufflehog filesystem -j . > {fname}"
+        print(command)
+        os.system(command)
         os.chdir(cwd)
 
 @cli.command("grep")
@@ -50,6 +54,105 @@ def grep(keyword, directory):
         os.chdir(d)
         os.system(f"grep -Rn {keyword} *")
         os.chdir(cwd)
+
+@cli.command("todo")
+@click.argument('directory', type=click.Path(exists=True))
+def todo(directory):
+    """Search for the keyword TODO in files in git repos."""
+    print("\nDirectory: " + os.path.abspath(directory))
+    dirs = KospexUtils.find_repos(directory)
+    cwd = os.getcwd()
+    print("# repos: " + str(len(dirs)))
+    for d in dirs:
+        print("\nRepo: " + d)
+        os.chdir(d)
+        os.system("grep -Rn TODO *")
+        os.chdir(cwd)
+
+@cli.command("git-pull")
+@click.argument('directory', type=click.Path(exists=True))
+def git_pull(directory):
+    """Run a 'git pull' on all git repositories found in the given directory."""
+    print("\nDirectory: " + os.path.abspath(directory))
+    dirs = KospexUtils.find_repos(directory)
+    cwd = os.getcwd()
+    print("# repos: " + str(len(dirs)))
+    for d in dirs:
+        print("\nRepo: " + d)
+        os.chdir(d)
+        os.system("git pull")
+        os.chdir(cwd)
+
+@cli.command("gitleaks")
+@click.argument('directory', type=click.Path(exists=True))
+def git_leaks(directory):
+    """Run a 'gitleaks detect' on all git repositories found in the given directory."""
+    print("\nDirectory: " + os.path.abspath(directory))
+    dirs = KospexUtils.find_repos(directory)
+    cwd = os.getcwd()
+    print("# repos: " + str(len(dirs)))
+    for d in dirs:
+        print("\nRepo: " + d)
+        #os.chdir(d)
+        kospex.set_repo_dir(d)
+        print(kospex.git.get_repo_id())
+        fname = kospex.generate_krunner_filename(function="GITLEAKS",ext="json")
+        os.system(f"gitleaks detect -r {fname}")
+        os.chdir(cwd)
+
+@cli.command("deps-age")
+@click.argument('directory', type=click.Path(exists=True))
+def deps_age(directory):
+    """Find the age of dependency files in all git repositories found in the given directory."""
+    print("\nDirectory: " + os.path.abspath(directory))
+    dirs = KospexUtils.find_repos(directory)
+    kdeps = KospexDependencies(kospex_query=kospex.kospex_query)
+    cwd = os.getcwd()
+
+    findings = []
+
+    print("# repos: " + str(len(dirs)))
+    for d in dirs:
+        print("\nRepo: " + d)
+        kospex.set_repo_dir(d)
+        results = kdeps.find_dependency_files(".")
+        if results:
+            for file_path, pkg_type in results:
+                dep_file = KospexUtils.get_last_commit_info(file_path)
+                dep_file['type'] = pkg_type
+                dep_file['file_path'] = file_path
+                #print(KospexUtils.get_last_commit_info(file_path))
+                findings.append(dep_file)
+        os.chdir(cwd)
+
+    print(KospexUtils.count_key_occurrences(findings, 'status'))
+
+@cli.command("semgrep")
+@click.argument('directory', type=click.Path(exists=True))
+def semgrep(directory):
+    """Run a 'semgrep scan' on all git repositories found in the given directory."""
+    print("\nDirectory: " + os.path.abspath(directory))
+    dirs = KospexUtils.find_repos(directory)
+    cwd = os.getcwd()
+    print("# repos: " + str(len(dirs)))
+    for d in dirs:
+        print("\nRepo: " + d)
+        #os.chdir(d)
+        kospex.set_repo_dir(d)
+        print(kospex.git.get_repo_id())
+        fname = kospex.generate_krunner_filename(function="SEMGREP",ext="txt")
+        # we should output as json, but for inital test, we'll use txt
+        os.system(f"semgrep scan > {fname}")
+        os.chdir(cwd)
+
+@cli.command("test")
+@click.argument('directory', type=click.Path(exists=True))
+def test(directory):
+    """ Test coding"""
+    kospex.set_repo_dir(directory)
+    print(kospex.get_krunner_directory())
+    print(kospex.generate_krunner_filename(function="GITLEAKS",ext="json"))
+    print("thing {thing}")
 
 if __name__ == '__main__':
     cli()
