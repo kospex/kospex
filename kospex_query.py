@@ -1,5 +1,6 @@
 """ Use case queries for the kospex DB"""
 import time
+import re
 from sqlite_utils import Database
 import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
@@ -488,3 +489,197 @@ class KospexQuery:
             results.append(row)
 
         return results
+
+class KospexData:
+    """ Data wrangling DSL like functions for Kospex """
+
+    def __init__(self, kospex_db=None):
+        self.kospex_db = kospex_db
+        self.params = []
+        self.from_tables = []
+        self.select_columns = []
+        self.where_clause = []
+        self.group_by_columns = []
+        self.order_by_columns = []
+
+    def get_bind_parameters(self):
+        """ Return the bind parameters for the query """
+        return self.params
+
+    def where_join(self, table, column, join_table, join_column):
+        """ Join two tables on a column """
+        # Check the table are valid in our schema
+        for t in (table, join_table):
+            if t not in KospexSchema.KOSPEX_TABLES:
+                raise ValueError(f"Table '{t}' not in KospexSchema.KOSPEX_TABLES")
+
+        # Check the columns are valid SQL names
+        for column in (column, join_column):
+            if not self.is_valid_sql_name(column):
+                raise ValueError(f"Column '{column}' is not a valid SQL name")
+
+        # Add the join to the query
+        self.where_clause.append(f"{table}.{column} = {join_table}.{join_column}")
+
+
+    def where(self, column, operator, value):
+        """ Add a where clause to the query """
+        ops = [ "=", "<>", ">", "<", ">=", "<=", "LIKE", "NOT LIKE" ]
+        if operator not in ops:
+            raise ValueError(f"Operator '{column}' is not a valid operator in\n{', '.join(ops)}")
+
+        if not self.is_valid_sql_name(column):
+            raise ValueError(f"Column '{column}' is not a valid SQL name")
+
+        self.where_clause.append(f"{column} {operator} ?")
+        self.params.append(value)
+
+    def from_table(self, *tables):
+        """ Add a table to the query """
+        for table in tables:
+            if table not in KospexSchema.KOSPEX_TABLES:
+                raise ValueError(f"Table '{table}' not in KospexSchema.KOSPEX_TABLES")
+            else:
+                self.from_tables.append(table)
+
+    def valid_table_prefix_select(self, col):
+        """ Check if a column name has a table prefix """
+        if "." in col:
+            parts = col.split(".")
+
+            if len(parts) != 2:
+                #raise ValueError(f"Invalid column name: {col}")
+                return False
+
+            if parts[0] not in KospexSchema.KOSPEX_TABLES:
+                #raise ValueError(f"Table '{parts[0]}' not in KospexSchema.KOSPEX_TABLES")
+                return False
+
+            if not self.is_valid_sql_name(parts[1]):
+                #raise ValueError(f"Column '{parts[1]}' is not a valid SQL name")
+                return False
+
+            # If we've got here, we're good to add this select column
+            #self.select_columns.append(col)
+            return True
+        else:
+            return False
+
+    def select(self, *columns):
+        """ Add a column to the query """
+        for col in columns:
+            if self.is_valid_sql_name(col):
+                self.select_columns.append(col)
+            else:
+                raise ValueError(f"Column '{col}' is not a valid SQL name")
+
+    def extract_select_function_parts(self,sql_string):
+        """ Regular expression pattern to match SQL function and its argument """
+        pattern = r"^(\w+)\(([^)]+)\)$"
+
+        # Find matches using the regular expression
+        match = re.match(pattern, sql_string)
+        if match:
+            # Extract function name and argument
+            function_name, argument = match.groups()
+            return function_name, argument
+
+        # Return None if no match is found
+        return None
+
+    def allowed_sql_function(self, function_name):
+        """ Check if a function is allowed """
+        return function_name.upper() in ("COUNT", "SUM", "MIN", "MAX", "AVG")
+
+    def select_as(self, column_query, alias):
+        """ Add a column, including aggregate functions to the query as an alias """
+        # TODO - handing only one function at the moment
+        function_name, argument = self.extract_select_function_parts(column_query)
+        if function_name and argument and self.is_valid_sql_name(alias):
+            if self.allowed_sql_function(function_name) and self.is_valid_sql_name(argument):
+                self.select_columns.append(f"{function_name}({argument}) AS {alias}")
+        # Handle a straight column rename
+        elif self.is_valid_sql_name(column_query) and self.is_valid_sql_name(alias):
+            self.select_columns.append(f"{column_query} AS {alias}")
+        else:
+            raise ValueError(f"Invalid column query: '{column_query}' and alias: '{alias}'")
+
+    def group_by(self, *columns):
+        """ Add a column to the query """
+        for col in columns:
+            if self.is_valid_sql_name(col):
+                self.group_by_columns.append(col)
+
+    def order_by(self, column, direction="DESC"):
+        """ Add a column to the query """
+        direction = direction.upper()
+        if direction not in ("ASC", "DESC"):
+            raise ValueError(f"Invalid direction: '{direction}' must be ASC or DESC")
+        if self.is_valid_sql_name(column):
+            self.order_by_columns.append(f"{column} {direction}")
+
+    def is_valid_sql_name(self,name):
+        """ Check if a name is a valid SQL name for table or column names"""
+
+        # List of simplified SQL reserved keywords
+        reserved_keywords = {"SELECT", "FROM", "WHERE", "DROP",
+                             "INSERT", "UPDATE", "DELETE", "TABLE", "COLUMN"}
+
+        # Check if the name is a wildcard
+        if name == "*":
+            return True
+
+        if self.valid_table_prefix_select(name):
+            tbl, col = name.split(".")
+            name = col
+
+        # Check if the name is a reserved keyword
+        if name.upper() in reserved_keywords:
+            raise ValueError(f"Invalid name: '{name}' is a reserved SQL keyword.")
+
+        # Regular expression for valid SQL table/column names
+        # Starts with a letter or underscore, followed by letters, digits, or underscores
+        if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', name):
+            # TODO .. check for valid table prefix and return an error for that
+            # We can get this error for a NOT_EXIST_TBL.col
+            raise ValueError(f"Invalid name: '{name}' does not match SQL naming conventions.")
+
+        # Optional: Check for length limits (default: 64 characters)
+        if len(name) > 64:
+            raise ValueError(f"Invalid name: '{name}' exceeds the maximum allowed length.")
+
+        return True
+
+    def generate_sql(self,line=None):
+        """ Generate the SQL for the query """
+        # The line will be used to add an extra carriage return if we want to print things.
+        line_end = " "
+        if line:
+            line_end = "\n"
+
+        sql = "SELECT "
+        if self.select_columns:
+            sql += ", ".join(self.select_columns)
+        else:
+            sql += "*"
+        sql += line_end
+
+        sql += "FROM "
+        sql += ", ".join(self.from_tables)
+        sql += line_end
+
+        if self.where_clause:
+            sql += "WHERE "
+            sql += " AND ".join(self.where_clause)
+            sql += line_end
+
+        if self.group_by_columns:
+            sql += "GROUP BY "
+            sql += ", ".join(self.group_by_columns)
+            sql += line_end
+
+        if self.order_by_columns:
+            sql += "ORDER BY "
+            sql += ", ".join(self.order_by_columns)
+
+        return sql
