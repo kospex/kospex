@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bootstrap Web App</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+
+
+
+</head>
+<body>
+
+{% include 'header.html' %}
+
+<div class="container mt-5">
+    <h1 class="mb-4">Hotspots</h1>
+</div>
+
+<div class="container mt-5">
+    <table class="table table-striped" id="myTable">
+        <thead>
+            <tr>
+                <th>Filename</th>
+                <th># Commits</th>
+                <th># Authors</th>
+                <th>LoC</th>
+                <th>Complexity</th>
+                <th>Tech</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data %}
+            <tr>
+                <td>{{ row['file_path'] }}</td>
+                <td>{{ row['commits'] }}</td>
+                <td>{{ row['authors'] }}</td>
+                <td>{{ row['Lines'] }}</td>
+                <td>{{ row['Complexity'] }}</td>
+                <td>{{ row['Language'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% include '_footer_scripts.html' %}
+{% include '_datatable_scripts.html' %}
+
+<script>
+    $(document).ready( function () {
+        $('#myTable').DataTable();
+    } );
+</script>
+
+</body>
+</html>

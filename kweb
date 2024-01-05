@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+""" This is the local development web server to view the Kospex database. """
+from flask import Flask, render_template, request
+from kospex_query import KospexQuery
+import kospex_web as KospexWeb
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    """ Serve up the summary home page """
+    #kospex = KospexQuery()
+    #data = kospex.summary()
+    data = KospexQuery().summary()
+    return render_template('index.html', **data)
+
+@app.route('/developers/active/<repo_id>')
+def active_developers(repo_id):
+    """ Developer info page. """
+    #data = KospexQuery().summary()
+    results = KospexQuery().active_devs_by_repo(repo_id)
+    return render_template('developers.html',data=results)
+
+@app.route('/developers/')
+def developers():
+    """ Developer info page. """
+    author_email = request.args.get('author_email')
+    download = request.args.get('download')
+    days = request.args.get('days',None)
+
+    devs = KospexQuery().authors(days=days)
+
+    if author_email:
+        print(author_email)
+        # Github uses +, which get interpreted as a " " in the URL.
+        author_email = author_email.replace(" ","+")
+        repo_list = KospexQuery().repos_by_author(author_email)
+        techs = KospexQuery().author_tech(author_email=author_email)
+        return render_template('developer_view.html', repos=repo_list,
+                               tech=techs, author_email=author_email)
+    elif download:
+        return KospexWeb.download_csv(devs)
+    else:
+        data = KospexQuery().summary(days=days)
+        return render_template('developers.html', authors=devs, data=data )
+
+@app.route('/landscape/')
+def landscape():
+    """ Serve up the technology landscape metadata """
+    kospex = KospexQuery()
+    data = kospex.tech_landscape()
+    download = request.args.get('download')
+    if download:
+        return KospexWeb.download_csv(data)
+    else:
+        return render_template('landscape.html', data=data)
+
+@app.route('/repos/')
+def repos():
+    """ display repo information. """
+
+    repo_id = request.args.get('repo_id')
+    print(repo_id)
+    kospex = KospexQuery()
+
+    data = kospex.repos()
+    active_devs = kospex.active_devs()
+    for row in data:
+        row['active_devs'] = active_devs.get(row['_repo_id'],0)
+    print(active_devs)
+
+    return render_template('repos.html',data=data)
+
+@app.route('/repo/<repo_id>')
+def repo(repo_id):
+    """ display repo information. """
+    kospex = KospexQuery()
+    #data = kospex.repos()
+    commit_ranges = kospex.commit_ranges(repo_id)
+    print(commit_ranges)
+    email_domains = kospex.email_domains(repo_id=repo_id)
+    #summary = kospex.author_summary(repo_id)
+    summary=kospex.author_summary(repo_id)
+    print("--\n\n")
+    print(summary)
+    return render_template('repo_view.html',
+                           repo_id=repo_id,
+                           ranges=commit_ranges,
+                           email_domains=email_domains,
+                           landscape = kospex.tech_landscape(repo_id=repo_id),
+                           summary=summary)
+
+@app.route('/tech/<tech>')
+def repo_with_tech(tech):
+    """ Show repos with the given tech. """
+    print(tech)
+    kospex = KospexQuery()
+    repos_with_tech = kospex.repos_with_tech(tech)
+    return render_template('repos.html',data=repos_with_tech)
+
+@app.route('/meta/author-domains')
+def author_domains():
+    """ display repo information. """
+    kospex = KospexQuery()
+    email_domains = kospex.email_domains()
+    return render_template('meta-author-domains.html',email_domains=email_domains)
+
+@app.route('/commits/')
+def commits():
+    """ display Git commits information. """
+    repo_id = request.args.get('repo_id',"")
+    author_email = request.args.get('author_email')
+    commiter_email = request.args.get('committer_email')
+    print(author_email)
+    data = KospexQuery().commits(limit=100,repo_id=repo_id,
+                                 author_email=author_email, committer_email=commiter_email)
+    return render_template('commits.html', commits=data, repo_id=repo_id)
+
+@app.route('/hotspots/<repo_id>')
+def hotspots(repo_id):
+    """ display Git commits information. """
+    data = KospexQuery().hotspots(repo_id=repo_id)
+    return render_template('hotspots.html', data=data)
+
+@app.errorhandler(404)
+def page_not_found(e):
+    """ Serve up the 404 page """
+    return render_template('404.html'), 404
+
+if __name__ == "__main__":
+    app.run(debug=True)

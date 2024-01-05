@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <!-- Link to Bootstrap CSS -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body>
+
+{% include 'header.html' %}
+
+<!-- Main content area -->
+<div class="container mt-5">
+    
+    <div class="row mt-4">
+        <!-- # of Authors -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4># of Authors</h4>
+                    <h2>{{ data['authors'] }}</h2>
+                    <a href="/developers/">View More</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- # of Committers -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4># of Committers</h4>
+                    <h2>{{ data['committers'] }}</h2>
+                    <a href="/developers/">View More</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div>
+        <br/><a href="/developers/?download=true">Download</a>, 
+        Show <a href="/developers/?days=90">active developers (last 90 days)</a><br/>
+    </div>
+
+</div>
+
+
+
+<div class="container mt-5">
+
+
+    <table class="table table-striped table-bordered sortable" id="myTable">
+        <thead>
+            <tr>
+                <th>Author</th>
+                <th># Commits</th>
+                <th># repos</th>
+                <th>Last seen (days)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for dev in authors %}
+            <tr>
+                <td><a href="/developers/?author_email={{ dev['author_email'] }}">{{ dev['author_email'] }}</a></td>
+                <td><a href="/commits/?author_email={{ dev['author_email'] }}">{{ dev['commits'] }}</a></td>
+                <td>{{ dev['repos'] }}</td>
+                <td>{{ dev['last_seen'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<br/>
+
+{% include '_footer_scripts.html' %}
+{% include '_datatable_scripts.html' %}
+
+
+<script>
+    $(document).ready( function () {
+        $('#myTable').DataTable({
+            order: [[3, 'asc']]
+        });
+    } );
+</script>
+
+</body>
+</html>

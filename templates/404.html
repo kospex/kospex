@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 Not Found</title>
+    <!-- Link to Bootstrap CSS -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body>
+
+{% include 'header.html' %}
+
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-12 text-center">
+            <h1>404</h1>
+            <h2>Oops! Page not found.</h2>
+            <p>The page you are looking for might have been removed or is temporarily unavailable.</p>
+            <a href="/" class="btn btn-primary">Go to Homepage</a>
+        </div>
+    </div>
+</div>
+
+{% include '_footer_scripts.html' %}
+
+</body>
+</html>

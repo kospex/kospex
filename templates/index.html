@@ -1,38 +1,78 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bootstrap Web App</title>
+    <title>Dashboard</title>
+    <!-- Link to Bootstrap CSS -->
     <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
 </head>
+
 <body>
 
+{% include 'header.html' %}
+
+<!-- Main content area -->
 <div class="container mt-5">
-    <h1 class="mb-4">Content from Database</h1>
-    <table class="table">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Title</th>
-                <th>Description</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in data %}
-            <tr>
-                <td>{{ row[0] }}</td>
-                <td>{{ row[1] }}</td>
-                <td>{{ row[2] }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+
+    <div class="row">
+        <!-- # of Repos -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4># of Repos</h4>
+                    <h2>{{ repos }}</h2>
+                    <a href="/repos/">View More</a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- # of Commits -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4># of Commits</h4>
+                    <h2>{{ commits }}</h2>
+                    <a href="/commits/">View More</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <!-- # of Authors -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4># of Authors</h4>
+                    <h2>{{ authors }}</h2>
+                    <a href="/developers/">View More</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- # of Committers -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4># of Committers</h4>
+                    <h2>{{ committers }}</h2>
+                    <a href="/developers/">View More</a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="container">
+        <br/>
+        Did you want to view <a href="/meta/author-domains"> Author email domains?</a>
+    </div>
+    <!-- End of Main content area -->
 </div>
 
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+{% include '_footer_scripts.html' %}
 
 </body>
 </html>

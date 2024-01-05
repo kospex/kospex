@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bootstrap Web App</title>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+{% include 'header.html' %}
+
+<!-- Main content area -->
+
+<div class="container mt-5">
+    <h1 class="mb-4">Repositories</h1>
+    <table class="table table-striped table-bordered sortable" id="myTable">
+        <thead>
+            <tr>
+                <th>Repo ID</th>
+                <th># Authors</th>
+                <th># Committers</th>
+                <th># Commits</th>
+                <th>Last Seen (days)</th>
+                <th>Active Devs</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data %}
+            <tr>
+                <td><a href="/repo/{{ row['_repo_id'] }}">{{ row['_repo_id'] }}</a></td>
+                <td>{{ row['authors'] }}</td>
+                <td>{{ row['committers'] }}</td>
+                <td>{{ row['commits'] }}</td>
+                <td>{{ row['days_ago'] }}</td>
+                <td><a href="/developers/active/{{ row['_repo_id'] }}">{{ row['active_devs'] }}</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% include '_footer_scripts.html' %}
+{% include '_datatable_scripts.html' %}
+
+<script>
+    $(document).ready( function () {
+        $('#myTable').DataTable({
+            order: [[4, 'asc']]
+        });
+    } );
+</script>
+
+</body>
+</html>

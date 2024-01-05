@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bootstrap Web App</title>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+{% include 'header.html' %}
+
+<div class="container mt-5">
+    <h1 class="mb-4">{{ repo_id }} Commits</h1>
+    <table class="table">
+        <thead>
+            <tr>
+                {% if not repo_id %}
+                <th>Repo ID</th>
+                {% endif %}
+                <th>Author</th>
+                <th>Committer</th>
+                <th># Files</th>
+                <th>Committed</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in commits %}
+            <tr>
+                {% if not repo_id %}
+                <td><a href="/commits/?repo_id={{ row['_repo_id'] }}">{{ row['_repo_id'] }}</a></td>
+                {% endif %}
+                <td><a href="/commits/?author_email={{ row['author_email'] }}">{{ row['author_email'] }}</a></td>
+                <td><a href="/commits/?committer_email={{ row['committer_email'] }}">{{ row['committer_email'] }}</a></td>
+                <td><a href="/commits/?committer_email={{ row['_files'] }}">{{ row['_files'] }}</a></td>
+                <td>{{ row['committer_when'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% include '_footer_scripts.html' %}
+
+</body>
+</html>
