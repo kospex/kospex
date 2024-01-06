@@ -12,9 +12,6 @@ KospexUtils.init()
 @click.group()
 def cli():
     """kgit (Kospex Git) is a utility for doing git things with kospex use cases.
-    
-    It is designed to help understand the structure of code, who are developers and
-    changes over time.
 
     For documentation on how commands run `kospex COMMAND --help`.
     
@@ -63,6 +60,7 @@ def clone(repo):
     else:
         print("Cloning repo: " + repo)
         os.system(f"git clone {repo}")
+
 
 if __name__ == '__main__':
     cli()

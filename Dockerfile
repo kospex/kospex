@@ -25,6 +25,7 @@ RUN curl -SL https://github.com/boyter/scc/releases/download/v3.2.0/scc_Linux_x8
 FROM rockylinux:9
 
 WORKDIR /repos
+ENV KOSPEX_CODE=/repos
 
 COPY requirements.txt /build/requirements.txt
 COPY --from=builder /usr/local/bin /usr/local/bin 

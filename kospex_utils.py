@@ -24,9 +24,12 @@ def init():
             os.mkdir(kospex_home)
     load_config(f"{kospex_home}/kospex.env")
 
+    # Set a default kospex code directory
+    kospex_code = os.path.expanduser("~/code")
+
+
     # Set up some basic around the kospex code where all the repos live
     if os.getenv("KOSPEX_CODE") is None:
-        kospex_code = os.path.expanduser("~/code")
         os.environ["KOSPEX_CODE"] = kospex_code
 
     if not os.path.isdir(os.getenv("KOSPEX_CODE")):
