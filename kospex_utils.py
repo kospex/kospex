@@ -353,3 +353,28 @@ def parse_sql_primary_keys(sql):
     primary_keys = [key.strip().strip('[]') for key in primary_keys]
 
     return primary_keys
+
+def extract_git_url(url):
+    """ Extract the Git URL from a string"""
+    # Function to extrac the web Git URL
+    # from examples like this:
+    # "git+https://example.com/apollographql/react-apollo.git"
+    # "git+ssh://git@example.com/palantir/blueprint.git"
+
+    # Remove .git at the end
+    if url.endswith('.git'):
+        url = url[:-4]
+
+    # Remove git+ at the beginning
+    if url.startswith('git+'):
+        url = url[4:]
+
+    # Change SSH URLs to HTTPS URLs (for any domain)
+    ssh_pattern = r'ssh://git@(.*?)/(.+)'
+    match = re.match(ssh_pattern, url)
+    if match:
+        domain = match.group(1)
+        repo = match.group(2)
+        url = f'https://{domain}/{repo}'
+
+    return url

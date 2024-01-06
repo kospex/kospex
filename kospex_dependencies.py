@@ -7,6 +7,8 @@ import json
 import csv
 import urllib
 from urllib.parse import urlparse
+from xml.etree import ElementTree as ET
+from typing import List, Dict
 import dateutil.parser
 import requests
 from prettytable import PrettyTable
@@ -32,6 +34,7 @@ class KospexDependencies:
         # links -> which has a SOURCE_REPO label should be the git
 
         data = None
+
         if self.kospex_query:
             content = self.kospex_query.url_request(url)
             if content:
@@ -40,6 +43,8 @@ class KospexDependencies:
             req = requests.get(url, timeout=10)
             if req.status_code == 200:
                 data = req.json()
+            else:
+                print(f"Error: {req.status_code} {req.text}")
 
         return data
 
@@ -150,14 +155,36 @@ class KospexDependencies:
         #pattern = r'^package\.json$'
         return bool(re.match(pattern, basefile, re.IGNORECASE))
 
+    def is_nuget_package(self,filename):
+        """
+        Check if a filename looks like a .csproj file, 
+        including lock and other common variants.
+    
+        Args:
+        filename (str): The filename to check.
+
+        Returns:
+        bool: True if it looks like a .csproj variant, packages.config, etcFalse otherwise.
+        """
+        # Regular expression to match package.json and its variants
+        basefile = os.path.basename(filename)
+        pattern = r'^.*\.csproj$'
+        csproj = bool(re.match(pattern, basefile, re.IGNORECASE))
+        # TODO - handle packages.config also, and maybe other .proj file variants
+        return csproj
+
+
     def assess(self, filename, results_file=None, repo_info={}):
         """ Using deps.dev to assess and provide a summary of the package manager file """
 
         basefile = os.path.basename(filename)
-        print(f"Assessing {basefile}")
+        #print(f"Assessing {basefile}")
         if self.is_npm_package(filename):
             print(f"Found npm package file: {basefile}")
             self.npm_assess(filename,results_file=results_file,repo_info=repo_info)
+        elif self.is_nuget_package(filename):
+            print(f"Found nuget package file: {basefile}")
+            self.nuget_assess(filename,results_file=results_file,repo_info=repo_info)
         elif basefile != "requirements.txt":
             print(f"Only requirements.txt files are supported.  Found {basefile}")
             sys.exit(1)
@@ -235,6 +262,37 @@ class KospexDependencies:
         # TODO - this is a hacky way of duplicating the keys needed
         details['package_name'] = details['package']
         details['package_version'] = details['version']
+
+        return details
+
+    def depsdev_record(self, package_type, package_name, package_version):
+        """ Convert a deps.dev package info record into a dictionary with other metadata """
+
+        details = {}
+        today = datetime.datetime.now(datetime.timezone.utc)
+        # TODO - Handle bad package names
+        # TODO - Handle 404 errors (most likely due to bad package name)
+        deps_info = self.deps_dev(package_type,package_name,package_version)
+
+        pub_date = deps_info.get("publishedAt")
+        if pub_date:
+            pub_date = dateutil.parser.isoparse(deps_info.get("publishedAt"))
+            diff = today - pub_date
+            details["days_ago"] = diff.days
+        details["published_at"] = deps_info.get("publishedAt")
+        details["default"] = deps_info.get("isDefault")
+        # TODO - need to parse the source repo to create proper links for NPM .. looks 
+        # a little dirty with actual Git urls and not https to Github
+        details["source_repo"] = self.get_source_repo_info(deps_info)
+        details["advisories"] = self.get_advisories_count(deps_info)
+
+        # Get the versions behind info
+        days_info = self.get_versions_behind(package_type,package_name,package_version)
+        details['versions_behind'] = days_info.get("versions_behind","Unknown")
+
+        # TODO - this is a hacky way of duplicating the keys needed
+        details['package_name'] = package_name
+        details['package_version'] = package_version
 
         return details
 
@@ -382,6 +440,37 @@ class KospexDependencies:
 
         print(table)
 
+    def nuget_assess(self, filename, results_file=None, repo_info=None, store=True):
+        """ Assess a nuget .cproj file """
+
+        table = self.get_cli_pretty_table()
+        table_rows = []
+        result = []
+
+        try:
+            with open(filename, 'r') as xml_file:
+                xml_data = xml_file.read()
+            root = ET.fromstring(xml_data)
+            # Find all PackageReference elements
+            package_references = root.findall(".//PackageReference")
+            # Extract the 'Include' and 'Version' attributes
+            result = [ {"package_name": pkg.attrib["Include"],
+                    "package_version": pkg.attrib["Version"]} for pkg in package_references]
+            #print(result)
+        except Exception as e:
+            print(f"Error parsing {filename}: {e}")
+            return False
+
+        for pkg in result:
+            #print(f"Checking {pkg['package_name']} version {pkg['package_version']}")
+            rec = self.depsdev_record("NuGet",pkg['package_name'],pkg['package_version'])
+            table_rows.append(self.get_values_array(rec, self.get_table_field_names(), '-'))
+
+        table.add_rows(table_rows)
+        print(table)
+        #table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
+
+
     def find_dependency_files(self,directory):
         """ Find all dependency files (package managers) in a directory and its subdirectories."""
         # Map of filename to its package manager
@@ -420,6 +509,7 @@ class KospexDependencies:
         return detected_files
 
     def get_depsdev_info(self,package_manager, package_name, version):
+        """ Query deps.dev API for package details."""
 
         # Define the base URL for deps.dev API
         base_url = f"https://deps.dev/_/s/{package_manager}/p/{package_name}/v/{version}"
@@ -440,8 +530,8 @@ class KospexDependencies:
         if from_config == from_depsdev:
             return True
 
-        # change the version strings to lists of integers to remove 0 padding, 
-        # which doesn't always match properly e.g. 2022.07.13 != 2022.7.13        
+        # change the version strings to lists of integers to remove 0 padding,
+        # which doesn't always match properly e.g. 2022.07.13 != 2022.7.13
         parts = from_config.split(".")
         #parts = [str(int(part)) for part in parts]
         cleaned_parts = [part.lstrip("0") for part in parts]
@@ -470,7 +560,7 @@ class KospexDependencies:
 
         data = self.get_url_json(url)
         versions = data.get('versions', [])
-        # We will need to sort the list, since the API returns the versions in a weird order
+        # We will need to sort the list, since th   e API returns the versions in a weird order
         #print(json.dumps(versions, indent=2))
         #print(len(versions))
 
@@ -496,14 +586,18 @@ class KospexDependencies:
         versions_behind = 0
         found_default = False
 
+        # TODO - debug code, remove
+        #for release in sorted_list:
+        #    print(release)
+
         for release in sorted_list:
 
             if release["isDefault"]:
-                print(f"default {release['versionKey']['version']}")
+                #print(f"default {release['versionKey']['version']}")
                 found_default = True
 
             if self.version_fuzzy_match(version, release['versionKey']['version']):
-                print(f"Found version {version}")
+                #print(f"Found version {version}")
                 break
 
             #if release['versionKey']['version'] == version:
@@ -517,8 +611,8 @@ class KospexDependencies:
             else:
                 versions_behind += 1
 
-        print(f"Keys before default: {keys_before_default}")
-        print(f"Versions between: {versions_behind}")
+        #print(f"Keys before default: {keys_before_default}")
+        #print(f"Versions between: {versions_behind}")
         details['versions_before_default'] = keys_before_default
         details['versions_behind'] = versions_behind
 

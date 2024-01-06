@@ -7,6 +7,9 @@ from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
 from kospex_query import KospexQuery
 from kospex_dependencies import KospexDependencies
+# nuget spike stuff below
+from xml.etree import ElementTree as ET
+from typing import List, Dict
 
 kospex = Kospex()
 
@@ -164,26 +167,9 @@ def deps(repo, file, directory, out):
         repo_info = kospex.git.add_git_to_dict({})
         repo_info['hash'] = kospex.git.get_current_hash()
         repo_info['file_path'] = file
-        print(f"Assessing {repo_info}")
         kdeps.assess(file_path,results_file=out,repo_info=repo_info)
     else:
         print("Please specify either a '-repo', '-directory' or a '-file'.")
-
-@cli.command("deps-check")
-def check_deps():
-    """ Test function to check deps behind"""
-    kquery = KospexQuery()
-    kdeps = KospexDependencies(kospex_query=kquery)
-    package_manager = "npm"
-    package_name = "react"
-    version = "16.8.0"
-    #print(kdeps.get_versions_behind(package_manager, package_name, version))
-    #print("PyPi")
-    #print("PyPi", "certifi", "2023.7.22")
-    #print(kdeps.get_versions_behind("PyPi", "certifi", "2023.7.22"))
-    print("XXX")
-    print(kdeps.get_versions_behind("PyPi", "sqlite-utils", "3.30"))
-    #print(kdeps.get_versions_behind("PyPi", "idna", "3.4"))
 
 @cli.command("author-tech")
 @click.option('-author_email', type=click.STRING)
@@ -197,13 +183,5 @@ def author_tech(author_email,repo_id):
     for result in results:
         print(result)
 
-@cli.command("test")
-@click.option('-repo', type=GitRepo())
-def ktestdeps(repo):
-    """ Test function """
-    kospex.set_repo_dir(repo)
-    print(kospex.git.get_repo_files())
-
-
 if __name__ == '__main__':
-    cli()
+    cli()   
