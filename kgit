@@ -13,7 +13,7 @@ KospexUtils.init()
 def cli():
     """kgit (Kospex Git) is a utility for doing git things with kospex use cases.
 
-    For documentation on how commands run `kospex COMMAND --help`.
+    For documentation on how commands run `kgit COMMAND --help`.
     
     """
 

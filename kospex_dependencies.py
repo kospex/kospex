@@ -13,6 +13,7 @@ import dateutil.parser
 import requests
 from prettytable import PrettyTable
 import kospex_schema as KospexSchema
+import kospex_utils as KospexUtils
 
 class KospexDependencies:
     """kospex database query functionality"""
@@ -241,29 +242,35 @@ class KospexDependencies:
             details['version'] = details['version'].replace("^","")
             details['semantic'] = "^"
 
-        print(f"Checking {item} version {details['version']}")
-        deps_info = self.deps_dev("npm",item,details['version'])
-        pub_date = deps_info.get("publishedAt")
-        if pub_date:
-            pub_date = dateutil.parser.isoparse(deps_info.get("publishedAt"))
-            diff = today - pub_date
-            details["days_ago"] = diff.days
-        details["published_at"] = deps_info.get("publishedAt")
-        details["default"] = deps_info.get("isDefault")
+        record = self.depsdev_record("npm",item,details['version'])
+
+        #print(f"Checking {item} version {details['version']}")
+        #deps_info = self.deps_dev("npm",item,details['version'])
+        #pub_date = deps_info.get("publishedAt")
+        #if pub_date:
+        #    pub_date = dateutil.parser.isoparse(deps_info.get("publishedAt"))
+        #    diff = today - pub_date
+        #    details["days_ago"] = diff.days
+        #details["published_at"] = deps_info.get("publishedAt")
+        #details["default"] = deps_info.get("isDefault")
         # TODO - need to parse the source repo to create proper links for NPM .. looks 
         # a little dirty with actual Git urls and not https to Github
-        details["source_repo"] = self.get_source_repo_info(deps_info)
-        details["advisories"] = self.get_advisories_count(deps_info)
+        #details["source_repo"] = self.get_source_repo_info(deps_info)
+        #details["source_repo"] = KospexUtils.extract_git_url(self.get_source_repo_info(deps_info))
+
+        #details["advisories"] = self.get_advisories_count(deps_info)
 
         # Get the versions behind info
-        days_info = self.get_versions_behind("npm",item,details['version'])
-        details['versions_behind'] = days_info.get("versions_behind","Unknown")
+        #days_info = self.get_versions_behind("npm",item,details['version'])
+        #details['versions_behind'] = days_info.get("versions_behind","Unknown")
 
         # TODO - this is a hacky way of duplicating the keys needed
-        details['package_name'] = details['package']
-        details['package_version'] = details['version']
+        #details['package_name'] = details['package']
+        #details['package_version'] = details['version']
 
-        return details
+        #return details
+        return record
+
 
     def depsdev_record(self, package_type, package_name, package_version):
         """ Convert a deps.dev package info record into a dictionary with other metadata """
@@ -283,7 +290,7 @@ class KospexDependencies:
         details["default"] = deps_info.get("isDefault")
         # TODO - need to parse the source repo to create proper links for NPM .. looks 
         # a little dirty with actual Git urls and not https to Github
-        details["source_repo"] = self.get_source_repo_info(deps_info)
+        details["source_repo"] = KospexUtils.extract_git_url(self.get_source_repo_info(deps_info))
         details["advisories"] = self.get_advisories_count(deps_info)
 
         # Get the versions behind info
@@ -296,7 +303,7 @@ class KospexDependencies:
 
         return details
 
-    def npm_assess(self, filename, results_file=None,repo_info={}):
+    def npm_assess(self, filename, results_file=None, repo_info=None):
         """ Using deps.dev to assess and provide a summary of a 
             npm package.json compatible file """
 
@@ -304,6 +311,8 @@ class KospexDependencies:
         table = self.get_cli_pretty_table()
         #records = []
         table_rows = []
+        if repo_info is None:
+            repo_info = {}
 
         # We'll have no idea what encoding the file is in
         # TODO - check if there is a sensible default encoding for npm files
@@ -313,7 +322,7 @@ class KospexDependencies:
 
         for item in data['dependencies']:
             details = self.get_npm_dependency_dict(item,data)
-            print(details)
+            #print(details)
             table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
 
         for item in data['devDependencies']:

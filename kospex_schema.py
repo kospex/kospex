@@ -111,7 +111,8 @@ SQL_CREATE_COMMIT_METADATA = f'''CREATE TABLE [{TBL_COMMIT_METADATA}] (
     [_repo_id] TEXT
     )'''
 
-# We're going to capture additional metadata about the commits
+# We're going to capture additional data about the dependencies in a file
+#SQL_PK_DEPENDENCY_DATA = '''PRIMARY KEY(_repo_id,hash,file_path,package_type,package_name,package_version)'''
 SQL_CREATE_DEPENDENCY_DATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEPENDENCY_DATA}] (
     [hash] TEXT,                    -- hash of the commit
     [file_path] TEXT,               -- file path in the repo

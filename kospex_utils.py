@@ -360,6 +360,10 @@ def extract_git_url(url):
     # from examples like this:
     # "git+https://example.com/apollographql/react-apollo.git"
     # "git+ssh://git@example.com/palantir/blueprint.git"
+    # "git+ssh://git@github.com/palantir/blueprint.git"
+
+    if url is None:
+        return None
 
     # Remove .git at the end
     if url.endswith('.git'):
@@ -376,5 +380,8 @@ def extract_git_url(url):
         domain = match.group(1)
         repo = match.group(2)
         url = f'https://{domain}/{repo}'
+
+    if url.startswith("git:"):
+        url = url.replace("git:", "https:")
 
     return url
