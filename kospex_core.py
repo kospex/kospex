@@ -610,7 +610,9 @@ class Kospex:
             csv_reader = csv.DictReader(metadata.stdout.splitlines())
             for row in csv_reader:
                 row['hash'] = git_hash
-                row['_mtime'] = os.path.getmtime(row['Location'])
+                print(row)
+                # TODO - this doesn't work, a newly cloned repo will have mtime of when it was cloned
+                #row['_mtime'] = os.path.getmtime(row['Filename'])
                 # Set this entry to the latest. Required for tech landscape queries
                 row['latest'] = True
                 data_rows.append(self.git.add_git_to_dict(row))
@@ -741,3 +743,4 @@ class Kospex:
         krunner_path = self.get_krunner_directory()
         # TODO - do better path join method and validate no .. etc
         return os.path.join(krunner_path, self.git.get_repo_id() + "."  + function + "." + ext)
+    

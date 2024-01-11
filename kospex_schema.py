@@ -58,9 +58,10 @@ SQL_CREATE_COMMIT_FILES = f'''CREATE TABLE [{TBL_COMMIT_FILES}] (
 
 # This table will capture additional metadata about the files in the directory
 # Initially we're going to use and external tool 'scc' to get the data
-SQL_CREATE_FILE_METADATA = f'''CREATE TABLE [{TBL_FILE_METADATA}] (
+SQL_CREATE_FILE_METADATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_FILE_METADATA}] (
     [Language] TEXT,        -- Language detected
-    [Location] TEXT,        -- location of the file (i.e. like file_path in other tables)
+    [Provider] TEXT,        -- location of the file (i.e. like file_path in other tables)
+    -- Provider used to be Location
     [Filename] TEXT,        -- filename
     [Lines] INTEGER,        -- Number of lines in the file
     [Code] INTEGER,         -- Number of lines of code
@@ -80,7 +81,7 @@ SQL_CREATE_FILE_METADATA = f'''CREATE TABLE [{TBL_FILE_METADATA}] (
     [_git_owner] TEXT,
     [_git_repo] TEXT,
     [_repo_id] TEXT,
-    PRIMARY KEY(Location,hash,_repo_id)
+    PRIMARY KEY(Provider,hash,_repo_id)
     )'''
 
 # This table will capture detail some hotspot indicators about a repo
@@ -227,10 +228,10 @@ def connect_or_create_kospex_db():
         kospex_db.execute(SQL_CREATE_COMMITS)
         kospex_db.execute(SQL_CREATE_COMMIT_FILES)
         kospex_db.execute(SQL_CREATE_COMMIT_METADATA)
-        kospex_db.execute(SQL_CREATE_FILE_METADATA)
         kospex_db.execute(SQL_CREATE_REPO_HOTSPOTS)
 
     # The following tables only are created if they don't exist
+    kospex_db.execute(SQL_CREATE_FILE_METADATA)
     kospex_db.execute(SQL_CREATE_DEPENDENCY_DATA)
     kospex_db.execute(SQL_CREATE_URL_CACHE)
     kospex_db.execute(SQL_CREATE_KRUNNER)
@@ -238,3 +239,11 @@ def connect_or_create_kospex_db():
     # TODO - look at moving all table creates to "create if not exits"
 
     return kospex_db
+
+def drop_table(table):
+    """ Drop a table from the DB """
+    db = connect_or_create_kospex_db()
+    if table in KOSPEX_TABLES:
+        db.execute(f"DROP TABLE IF EXISTS [{table}]")
+    else:
+        print(f"Invalid table '{table}', was not in KOSPEX_TABLES")
