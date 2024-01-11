@@ -22,7 +22,8 @@ class KospexQuery:
     def summary(self, days=None):
         """ Provide a summary of the known repositories."""
         summary_sql = """SELECT count(distinct(_repo_id)) 'repos', count(*) 'commits',
-        count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers'
+        count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
+        count(distinct(_git_server)) AS servers
         FROM commits"""
         params = []
 
@@ -33,7 +34,9 @@ class KospexQuery:
 
         #for row in self.kospex_db.query(summary_sql):
         #    print(row)
+        orgs = self.orgs()
         data = next(self.kospex_db.query(summary_sql, params), None)
+        data['orgs'] = len(orgs)
         return data
 
     def repo_summary(self, repo_id):
@@ -114,6 +117,24 @@ class KospexQuery:
         FROM commits
         GROUP BY _repo_id
         ORDER BY _repo_id
+        """
+        data = []
+        for row in self.kospex_db.query(summary_sql):
+            data.append(row)
+
+        for row in data:
+            row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
+
+        return data
+
+    def orgs(self):
+        """ Provide a summary of the known orgs."""
+        summary_sql = """SELECT _git_server, _git_owner, count(*) 'commits', COUNT(DISTINCT(_git_repo)) AS repos,
+        count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
+        MAX(committer_when) 'last_commit'
+        FROM commits
+        GROUP BY _git_server, _git_owner
+        ORDER BY commits DESC
         """
         data = []
         for row in self.kospex_db.query(summary_sql):
@@ -490,6 +511,22 @@ class KospexQuery:
 
         return results
 
+    def tech_commits(self, author_email=None, repo_id=None):
+        """" Return a KospexData object with tables joined"""
+        kd = KospexData()
+        kd.from_table("commits", "commit_files")
+        kd.select("_ext")
+        kd.select_as("COUNT(*)", "commits")
+        # TODO - handle author_email and repo_id in the where clause
+        if author_email:
+            kd.where("author_email", "=", author_email)
+        kd.where_join("commits", "_repo_id", "commit_files", "_repo_id")
+        kd.where_join("commits", "hash", "commit_files", "hash")
+        kd.group_by("_ext")
+        kd.order_by("commits", "DESC")
+        return kd
+
+
 class KospexData:
     """ Data wrangling DSL like functions for Kospex """
 
@@ -589,7 +626,7 @@ class KospexData:
 
     def allowed_sql_function(self, function_name):
         """ Check if a function is allowed """
-        return function_name.upper() in ("COUNT", "SUM", "MIN", "MAX", "AVG")
+        return function_name.upper() in ("DISTINCT", "COUNT", "SUM", "MIN", "MAX", "AVG")
 
     def select_as(self, column_query, alias):
         """ Add a column, including aggregate functions to the query as an alias """
@@ -622,7 +659,7 @@ class KospexData:
         """ Check if a name is a valid SQL name for table or column names"""
 
         # List of simplified SQL reserved keywords
-        reserved_keywords = {"SELECT", "FROM", "WHERE", "DROP",
+        reserved_keywords = {"SELECT", "UNION", "FROM", "WHERE", "DROP",
                              "INSERT", "UPDATE", "DELETE", "TABLE", "COLUMN"}
 
         # Check if the name is a wildcard

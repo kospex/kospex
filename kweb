@@ -71,6 +71,21 @@ def repos():
 
     return render_template('repos.html',data=data)
 
+@app.route('/orgs/')
+def orgs():
+    """ display repo information. """
+
+    org = request.args.get('org')
+    kospex = KospexQuery()
+
+    data = kospex.repos()
+    active_devs = kospex.active_devs()
+    for row in data:
+        row['active_devs'] = active_devs.get(row['_repo_id'],0)
+    print(active_devs)
+
+    return render_template('repos.html',data=data)
+
 @app.route('/repo/<repo_id>')
 def repo(repo_id):
     """ display repo information. """
@@ -121,6 +136,11 @@ def hotspots(repo_id):
     """ display Git commits information. """
     data = KospexQuery().hotspots(repo_id=repo_id)
     return render_template('hotspots.html', data=data)
+
+@app.route('/bootstrap/')
+def bootstrap():
+    """ bootstrap 5 dev playground. """
+    return render_template('bootstrap5.html')
 
 @app.errorhandler(404)
 def page_not_found(e):
