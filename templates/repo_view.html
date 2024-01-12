@@ -57,8 +57,6 @@
 
 </div>
 
-
-
 <div class="container mt-5">
 
     <h2 class="mb-4">Author Summary</h2>
@@ -73,7 +71,7 @@
         <tbody>
             {% for row in summary %}
             <tr>
-                <td>{{ row['author_email'] }}</td>
+                <td><a href="/developers/?author_email={{ row['author_email'] }}">{{ row['author_email'] }}</a></td>
                 <td><a href="/commits/{{repo_id}}?author_email={{ row['author_email'] }}">{{ row['commits'] }}</a></td>
                 <td>{{ row['days_ago'] }}</td>
             {% endfor %}

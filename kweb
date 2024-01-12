@@ -60,14 +60,14 @@ def repos():
     """ display repo information. """
 
     repo_id = request.args.get('repo_id')
-    print(repo_id)
     kospex = KospexQuery()
+    org_key = request.args.get('org_key')
 
-    data = kospex.repos()
+    data = kospex.repos(org_key=org_key)
     active_devs = kospex.active_devs()
     for row in data:
         row['active_devs'] = active_devs.get(row['_repo_id'],0)
-    print(active_devs)
+
 
     return render_template('repos.html',data=data)
 
@@ -110,10 +110,17 @@ def repo(repo_id):
 @app.route('/tech/<tech>')
 def repo_with_tech(tech):
     """ Show repos with the given tech. """
-    print(tech)
+    #print(tech)
+    repo_id = request.args.get('repo_id')
     kospex = KospexQuery()
-    repos_with_tech = kospex.repos_with_tech(tech)
-    return render_template('repos.html',data=repos_with_tech)
+    template = "repos.html"
+    if repo_id:
+        repos_with_tech = kospex.repo_files(tech,repo_id=repo_id)
+        template = "repo_files.html"
+    else:
+        repos_with_tech = kospex.repos_with_tech(tech)
+
+    return render_template(template,data=repos_with_tech)
 
 @app.route('/meta/author-domains')
 def author_domains():

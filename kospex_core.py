@@ -610,7 +610,6 @@ class Kospex:
             csv_reader = csv.DictReader(metadata.stdout.splitlines())
             for row in csv_reader:
                 row['hash'] = git_hash
-                print(row)
                 # TODO - this doesn't work, a newly cloned repo will have mtime of when it was cloned
                 #row['_mtime'] = os.path.getmtime(row['Filename'])
                 # Set this entry to the latest. Required for tech landscape queries

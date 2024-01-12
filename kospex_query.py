@@ -79,18 +79,48 @@ class KospexQuery:
     def repos_with_tech(self, tech):
         """ Find repos with the given technology."""
 
+        params = []
+        params.append(tech)
+
         summary_sql = """SELECT _repo_id, _git_server, _git_owner, _git_repo, count(*) 'count'
         FROM file_metadata
-        WHERE Language = ?
+        WHERE Language = ? AND latest = 1
         GROUP BY _repo_id
         ORDER BY count DESC
         """
         data = []
 
-        for row in self.kospex_db.query(summary_sql, [tech]):
+        for row in self.kospex_db.query(summary_sql, params):
             data.append(row)
 
         return data
+
+    def repo_files(self, tech=None, repo_id=None):
+        """ Grab files by metadata type for a given repo_id."""
+
+        where_clause = ""
+
+        params = []
+        if tech:
+            where_clause += "AND Language = ? "
+            params.append(tech)
+
+        if repo_id:
+            where_clause += "AND _repo_id = ?"
+            params.append(repo_id)   
+
+        summary_sql = f"""SELECT _repo_id, _git_server, _git_owner, _git_repo,
+        Provider, Filename, committer_when, Language
+        FROM file_metadata
+        WHERE latest = 1 {where_clause}
+        """
+        data = []
+
+        for row in self.kospex_db.query(summary_sql, params):
+            data.append(row)
+
+        return data
+
 
     def repos_by_author(self, author_email):
         """ Find repos for the given author_email."""
@@ -109,17 +139,30 @@ class KospexQuery:
 
         return data
 
-    def repos(self):
+    def repos(self,org_key=None):
         """ Provide a summary of the known repositories."""
-        summary_sql = """SELECT _repo_id, _git_server, _git_owner, _git_repo, count(*) 'commits',
+        params = []
+        where = ""
+
+        # TODO - clean this up and make more generic for use in other queries
+        if org_key:
+            parts = org_key.split('~')
+            if len(parts) != 2:
+                raise ValueError("org_key must be of the form <server>~<owner>")
+            params.append(parts[0])
+            params.append(parts[1])
+            where = "WHERE _git_server = ? AND _git_owner = ?"
+
+        summary_sql = f"""SELECT _repo_id, _git_server, _git_owner, _git_repo, count(*) 'commits',
         count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
         MAX(committer_when) 'last_commit'
-        FROM commits
+        FROM commits {where}
         GROUP BY _repo_id
         ORDER BY _repo_id
         """
+
         data = []
-        for row in self.kospex_db.query(summary_sql):
+        for row in self.kospex_db.query(summary_sql, params):
             data.append(row)
 
         for row in data:
