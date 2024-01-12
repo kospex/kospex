@@ -121,7 +121,7 @@ class KospexDependencies:
     def get_table_field_names(self):
         """ Return the field names for the CSV table """
         return ["package_name", "package_version", "days_ago",
-                "published_at", "source_repo", "advisories", "default", "versions_behind"]
+                "published_at", "advisories", "default", "versions_behind", "source_repo"]
 
     def get_cli_pretty_table(self):
         """ Return a pretty table for the CLI """
@@ -174,8 +174,21 @@ class KospexDependencies:
         # TODO - handle packages.config also, and maybe other .proj file variants
         return csproj
 
+    def is_pip_requirements_file(self,filename):
+        """
+        Check if the given filename matches common patterns for Python pip requirements files.
+    
+        Args:
+        filename (str): The filename to check.
 
-    def assess(self, filename, results_file=None, repo_info={}):
+        Returns:
+        bool: True if the filename matches common patterns for pip requirements files, False otherwise.
+        """
+        # Regular expression to match common patterns for pip requirements files
+        pattern = re.compile(r'^requirements(-\w+)?\.txt$', re.IGNORECASE)
+        return bool(pattern.match(filename))
+
+    def assess(self, filename, results_file=None, repo_info=None):
         """ Using deps.dev to assess and provide a summary of the package manager file """
 
         basefile = os.path.basename(filename)
@@ -186,11 +199,12 @@ class KospexDependencies:
         elif self.is_nuget_package(filename):
             print(f"Found nuget package file: {basefile}")
             self.nuget_assess(filename,results_file=results_file,repo_info=repo_info)
-        elif basefile != "requirements.txt":
-            print(f"Only requirements.txt files are supported.  Found {basefile}")
-            sys.exit(1)
-        else:
+        elif self.is_pip_requirements_file(basefile):
+            print(f"Found pip requirements file: {basefile}")
             self.pypi_assess(filename,results_file=results_file,repo_info=repo_info)
+        else:
+            print(f"Unknown or unsupported package manager file found {basefile}")
+
 
     def get_values_array(self, input_dict, keys, default_value):
         """ return an array of values from a dictionary, using the keys provided"""
@@ -243,7 +257,7 @@ class KospexDependencies:
             details['semantic'] = "^"
 
         record = self.depsdev_record("npm",item,details['version'])
-
+        record['semantic'] = details['semantic']
         #print(f"Checking {item} version {details['version']}")
         #deps_info = self.deps_dev("npm",item,details['version'])
         #pub_date = deps_info.get("publishedAt")
@@ -334,7 +348,7 @@ class KospexDependencies:
         if results_file:
             self.write_csv(results_file, table_rows, self.get_table_field_names())
 
-    def pypi_assess(self, filename,results_file=None,repo_info=None,store=True):
+    def pypi_assess(self, filename,results_file=None,repo_info=None,store=False):
         """ Using deps.dev to assess and provide a summary of a 
             pip / PyPi requirements.txt compatible file """
 
@@ -344,16 +358,15 @@ class KospexDependencies:
         table_rows = []
 
         #results_file = results_file if results_file else None
-
-        # TODO - write functions to parse based on file type
         # (e.g. requirements.txt, pom.xml, package.json, etc.)
         with open(filename, 'r', encoding="utf-8") as pmf:
             for line in pmf.readlines():
+                print(f"Checking {line.strip()}")
                 row = {}
                 if repo_info:
                     row = repo_info.copy()
                 row['package_type'] = 'PyPi'
-                
+
                 # Skip comments
                 if line.startswith('#'):
                     continue
