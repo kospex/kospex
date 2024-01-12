@@ -48,12 +48,15 @@ def developers():
 def landscape():
     """ Serve up the technology landscape metadata """
     kospex = KospexQuery()
-    data = kospex.tech_landscape()
+    repo_id = request.args.get('repo_id')
+    org_key = request.args.get('org_key')
+    data = kospex.tech_landscape(org_key=org_key,repo_id=repo_id)
     download = request.args.get('download')
     if download:
+        # TODO - need to pass in the query params for orgs or repo
         return KospexWeb.download_csv(data)
     else:
-        return render_template('landscape.html', data=data)
+        return render_template('landscape.html', data=data, org_key=org_key)    
 
 @app.route('/repos/')
 def repos():

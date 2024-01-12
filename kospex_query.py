@@ -49,14 +49,23 @@ class KospexQuery:
         data = next(self.kospex_db.query(summary_sql, [repo_id]), None)
         return data
 
-    def tech_landscape(self, repo_id=None):
+    def tech_landscape(self, repo_id=None,org_key=None):
         """ Calculate the technology landscape."""
 
         where_clause = ""
         params = []
         if repo_id:
-            where_clause = "AND _repo_id = ?"
+            where_clause += "AND _repo_id = ? "
             params.append(repo_id)
+
+        # TODO - clean this up and make more generic for use in other queries
+        if org_key:
+            parts = org_key.split('~')
+            if len(parts) != 2:
+                raise ValueError("org_key must be of the form <server>~<owner>")
+            params.append(parts[0])
+            params.append(parts[1])
+            where_clause += "AND _git_server = ? AND _git_owner = ?"
 
         summary_sql = f"""SELECT Language, count(*) 'count', count(distinct(_repo_id)) 'repos'
         FROM file_metadata
