@@ -76,15 +76,17 @@ def orgs():
     """ display repo information. """
 
     org = request.args.get('org')
+
     kospex = KospexQuery()
 
-    data = kospex.repos()
-    active_devs = kospex.active_devs()
-    for row in data:
-        row['active_devs'] = active_devs.get(row['_repo_id'],0)
-    print(active_devs)
+    git_orgs = kospex.orgs()
+    active_devs = kospex.active_devs(org=True)
+    print(active_developers)
 
-    return render_template('repos.html',data=data)
+    for row in git_orgs:
+        row['active_devs'] = active_devs.get(row['org_key'],0)
+
+    return render_template('orgs.html',data=git_orgs)
 
 @app.route('/repo/<repo_id>')
 def repo(repo_id):

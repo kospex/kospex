@@ -129,9 +129,10 @@ class KospexQuery:
 
     def orgs(self):
         """ Provide a summary of the known orgs."""
-        summary_sql = """SELECT _git_server, _git_owner, count(*) 'commits', COUNT(DISTINCT(_git_repo)) AS repos,
-        count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
-        MAX(committer_when) 'last_commit'
+        summary_sql = """SELECT _git_server, _git_owner, count(*) 'commits',
+        COUNT(DISTINCT(_git_repo)) AS repos,
+        COUNT(DISTINCT(author_email)) 'authors', COUNT(DISTINCT(committer_email)) 'committers',
+        MAX(committer_when) 'last_commit', _git_server || "~" || _git_owner AS org_key
         FROM commits
         GROUP BY _git_server, _git_owner
         ORDER BY commits DESC
@@ -196,18 +197,31 @@ class KospexQuery:
 
         return data
 
-    def active_devs(self, days=90):
+    def active_devs(self, days=90, org=False, org_key=None):
         """ Look for distinct developers in the last 'days' """
         from_date = KospexUtils.days_ago_iso_date(days)
         repos = {}
+
         summary_sql = """SELECT _repo_id, count(distinct(author_email)) 'devs'
         FROM commits
         WHERE committer_when > ?
         GROUP BY _repo_id
         """
+
+        if org:
+            summary_sql = """SELECT _git_server, _git_owner, count(distinct(author_email)) 'devs',
+            _git_server || "~" || _git_owner AS org_key
+            FROM commits
+            WHERE committer_when > ?
+            GROUP BY _git_server, _git_owner
+            """
+
         data = self.kospex_db.query(summary_sql, (from_date,))
         for row in data:
-            repos[row['_repo_id']] = row['devs']
+            if org:
+                repos[row['org_key']] = row['devs']
+            else:
+                repos[row['_repo_id']] = row['devs']
 
         return repos
 
