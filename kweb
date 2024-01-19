@@ -36,8 +36,18 @@ def developers():
         author_email = author_email.replace(" ","+")
         repo_list = KospexQuery().repos_by_author(author_email)
         techs = KospexQuery().author_tech(author_email=author_email)
+        labels = []
+        datapoints = []
+
+        count = 0
+        for tech in techs:
+            labels.append(tech['_ext'])
+            datapoints.append(tech['commits'])
+            count += 1
+            if count > 10:
+                break
         return render_template('developer_view.html', repos=repo_list,
-                               tech=techs, author_email=author_email)
+                               tech=techs, author_email=author_email, labels=labels,datapoints=datapoints)
     elif download:
         return KospexWeb.download_csv(devs)
     else:
@@ -56,7 +66,7 @@ def landscape():
         # TODO - need to pass in the query params for orgs or repo
         return KospexWeb.download_csv(data)
     else:
-        return render_template('landscape.html', data=data, org_key=org_key)    
+        return render_template('landscape.html', data=data, org_key=org_key)
 
 @app.route('/repos/')
 def repos():
@@ -65,14 +75,21 @@ def repos():
     repo_id = request.args.get('repo_id')
     kospex = KospexQuery()
     org_key = request.args.get('org_key')
-
+    page = {}
+    # TODO - validate params
+    page['repo_id'] = repo_id
+    if org_key:
+        parts = org_key.split("~")
+        if len(parts) == 2:
+            page['git_server'] = parts[0]
+            page['git_owner'] = parts[1]
+   
     data = kospex.repos(org_key=org_key)
     active_devs = kospex.active_devs()
     for row in data:
         row['active_devs'] = active_devs.get(row['_repo_id'],0)
 
-
-    return render_template('repos.html',data=data)
+    return render_template('repos.html',data=data, page=page)
 
 @app.route('/orgs/')
 def orgs():
@@ -103,11 +120,29 @@ def repo(repo_id):
     summary=kospex.author_summary(repo_id)
     print("--\n\n")
     print(summary)
+    techs = kospex.tech_landscape(repo_id=repo_id)
+    print(techs)
+
+    # TODO - make generic function for radar graph (in developer view too)
+    labels = []
+    datapoints = []
+    count = 0
+    for tech in techs:
+        labels.append(tech['Language'])
+        datapoints.append(tech['count'])
+        count += 1
+        if count > 10:
+            break
+    #return render_template('developer_view.html', repos=repo_list,
+    #                           tech=techs, author_email=author_email, labels=labels,datapoints=datapoints)
+
+
     return render_template('repo_view.html',
                            repo_id=repo_id,
                            ranges=commit_ranges,
                            email_domains=email_domains,
-                           landscape = kospex.tech_landscape(repo_id=repo_id),
+                           landscape = techs,
+                           labels=labels,datapoints=datapoints,
                            summary=summary)
 
 @app.route('/tech/<tech>')
@@ -153,6 +188,12 @@ def hotspots(repo_id):
 def bootstrap():
     """ bootstrap 5 dev playground. """
     return render_template('bootstrap5.html')
+
+@app.route('/tech-change/')
+def tech_change():
+    """ Radars for tech change. """
+    labels = [ "Java", "Go", "JavaScript", "Python", "Kotlin" ]
+    return render_template('tech-change.html', labels=labels)
 
 @app.errorhandler(404)
 def page_not_found(e):

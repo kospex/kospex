@@ -1,0 +1,41 @@
+<div class="container mt-5">
+    <h1 class="mb-4">Tech Radar</h1>
+    <canvas id="radarChart"></canvas>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const ctx = document.getElementById('radarChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: {{ labels|list|tojson }},
+            datasets: [{
+                label: 'Current',
+                data: {{ datapoints|list|tojson }},
+                fill: true,
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                borderColor: 'rgb(255, 99, 132)',
+                pointBackgroundColor: 'rgb(255, 99, 132)',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: 'rgb(255, 99, 132)'
+                }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                },
+                r: {
+                    pointLabels: {
+                    font: {
+                        size: 20
+                    }
+                }
+            }
+        }
+    }
+    });
+</script>

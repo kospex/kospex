@@ -544,15 +544,40 @@ class KospexQuery:
         results = []
         params = []
 
+        kd = KospexData(self.kospex_db)
+        kd.from_table("commit_files", "commits")
+
+        kd.select_as("DISTINCT(author_email)", "author_email")
+        kd.select("_ext")
+        kd.select_as("count(*)", "commits")
+        kd.select_as("MAX(author_when)", "last_commit")
+        kd.select_as("MIN(author_when)", "first_commit")
+        # TODO - fix parsing of multiple SQL functions
+        kd.select_raw("COUNT(DISTINCT(commits._repo_id)) as repos")
+
+        kd.where_join("commits", "hash", "commit_files", "hash")
+        kd.where_join("commits", "_repo_id", "commit_files", "_repo_id")
+        #kd.where_join("commit_files", "file_path", "file_metadata", "Provider")
+        #kd.where_join("commit_files", "_repo_id", "file_metadata", "_repo_id")
+        #kd.where_join("commit_files", "hash", "file_metadata", "hash")
+
+        kd.group_by("author_email","_ext")
+        kd.order_by("commits", "DESC")
+
         author_where = ""
         if author_email:
             params.append(author_email)
             author_where = "AND c.author_email = ?"
+            kd.where("author_email", "=", author_email)
 
         repo_where = ""
         if repo_id:
             params.append(repo_id)
             repo_where = "AND c._repo_id = ?"
+            kd.where("commits._repo_id", "=", repo_id)
+
+        print(kd.generate_sql())
+
 
         # We're going to need a few lookups
         # Potentially we could do this in a nasty join, but it's easier to read this way
@@ -567,8 +592,10 @@ class KospexQuery:
         GROUP BY author_email, _ext
         ORDER BY commits DESC
         """
+        print(sql)
 
-        data = self.kospex_db.query(sql, params)
+        #data = self.kospex_db.query(sql, params)
+        data = self.kospex_db.query(kd.generate_sql(), kd.params)
         for row in data:
             row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
             row['first_seen'] = KospexUtils.days_ago(row['first_commit'])
@@ -617,9 +644,9 @@ class KospexData:
                 raise ValueError(f"Table '{t}' not in KospexSchema.KOSPEX_TABLES")
 
         # Check the columns are valid SQL names
-        for column in (column, join_column):
-            if not self.is_valid_sql_name(column):
-                raise ValueError(f"Column '{column}' is not a valid SQL name")
+        for col in (column, join_column):
+            if not self.is_valid_sql_name(col):
+                raise ValueError(f"Column '{col}' is not a valid SQL name")
 
         # Add the join to the query
         self.where_clause.append(f"{table}.{column} = {join_table}.{join_column}")
@@ -675,6 +702,11 @@ class KospexData:
                 self.select_columns.append(col)
             else:
                 raise ValueError(f"Column '{col}' is not a valid SQL name")
+
+    def select_raw(self, raw_column):
+        """ HACK - add a raw column to the query """
+        self.select_columns.append(raw_column)
+
 
     def extract_select_function_parts(self,sql_string):
         """ Regular expression pattern to match SQL function and its argument """

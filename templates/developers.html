@@ -52,13 +52,13 @@
 <div class="container mt-5">
 
 
-    <table class="table table-striped table-bordered sortable" id="myTable">
+    <table class="table table-striped compact sortable" id="myTable">
         <thead>
             <tr>
                 <th>Author</th>
-                <th># Commits</th>
-                <th># repos</th>
-                <th>Last seen (days)</th>
+                <th class="dt-body-right"># Commits</th>
+                <th class="dt-body-right"># repos</th>
+                <th class="dt-body-right">Last seen (days)</th>
             </tr>
         </thead>
         <tbody>
@@ -66,8 +66,8 @@
             <tr>
                 <td><a href="/developers/?author_email={{ dev['author_email'] }}">{{ dev['author_email'] }}</a></td>
                 <td><a href="/commits/?author_email={{ dev['author_email'] }}">{{ dev['commits'] }}</a></td>
-                <td>{{ dev['repos'] }}</td>
-                <td>{{ dev['last_seen'] }}</td>
+                <td class="dt-body-right">{{ dev['repos'] }}</td>
+                <td class="dt-body-right">{{ dev['last_seen'] }}</td>
             </tr>
             {% endfor %}
         </tbody>

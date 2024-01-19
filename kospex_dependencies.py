@@ -316,6 +316,8 @@ class KospexDependencies:
         details['package_version'] = package_version
 
         return details
+    
+    
 
     def npm_assess(self, filename, results_file=None, repo_info=None):
         """ Using deps.dev to assess and provide a summary of a 
@@ -337,6 +339,7 @@ class KospexDependencies:
         for item in data['dependencies']:
             details = self.get_npm_dependency_dict(item,data)
             #print(details)
+            print(item)
             table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
 
         for item in data['devDependencies']:
@@ -348,11 +351,33 @@ class KospexDependencies:
         if results_file:
             self.write_csv(results_file, table_rows, self.get_table_field_names())
 
+    def parse_pypi_package_declaration(self, package_declaration):
+        """ Parse a PyPi package declaration into a dictionary """
+        # TODO - need to double check the version specifiers as described in:
+        # https://packaging.python.org/en/latest/specifications/version-specifiers/
+        # They are claiming a lot o
+        package = {}
+        version_spec = None
+        if '>=' in package_declaration:
+            version_spec = '>='
+        elif '~=' in package_declaration:
+            version_spec = '~='
+        elif '==' in package_declaration:
+            version_spec = '=='
+        else:
+            print(f"Unknown version type in {package_declaration}")
+            return None
+
+        package['package_name'] = package_declaration.split(version_spec)[0]
+        package['package_version'] = package_declaration.split(version_spec)[1]
+        package['version_type'] = version_spec
+        return package
+
     def pypi_assess(self, filename,results_file=None,repo_info=None,store=False):
         """ Using deps.dev to assess and provide a summary of a 
             pip / PyPi requirements.txt compatible file """
 
-        today = datetime.datetime.now(datetime.timezone.utc)
+        #today = datetime.datetime.now(datetime.timezone.utc)
         table = self.get_cli_pretty_table()
         records = []
         table_rows = []
@@ -376,7 +401,10 @@ class KospexDependencies:
                     continue
 
                 # Skip lines that don't follow the pattern <package_name>==<version_number>
-                if not self.is_valid_pypi_package_declaration(line.strip()):
+                # Or other valid PyPi version specifiers (e.g. >=, ~=, etc.)
+                package_declaration = self.parse_pypi_package_declaration(line.strip())
+                if not package_declaration:
+                #if not self.is_valid_pypi_package_declaration(line.strip()):
                     url = self.extract_github_url(line.strip())
                     repo_path = self.extract_repo_path(url) if url else None
                     if url:
@@ -398,47 +426,54 @@ class KospexDependencies:
 
                 # Looks like a valid line, let's continue and parse it
 
-                package = line.split('==')[0]
-                version = line.split('==')[1].strip()
+                #package = line.split('==')[0]
+                #version = line.split('==')[1].strip()
+                package = package_declaration['package_name']
+                version = package_declaration['package_version'] 
                 row['package_name'] = package
                 row['package_version'] = version
 
-                info = self.deps_dev("pypi",package,version)
-                print(f"{package} : {version}")
-                if info is None:
-                    print(f"Could not find {package} in deps.dev")
-                    continue
-                pub_date = info.get("publishedAt")
-                if pub_date:
-                    pub_date = dateutil.parser.isoparse(info.get("publishedAt"))
-                    diff = today - pub_date
-                    row['days_ago'] = diff.days
-                else:
-                    row['days_ago'] = "Unknown"
-                row['published_at'] = pub_date
+                record = self.depsdev_record("pypi",package,version)
+                #record['semantic'] = details['semantic']
 
-                source_repo = ""
-                if info.get("links") is not None:
-                    for link in info.get("links"):
-                        if link.get("label") == "SOURCE_REPO":
-                            source_repo = link.get("url")
+                #info = self.deps_dev("pypi", package, version)
+                #print(f"{package} : {version}")
+                #if info is None:
+                #    print(f"Could not find {package} in deps.dev")
+                #    continue
+                #pub_date = info.get("publishedAt")
+                #if pub_date:
+                #    pub_date = dateutil.parser.isoparse(info.get("publishedAt"))
+                #    diff = today - pub_date
+                #    row['days_ago'] = diff.days
+                #else:
+                #    row['days_ago'] = "Unknown"
+                #row['published_at'] = pub_date
 
-                row['source_repo'] = source_repo
+                #source_repo = ""
+                #if info.get("links") is not None:
+                #    for link in info.get("links"):
+                #        if link.get("label") == "SOURCE_REPO":
+                #            source_repo = link.get("url")
 
-                advisories = info.get("advisoryKeys")
-                if advisories:
-                    row['advisories'] = len(advisories)
-                else:
-                    row['advisories'] = 0
+                #row['source_repo'] = source_repo
 
-                row['default'] = info.get("isDefault")
+                #advisories = info.get("advisoryKeys")
+                #if advisories:
+                #    row['advisories'] = len(advisories)
+                #else:
+                #    row['advisories'] = 0
 
-                days_info = self.get_versions_behind("PyPi",package,version)
-                row['versions_behind'] = days_info.get("versions_behind","Unknown")
+                #row['default'] = info.get("isDefault")
 
-                table_rows.append(self.get_values_array(row, self.get_table_field_names(), '-'))
+                #days_info = self.get_versions_behind("PyPi",package,version)
+                #row['versions_behind'] = days_info.get("versions_behind","Unknown")
 
-                records.append(row)
+                #table_rows.append(self.get_values_array(row, self.get_table_field_names(), '-'))
+                table_rows.append(self.get_values_array(record, self.get_table_field_names(), '-'))
+
+                #records.append(row)
+                records.append(record)
 
         table.add_rows(table_rows)
 
@@ -455,6 +490,7 @@ class KospexDependencies:
             # TODO - see if there is better way of excluding this key
             for r in records:
                 r.pop("days_ago",None)
+            
             self.kospex_db.table(KospexSchema.TBL_DEPENDENCY_DATA).upsert_all(
                 records,pk=['_repo_id', 'hash', "file_path",
                             "package_type","package_name","package_version"])

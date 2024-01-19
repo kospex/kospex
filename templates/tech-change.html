@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tech Change</title>
+    <!-- Link to Bootstrap CSS -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    
+</head>
+
+<body>
+
+{% include 'header.html' %}
+
+<!-- Main content area -->
+<div class="container mt-5">
+    <h1 class="mb-4">Tech Change</h1>
+    <canvas id="radarChart"></canvas>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    const ctx = document.getElementById('radarChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: {{ labels|list|tojson }},
+            datasets: [{
+                label: 'Current',
+                data: [65, 59, 90, 81,17],
+                fill: true,
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                borderColor: 'rgb(255, 99, 132)',
+                pointBackgroundColor: 'rgb(255, 99, 132)',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: 'rgb(255, 99, 132)'
+                }, {
+                label: 'Previous',
+                data: [28, 48, 40, 19,29],
+                fill: true,
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgb(54, 162, 235)',
+                pointBackgroundColor: 'rgb(54, 162, 235)',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: 'rgb(54, 162, 235)'
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                },
+                r: {
+                    pointLabels: {
+                    font: {
+                        size: 20
+                    }
+                }
+            }
+        }
+    }
+    });
+</script>
+
+<div class="container">
+    <br/>
+    Did you want to view <a href="/meta/author-domains"> Author email domains?</a>
+</div>
+
+{% include '_footer_scripts.html' %}
+
+</body>
+</html>

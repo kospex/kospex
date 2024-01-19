@@ -14,7 +14,7 @@
 
 <div class="container mt-5">
     <h1 class="mb-4">Orgs</h1>
-    <table class="table table-striped table-bordered sortable" id="myTable">
+    <table class="table table-striped compact" id="myTable">
         <thead>
             <tr>
                 <th>Server</th>
@@ -32,12 +32,12 @@
             <tr>
                 <td>{{ row['_git_server'] }}</td>
                 <td><a href="/repos/?org_key={{ row['org_key'] }}">{{ row['_git_owner'] }}</a></td>
-                <td>{{row['repos']}}</Td>
-                <td>{{ row['authors'] }}</td>
-                <td>{{ row['committers'] }}</td>
-                <td>{{ row['commits'] }}</td>
-                <td>{{ row['days_ago'] }}</td>
-                <td>{{ row['active_devs'] }}</td>
+                <td class="dt-body-right">{{row['repos']}}</Td>
+                <td class="dt-body-right">{{ row['authors'] }}</td>
+                <td class="dt-body-right">{{ row['committers'] }}</td>
+                <td class="dt-body-right">{{ row['commits'] }}</td>
+                <td class="dt-body-right">{{ row['days_ago'] }}</td>
+                <td class="dt-body-right">{{ row['active_devs'] }}</td>
             </tr>
             {% endfor %}
         </tbody>
