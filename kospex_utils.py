@@ -27,7 +27,6 @@ def init():
     # Set a default kospex code directory
     kospex_code = os.path.expanduser("~/code")
 
-
     # Set up some basic around the kospex code where all the repos live
     if os.getenv("KOSPEX_CODE") is None:
         os.environ["KOSPEX_CODE"] = kospex_code
@@ -116,6 +115,24 @@ def days_ago_iso_date(days):
     start_date = (datetime.utcnow() - timedelta(days=days_ago)).isoformat()
     return start_date
 
+def date_days_ago(given_date, num_days):
+    """
+    This function takes a date and a number of days as input and returns the date 
+    going back the specified number of days.
+    """
+
+    # Convert the given date to a datetime object
+    start_date = datetime.fromisoformat(given_date)
+
+    # Calculate the number of days to go back
+    days_to_go_back = timedelta(days=num_days)
+
+    # Subtract the number of days from the start date to get the new date
+    new_date = start_date - days_to_go_back
+
+    # Convert the new date back to a string in ISO format
+    return new_date.isoformat()
+
 def find_git_base(filename):
     """
     Find the base Git directory for a given file path.
@@ -154,18 +171,55 @@ def development_status(days, active_limit=90, aging_limit=180, stale_limit=365):
     else:
         return "Unmaintained"
 
+def extract_git_rename_paths(s):
+    """ Extract all the 'path => path' git rename occurrences from the input string"""
+    # Regular expression pattern to match multiple 'path => path' occurrences
+    pattern = r'{[^{]* => [^}]*}'
+
+    # Find all non-overlapping matches in the input string
+    matches = re.findall(pattern, s)
+
+    # Return the list of matched parts
+    return matches
+
+def extract_git_rename_values(event_str):
+    """ split on => and return the old and new values"""
+    # Check if the string contains '=>'
+    if '=>' not in event_str:
+        return None
+    # Remove the curly braces
+    event_str = event_str.replace('}', '')
+    event_str = event_str.replace('{', '')
+    print(event_str)
+    return event_str.split(' => ')
+
 def parse_git_rename_event(event_str):
     """ Parse a git rename event and return the new path"""
     # Split the string into segments based on ' => ' within curly braces
-    segments = re.split(r'\{([^}]*)\}', event_str)
+    #segments = re.split(r'\{([^}]*)\}', event_str)
+    #segments = re.split(r'{[^{]* => [^}]*}', event_str)
+
+    renames = extract_git_rename_paths(event_str)
+    for rename in renames:
+        old, new = extract_git_rename_values(rename)
+        event_str = event_str.replace(rename, new)
+
+    return event_str
+
+#def parse_git_rename_event(event_str):
+#    """ Parse a git rename event and return the new path"""
+    # Split the string into segments based on ' => ' within curly braces
+    #segments = re.split(r'\{([^}]*)\}', event_str)
+#    segments = re.split(r'{[^{]* => [^}]*}', event_str)
 
     # Process each segment
-    for i in range(1, len(segments), 2):
-        old, new = segments[i].split(' => ')
-        segments[i] = new
+#    for i in range(1, len(segments), 2):
+#        print(segments[i])
+#        old, new = segments[i].split(' => ')
+#        segments[i] = new
 
     # Reassemble the path
-    return ''.join(segments)
+#    return ''.join(segments)
 
 def get_last_commit_info(filename):
     """ Get the last commit info for a given file"""
@@ -385,3 +439,24 @@ def extract_git_url(url):
         url = url.replace("git:", "https:")
 
     return url
+
+def merge_dicts(dict1, dict2):
+    merged_dict = {}
+
+    # Add all keys from dict1 with their values under 'recent'
+    for key in dict1:
+        merged_dict[key] = {'recent': dict1[key]}
+
+    # Add/Update keys from dict2 with their values under 'previous'
+    for key in dict2:
+        if key in merged_dict:
+            merged_dict[key]['previous'] = dict2[key]
+        else:
+            merged_dict[key] = {'previous': dict2[key]}
+
+    # Ensuring that each key has both 'recent' and 'previous' entries
+    for key in merged_dict:
+        merged_dict[key].setdefault('recent', None)
+        merged_dict[key].setdefault('previous', None)
+
+    return merged_dict
