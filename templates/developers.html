@@ -65,7 +65,7 @@
             {% for dev in authors %}
             <tr>
                 <td><a href="/developers/?author_email={{ dev['author_email'] }}">{{ dev['author_email'] }}</a></td>
-                <td><a href="/commits/?author_email={{ dev['author_email'] }}">{{ dev['commits'] }}</a></td>
+                <td class="dt-body-right"><a href="/commits/?author_email={{ dev['author_email'] }}">{{ dev['commits'] }}</a></td>
                 <td class="dt-body-right">{{ dev['repos'] }}</td>
                 <td class="dt-body-right">{{ dev['last_seen'] }}</td>
             </tr>
