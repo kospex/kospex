@@ -592,7 +592,7 @@ class KospexQuery:
         GROUP BY author_email, _ext
         ORDER BY commits DESC
         """
-        print(sql)
+        #print(sql)
 
         #data = self.kospex_db.query(sql, params)
         data = self.kospex_db.query(kd.generate_sql(), kd.params)
@@ -618,6 +618,37 @@ class KospexQuery:
         kd.group_by("_ext")
         kd.order_by("commits", "DESC")
         return kd
+
+    def get_observations(self, repo_id=None, observation_key=None):
+        """ Return a list of observations for a repo_id and observation_key """
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(KospexSchema.TBL_OBSERVATIONS)
+        kd.select("*")
+        if repo_id:
+            kd.where("_repo_id", "=", repo_id)
+        if observation_key:
+            kd.where("observation_key", "=", observation_key)
+
+        return kd.execute()
+
+    def add_observation(self, observation):
+        """ Add a list of observations to the database """
+        self.kospex_db.table(
+            KospexSchema.TBL_OBSERVATIONS).upsert(
+                observation,pk=["_repo_id","hash","file_path","observation_key"])
+        #self.kospex_db.table(KospexSchema.TBL_OBSERVATIONS).insert_all(observations)
+    
+# TODO - this is copilot generated code, needs refactoring to a kdata object
+#    def get_observations_summary(self, repo_id=None, observation_key=None):
+#        """ Return a list of observations for a repo_id and observation_key """
+#        sql = f"""SELECT observation_key, count(*) as count FROM {KospexSchema.TBL_OBSERVATIONS} WHERE _repo_id = ? GROUP BY observation_key"""
+#        params = [repo_id]
+#        data = self.kospex_db.query(sql, params)
+#        results = []
+#        for row in data:
+#            results.append(row)
+#        return results 
+       
 
 
 class KospexData:
@@ -818,3 +849,16 @@ class KospexData:
             sql += ", ".join(self.order_by_columns)
 
         return sql
+
+    def execute(self):
+        """ Execute the query """
+        if not self.kospex_db:
+            raise ValueError("No KospexDB object set")
+
+        results = []
+        data = self.kospex_db.execute(self.generate_sql(), self.params)
+
+        for row in data:
+            results.append(row)
+
+        return results

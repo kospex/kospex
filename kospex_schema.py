@@ -16,9 +16,9 @@ TBL_KRUNNER = "krunner"
 TBL_OBSERVATIONS = "observations"
 
 KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
-                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE, TBL_KRUNNER ]
+                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE, TBL_KRUNNER, TBL_OBSERVATIONS ]
 
-# Table based upon Mergestat sync 'git-commits'
+# Table data structure based upon Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
 SQL_CREATE_COMMITS = f'''CREATE TABLE [{TBL_COMMITS}] (
     [hash] TEXT,
@@ -153,22 +153,7 @@ SQL_CREATE_KRUNNER = f'''CREATE TABLE  IF NOT EXISTS [{TBL_KRUNNER}] (
     PRIMARY KEY(_repo_id,hash,file_path)
     )'''
 
-SQL_CREATE_OBSERVATION = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
-    [hash] TEXT,            -- hash of the commit
-    [file_path] TEXT,       -- file path in the repo
-    [format] TEXT,          -- format type e.g. JSON, JSONL, CSV, LINE
-    [data] TEXT,            -- Data / output from the command
-    [source] TEXT,          -- what tool/function was used to get the metadata
-    [observation_type] TEXT, -- should be one of the repo, file, 
-    [line_number] INTEGER,  -- line number in the file (optional)
-    [command] TEXT,     -- command ran to get the data (optional)
-    [created_at] DEFAULT CURRENT_TIMESTAMP,
-    [_git_server] TEXT,
-    [_git_owner] TEXT,
-    [_git_repo] TEXT,
-    [_repo_id] TEXT,
-    PRIMARY KEY(_repo_id,hash,file_path)
-    )'''
+
 
 #SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
 #    [url] TEXT, -- URL to cache
@@ -190,18 +175,38 @@ SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
     PRIMARY KEY(url)
     )'''
 
-SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE IF NOT EXISTS [{TBL_OBSERVATIONS}] (
-    [file_path] TEXT,      -- file path in the repo
-    [data] TEXT,           -- Data / output from the command, or line details
-    [line_number] INTEGER, -- line number of the observation, if applicable
-    [observed_at] TEXT,    -- date and time the observation was made
-    [source] TEXT,         -- what tool/function was used to get the metadata,
-    [hash] TEXT,
+#SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE IF NOT EXISTS [{TBL_OBSERVATIONS}] (
+#    [file_path] TEXT,      -- file path in the repo
+#    [data] TEXT,           -- Data / output from the command, or line details
+#    [line_number] INTEGER, -- line number of the observation, if applicable
+#    [observed_at] TEXT,    -- date and time the observation was made
+#    [source] TEXT,         -- what tool/function was used to get the metadata,
+#    [hash] TEXT,
+#    [_git_server] TEXT,
+#    [_git_owner] TEXT,
+#    [_git_repo] TEXT,
+#    [_repo_id] TEXT,
+#    PRIMARY KEY(file_path,_repo_id,hash)
+#    )'''
+
+SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
+    [hash] TEXT,             -- hash of the commit
+    [file_path] TEXT,        -- file path in the repo
+    [format] TEXT,           -- format type e.g. JSON, JSONL, CSV, LINE
+    [data] TEXT,             -- cleaned data / output from the command
+    [raw] TEXT,              -- Raw data / output from the command
+    [source] TEXT,           -- what tool/function was used to get the metadata
+    [observation_key] TEXT,  -- unique identified for the observation e.g. SEMGREP, GREP_TODO 
+    [observation_type] TEXT, -- should be one of the REPO, FILE 
+    [line_number] INTEGER,   -- line number in the file (optional)
+    [command] TEXT,          -- command ran to get the data (optional)
+    [latest] INTEGER,        -- 1 if this is the latest version of the file, 0 otherwise
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
     [_git_server] TEXT,
     [_git_owner] TEXT,
     [_git_repo] TEXT,
     [_repo_id] TEXT,
-    PRIMARY KEY(file_path,_repo_id,hash)
+    PRIMARY KEY(_repo_id,hash,file_path,observation_key)
     )'''
 
 # Functions for SQLite stuff
