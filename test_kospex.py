@@ -17,15 +17,15 @@ def test_extract_grep_parameters():
     expected = ["kospex_utils.py", "12", "    # Split the input string at colons"]
     assert KrunnerUtils.extract_grep_parameters(input_string) == expected
 
-    # Test with a valid input string
+    # Test with a valid input string, additional colon
     input_string = "./kospex_utils.py:12:    # Split the input string at colons:"
     expected = ["kospex_utils.py", "12", "    # Split the input string at colons:"]
     assert KrunnerUtils.extract_grep_parameters(input_string) == expected
 
+    # Test with a valid input string, many colons
     input_string = "one:two:three:four:five"
     expected = ["one", "two", "three:four:five"]
     assert KrunnerUtils.extract_grep_parameters(input_string) == expected
-
 
 # Tests for kospex_utils
 
