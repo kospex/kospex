@@ -2,9 +2,11 @@
 """This is the kospex runner tool - run the same command on all repos."""
 import os
 import os.path
+import subprocess
 import click
 from kospex_core import Kospex
 import kospex_utils as KospexUtils
+import krunner_utils as KrunnerUtils
 from kospex_dependencies import KospexDependencies
 
 kospex = Kospex()
@@ -25,6 +27,7 @@ def find_repos(directory):
     kospex.list_repos(directory)
 
 @cli.command("trufflehog")
+
 @click.argument('directory', type=click.Path(exists=True))
 def trufflehog(directory):
     """Run trufflehog on all git repositories found in the given directory."""
@@ -65,8 +68,34 @@ def todo(directory):
     print("# repos: " + str(len(dirs)))
     for d in dirs:
         print("\nRepo: " + d)
-        os.chdir(d)
-        os.system("grep -Rn TODO *")
+        #os.chdir(d)
+        kospex.set_repo_dir(d)
+        details = kospex.git.add_git_to_dict({})
+        details['hash'] = kospex.git.current_hash
+        details['observation_key'] = "GREP_TODO"
+        details['observation_type'] = "FILE"
+        #_repo_id,hash,file_path,observation_key
+        #cmd = "grep -Rn TODO *"
+        #os.system(cmd)
+        #os.system("pwd")
+        cmd = ['grep', '-Rn', 'TODO *']
+        #result = subprocess.run(cmd, capture_output=True, text=True).stdout.split('\n')
+        result  = []
+        result = subprocess.run(cmd, capture_output=True, text=True).stdout.split('\n')
+        for raw in result:
+            obs = details.copy()
+            #print(i)
+            params = KrunnerUtils.extract_grep_parameters(raw)
+            # We may get a None here for warnings like binary files
+            if params:
+                filename, line, finding = params
+                #print(filename)
+                obs['file_path'] = filename
+                obs['line_number'] = line
+                obs['data'] = finding
+                obs['raw'] = raw
+                print(obs)
+                kospex.kospex_query.add_observation(obs)
         os.chdir(cwd)
 
 @cli.command("git-pull")
@@ -150,9 +179,10 @@ def semgrep(directory):
 def test(directory):
     """ Test coding"""
     kospex.set_repo_dir(directory)
-    print(kospex.get_krunner_directory())
-    print(kospex.generate_krunner_filename(function="GITLEAKS",ext="json"))
-    print("thing {thing}")
+    #print(kospex.get_krunner_directory())
+    #print(kospex.generate_krunner_filename(function="GITLEAKS",ext="json"))
+    #print("thing {thing}")
+    print(kospex.kospex_query.get_observations())
 
 if __name__ == '__main__':
     cli()

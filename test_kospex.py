@@ -22,6 +22,11 @@ def test_extract_grep_parameters():
     expected = ["kospex_utils.py", "12", "    # Split the input string at colons:"]
     assert KrunnerUtils.extract_grep_parameters(input_string) == expected
 
+    input_string = "one:two:three:four:five"
+    expected = ["one", "two", "three:four:five"]
+    assert KrunnerUtils.extract_grep_parameters(input_string) == expected
+
+
 # Tests for kospex_utils
 
 def test_git_rename_event():
