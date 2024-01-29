@@ -78,6 +78,8 @@
         </tbody>
     </table>
 
+    {% import  '_radar_macro.html' as radar %}
+
     {% if landscape %}
     <br/>
     <h2 class="mb-4">Technology Landscape</h2>
@@ -97,8 +99,8 @@
         </tbody>
     </table>
 
-    {% include '_single_radar.html' %}
-
+    {{ radar.render_radar("radarChart2", labels, datapoints ) }}
+    <br/>
     {% else %}
     <br/>
     <br/>
@@ -126,6 +128,7 @@
 
 {% include '_footer_scripts.html' %}
 {% include '_datatable_scripts.html' %}
+
 <script>
 
     $(document).ready( function () {
@@ -133,7 +136,7 @@
             order: [[1, 'desc']]
         });
         $('#tech_table').DataTable({
-            order: [[2, 'asc']]
+            order: [[1, 'desc']]
         });
     } );
 
