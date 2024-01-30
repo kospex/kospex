@@ -17,9 +17,10 @@ def index():
 @app.route('/developers/active/<repo_id>')
 def active_developers(repo_id):
     """ Developer info page. """
-    #data = KospexQuery().summary()
+    data = KospexQuery().summary(days=90,repo_id=repo_id)
     results = KospexQuery().active_devs_by_repo(repo_id)
-    return render_template('developers.html',data=results)
+    print(results)
+    return render_template('developers.html',data=data, authors=results)
 
 @app.route('/developers/')
 def developers():
@@ -77,19 +78,22 @@ def repos():
     org_key = request.args.get('org_key')
     page = {}
     # TODO - validate params
+    techs = None
+
     page['repo_id'] = repo_id
     if org_key:
         parts = org_key.split("~")
         if len(parts) == 2:
             page['git_server'] = parts[0]
             page['git_owner'] = parts[1]
-   
+            techs = kospex.tech_landscape(org_key=org_key)
+
     data = kospex.repos(org_key=org_key)
     active_devs = kospex.active_devs()
     for row in data:
         row['active_devs'] = active_devs.get(row['_repo_id'],0)
 
-    return render_template('repos.html',data=data, page=page)
+    return render_template('repos.html',data=data, page=page, techs=techs)
 
 @app.route('/orgs/')
 def orgs():
@@ -118,10 +122,7 @@ def repo(repo_id):
     email_domains = kospex.email_domains(repo_id=repo_id)
     #summary = kospex.author_summary(repo_id)
     summary=kospex.author_summary(repo_id)
-    print("--\n\n")
-    print(summary)
     techs = kospex.tech_landscape(repo_id=repo_id)
-    print(techs)
 
     # TODO - make generic function for radar graph (in developer view too)
     labels = []
@@ -133,9 +134,6 @@ def repo(repo_id):
         count += 1
         if count > 10:
             break
-    #return render_template('developer_view.html', repos=repo_list,
-    #                           tech=techs, author_email=author_email, labels=labels,datapoints=datapoints)
-
 
     return render_template('repo_view.html',
                            repo_id=repo_id,

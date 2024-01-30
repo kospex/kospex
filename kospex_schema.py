@@ -191,7 +191,7 @@ SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
 
 SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
     [hash] TEXT,             -- hash of the commit
-    [file_path] TEXT,        -- file path in the repo
+    [file_path] TEXT,        -- file path in the repo (if applicable, can be repo level)
     [format] TEXT,           -- format type e.g. JSON, JSONL, CSV, LINE
     [data] TEXT,             -- cleaned data / output from the command
     [raw] TEXT,              -- Raw data / output from the command
