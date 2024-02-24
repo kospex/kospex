@@ -2,16 +2,20 @@
 """This is the kospex command line tool."""
 import os
 import os.path
+import logging
+from datetime import datetime
 import click
+from prettytable import PrettyTable
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
-from kospex_query import KospexQuery
+from kospex_git import KospexGit
+from kospex_query import KospexQuery, KospexData
 from kospex_dependencies import KospexDependencies
-# nuget spike stuff below
-from xml.etree import ElementTree as ET
-from typing import List, Dict
 
 kospex = Kospex()
+log = logging.getLogger(__name__)
+#logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
+
 
 @click.group()
 def cli():
@@ -183,5 +187,151 @@ def author_tech(author_email,repo_id):
     for result in results:
         print(result)
 
+@cli.command("test")
+def test():
+    """Test command."""
+    log.warning("Test command not implemented yet.")
+    kquery = KospexQuery()
+    kdata = KospexData(kospex_db=kospex.kospex_db)
+    orgs = kquery.orgs()
+    #for o in orgs:
+    #    print(o)
+    #print(len(orgs))
+
+    parts = kdata.extract_select_function_parts("COUNT(DISTINCT(c._repo_id))")
+    print(parts)
+
+@cli.command("key-person")
+@click.argument('directory',  type=GitRepo())
+def key_person(directory):
+    """ Identify the key person for a repo."""
+    kgit = KospexGit()
+    kgit.set_repo(directory)
+    kquery = KospexQuery()
+
+    table = PrettyTable()
+    headers = ["author", "commits", "% commits", "last_commit", 
+               "first_commit", "active_commits", "% active"]
+    table.field_names = headers
+    table.align["author"] = "l"
+    table.align["commits"] = "r"
+    table.align["last_commit"] = "r"
+    table.align["first_commit"] = "r"
+    table.align["active_commits"] = "r"
+    table.align["% commits"] = "r"
+    table.align["% active"] = "r"
+
+    active = kquery.commit_stats(repo_id=kgit.get_repo_id(),days=90)
+    active_dict = {d["author"]: d for d in active}
+    key = "commits"
+    total_active_commits = sum(item[key] for item in active if key in item)
+
+    authors = kquery.commit_stats(repo_id=kgit.get_repo_id())
+    key = "commits"
+    total_commits = sum(item[key] for item in authors if key in item)
+    print(total_commits)
+    for a in authors:
+        a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
+        a['% commits'] = f"{a['commits'] / total_commits * 100:.1f}%"
+        if total_active_commits > 0:
+            a['% active'] = f"{a['active_commits'] / total_active_commits * 100:.1f}%"
+        else:
+            a['% active'] = "0%"
+    authors_dict = {d["author"]: d for d in authors}
+
+    for a in authors[:4]:
+        #a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
+        table.add_row(KospexUtils.get_values_by_keys(a, headers))
+
+    top_authors_dict = {d["author"]: d for d in authors[:4]}
+
+    for a in active[:3]:
+        a_dict = top_authors_dict.get(a['author'])
+        if not a_dict:
+            a_dict = authors_dict[a['author']]
+            table.add_row(KospexUtils.get_values_by_keys(a_dict, headers))
+
+
+    print()
+    print(table)
+    print()
+
+
+@cli.command("know")
+@click.argument('email',  type=click.STRING)
+def knol(email):
+    """Show the tech landscape for a given author."""
+    #results = kospex.kospex_query.author_tech(**kwargs)
+    #for result in results:
+    #    print(result)
+
+    #    sql = f"""SELECT DISTINCT(author_email) as author_email, _ext, count(*) 'commits',
+    #    MAX(author_when) 'last_commit', MIN(author_when) 'first_commit', 
+    #    COUNT(DISTINCT(c._repo_id)) 'repos'
+    #    FROM commit_files cf, commits c
+    #    WHERE cf._repo_id = c._repo_id 
+    #    AND cf.hash = c.hash {author_where} {repo_where}
+    #    GROUP BY author_email, _ext
+    #    ORDER BY commits DESC
+    #    """
+    #kd = KospexData()
+    #kd.from_table("commits", "commit_files")
+    #kd.select_as("DISTINCT(author_email)", "author_email")
+    #kd.select("_ext")
+    #kd.select_as("COUNT(*)", "commits")
+    #kd.select_as("MAX(commits.committer_when)", "last_commit")
+    #kd.select_as("MIN(commits.committer_when)", "first_commit")
+
+    #kd.where("commits.author_email", "=", email)
+
+    nowish = datetime.now().isoformat()
+    print(nowish)
+    last30 = KospexUtils.date_days_ago(nowish, 60)
+
+    #kd.where("commits.committer_when", ">=", last30)
+    #kd.where_join("commits", "_repo_id", "commit_files", "_repo_id")
+    #kd.where_join("commits", "hash", "commit_files", "hash")
+
+    #kd.where_join("commits", "hash", "dependency_data", "hash")
+    #kd.where_join("commits", "_repo_id", "dependency_data", "_repo_id")
+
+    #kd.group_by("_ext")
+    #kd.order_by("commits", "DESC")
+    kquery = KospexQuery()
+
+    kd = kquery.tech_commits(author_email=email)
+    kd.where("commits.committer_when", ">=", last30)
+
+    print(kd.generate_sql(line=True))
+    print(kd.get_bind_parameters())
+
+    ar1 = {}
+    ar2 = {}
+
+    results = kospex.kospex_db.execute(kd.generate_sql(), kd.get_bind_parameters())
+    for result in results:
+        ar1[result[0]] = result[1]
+        #print(result[0])
+        print(result)
+
+    print(ar1)
+
+    kd2 = kquery.tech_commits(author_email=email)
+    kd2.where("commits.committer_when", "<", last30)
+    kd2_from = KospexUtils.date_days_ago(last30, 90)
+    kd2.where("commits.committer_when", ">=", kd2_from)
+
+    print("###")
+    print(kd2.generate_sql(line=True))
+    print(kd2.get_bind_parameters())
+
+    results = kospex.kospex_db.execute(kd2.generate_sql(), kd2.get_bind_parameters())
+    for result in results:
+        ar2[result[0]] = result[1]
+        print(result)
+
+    ext_dif = KospexUtils.merge_dicts(ar1, ar2)
+    print(ext_dif)        
+
 if __name__ == '__main__':
-    cli()   
+    cli()
