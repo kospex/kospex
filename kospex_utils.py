@@ -460,3 +460,24 @@ def merge_dicts(dict1, dict2):
         merged_dict[key].setdefault('previous', None)
 
     return merged_dict
+
+def get_values_by_keys(my_dict, my_list):
+    """
+    Take a dictionary and a list of strings as input.
+    Return a list of values from the dictionary corresponding to the keys in the list.
+    If a key is not found in the dictionary, an empty string is returned.
+
+    Args:
+        my_dict: A dictionary.
+        my_list: A list of strings.
+
+    Returns:
+        A list of values from the dictionary corresponding to the keys in the list.
+    """
+
+    results = []
+    for key in my_list:
+        results.append(my_dict.get(key, ""))  # Use get() to handle missing keys gracefully
+
+    return results
+

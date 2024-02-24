@@ -332,7 +332,7 @@ class KospexQuery:
         return authors
 
     def active_devs_by_repo(self, repo_id, days=90):
-        """ Look for distinct developers in the last 'days' """
+        """ Look for distinct developers in the last X 'days' """
         from_date = KospexUtils.days_ago_iso_date(days)
         summary_sql = """SELECT distinct(author_email) AS 'author_email', count(*) AS 'commits',
         MAX(committer_when) AS 'last_commit', count(distinct(_repo_id)) AS 'repos'
@@ -626,6 +626,36 @@ class KospexQuery:
         kd.order_by("commits", "DESC")
         return kd
 
+    def observations_summary(self, repo_id=None, observation_key=None):
+        """ Return a summary of # observations per repo """
+        sql = """SELECT _repo_id, count(*) as observations
+        FROM observations
+        GROUP BY _repo_id
+        ORDER BY observations DESC
+        """
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(KospexSchema.TBL_OBSERVATIONS)
+        kd.select("_repo_id")
+        kd.select_as("COUNT(*)", "observations")
+        kd.group_by("_repo_id")
+        kd.order_by("observations", "DESC")
+
+        if repo_id:
+            kd.where("_repo_id", "=", repo_id)
+            kd.select("observation_key")
+            kd.group_by("observation_key")
+
+        if observation_key:
+            kd.where("observation_key", "=", observation_key)
+            kd.select("file_path")
+            kd.group_by("file_path")
+
+        data = kd.execute()
+        print(data)
+        return data
+
+        #return kd.execute()
+
     def get_observations(self, repo_id=None, observation_key=None):
         """ Return a list of observations for a repo_id and observation_key """
         kd = KospexData(kospex_db=self.kospex_db)
@@ -655,7 +685,27 @@ class KospexQuery:
 #        for row in data:
 #            results.append(row)
 #        return results
-       
+
+    def commit_stats(self, days=None, repo_id=None):
+        """ Return stats about commits. """
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.select_as("DISTINCT(author_email)", "author")
+        kd.select_as("MIN(author_when)",'first_commit')
+        kd.select_as("MAX(author_when)", 'last_commit')
+        kd.select_as("COUNT(*)", "commits")
+        kd.group_by("author")
+        kd.order_by("commits", "DESC")
+
+        if repo_id:
+            kd.where("_repo_id", "=", repo_id)
+
+        if days:
+            from_date = KospexUtils.days_ago_iso_date(days)
+            kd.where("committer_when", ">", from_date)
+
+        return kd.execute()
+
 
 
 class KospexData:
@@ -863,7 +913,7 @@ class KospexData:
             raise ValueError("No KospexDB object set")
 
         results = []
-        data = self.kospex_db.execute(self.generate_sql(), self.params)
+        data = self.kospex_db.query(self.generate_sql(), self.params)
 
         for row in data:
             results.append(row)
