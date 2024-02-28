@@ -3,7 +3,7 @@
 import time
 import os
 import click
-from kospex_core import GitRepo
+from kospex_core import GitRepo, Kospex
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 
@@ -35,8 +35,9 @@ def status(repo):
     print('Execution time:', elapsed_time, 'seconds')
 
 @cli.command("clone")
+@click.option('-sync', is_flag=True)
 @click.argument('repo',  type=click.STRING)
-def clone(repo):
+def clone(repo, sync):
     """Clone the given repo into our KOSPEX_CODE directory."""
     # We're going to shell out to git to do the clone
     repo_dir = os.getenv("KOSPEX_CODE")
@@ -54,12 +55,22 @@ def clone(repo):
         print("Directory exists: " + remote_org_dir)
 
     os.chdir(remote_org_dir)
+    org_dir = os.getcwd()
+    print("Current directory: " + os.getcwd())
     if os.path.isdir(parts['repo']):
         print("Repo exists: " + parts['repo'])
         print("Trying pulling latest changes instead ...")
+        os.chdir(parts['repo'])
+        os.system("git pull")
     else:
         print("Cloning repo: " + repo)
         os.system(f"git clone {repo}")
+
+    if sync:
+        os.chdir(org_dir)
+        print("Syncing repo: " + parts['repo'])
+        kospex = Kospex()
+        kospex.sync_repo(parts['repo'])
 
 
 if __name__ == '__main__':
