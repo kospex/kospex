@@ -346,6 +346,24 @@ class Kospex:
         """ helper function to return a single value from a query"""
         return str(self.kospex_db.execute(query).fetchone()[0])
 
+    def author_tech_pretty_table(self, author_techs):
+        """Pretty print the author_techs data"""
+
+        table = PrettyTable()
+        headers = ["author_email", "repos", "_ext", "commits", "first_commit", 
+                   "last_commit", "last_seen", "first_seen", "days_active"]
+        table.field_names = headers
+        table.align["author_email"] = "l"
+        table.align["_ext"] = "l"
+        table.align["commits"] = "r"
+        for row in author_techs:
+            row['_ext'] = (row['_ext'][:18] + '..') if len(row['_ext']) > 20 else row['_ext']
+            row['first_commit'] = KospexUtils.extract_db_date(row['first_commit'])
+            row['last_commit'] = KospexUtils.extract_db_date(row['last_commit'])
+            table.add_row(KospexUtils.get_values_by_keys(row, headers))
+
+        return table
+
     def summary(self, results_file=None):
         """ Display some basic stats what has been sync'ed from repos to the kospex db."""
         print("\nKospex Summary\nChecking status ...\n")
@@ -356,12 +374,18 @@ class Kospex:
         print("")
 
         table = PrettyTable()
-        table.field_names = ["repo", "status", "last_commit",
-                             "first_commit", "developers", "commits", "active", "present"]
+        headers = ["repo", "status", "developers", "active", "present", "last_commit",
+                             "first_commit", "active_days", "commits" ]
+
+        #table.field_names = ["repo", "status", "last_commit",
+        #                     "first_commit", "developers", "commits", "active", "present"]
+
+        table.field_names = headers
         table.align["repo"] = "l"
         table.align["status"] = "l"
         table.align["last_commit"] = "r"
         table.align["first_commit"] = "r"
+        table.align["active_days"] = "r"
         table.align["developers"] = "r"
         table.align["commits"] = "r"
         table.align["active"] = "r"
@@ -388,10 +412,14 @@ class Kospex:
             row["status"] = KospexUtils.development_status(row["last_commit"])
             row["active"] = repo_active_devs.get(row["repo"], 0)
             row["present"] = len(set_devs.intersection(active_devs))
+            row['active_days'] = round(row["first_commit"] - row["last_commit"])
 
-            table.add_row([row["repo"], row["status"],
-                           row["last_commit"], row["first_commit"],
-                           row["developers"], row["commits"], row["active"], row["present"] ])
+            table.add_row(KospexUtils.get_values_by_keys(row, headers))
+
+            #table.add_row([row["repo"], row["status"],
+            #               row["last_commit"], row["first_commit"],
+            #               row["developers"], row["commits"], row["active"], row["present"] ])
+            
                            #len(set_devs.intersection(active_devs))])
             #print(row)
             results.append(row)
