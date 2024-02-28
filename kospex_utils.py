@@ -190,7 +190,7 @@ def extract_git_rename_values(event_str):
     # Remove the curly braces
     event_str = event_str.replace('}', '')
     event_str = event_str.replace('{', '')
-    print(event_str)
+    #print(event_str)
     return event_str.split(' => ')
 
 def parse_git_rename_event(event_str):
@@ -481,3 +481,21 @@ def get_values_by_keys(my_dict, my_list):
 
     return results
 
+def extract_db_date(date_str):
+    """ Extract a date from a string which often is returned by the database."""
+    # Function to extract a date from a string
+    # Where it looks like 2014-04-03T15:06:24-06:00 or 2014-04-03 15:06:24-06:00
+    # We are expecting YYYY-MM-DD
+    # It looks for patterns like "2021-01-01" or "2021/01/01"
+    pattern = r'(\d{4}[-/]\d{2}[-/]\d{2})'
+
+    if "T" in date_str:
+        date_str = date_str.split("T")[0]
+
+    # Check it looks like the pattern above
+    match = re.search(pattern, date_str)
+
+    if match:
+        return date_str
+    else:
+        return None
