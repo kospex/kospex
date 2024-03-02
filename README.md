@@ -133,6 +133,6 @@ Most queries use author_email from git to mean a "developer". This is not always
 We're aiming to [k]now your c[o]de by in[spe]cting the haruspe[x].
 From Wikipedia, _The Latin terms haruspex and haruspicina are from an archaic word, hīra = "entrails, intestines"_
 
-So we're going to help look at the "guts of your code" to gain an understanding of the applications, technology lanscape (sprawl?) and developers.
+So we're going to help look at the "guts of your code" to gain an understanding of the applications, technology landscape (sprawl?) and developers.
 
 
