@@ -143,7 +143,7 @@ class KospexQuery:
         FROM commits
         WHERE author_email = ?
         GROUP BY _repo_id
-        ORDER BY commits     DESC
+        ORDER BY commits DESC
         """
         data = []
 
@@ -196,10 +196,9 @@ class KospexQuery:
         """
         data = []
         for row in self.kospex_db.query(summary_sql):
-            data.append(row)
-
-        for row in data:
+            row['org'] = row['_git_owner']
             row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
+            data.append(row)
 
         return data
 

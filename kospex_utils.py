@@ -6,6 +6,7 @@ from datetime import datetime, timezone, timedelta
 import subprocess
 import shlex
 import csv
+from prettytable import PrettyTable
 from dotenv import load_dotenv
 
 KOSPEX_DB_FILENAME="kospex.db"
@@ -499,3 +500,37 @@ def extract_db_date(date_str):
         return date_str
     else:
         return None
+
+def key_person_prettytable():
+    """ Return a prettytable object for the key_persons table."""
+
+    table = PrettyTable()
+    headers = ["author", "commits", "% commits", "last_commit",
+               "first_commit", "active_commits", "% active"]
+    table.field_names = headers
+    table.align["author"] = "l"
+    table.align["commits"] = "r"
+    table.align["last_commit"] = "r"
+    table.align["first_commit"] = "r"
+    table.align["active_commits"] = "r"
+    table.align["% commits"] = "r"
+    table.align["% active"] = "r"
+
+    return table
+
+def orgs_prettytable():
+    """ Return a prettytable object for the orgs query."""
+
+    table = PrettyTable()
+    table.field_names = ["org_key", "org", "commits", "repos", "authors",
+                         "committers", "days_ago", "last_commit"]
+    table.align["org_key"] = "l"
+    table.align["org"] = "l"
+    table.align["commits"] = "r"
+    table.align["repos"] = "r"
+    table.align["authors"] = "r"
+    table.align["committers"] = "r"
+    table.align["days_ago"] = "r"
+    table.align["last_commit"] = "r"
+
+    return table

@@ -460,6 +460,20 @@ class Kospex:
             self.set_repo_dir(repo)
             kwargs['repo_id'] = self.git.get_repo_id()
 
+        org_key = kwargs.get('org_key', None)
+        if org_key:
+            # Get the repo_id for the org_key
+            org_bits = org_key.split("~")
+            if org_bits and len(org_bits) == 2:
+                server = org_bits[0]
+                org = org_bits[1]
+                #[_git_server] TEXT,
+                #[_git_owner] TEXT,
+                where = f"WHERE _git_server = ? AND _git_owner = ? AND date(author_when) > date('now','-{days} day')"
+                params.append(server)
+                params.append(org)
+            #kwargs['repo_id'] = self.kospex_query.repo_id_by_org_key(org_key)
+
         if kwargs.get('repo_id', None):
             where = f"WHERE _repo_id = ? AND date(author_when) > date('now','-{days} day')"
             params.append(kwargs['repo_id'])

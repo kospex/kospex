@@ -86,9 +86,11 @@ def sync_directory(directory):
 @click.option('-repo', type=GitRepo(),
               help='Git repo directory to assess, confirm sync status')
 @click.option('-days', type=int, default=90, help='Committed in the last X days.')
+@click.option('-org_key', type=click.STRING, help='Format of SERVER~ORG')
 @click.option('-repo_id', type=click.STRING)
+@click.option('-out', type=click.Path(), help='filename to write CSV results to.')
 # pylint: disable=unused-argument
-def devs(repo, days, repo_id):
+def devs(repo, days, repo_id, org_key, out):
     """ Information Stats about developers."""
     params = locals()
     click.echo(f'Searching for active developers (last {days} days)')
@@ -170,7 +172,15 @@ def deps(repo, file, directory, out):
         repo_info = kospex.git.add_git_to_dict({})
         repo_info['hash'] = kospex.git.get_current_hash()
         repo_info['file_path'] = file
-        kdeps.assess(file_path,results_file=out,repo_info=repo_info)
+        records = kdeps.assess(file_path, results_file=out, repo_info=repo_info, print_table=True)
+        total = len(records)
+        count = 0
+        for record in records:
+            if 'versions_behind' in record and record['versions_behind'] > 2:
+                count += 1
+        print(f"Total dependencies: {total} | Outdated(>2): {count}")
+        print(f"Non Compliant: {count/total*100:.2f}%")
+
     else:
         print("Please specify either a '-repo', '-directory' or a '-file'.")
 
@@ -211,17 +221,8 @@ def key_person(directory,top):
     kgit.set_repo(directory)
     kquery = KospexQuery()
 
-    table = PrettyTable()
-    headers = ["author", "commits", "% commits", "last_commit", 
-               "first_commit", "active_commits", "% active"]
-    table.field_names = headers
-    table.align["author"] = "l"
-    table.align["commits"] = "r"
-    table.align["last_commit"] = "r"
-    table.align["first_commit"] = "r"
-    table.align["active_commits"] = "r"
-    table.align["% commits"] = "r"
-    table.align["% active"] = "r"
+    table = KospexUtils.key_person_prettytable()
+    headers = table.field_names
 
     active = kquery.commit_stats(repo_id=kgit.get_repo_id(),days=90)
     active_dict = {d["author"]: d for d in active}
@@ -262,6 +263,43 @@ def key_person(directory,top):
     print(table)
     print()
 
+# TODO - move this to deps, this is redundant but it's -directory will be broken now
+@cli.command("find-dependencies")
+@click.argument('directory',  type=click.Path())
+def find_deps(directory):
+    """ Find all the known dependency management files in a directory."""
+    print(f"Finding dependency management files in the directory: {directory}")
+    kdeps = KospexDependencies()
+    results = kdeps.find_dependency_files(directory)
+    #for file_path, pkg_type in results:
+    #    print(f"File: {file_path} | Type: {pkg_type}")
+    for file in results:
+        print(file)
+
+@cli.command("orgs")
+def orgs():
+    """List all the organizations in the database."""
+    kquery = KospexQuery()
+    orgs_list = kquery.orgs()
+    table = KospexUtils.orgs_prettytable()
+    for o in orgs_list:
+        table.add_row(KospexUtils.get_values_by_keys(o, table.field_names))
+    print(table)
+
+@cli.command("sync-dependencies")
+@click.option('-file', type=click.Path(exists=True))
+@click.option('-repo', type=GitRepo())
+def sync_dependencies(repo,file):
+    """ Clone and sync the dependencies for a repo/dependency file."""
+    if file or repo:
+        # We need one of these
+        if file:
+            print(f"Syncing dependencies for file: {file}")
+        if repo:
+            print(f"Syncing dependencies for repo: {repo}")
+
+    else:
+        print("Please specify either a '-repo' or a '-file'.")
 
 @cli.command("know")
 @click.argument('email',  type=click.STRING)
@@ -272,10 +310,10 @@ def knol(email):
     #    print(result)
 
     #    sql = f"""SELECT DISTINCT(author_email) as author_email, _ext, count(*) 'commits',
-    #    MAX(author_when) 'last_commit', MIN(author_when) 'first_commit', 
+    #    MAX(author_when) 'last_commit', MIN(author_when) 'first_commit',
     #    COUNT(DISTINCT(c._repo_id)) 'repos'
     #    FROM commit_files cf, commits c
-    #    WHERE cf._repo_id = c._repo_id 
+    #    WHERE cf._repo_id = c._repo_id
     #    AND cf.hash = c.hash {author_where} {repo_where}
     #    GROUP BY author_email, _ext
     #    ORDER BY commits DESC
@@ -337,7 +375,7 @@ def knol(email):
         print(result)
 
     ext_dif = KospexUtils.merge_dicts(ar1, ar2)
-    print(ext_dif)        
+    print(ext_dif)
 
 if __name__ == '__main__':
     cli()
