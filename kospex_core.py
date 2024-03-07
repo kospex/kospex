@@ -494,9 +494,12 @@ class Kospex:
         else:
             results = self.kospex_db.query(sql_query)
 
+        records = []
+
         for row in results:
-            table.add_row([KospexUtils.extract_github_username(row["author"]),
-                           row["last_seen"], row["commits"],row["author"]])
+            row["username"] = KospexUtils.extract_github_username(row["author"])
+            records.append(row)
+            table.add_row([row["username"],row["last_seen"], row["commits"],row["author"]])
             row_count += 1
 
         if row_count > 0:
@@ -506,6 +509,10 @@ class Kospex:
             print("No active developers found in the kospex DB")
         else:
             print("Total active developers: " + str(row_count))
+
+        outfile = kwargs.get("out",None)
+        if outfile:
+            KospexUtils.list_dict_2_csv(records, outfile,table.field_names)
 
     def list_repos(self, directory):
         """ Print all the git repos in the specified directory and subdirectories"""
@@ -523,6 +530,17 @@ class Kospex:
             table.add_row([file, self.git.get_remote_url()])
 
         print(table)
+
+    def file_repo_details(self, file):
+        """ return a hash of the kospex git details, including hash. """
+
+        self.set_repo_dir(KospexUtils.find_git_base(file))
+        repo_info = self.git.add_git_to_dict({})
+        repo_info['hash'] = self.git.get_current_hash()
+        repo_info['file_path'] = file
+
+        return repo_info
+
 
     def tech_landscape(self, **kwargs):
         """ Display the tech landscape using file extensions from commits or output from 'scc'. 

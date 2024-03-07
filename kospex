@@ -168,18 +168,32 @@ def deps(repo, file, directory, out):
             print("No package/dependency manager files found.")
     elif file:
         file_path = os.path.abspath(file)
-        kospex.set_repo_dir(KospexUtils.find_git_base(file))
-        repo_info = kospex.git.add_git_to_dict({})
-        repo_info['hash'] = kospex.git.get_current_hash()
-        repo_info['file_path'] = file
-        records = kdeps.assess(file_path, results_file=out, repo_info=repo_info, print_table=True)
+
+        #kospex.set_repo_dir(KospexUtils.find_git_base(file))
+        #repo_info = kospex.git.add_git_to_dict({})
+        #repo_info['hash'] = kospex.git.get_current_hash()
+        #repo_info['file_path'] = file
+
+        repo_info = kospex.file_repo_details(file)
+
+        records = kdeps.assess(file_path, results_file=out, repo_info=repo_info, 
+                               dependency_authors=True, print_table=True)
         total = len(records)
         count = 0
+        author_count = 0
         for record in records:
             if 'versions_behind' in record and record['versions_behind'] > 2:
                 count += 1
+            if 'authors' in record:
+                author_count += record['authors']
         print(f"Total dependencies: {total} | Outdated(>2): {count}")
-        print(f"Non Compliant: {count/total*100:.2f}%")
+        if count and total:
+            print(f"Total dependencies: {total} | Outdated(>2): {count}")
+            print(f"Non Compliant: {count/total*100:.2f}%")
+            print(f"Compliant: {(total-count)/total*100:.2f}%")
+            print(f"Authors: {author_count}")
+        else:
+            print("No dependencies found.")
 
     else:
         print("Please specify either a '-repo', '-directory' or a '-file'.")
@@ -291,12 +305,24 @@ def orgs():
 @click.option('-repo', type=GitRepo())
 def sync_dependencies(repo,file):
     """ Clone and sync the dependencies for a repo/dependency file."""
+    kquery = KospexQuery()
+    kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
+
     if file or repo:
         # We need one of these
         if file:
+            file_path = os.path.abspath(file)
             print(f"Syncing dependencies for file: {file}")
+            repo_info = kospex.file_repo_details(file)
+            records = kdeps.assess(file_path, repo_info=repo_info, print_table=True)
+            for rec in records:
+                print(f'About to clone and sync {rec["source_repo"]}')
+                repo_path = kospex.git.clone_repo(rec["source_repo"])
+                kospex.sync_repo(repo_path)
+
         if repo:
             print(f"Syncing dependencies for repo: {repo}")
+            print("NOT IMPLEMENTED!")
 
     else:
         print("Please specify either a '-repo' or a '-file'.")

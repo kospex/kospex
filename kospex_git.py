@@ -55,6 +55,10 @@ class KospexGit:
         else:
             return None
 
+    def repo_id_from_url_parts(self, parts):
+        """Create a simplified repo_id from the parts"""
+        return f"{parts['remote']}~{parts['org']}~{parts['repo']}"
+
     def set_remote_url(self, remote_url):
         """ Set the remote URL and extract the remote, org, repo, etc.
         We're going to use Remote URL formats as described in
@@ -152,6 +156,49 @@ class KospexGit:
                 repo_files[file] = data
 
         return repo_files
+
+    def clone_repo(self, repo_url):
+        """ Clone a repo to the kospex code directory """
+        #pygit2.clone_repository(repo_url, repo_dir)
+        #KospexUtils.clone_git_repo(repo_url, repo_dir)
+        repo_dir = os.getenv("KOSPEX_CODE")
+        if not os.path.isdir(repo_dir):
+            exit("KOSPEX_CODE directory not found: " + repo_dir)
+
+        current_dir = os.getcwd()
+
+        os.chdir(repo_dir)
+        parts = self.extract_git_url_parts(repo_url)
+        remote_org_dir = None
+        if parts:
+            remote_org_dir = f"{parts['remote']}/{parts['org']}"
+        else:
+            # TODO - add logging
+            return None
+
+        if not os.path.isdir(remote_org_dir):
+            print("Creating directory: " + remote_org_dir)
+            os.makedirs(remote_org_dir)
+        else:
+            print("Directory exists: " + remote_org_dir)
+
+        os.chdir(remote_org_dir)
+        org_dir = os.getcwd()
+        repo_path = os.path.join(org_dir, parts['repo'])
+        print("Current directory: " + os.getcwd())
+        if os.path.isdir(parts['repo']):
+            print("Repo exists: " + parts['repo'])
+            print("Trying pulling latest changes instead ...")
+            os.chdir(parts['repo'])
+            os.system("git pull")
+        else:
+            print("Cloning repo: " + repo_url)
+            os.system(f"git clone {repo_url}")
+
+        os.chdir(current_dir)
+
+        return repo_path
+
 
 class MissingGitDirectory(Exception):
     """ Exception for missing git directory """

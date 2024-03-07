@@ -14,6 +14,7 @@ import requests
 from prettytable import PrettyTable
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
+from kospex_git import KospexGit
 
 class KospexDependencies:
     """kospex database query functionality"""
@@ -22,6 +23,7 @@ class KospexDependencies:
         # Initialize the kospex environment
         self.kospex_db = kospex_db
         self.kospex_query = kospex_query
+        self.git = KospexGit()
         #KospexUtils.init()
         #self.kospex_db = Database(KospexUtils.get_kospex_db_path())
 
@@ -121,7 +123,7 @@ class KospexDependencies:
     def get_table_field_names(self):
         """ Return the field names for the CSV table """
         return ["package_name", "package_version", "days_ago",
-                "published_at", "advisories", "default", "versions_behind", "source_repo"]
+                "published_at", "advisories", "default", "versions_behind", "source_repo", "authors"]
 
     def get_cli_pretty_table(self):
         """ Return a pretty table for the CLI """
@@ -137,6 +139,7 @@ class KospexDependencies:
         table.align["advisories"] = "r"
         table.align["default"] = "r"
         table.align["versions_behind"] = "r"
+        table.align["authors"] = "r"
         return table
 
     def is_npm_package(self,filename):
@@ -188,22 +191,44 @@ class KospexDependencies:
         pattern = re.compile(r'^requirements(-\w+)?\.txt$', re.IGNORECASE)
         return bool(pattern.match(filename))
 
-    def assess(self, filename, results_file=None, repo_info=None):
-        """ Using deps.dev to assess and provide a summary of the package manager file """
+    def assess(self, filename, results_file=None, repo_info=None, dependency_authors=None, print_table=False):
+        """ Using deps.dev to assess and provide a summary of the package manager file.
+        Args:
+        filename (str): The filename to assess."""
+
+        #file_path = os.path.abspath(file)
+        #kospex.set_repo_dir(KospexUtils.find_git_base(file))
+        #repo_info = self.kospex.git.add_git_to_dict({})
+        #repo_info['hash'] = kospex.git.get_current_hash()
+        #repo_info['file_path'] = file
 
         basefile = os.path.basename(filename)
-        #print(f"Assessing {basefile}")
-        if self.is_npm_package(filename):
+
+        # return array of package records
+        results = []
+
+        if basefile == "go.mod":
+            print(f"Found Go mod package file: {basefile}")
+            self.gomod_assess(filename,results_file=results_file,repo_info=repo_info)
+
+        elif self.is_npm_package(filename):
             print(f"Found npm package file: {basefile}")
-            self.npm_assess(filename,results_file=results_file,repo_info=repo_info)
+            self.npm_assess(filename,results_file=results_file,
+                            repo_info=repo_info)
+
         elif self.is_nuget_package(filename):
             print(f"Found nuget package file: {basefile}")
             self.nuget_assess(filename,results_file=results_file,repo_info=repo_info)
+
         elif self.is_pip_requirements_file(basefile):
             print(f"Found pip requirements file: {basefile}")
-            self.pypi_assess(filename,results_file=results_file,repo_info=repo_info)
+            results = self.pypi_assess(filename,results_file=results_file,
+                             repo_info=repo_info, dependency_authors=dependency_authors, print_table=print_table)
+
         else:
             print(f"Unknown or unsupported package manager file found {basefile}")
+
+        return results
 
 
     def get_values_array(self, input_dict, keys, default_value):
@@ -295,7 +320,10 @@ class KospexDependencies:
         # TODO - Handle 404 errors (most likely due to bad package name)
         deps_info = self.deps_dev(package_type,package_name,package_version)
 
-        pub_date = deps_info.get("publishedAt")
+        pub_date = None
+        if deps_info:
+            pub_date = deps_info.get("publishedAt")
+
         if pub_date:
             pub_date = dateutil.parser.isoparse(deps_info.get("publishedAt"))
             diff = today - pub_date
@@ -316,8 +344,6 @@ class KospexDependencies:
         details['package_version'] = package_version
 
         return details
-    
-    
 
     def npm_assess(self, filename, results_file=None, repo_info=None):
         """ Using deps.dev to assess and provide a summary of a 
@@ -373,12 +399,14 @@ class KospexDependencies:
         package['version_type'] = version_spec
         return package
 
-    def pypi_assess(self, filename,results_file=None,repo_info=None,store=False):
+    def pypi_assess(self, filename,results_file=None,repo_info=None,
+                    store=False, dependency_authors=None, print_table=False):
         """ Using deps.dev to assess and provide a summary of a 
             pip / PyPi requirements.txt compatible file """
 
         #today = datetime.datetime.now(datetime.timezone.utc)
         table = self.get_cli_pretty_table()
+
         records = []
         table_rows = []
 
@@ -429,11 +457,24 @@ class KospexDependencies:
                 #package = line.split('==')[0]
                 #version = line.split('==')[1].strip()
                 package = package_declaration['package_name']
-                version = package_declaration['package_version'] 
+                version = package_declaration['package_version']
                 row['package_name'] = package
                 row['package_version'] = version
 
                 record = self.depsdev_record("pypi",package,version)
+                record['authors'] = 0
+
+                if record["source_repo"] and dependency_authors:
+                    parts = self.git.extract_git_url_parts(record["source_repo"])
+                    if parts:
+                        repo_id = self.git.repo_id_from_url_parts(parts)
+                        # TODO - Possibly need to query # of authors 
+                        # before this version publish date
+                        authors = self.kospex_query.authors_by_repo(repo_id)
+                        if authors:
+                            record['authors'] = len(authors)
+                        
+
                 #record['semantic'] = details['semantic']
 
                 #info = self.deps_dev("pypi", package, version)
@@ -496,7 +537,10 @@ class KospexDependencies:
                             "package_type","package_name","package_version"])
             print("Stored results to DB (should have)")
 
-        print(table)
+        if print_table:
+            print(table)
+        
+        return records
 
     def nuget_assess(self, filename, results_file=None, repo_info=None, store=True):
         """ Assess a nuget .cproj file """
@@ -533,14 +577,14 @@ class KospexDependencies:
         """ Find all dependency files (package managers) in a directory and its subdirectories."""
         # Map of filename to its package manager
         package_files = {
-            'requirements.txt': 'PyPi',
+            'requirements.*\.txt': 'PyPi',
             'Pipfile': 'PyPi (Pipenv)',
             'Pipfile.lock': 'PyPi (Pipenv)',
             'setup.py': 'PyPi',
             'pyproject.toml': 'PyPi (Poetry/Flit/etc.)',
             'Gemfile': 'RubyGems',
             'Gemfile.lock': 'RubyGems',
-            'package.json': 'npm',
+            'package.*\.json': 'npm',
             'yarn.lock': 'Yarn',
             'composer.json': 'Composer',
             'composer.lock': 'Composer',
@@ -557,12 +601,24 @@ class KospexDependencies:
 
         detected_files = []
 
+        regex_patterns = [re.compile(pattern) for pattern in package_files.keys()]
+
         # Use os.walk() to recursively search through directory and its subdirectories
         for root, dirs, files in os.walk(directory):
+             # Exclude .git directory
+            if '.git' in dirs:
+                dirs.remove('.git')
+
             for filename in files:
-                if filename in package_files:
-                    # Append the full path to the file, and its type
-                    detected_files.append((os.path.join(root, filename), package_files[filename]))
+                for pattern in regex_patterns:
+                    if pattern.match(filename):
+                        # Add matching file path to the list
+                        detected_files.append(os.path.join(root, filename))
+                        break  # No need to match other patterns if one has matched
+                #if filename in package_files:
+                #    # Append the full path to the file, and its type
+                #    detected_files.append((os.path.join(root, filename), package_files[filename]))
+                        # Check each file against the pattern
 
         return detected_files
 
@@ -570,6 +626,7 @@ class KospexDependencies:
         """ Query deps.dev API for package details."""
 
         # Define the base URL for deps.dev API
+        
         base_url = f"https://deps.dev/_/s/{package_manager}/p/{package_name}/v/{version}"
 
         # Make a request to get package details
@@ -644,10 +701,6 @@ class KospexDependencies:
         versions_behind = 0
         found_default = False
 
-        # TODO - debug code, remove
-        #for release in sorted_list:
-        #    print(release)
-
         for release in sorted_list:
 
             if release["isDefault"]:
@@ -657,12 +710,6 @@ class KospexDependencies:
             if self.version_fuzzy_match(version, release['versionKey']['version']):
                 #print(f"Found version {version}")
                 break
-
-            #if release['versionKey']['version'] == version:
-            #    print(f"Found version {version}")
-            #    break
-
-            #print(release['versionKey']['version'])
 
             if not found_default:
                 keys_before_default += 1
@@ -675,3 +722,97 @@ class KospexDependencies:
         details['versions_behind'] = versions_behind
 
         return details
+
+    def gomod_assess(self, filename, results_file=None, repo_info=None):
+        """ Using deps.dev to assess and provide a summary of a 
+            go mod compatible file """
+
+        table = self.get_cli_pretty_table()
+        table_rows = []
+        if repo_info is None:
+            repo_info = {}
+
+        records = []
+
+        deps = self.parse_go_mod_from_file(filename)
+
+        for item in deps:
+            if item['indirect'] is False:
+                #details = self.get_depsdev_info('gomod', item['module'], item['version'])
+                #self.depsdev_record(repo_info, details)
+                record = self.depsdev_record("go",item['module'],item['version'])
+                print(record)
+                table_rows.append(self.get_values_array(record, self.get_table_field_names(), '-'))
+                records.append(record)
+                #print(item)
+
+        #for item in data['dependencies']:
+        #    details = self.get_npm_dependency_dict(item,data)
+        #    #print(details)
+        #    print(item)
+        #    table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
+
+
+        table.add_rows(table_rows)
+        print(table)
+
+        if results_file:
+            self.write_csv(results_file, table_rows, self.get_table_field_names())
+
+        return records
+
+
+    def parse_go_mod_from_file(self,file_path):
+        """ Parse the go.mod file and return the dependencies and their versions. """
+        # Initialize an array to store the results
+        results = []
+
+        try:
+            # Open the file and read the contents
+            with open(file_path, 'r') as file:
+                lines = file.readlines()
+
+                # Flag to check if we're inside a require block
+                in_require_block = False
+
+                for line in lines:
+                    # Trim leading and trailing whitespace
+                    trimmed_line = line.strip()
+
+                    # Check if we're entering a require block
+                    if trimmed_line == 'require (':
+                        in_require_block = True
+                        continue  # Move to the next line
+
+                    # Check if we're exiting a require block
+                    if trimmed_line == ')' and in_require_block:
+                        in_require_block = False
+                        continue  # Move to the next line
+
+                    # Parse the line if we're inside a require block
+                    if in_require_block:
+                        # Split the line into parts
+                        parts = trimmed_line.split()
+
+                        # Ensure the line has at least two parts: module and version
+                        if len(parts) >= 2:
+                            # Extract module and version
+                            module, version = parts[0], parts[1]
+
+                            # Check if the module is marked as indirect
+                            indirect = 'indirect' in parts
+
+                            # Append the information to the results array
+                            results.append({
+                                'module': module,
+                                'version': version,
+                                'indirect': indirect
+                            })
+        except FileNotFoundError:
+            print(f"File {file_path} not found.")
+        except Exception as e:
+            print(f"An error occurred while reading the file: {e}")
+
+        # Return the results array
+        return results
+
