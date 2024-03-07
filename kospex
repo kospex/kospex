@@ -186,7 +186,7 @@ def deps(repo, file, directory, out):
                 count += 1
             if 'authors' in record:
                 author_count += record['authors']
-        print(f"Total dependencies: {total} | Outdated(>2): {count}")
+
         if count and total:
             print(f"Total dependencies: {total} | Outdated(>2): {count}")
             print(f"Non Compliant: {count/total*100:.2f}%")

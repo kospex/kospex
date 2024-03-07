@@ -209,7 +209,7 @@ class KospexDependencies:
 
         if basefile == "go.mod":
             print(f"Found Go mod package file: {basefile}")
-            self.gomod_assess(filename,results_file=results_file,repo_info=repo_info)
+            results = self.gomod_assess(filename,results_file=results_file,repo_info=repo_info)
 
         elif self.is_npm_package(filename):
             print(f"Found npm package file: {basefile}")
