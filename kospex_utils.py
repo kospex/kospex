@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 
 KOSPEX_DB_FILENAME="kospex.db"
 
+KOSPEX_DEFAULT_ENV = """
+#KOSPEX_CODE=ENTER_YOUR_CODE_DIRECTORY
+"""
+
 def is_git(directory):
     """Simple directory check to see if it's a git repo"""
     git_path = f"{directory}/.git/"
@@ -23,6 +27,9 @@ def init():
     if kospex_home == user_kospex_home:
         if not os.path.exists(kospex_home):
             os.mkdir(kospex_home)
+            with open(f"{kospex_home}/kospex.env","w") as env_file:
+                env_file.write(KOSPEX_DEFAULT_ENV)
+    os.environ["KOSPEX_CONFIG"] = f"{kospex_home}/kospex.env"
     load_config(f"{kospex_home}/kospex.env")
 
     # Set a default kospex code directory
@@ -34,6 +41,10 @@ def init():
 
     if not os.path.isdir(os.getenv("KOSPEX_CODE")):
         print(f"WARNING: KOSPEX_CODE directory '{kospex_code} does not exist!")
+
+def get_kospex_config():
+    """ Get the kospex config """
+    return os.getenv("KOSPEX_CONFIG",os.path.expanduser("~/kospex/kospex.env"))
 
 def get_kospex_db_path():
     """ Get the kospex database """
@@ -221,6 +232,23 @@ def parse_git_rename_event(event_str):
 
     # Reassemble the path
 #    return ''.join(segments)
+
+def git_url_to_repo_id(git_url):
+    """ Convert a git URL to a unique repo ID"""
+    # Remove the .git extension
+    git_url = git_url.replace('.git', '')
+
+    
+
+    # Remove the protocol and username
+    git_url = re.sub(r'^https?://', '', git_url)
+    git_url = re.sub(r'^git@', '', git_url)
+    git_url = re.sub(r'[^/]+@', '', git_url)
+
+    # Remove the trailing slash
+    git_url = git_url.rstrip('/')
+
+    return git_url
 
 def get_last_commit_info(filename):
     """ Get the last commit info for a given file"""

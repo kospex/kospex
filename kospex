@@ -12,6 +12,7 @@ from kospex_git import KospexGit
 from kospex_query import KospexQuery, KospexData
 from kospex_dependencies import KospexDependencies
 
+KospexUtils.init()
 kospex = Kospex()
 log = logging.getLogger(__name__)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
@@ -26,6 +27,23 @@ def cli():
     For documentation on how commands run `kospex COMMAND --help`.
     
     """
+
+@cli.command("init")
+@click.option('--default', is_flag=True, default=False, help="Create the default ~/code directory.")
+def kospex_init(default):
+    """ Perform basic initial setup."""
+    kospex_code = os.path.expanduser("~/code")
+    if default:
+        if not os.path.exists(kospex_code):
+            os.makedirs(kospex_code)
+        else:
+            print("Directory already exists.")
+    else:
+        if os.path.exists(kospex_code):
+            print("~/code directory exists.")
+            kconf = KospexUtils.get_kospex_config()
+            print("If you want to overide the code directory")
+            print(f"edit the {kconf} file.")
 
 @cli.command("summary")
 @click.option('-out', type=click.STRING,help="filename to write CSV results to.")
@@ -150,9 +168,15 @@ def deps(repo, file, directory, out):
         # TODO: check if we really need both -repo and -directory
         results = kdeps.find_dependency_files(directory)
         if results:
-            for file_path, pkg_type in results:
-                print(f"File: {file_path} | Type: {pkg_type}")
-                print(KospexUtils.find_git_base(file_path))
+            #for file_path, pkg_type in results:
+            #    print(f"File: {file_path} | Type: {pkg_type}")
+            for file_path in results:
+                print(f"File: {file_path}")
+                print(KospexUtils.get_last_commit_info(file_path))
+                #print(KospexUtils.find_git_base(file_path))
+
+        else:
+            print("No package/dependency manager files found.")
     elif repo:
         os.chdir(repo)
         results = kdeps.find_dependency_files(".")
@@ -164,16 +188,14 @@ def deps(repo, file, directory, out):
 
     elif file:
         file_path = os.path.abspath(file)
-        print(f"Assessing {file_path}")
-
-        #kospex.set_repo_dir(KospexUtils.find_git_base(file))
-        #repo_info = kospex.git.add_git_to_dict({})
-        #repo_info['hash'] = kospex.git.get_current_hash()
-        #repo_info['file_path'] = file
-
         repo_info = kospex.file_repo_details(file)
+        repo_authors = 0
+        if repo_info:
+            results = kquery.authors_by_repo(repo_info['_repo_id'])
+            if results: 
+                repo_authors = len(results)
 
-        records = kdeps.assess(file_path, results_file=out, repo_info=repo_info, 
+        records = kdeps.assess(file_path, results_file=out, repo_info=repo_info,
                                print_table=True)
         total = len(records)
         count = 0
@@ -188,7 +210,10 @@ def deps(repo, file, directory, out):
             print(f"Total dependencies: {total} | Outdated(>2): {count}")
             print(f"Non Compliant: {count/total*100:.2f}%")
             print(f"Compliant: {(total-count)/total*100:.2f}%")
-            print(f"Authors: {author_count}")
+            print(f"# Dependency Authors: {author_count}")
+            if repo_authors:
+                print(f"# Repo Authors: {repo_authors}")
+            print(f"Dependency:Repo Author Ratio: {(repo_authors/author_count)*100:.5f}%")
         else:
             print("No dependencies found.")
 
@@ -296,6 +321,11 @@ def orgs():
     for o in orgs_list:
         table.add_row(KospexUtils.get_values_by_keys(o, table.field_names))
     print(table)
+
+@cli.command("test")
+def testy():
+    """List all the organizations in the database."""
+    print(kospex.git.extract_git_url_parts("https://go.googlesource.com/oauth2"))
 
 @cli.command("sync-dependencies")
 @click.option('-file', type=click.Path(exists=True))

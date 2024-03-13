@@ -44,6 +44,10 @@ class KospexGit:
         # Regular expression to match the pattern
         pattern = r'^(https?|git|ssh)\:\/\/(?:[\w.-]+@)?([\w.-]+)\/([\w.-]+)\/([\w.-]+)(?:\.git)?$'
         match = re.match(pattern, url)
+        # There are some Go libraries which use a different URL format from Google
+        # https://go.googlesource.com/oauth2
+        g_pattern = r"(?P<protocol>^\w+)://(?P<domain>[^\/?#]+)/(?P<directory>.*)"
+        google_match = re.match(g_pattern,url)
 
         if match:
             return {
@@ -51,6 +55,13 @@ class KospexGit:
                 "org": match.group(3),
                 "repo": match.group(4).removesuffix(".git"),
                 "remote_type": match.group(1)
+            }
+        elif google_match:
+            return {
+                "remote": google_match.group("domain"),
+                "org": "",
+                "repo": google_match.group("directory").removesuffix(".git"),
+                "remote_type": google_match.group("protocol")
             }
         else:
             return None
@@ -170,6 +181,7 @@ class KospexGit:
         os.chdir(repo_dir)
         parts = self.extract_git_url_parts(repo_url)
         remote_org_dir = None
+        print(parts)
         if parts:
             remote_org_dir = f"{parts['remote']}/{parts['org']}"
         else:
