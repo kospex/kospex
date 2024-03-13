@@ -665,7 +665,7 @@ class Kospex:
             # Check we've got scc installed
             installed = which('scc')
             if not installed:
-                sys.exit("scc is not installed. Please install scc")
+                sys.exit("scc is not installed. Please install scc from https://github.com/boyter/scc")
             # Let's grab the file metadata using 'scc'
             metadata = subprocess.run(["scc", "--by-file", "-f", "csv"],
                                       stdout=subprocess.PIPE,
