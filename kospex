@@ -5,6 +5,7 @@ import os.path
 import logging
 from datetime import datetime
 import click
+from shutil import which
 from prettytable import PrettyTable
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
@@ -34,6 +35,11 @@ def kospex_init(default):
     """ Perform basic initial setup."""
     kospex_code = os.path.expanduser("~/code")
     kconf = KospexUtils.get_kospex_config()
+    installed = which('scc')
+    if not installed:
+        print("Please install scc from https://github.com/boyter/scc")
+        print("This is used to count lines of code, complexity and determine the language.")
+
     if default:
         if not os.path.exists(kospex_code):
             os.makedirs(kospex_code)
@@ -57,10 +63,16 @@ def summary(out):
     kospex.summary(results_file=out)
 
 @cli.command("sync")
+@click.option('--no-scc', is_flag=True, default=False, help="Skip scc analysis.")
 @click.argument('repo', type=GitRepo())
 def sync(repo):
     """Sync a single repo to the kospex DB, using the native git commands."""
     params = locals()
+    installed = which('scc')
+    if not installed:
+        print("Please install scc from https://github.com/boyter/scc")
+        print("This is used to count lines of code, complexity and determine the language.")
+        print("or run sync with --no-scc to skip this step.")
     kospex.sync_repo(repo)
 
 #@cli.command("sync")
