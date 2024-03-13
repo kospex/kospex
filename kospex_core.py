@@ -534,10 +534,14 @@ class Kospex:
     def file_repo_details(self, file):
         """ return a hash of the kospex git details, including hash. """
 
-        self.set_repo_dir(KospexUtils.find_git_base(file))
-        repo_info = self.git.add_git_to_dict({})
-        repo_info['hash'] = self.git.get_current_hash()
-        repo_info['file_path'] = file
+        repo_base = KospexUtils.find_git_base(file)
+        repo_info = None
+        #self.set_repo_dir(KospexUtils.find_git_base(file))
+        if repo_base:
+            self.set_repo_dir(repo_base)
+            repo_info = self.git.add_git_to_dict({})
+            repo_info['hash'] = self.git.get_current_hash()
+            repo_info['file_path'] = file
 
         return repo_info
 

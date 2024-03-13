@@ -26,11 +26,6 @@ def cli():
     For documentation on how commands run `kospex COMMAND --help`.
     
     """
-#@cli.command("repo-summary")
-#@click.argument('repo', type=click.Path(exists=True))
-#def repo_summary(repo):
-#    """ Provide a summary of the repository. """
-#    kospex.repo_summary(repo)
 
 @cli.command("summary")
 @click.option('-out', type=click.STRING,help="filename to write CSV results to.")
@@ -43,7 +38,6 @@ def summary(out):
 def sync(repo):
     """Sync a single repo to the kospex DB, using the native git commands."""
     params = locals()
-    print(params)
     kospex.sync_repo(repo)
 
 #@cli.command("sync")
@@ -146,11 +140,12 @@ def hotspot(repo, repo_id, by_file):
 @click.option('-repo', type=GitRepo())
 @click.option('-file', type=click.Path(exists=True))
 @click.option('-directory', type=click.Path())
-@click.option('-out', type=click.STRING,help="filename to write CSV results to.")
+@click.option('-out', type=click.STRING, help="filename to write CSV results to.")
 def deps(repo, file, directory, out):
     """Find dependency files or assess a specific file."""
     kquery = KospexQuery()
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
+
     if directory:
         # TODO: check if we really need both -repo and -directory
         results = kdeps.find_dependency_files(directory)
@@ -166,8 +161,10 @@ def deps(repo, file, directory, out):
                 print(f"File: {file_path} | Type: {pkg_type}")
         else:
             print("No package/dependency manager files found.")
+
     elif file:
         file_path = os.path.abspath(file)
+        print(f"Assessing {file_path}")
 
         #kospex.set_repo_dir(KospexUtils.find_git_base(file))
         #repo_info = kospex.git.add_git_to_dict({})
@@ -177,7 +174,7 @@ def deps(repo, file, directory, out):
         repo_info = kospex.file_repo_details(file)
 
         records = kdeps.assess(file_path, results_file=out, repo_info=repo_info, 
-                               dependency_authors=True, print_table=True)
+                               print_table=True)
         total = len(records)
         count = 0
         author_count = 0
