@@ -65,7 +65,7 @@ def summary(out):
 @cli.command("sync")
 @click.option('--no-scc', is_flag=True, default=False, help="Skip scc analysis.")
 @click.argument('repo', type=GitRepo())
-def sync(repo):
+def sync(repo,no_scc):
     """Sync a single repo to the kospex DB, using the native git commands."""
     params = locals()
     installed = which('scc')
@@ -73,7 +73,7 @@ def sync(repo):
         print("Please install scc from https://github.com/boyter/scc")
         print("This is used to count lines of code, complexity and determine the language.")
         print("or run sync with --no-scc to skip this step.")
-    kospex.sync_repo(repo)
+    kospex.sync_repo(repo, **params)
 
 #@cli.command("sync")
 #@click.option('-previous', type=int, help='# Commits to sync from the oldest in kospex DB.')

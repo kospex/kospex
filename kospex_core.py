@@ -139,11 +139,12 @@ class Kospex:
         return latest_datetime
 
     #def sync_repo2(self, directory, **kwargs):
-    def sync_repo(self, directory, limit=None, from_date=None, to_date=None):
+    def sync_repo(self, directory, limit=None, from_date=None, to_date=None, no_scc=None):
         """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
         #def sync_commits(conn, git_dir, limit=None, from_date=None, to_date=None):
 
-        self.file_metadata(directory)
+        if not no_scc:
+            self.file_metadata(directory)
         self.set_repo_dir(directory)
         
         #git_remote = get_git_remote()
