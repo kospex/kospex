@@ -42,3 +42,19 @@ You can also use the _kgit_ command to clone and synx a repo (if you have access
 > kgit clone -sync -repo https://github.com/mergestat/mergestat-lite
 
 The above command will clone into the KOSPEX_CODE/GIT_SERVER/ORG/REPO structure
+
+## Git code layout for running analysis
+
+One option, if you're inspecting code on your own laptop is to use use your home directory. 
+
+~/kospex/ \
+We'll place config files and the kospex DB (Sqlite3) in here for sync'ed data \
+~/code/ \
+This should be your GIT_DATA_DIRECTORY with a structure like \
+GIT_SERVER/ORG/REPO \
+ \
+For example, in your ~/code it might look like: \
+github.com/kospex/kospex \
+github.com/mergestat/mergestat-lite
+
+This way we have a nice deterministic way of separating different orgs, potentially different instances (e.g. you have an on premise bitbucket and use GitHub.com) as well. 
