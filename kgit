@@ -49,7 +49,7 @@ def clone(repo, sync, filename):
 
     if repo:
         repo_path = kgit.clone_repo(repo)
-        if sync:
+        if sync and repo_path:
             print("Syncing repo: " + repo_path)
             kospex.sync_repo(repo_path)
 
@@ -58,10 +58,13 @@ def clone(repo, sync, filename):
             for line in file:
                 repo = line.strip()
                 if repo.startswith("#"):
-                    print("Skipping commented line: " + repo)
+                    print(f"\n\nSkipping commented line: {repo}\n\n")
                 else:
                     repo_path = kgit.clone_repo(repo)
-                    if sync:
+                    if not repo_path:
+                        print(f"\n\nERROR with {repo}\n\n")
+
+                    if sync and repo_path:
                         print("Syncing: " + repo)
                         kospex = Kospex()
                         kospex.sync_repo(repo_path)

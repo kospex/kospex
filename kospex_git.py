@@ -198,14 +198,21 @@ class KospexGit:
         org_dir = os.getcwd()
         repo_path = os.path.join(org_dir, parts['repo'])
         print("Current directory: " + os.getcwd())
+
+        status = 0
+
         if os.path.isdir(parts['repo']):
             print("Repo exists: " + parts['repo'])
             print("Trying pulling latest changes instead ...")
             os.chdir(parts['repo'])
-            os.system("git pull")
+            status = os.system("git pull")
         else:
             print("Cloning repo: " + repo_url)
-            os.system(f"git clone {repo_url}")
+            status = os.system(f"git clone {repo_url}")
+
+        if status != 0:
+            print("Error cloning or pulling repo: " + repo_url)
+            repo_path = None
 
         os.chdir(current_dir)
 
