@@ -8,6 +8,7 @@ import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 
 KospexUtils.init()
+kgit = KospexGit()
 
 @click.group()
 def cli():
@@ -36,42 +37,34 @@ def status(repo):
 
 @cli.command("clone")
 @click.option('-sync', is_flag=True)
-@click.argument('repo',  type=click.STRING)
-def clone(repo, sync):
+@click.option('-repo',  type=click.STRING)
+@click.option('-filename',  type=click.STRING)
+def clone(repo, sync, filename):
     """Clone the given repo into our KOSPEX_CODE directory."""
     # We're going to shell out to git to do the clone
+    kospex = Kospex()
 
-    repo_dir = os.getenv("KOSPEX_CODE")
-    if not os.path.isdir(repo_dir):
-        exit("KOSPEX_CODE directory not found: " + repo_dir)
+    if repo and filename:
+        exit("You can't specify both a repo and a filename. Please choose one.")
 
-    os.chdir(repo_dir)
-    parts = KospexGit().extract_git_url_parts(repo)
-    remote_org_dir = f"{parts['remote']}/{parts['org']}"
+    if repo:
+        repo_path = kgit.clone_repo(repo)
+        if sync:
+            print("Syncing repo: " + repo_path)
+            kospex.sync_repo(repo_path)
 
-    if not os.path.isdir(remote_org_dir):
-        print("Creating directory: " + remote_org_dir)
-        os.makedirs(remote_org_dir)
-    else:
-        print("Directory exists: " + remote_org_dir)
-
-    os.chdir(remote_org_dir)
-    org_dir = os.getcwd()
-    print("Current directory: " + os.getcwd())
-    if os.path.isdir(parts['repo']):
-        print("Repo exists: " + parts['repo'])
-        print("Trying pulling latest changes instead ...")
-        os.chdir(parts['repo'])
-        os.system("git pull")
-    else:
-        print("Cloning repo: " + repo)
-        os.system(f"git clone {repo}")
-
-    if sync:
-        os.chdir(org_dir)
-        print("Syncing repo: " + parts['repo'])
-        kospex = Kospex()
-        kospex.sync_repo(parts['repo'])
+    elif filename:
+        with open(filename, "r") as file:
+            for line in file:
+                repo = line.strip()
+                if repo.startswith("#"):
+                    print("Skipping commented line: " + repo)
+                else:
+                    repo_path = kgit.clone_repo(repo)
+                    if sync:
+                        print("Syncing: " + repo)
+                        kospex = Kospex()
+                        kospex.sync_repo(repo_path)
 
 
 if __name__ == '__main__':
