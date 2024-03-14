@@ -15,13 +15,22 @@ See section "Git code layout for running analysis" below. For simple "one off" a
 Ideally, a structure like \
 /BASE/GIT_SERVER/ORG/REPO
 
-### Step 1: Clone kospex and Build the docker image
+### Step 1: Clone kospex
 
-> ./build-image.sh
+> git clone https://github.com/kospex/kospex.git
 
-### Step 2 : Run the kospex shell
+### Step 2: Install the python dependencies (and scc)
 
-> shell-kospex.sh [GIT_DATA_DIRECTORY] [KOSPEX_DATA_DIR]
+**Optional but strongely recommended** - use a python virtual env. 
+
+> pip install -r requirements.txt
+
+Follow the instructions for installing [scc](https://github.com/boyter/scc)
+
+> export PATH=$PATH:$PWD
+
+Add this directory to your path, kospex toolkit is a collection on python executables.
+
 
 ### Step 3: sync some data and play with some commands
 
@@ -31,6 +40,11 @@ Ideally, a structure like \
 >
 > kospex tech-landscape -metadata
 
+You can also use the _kgit_ command to clone and synx a repo (if you have access)
+
+> kgit clone -sync -repo https://github.com/mergestat/mergestat-lite
+
+The above command will clone into the KOSPEX_CODE/GIT_SERVER/ORG/REPO structure
 
 ## Git code layout for running analysis
 
@@ -48,12 +62,6 @@ github.com/mergestat/mergestat-lite
 
 This way we have a nice deterministic way of separating different orgs, potentially different instances (e.g. you have an on premise bitbucket and use GitHub.com) as well. 
 
-using the command from Step 2, running the kospex shell should look like this 
-
-> shell-kospex.sh ~/code ~/kospex
-
-While this might seem a little odd, it means all our git creds and apps are outside the running docker container, and we just mount the local filesystem to do analysis.
-
 ## Key Use Cases and features
 
  - Identify technology landscape
@@ -61,17 +69,6 @@ While this might seem a little odd, it means all our git creds and apps are outs
  - Identify key person or offboarding risk
  - Identify potential complexity challenges (or conceptual integrity concerns)
  - Aggregate repo metadata into a single database for easier and faster querying
-
-## Inside the kospex shell
-
-All of your mounted code will be in the /repos direcory and that's where your shell will start. Proving you used a similar format for the GIT_DATA_DIRECTORY above, you should see everythign like: \
-/repos/GIT_SERVER/ORG/REPO \
-/repos/github.com/kospex/kospex \
-etc
-
-Useful tools installed:
-- MergeStat (https://github.com/mergestat/mergestat-lite) - for extracting Git data
-- SCC (https://github.com/boyter/scc/) - used for file metadata, Lines of Code etc
 
 ## Queries to try
 
@@ -118,7 +115,6 @@ List the tech stack in the given repo_id (sync'ed data in the kospex DB)
 - Build out automated functional and regressions testing (Currently manual)
 - Build the ability to identify key person or offboarding risk
 - Improve use case documentation 
-- Build a docker image and publish to dockerhub (save building one yourself)
 - Provide a mechanism to better map author_emails to users
 
 ## Data extractions and assumptions
