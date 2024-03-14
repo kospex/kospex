@@ -31,6 +31,8 @@ Follow the instructions for installing [scc](https://github.com/boyter/scc)
 
 Add this directory to your path, kospex toolkit is a collection on python executables.
 
+If you are ok to use the ~/code directory for cloned repos, then run: 
+> kospex init --default
 
 ### Step 3: sync some data and play with some commands
 
