@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """ This is the local development web server to view the Kospex database. """
+import sys
 from flask import Flask, render_template, request
 from kospex_query import KospexQuery
 import kospex_web as KospexWeb
+
 
 app = Flask(__name__)
 
@@ -21,6 +23,8 @@ def active_developers(repo_id):
     results = KospexQuery().active_devs_by_repo(repo_id)
     print(results)
     return render_template('developers.html',data=data, authors=results)
+
+
 
 @app.route('/developers/')
 def developers():
@@ -47,8 +51,11 @@ def developers():
             count += 1
             if count > 10:
                 break
+
         return render_template('developer_view.html', repos=repo_list,
-                               tech=techs, author_email=author_email, labels=labels,datapoints=datapoints)
+                               tech=techs, author_email=author_email,
+                               labels=labels, datapoints=datapoints)
+
     elif download:
         return KospexWeb.download_csv(devs)
     else:
@@ -94,6 +101,29 @@ def repos():
         row['active_devs'] = active_devs.get(row['_repo_id'],0)
 
     return render_template('repos.html',data=data, page=page, techs=techs)
+
+@app.route('/observations/')
+def observations():
+    """ display observation information. """
+    kquery = KospexQuery()
+    repo_id = request.args.get('repo_id')
+    observation_key = request.args.get('observation_key')
+
+    if observation_key:
+        # We should have an observation key and a repo_id for this to work
+        print("observation_key",observation_key)
+        return render_template('observations_repo_key.html',
+                               data=kquery.observations_summary(repo_id=repo_id,observation_key=observation_key),
+                               observation_key=observation_key,repo_id=repo_id)
+
+    elif repo_id:
+        print("repo_id",repo_id)
+
+        return render_template('observations_repo.html',
+                               data=kquery.observations_summary(repo_id=repo_id),
+                               repo_id=repo_id)
+    else:
+        return render_template('observations.html',data=kquery.observations_summary())
 
 @app.route('/orgs/')
 def orgs():
@@ -199,4 +229,13 @@ def page_not_found(e):
     return render_template('404.html'), 404
 
 if __name__ == "__main__":
-    app.run(debug=True)
+
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "-debug":
+            print("\n#\nRunning in DEBUG mode.\n#\n\n")
+            app.run(debug=True)
+        else:
+            exit("Unknown option, try -debug.")
+    else:
+        print("\n#\nRunning in NON debug mode.\n#\n\n")
+        app.run()
