@@ -5,9 +5,9 @@ It uses database structure from the excellent [Mergestat lite](https://github.co
 
 ## Getting started
 
-Follow our guide on [Intallation and setup](getting-started)
+Follow our guide on [Installation and setup](getting-started)
 
-Also check out the [list of commands](commands) that are part of the kospex toolkit
+Also check out the [list of commands](commands) that are part of the kospex toolkit.
 
 ## Key Use Cases and features
 
