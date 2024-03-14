@@ -3,6 +3,10 @@
 import os
 import os.path
 import subprocess
+import sys
+import shlex
+import json
+import glob
 import click
 from kospex_core import Kospex
 import kospex_utils as KospexUtils
@@ -27,7 +31,6 @@ def find_repos(directory):
     kospex.list_repos(directory)
 
 @cli.command("trufflehog")
-
 @click.argument('directory', type=click.Path(exists=True))
 def trufflehog(directory):
     """Run trufflehog on all git repositories found in the given directory."""
@@ -169,20 +172,114 @@ def semgrep(directory):
         #os.chdir(d)
         kospex.set_repo_dir(d)
         print(kospex.git.get_repo_id())
-        fname = kospex.generate_krunner_filename(function="SEMGREP",ext="txt")
+        #fname = kospex.generate_krunner_filename(function="SEMGREP",ext="txt")
+        fname = kospex.generate_krunner_filename(function="SEMGREP",ext="json")
         # we should output as json, but for inital test, we'll use txt
-        os.system(f"semgrep scan > {fname}")
+        #os.system(f"semgrep scan > {fname}")
+        os.system(f"semgrep scan --json -o {fname}")
         os.chdir(cwd)
 
+@cli.command("pretty-json")
+@click.argument('json_file', type=click.Path(exists=True))
+def pretty_json(json_file):
+    """ Pretty print a JSON file"""
+    with open(json_file, 'r') as file:
+        data = json.load(file)
+    pretty = json.dumps(data, indent=4)
+    print(pretty)
+
 @cli.command("test")
-@click.argument('directory', type=click.Path(exists=True))
-def test(directory):
+@click.argument('json_file', type=click.Path(exists=True))
+def test(json_file):
     """ Test coding"""
-    kospex.set_repo_dir(directory)
-    #print(kospex.get_krunner_directory())
-    #print(kospex.generate_krunner_filename(function="GITLEAKS",ext="json"))
-    #print("thing {thing}")
-    print(kospex.kospex_query.get_observations())
+    with open(json_file, 'r') as file:
+        data = json.load(file)
+    #for finding in data:
+    #    print(finding)
+    if data.get("results"):
+        print("Results found")
+        for r in data["results"]:
+            print()
+            print(json.dumps(r, indent=4))
+            print()
+            print(r['check_id'])
+            print(r['path'])
+            print(r['end']['line'])
+            print(r['start']['line'])
+
+@cli.command("semgrep-csv")
+def semgrep_csv():
+    """ print out sql injection findings from semgrep"""
+    user_kospex_home = os.path.expanduser("~/kospex")
+    print(user_kospex_home)
+    globber = f"{user_kospex_home}/krunner/*SEMGREP*.json"
+    print(globber)
+    results = glob.glob(globber)
+    csv_file = "semgrep-sql.csv"
+    findings = []
+    for r in results:
+        base = os.path.basename(r)
+        repo_id = base.split('.SEMGREP')[0]
+        repo = repo_id.split('~')[-1]
+        with open(r, 'r') as file:
+            data = json.load(file)
+        for finding in data['results']:
+            if "sql" in finding['check_id']:
+                #print(finding['check_id'])
+                x = {}
+                x['repo'] = repo
+                x['path'] = finding['path']
+                x['line'] = finding['start']['line']
+                x['check_id'] = finding['check_id']
+                #print(finding['path'] + ":" + str(finding['start']['line']) + ":" + finding['extra']['message'])
+                findings.append(x)
+    KospexUtils.list_dict_2_csv(findings, csv_file)
+
+@cli.command("find-urls")
+def find_urls():
+    """ find all urls in files in the current directory"""
+    # Define the URL pattern for grep
+    # This pattern is quite basic and might need adjustments to match specific URL formats
+    url_pattern = 'https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/[a-zA-Z0-9._/?&=-]*)?'
+
+    # Construct the grep command
+    # -r for recursive, -E for extended regular expressions,
+    # and -o to only output the matching part of the file
+    # -n for the line number
+    #grep_command = ['grep', '-rEon', url_pattern, "*"]
+
+    grep_command = f'grep -rEon {url_pattern}'
+    urls = None
+    try:
+        urls = subprocess.check_output(
+                shlex.split(grep_command),
+                encoding='utf-8'
+            )
+    except subprocess.CalledProcessError as e:
+        print(e.stderr)
+        print(f"Error executing grep: {e}", file=sys.stderr)
+        #print(e.output.decode(), file=sys.stderr)
+    #print(urls)
+    lines = urls.split("\n")
+    for l in lines:
+        parts = KrunnerUtils.extract_grep_parameters(l)
+        if parts:
+            l.strip()
+            filename, line_num, url = parts
+            print(filename + " " + line_num + " " + url)
+
+    # Execute the grep command
+    #os.system(grep_command)
+
+    #try:
+        # Execute the grep command
+    #    result = subprocess.run(grep_command, text=True, capture_output=True, check=True)
+        # Print the matching lines
+    #    print(result.stdout)
+    #except subprocess.CalledProcessError as e:
+    #    print(f"Error executing grep: {e}", file=sys.stderr)
+    #    #print(e.output.decode(), file=sys.stderr)
+
 
 if __name__ == '__main__':
     cli()

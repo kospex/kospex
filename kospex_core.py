@@ -807,4 +807,4 @@ class Kospex:
         krunner_path = self.get_krunner_directory()
         # TODO - do better path join method and validate no .. etc
         return os.path.join(krunner_path, self.git.get_repo_id() + "."  + function + "." + ext)
-    
+
