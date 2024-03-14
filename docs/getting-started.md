@@ -7,10 +7,15 @@ It works by analysing cloned repositories on the filesystem.
 
 See section "Git code layout for running analysis" below. For simple "one off" analysis just clone some repo's into a directory as a starting point. 
 
-Ideally, a structure like \
+Kospex will create a structure like \
 /BASE/GIT_SERVER/ORG/REPO
 
-### Step 1: Clone kospex
+Kospex uses KOSPEX_CODE as the BASE in the directory structure above. 
+
+This can be set as an environment variable or provided in the ~/kospex/kospex.env file. 
+
+
+### Step 1: Clone kospex and setup
 
 > git clone https://github.com/kospex/kospex.git
 
@@ -20,11 +25,12 @@ Ideally, a structure like \
 
 > pip install -r requirements.txt
 
-Follow the instructions for installing [scc](https://github.com/boyter/scc)
+Follow the instructions for installing [scc](https://github.com/boyter/scc). \
+Please note, you'll need version 3.2 of scc. 
 
 > export PATH=$PATH:$PWD
 
-Add this directory to your path, kospex toolkit is a collection on python executables.
+Add this directory to your path, as the kospex toolkit is a collection of python executables.
 
 If you are ok to use the ~/code directory for cloned repos, then run: 
 > kospex init --default
@@ -50,7 +56,7 @@ One option, if you're inspecting code on your own laptop is to use use your home
 ~/kospex/ \
 We'll place config files and the kospex DB (Sqlite3) in here for sync'ed data \
 ~/code/ \
-This should be your GIT_DATA_DIRECTORY with a structure like \
+This should have with a structure like \
 GIT_SERVER/ORG/REPO \
  \
 For example, in your ~/code it might look like: \

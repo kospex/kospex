@@ -3,6 +3,7 @@
 import time
 import os
 import click
+from prettytable import PrettyTable
 from kospex_core import GitRepo, Kospex
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -19,21 +20,27 @@ def cli():
     """
 
 @cli.command("status")
-#@click.option('-repo', type=GitRepo(), help="Git repository.")
-#@click.argument('repo', type=click.Path(exists=True))
 @click.argument('repo',  type=GitRepo())
 # pylint: disable=unused-argument
 def status(repo):
     """Date and commit metadata for the given repo."""
-    print(repo)
+    print(f"\nRepo status for path: {repo}")
     st = time.time()
-    stats = KospexUtils.get_git_stats(repo, 30)
-    for x in stats.keys():
-        print(x + " => ", end="")
-        print(stats[x])
+
+    stats = KospexUtils.get_git_stats(repo, 90)
+    table = PrettyTable()
+    table.field_names = ["Subject", "Value"]
+    table.align["Subject"] = "l"
+    table.align["Value"] = "r"
+    for subject, details in stats.items():
+        table.add_row([subject, details])
+    print(table)
+    print("Notes:")
+    print("\tdirectory sizes are in KB.")
+    print("\tunique authors are the number of unique authors in the last 90 days.")
     et = time.time()
     elapsed_time = et - st
-    print('Execution time:', elapsed_time, 'seconds')
+    print('\nExecution time:', elapsed_time, 'seconds', "\n")
 
 @cli.command("clone")
 @click.option('-sync', is_flag=True)

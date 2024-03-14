@@ -704,27 +704,6 @@ class KospexQuery:
             kd.where("committer_when", ">", from_date)
 
         return kd.execute()
-    
-    def commit_stats(self, days=None, repo_id=None):
-        """ Return stats about commits. """
-        kd = KospexData(kospex_db=self.kospex_db)
-        kd.from_table(KospexSchema.TBL_COMMITS)
-        kd.select_as("DISTINCT(author_email)", "author")
-        kd.select_as("MIN(author_when)",'first_commit')
-        kd.select_as("MAX(author_when)", 'last_commit')
-        kd.select_as("COUNT(*)", "commits")
-        kd.group_by("author")
-        kd.order_by("commits", "DESC")
-
-        if repo_id:
-            kd.where("_repo_id", "=", repo_id)
-
-        if days:
-            from_date = KospexUtils.days_ago_iso_date(days)
-            kd.where("committer_when", ">", from_date)
-
-        return kd.execute()
-
 
 
 class KospexData:
