@@ -41,7 +41,7 @@ class KospexGit:
         Returns:
         dict: A dictionary containing the remote, org, repo, and remote_type.
         """
-        # Regular expression to match the pattern
+        # Regular expression to match the default pattern
         pattern = r'^(https?|git|ssh)\:\/\/(?:[\w.-]+@)?([\w.-]+)\/([\w.-]+)\/([\w.-]+)(?:\.git)?$'
         match = re.match(pattern, url)
         # There are some Go libraries which use a different URL format from Google
@@ -49,7 +49,30 @@ class KospexGit:
         g_pattern = r"(?P<protocol>^\w+)://(?P<domain>[^\/?#]+)/(?P<directory>.*)"
         google_match = re.match(g_pattern,url)
 
-        if match:
+        #gitlab_pattern = r"(?P<protocol>^https?://)" \
+        gitlab_pattern = r"(?P<protocol>^\w+)://" \
+          r"(?P<hostname>[^/]+)" \
+          r"(?P<directories>(?:/[^/]+)*?)/" \
+          r"(?P<last_part>[^/]+)$"
+
+        gitlab_match = re.match(gitlab_pattern, url)
+
+        slashes_count = url.count("/")
+        # Looks like github URLS have 4 slashes,
+        # gitlab URLs have more than 4 slashes (more like 5 or 6 for subprojects),
+        # Google/Go URLs have 3 slashes
+        # TODO - check SSH URLs
+
+        if slashes_count > 4 and gitlab_match:
+            print("gitlab URL")
+            return {
+                "remote": gitlab_match.group("hostname"),
+                "org": gitlab_match.group("directories").removeprefix("/"),
+                "repo": gitlab_match.group("last_part").removesuffix(".git"),
+                "remote_type": gitlab_match.group("protocol")
+            }
+        elif match:
+            print("default match")
             return {
                 "remote": match.group(2),
                 "org": match.group(3),
@@ -57,6 +80,7 @@ class KospexGit:
                 "remote_type": match.group(1)
             }
         elif google_match:
+            print("google match")
             return {
                 "remote": google_match.group("domain"),
                 "org": "",
