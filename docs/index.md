@@ -7,6 +7,8 @@ It uses database structure from the excellent [Mergestat lite](https://github.co
 
 Follow our guide on [Intallation and setup](getting-started)
 
+Also check out the [list of commands](commands) that are part of the kospex toolkit
+
 ## Key Use Cases and features
 
  - Identify technology landscape
