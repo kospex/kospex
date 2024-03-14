@@ -191,7 +191,7 @@ class KospexDependencies:
         pattern = re.compile(r'^requirements(-\w+)?\.txt$', re.IGNORECASE)
         return bool(pattern.match(filename))
 
-    def assess(self, filename, results_file=None, repo_info=None, dependency_authors=None, print_table=False):
+    def assess(self, filename, results_file=None, repo_info=None, print_table=False):
         """ Using deps.dev to assess and provide a summary of the package manager file.
         Args:
         filename (str): The filename to assess."""
@@ -213,7 +213,7 @@ class KospexDependencies:
 
         elif self.is_npm_package(filename):
             print(f"Found npm package file: {basefile}")
-            self.npm_assess(filename,results_file=results_file,
+            results = self.npm_assess(filename,results_file=results_file,
                             repo_info=repo_info)
 
         elif self.is_nuget_package(filename):
@@ -223,7 +223,7 @@ class KospexDependencies:
         elif self.is_pip_requirements_file(basefile):
             print(f"Found pip requirements file: {basefile}")
             results = self.pypi_assess(filename,results_file=results_file,
-                             repo_info=repo_info, dependency_authors=dependency_authors, print_table=print_table)
+                             repo_info=repo_info, print_table=print_table)
 
         else:
             print(f"Unknown or unsupported package manager file found {basefile}")
@@ -342,6 +342,7 @@ class KospexDependencies:
         # TODO - this is a hacky way of duplicating the keys needed
         details['package_name'] = package_name
         details['package_version'] = package_version
+        details['authors'] = self.get_repo_authors(details['source_repo'])
 
         return details
 
@@ -351,7 +352,7 @@ class KospexDependencies:
 
         #today = datetime.datetime.now(datetime.timezone.utc)
         table = self.get_cli_pretty_table()
-        #records = []
+        results = []
         table_rows = []
         if repo_info is None:
             repo_info = {}
@@ -365,17 +366,20 @@ class KospexDependencies:
         for item in data['dependencies']:
             details = self.get_npm_dependency_dict(item,data)
             #print(details)
+            results.append(details)
             print(item)
             table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
 
         for item in data['devDependencies']:
-            print(f"Checking dev {item} version {data['devDependencies'][item]}")
+            print(f"Skipping check for dev {item} version {data['devDependencies'][item]}")
 
         table.add_rows(table_rows)
         print(table)
 
         if results_file:
             self.write_csv(results_file, table_rows, self.get_table_field_names())
+
+        return results
 
     def parse_pypi_package_declaration(self, package_declaration):
         """ Parse a PyPi package declaration into a dictionary """
@@ -462,55 +466,18 @@ class KospexDependencies:
                 row['package_version'] = version
 
                 record = self.depsdev_record("pypi",package,version)
-                record['authors'] = 0
+                #record['authors'] = 0
 
-                if record["source_repo"] and dependency_authors:
-                    parts = self.git.extract_git_url_parts(record["source_repo"])
-                    if parts:
-                        repo_id = self.git.repo_id_from_url_parts(parts)
+                #if record["source_repo"] and dependency_authors:
+                #    parts = self.git.extract_git_url_parts(record["source_repo"])
+                #    if parts:
+                #        repo_id = self.git.repo_id_from_url_parts(parts)
                         # TODO - Possibly need to query # of authors 
                         # before this version publish date
-                        authors = self.kospex_query.authors_by_repo(repo_id)
-                        if authors:
-                            record['authors'] = len(authors)
-                        
-
-                #record['semantic'] = details['semantic']
-
-                #info = self.deps_dev("pypi", package, version)
-                #print(f"{package} : {version}")
-                #if info is None:
-                #    print(f"Could not find {package} in deps.dev")
-                #    continue
-                #pub_date = info.get("publishedAt")
-                #if pub_date:
-                #    pub_date = dateutil.parser.isoparse(info.get("publishedAt"))
-                #    diff = today - pub_date
-                #    row['days_ago'] = diff.days
-                #else:
-                #    row['days_ago'] = "Unknown"
-                #row['published_at'] = pub_date
-
-                #source_repo = ""
-                #if info.get("links") is not None:
-                #    for link in info.get("links"):
-                #        if link.get("label") == "SOURCE_REPO":
-                #            source_repo = link.get("url")
-
-                #row['source_repo'] = source_repo
-
-                #advisories = info.get("advisoryKeys")
-                #if advisories:
-                #    row['advisories'] = len(advisories)
-                #else:
-                #    row['advisories'] = 0
-
-                #row['default'] = info.get("isDefault")
-
-                #days_info = self.get_versions_behind("PyPi",package,version)
-                #row['versions_behind'] = days_info.get("versions_behind","Unknown")
-
-                #table_rows.append(self.get_values_array(row, self.get_table_field_names(), '-'))
+                #        authors = self.kospex_query.authors_by_repo(repo_id)
+                #        if authors:
+                #            record['authors'] = len(authors)
+                #record['authors'] = self.get_repo_authors(record["source_repo"])
                 table_rows.append(self.get_values_array(record, self.get_table_field_names(), '-'))
 
                 #records.append(row)
@@ -531,7 +498,7 @@ class KospexDependencies:
             # TODO - see if there is better way of excluding this key
             for r in records:
                 r.pop("days_ago",None)
-            
+
             self.kospex_db.table(KospexSchema.TBL_DEPENDENCY_DATA).upsert_all(
                 records,pk=['_repo_id', 'hash', "file_path",
                             "package_type","package_name","package_version"])
@@ -539,8 +506,23 @@ class KospexDependencies:
 
         if print_table:
             print(table)
-        
+
         return records
+
+    def get_repo_authors(self, repo_url):
+        """ Return the number of unique authors for a given repo that's been sync'ed """
+        authors = 0
+        # by default, we'll return None authors if we can't find any
+        parts = self.git.extract_git_url_parts(repo_url)
+        if parts:
+            repo_id = self.git.repo_id_from_url_parts(parts)
+            # TODO - Possibly need to query # of authors
+            # before this version publish date
+            author_list = self.kospex_query.authors_by_repo(repo_id)
+            if author_list:
+                authors = len(author_list)
+
+        return authors
 
     def nuget_assess(self, filename, results_file=None, repo_info=None, store=True):
         """ Assess a nuget .cproj file """
