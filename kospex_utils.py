@@ -238,8 +238,6 @@ def git_url_to_repo_id(git_url):
     # Remove the .git extension
     git_url = git_url.replace('.git', '')
 
-    
-
     # Remove the protocol and username
     git_url = re.sub(r'^https?://', '', git_url)
     git_url = re.sub(r'^git@', '', git_url)
@@ -250,32 +248,74 @@ def git_url_to_repo_id(git_url):
 
     return git_url
 
-def get_last_commit_info(filename):
-    """ Get the last commit info for a given file"""
+def get_last_commit_info(filename,remote=None):
+    """ Get the last commit info for a given file."""
+
+    # TODO: check if remote = false, and then
+    # We won't run the git remote data
+
+    original_dir = os.getcwd()
+    abs_path = os.path.abspath(filename)
+    basefile = os.path.basename(abs_path)
+    file_dir = os.path.dirname(abs_path)
+
+    # TODO: Check if the file is in a git repo
+
     try:
         # Get the last commit for the file
+        os.chdir(file_dir)
         commit_info = subprocess.check_output(
-            shlex.split(f"git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict -- {filename}"),
+            shlex.split(f"git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict -- {basefile}"),
             encoding='utf-8'
         )
 
         # Split the output to get commit hash, author date, and committer date
         commit_hash, author_date, committer_date = commit_info.strip().split('|', 2)
 
+        remote = get_git_remote_url(file_dir)
+        if remote:
+            remote = remote.rstrip('.git') # remove the .git extension if present
+
         return {
-            'commit_hash': commit_hash,
+            'filename': filename,
             'author_date': author_date,
             'committer_date': committer_date,
             'days_ago': days_ago(author_date),
-            'status': development_status(days_ago(author_date))
+            'status': development_status(days_ago(author_date)),
+            'commit_hash': commit_hash,
+            'repo': remote
         }
 
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e}")
-        return None
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-        return None
+    finally:
+        os.chdir(original_dir)
+
+    return None
+
+def get_dependency_files_table(list_of_commit_info):
+    """ Take a list of commit info requests and return a Pretty Table """
+
+    table = PrettyTable()
+    table.field_names = ["Filename", "Author Date", "Committer Date", 
+                         "Days Ago", "Status", "Commit Hash", "Repo"]
+    table.align["Filename"] = "l"
+    table.align["Repo"] = "l"
+
+    for commit_info in list_of_commit_info:
+        table.add_row([
+            commit_info['filename'],
+            commit_info['author_date'],
+            commit_info['committer_date'],
+            commit_info['days_ago'],
+            commit_info['status'],
+            commit_info['commit_hash'],
+            commit_info['repo']
+        ])
+
+    return table
 
 def count_key_occurrences(array_of_dicts, key):
     """ Count the number of occurrences of a key in an array of dictionaries"""

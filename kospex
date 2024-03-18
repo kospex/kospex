@@ -4,13 +4,13 @@ import os
 import os.path
 import logging
 from datetime import datetime
-import click
 from shutil import which
+import click
 from prettytable import PrettyTable
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
-from kospex_query import KospexQuery, KospexData
+from kospex_query import KospexQuery
 from kospex_dependencies import KospexDependencies
 
 KospexUtils.init()
@@ -165,6 +165,7 @@ def sync_metadata(repo,directory):
 def hotspot(repo, repo_id, by_file):
     """Find hotspots in the given repo."""
     params = locals()
+    print("WARNING: EXPERIMENTAL")
     if repo or repo_id:
         kospex.hotspot(**params)
     else:
@@ -173,7 +174,7 @@ def hotspot(repo, repo_id, by_file):
 @cli.command("deps")
 @click.option('-repo', type=GitRepo())
 @click.option('-file', type=click.Path(exists=True))
-@click.option('-directory', type=click.Path())
+@click.option('-directory', type=click.Path(), help="Directory to search for dependency files.")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")
 def deps(repo, file, directory, out):
     """Find dependency files or assess a specific file."""
@@ -181,18 +182,29 @@ def deps(repo, file, directory, out):
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
 
     if directory:
-        # TODO: check if we really need both -repo and -directory
         results = kdeps.find_dependency_files(directory)
+        records = []
         if results:
             #for file_path, pkg_type in results:
             #    print(f"File: {file_path} | Type: {pkg_type}")
+
             for file_path in results:
-                print(f"File: {file_path}")
-                print(KospexUtils.get_last_commit_info(file_path))
+                commit_info = KospexUtils.get_last_commit_info(file_path)
+                if commit_info:
+                    records.append(commit_info)
+                #print(KospexUtils.get_last_commit_info(file_path))
                 #print(KospexUtils.find_git_base(file_path))
+
+            if records:
+                table = KospexUtils.get_dependency_files_table(records)
+                print(table)
+
+            if out:
+                KospexUtils.list_dict_2_csv(records,out)
 
         else:
             print("No package/dependency manager files found.")
+
     elif repo:
         os.chdir(repo)
         results = kdeps.find_dependency_files(".")
@@ -208,7 +220,7 @@ def deps(repo, file, directory, out):
         repo_authors = 0
         if repo_info:
             results = kquery.authors_by_repo(repo_info['_repo_id'])
-            if results: 
+            if results:
                 repo_authors = len(results)
 
         records = kdeps.assess(file_path, results_file=out, repo_info=repo_info,
@@ -246,23 +258,7 @@ def author_tech(author_email,repo_id):
     print(kwargs)
     results = kospex.kospex_query.author_tech(**kwargs)
     table = kospex.author_tech_pretty_table(results)
-    #for result in results:
-    #    print(result)
     print(table)
-
-@cli.command("test")
-def test():
-    """Test command."""
-    log.warning("Test command not implemented yet.")
-    kquery = KospexQuery()
-    kdata = KospexData(kospex_db=kospex.kospex_db)
-    orgs = kquery.orgs()
-    #for o in orgs:
-    #    print(o)
-    #print(len(orgs))
-
-    parts = kdata.extract_select_function_parts("COUNT(DISTINCT(c._repo_id))")
-    print(parts)
 
 @cli.command("key-person")
 @click.option('-top', type=int, default=4, help='The number of top authors to assess.')
@@ -316,17 +312,17 @@ def key_person(directory,top):
     print()
 
 # TODO - move this to deps, this is redundant but it's -directory will be broken now
-@cli.command("find-dependencies")
-@click.argument('directory',  type=click.Path())
-def find_deps(directory):
-    """ Find all the known dependency management files in a directory."""
-    print(f"Finding dependency management files in the directory: {directory}")
-    kdeps = KospexDependencies()
-    results = kdeps.find_dependency_files(directory)
+#@cli.command("find-dependencies")
+#@click.argument('directory',  type=click.Path())
+#def find_deps(directory):
+#    """ Find all the known dependency management files in a directory."""
+#    print(f"Finding dependency management files in the directory: {directory}")
+#    kdeps = KospexDependencies()
+#    results = kdeps.find_dependency_files(directory)
     #for file_path, pkg_type in results:
     #    print(f"File: {file_path} | Type: {pkg_type}")
-    for file in results:
-        print(file)
+#    for file in results:
+#        print(file)
 
 @cli.command("orgs")
 def orgs():
