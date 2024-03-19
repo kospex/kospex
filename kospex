@@ -182,25 +182,28 @@ def deps(repo, file, directory, out):
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
 
     if directory:
+        
         results = kdeps.find_dependency_files(directory)
         records = []
-        if results:
-            #for file_path, pkg_type in results:
-            #    print(f"File: {file_path} | Type: {pkg_type}")
 
+        if results:
+        
             for file_path in results:
                 commit_info = KospexUtils.get_last_commit_info(file_path)
                 if commit_info:
                     records.append(commit_info)
-                #print(KospexUtils.get_last_commit_info(file_path))
-                #print(KospexUtils.find_git_base(file_path))
-
+        
             if records:
                 table = KospexUtils.get_dependency_files_table(records)
                 print(table)
 
             if out:
                 KospexUtils.list_dict_2_csv(records,out)
+
+            stats = KospexUtils.repo_stats(records,"author_date")
+            print("\nSummary of dependency files found in the directory:")
+            print(stats)
+            print()
 
         else:
             print("No package/dependency manager files found.")

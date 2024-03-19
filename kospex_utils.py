@@ -183,6 +183,10 @@ def development_status(days, active_limit=90, aging_limit=180, stale_limit=365):
     else:
         return "Unmaintained"
 
+def get_development_status_options():
+    """Get the development status options"""
+    return ["Active", "Aging", "Stale", "Unmaintained"]
+
 def extract_git_rename_paths(s):
     """ Extract all the 'path => path' git rename occurrences from the input string"""
     # Regular expression pattern to match multiple 'path => path' occurrences
@@ -268,7 +272,6 @@ def get_last_commit_info(filename,remote=None):
             shlex.split(f"git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict -- {basefile}"),
             encoding='utf-8'
         )
-
         # Split the output to get commit hash, author date, and committer date
         commit_hash, author_date, committer_date = commit_info.strip().split('|', 2)
 
@@ -289,20 +292,37 @@ def get_last_commit_info(filename,remote=None):
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e}")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"An unexpected error occurred: {e} for {filename}, potentially not managed by git")
     finally:
         os.chdir(original_dir)
 
     return None
 
+def repo_stats(records, fieldname):
+    """ Get the stats for a given field in a list of records"""
+    # Get the list of values for the given field
+    stats = {}
+    for status in get_development_status_options():
+        stats[status] = 0
+
+    for item in records:
+        last_seen = days_ago(item[fieldname])
+        status = development_status(last_seen)
+        stats[status] += 1
+
+    return stats
+
+
 def get_dependency_files_table(list_of_commit_info):
     """ Take a list of commit info requests and return a Pretty Table """
 
     table = PrettyTable()
-    table.field_names = ["Filename", "Author Date", "Committer Date", 
+    table.field_names = ["Filename", "Author Date", "Committer Date",
                          "Days Ago", "Status", "Commit Hash", "Repo"]
     table.align["Filename"] = "l"
     table.align["Repo"] = "l"
+    table.align["Status"] = "l"
+    table.align["Days Ago"] = "r"
 
     for commit_info in list_of_commit_info:
         table.add_row([
