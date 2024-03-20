@@ -559,7 +559,7 @@ class KospexDependencies:
         """ Find all dependency files (package managers) in a directory and its subdirectories."""
         # Map of filename to its package manager
         package_files = {
-            'requirements.*\.txt': 'PyPi',
+            'requirements.*\.txt$': 'PyPi',
             'Pipfile': 'PyPi (Pipenv)',
             'Pipfile.lock': 'PyPi (Pipenv)',
             'setup.py': 'PyPi',
@@ -575,7 +575,7 @@ class KospexDependencies:
             'build.gradle.kts': 'Gradle',
             'Cargo.toml': 'Cargo (Rust)',
             'Cargo.lock': 'Cargo (Rust)',
-            'go.mod': 'Go Modules',
+            'go.mod$': 'Go Modules',
             'go.sum': 'Go Modules',
             'Podfile': 'CocoaPods',
             'Podfile.lock': 'CocoaPods',
