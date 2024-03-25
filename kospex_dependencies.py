@@ -387,10 +387,21 @@ class KospexDependencies:
         """ Parse a PyPi package declaration into a dictionary """
         # TODO - need to double check the version specifiers as described in:
         # https://packaging.python.org/en/latest/specifications/version-specifiers/
-        # They are claiming a lot o
+        # They are claiming a lot of different ways to specify versions
         package = {}
         version_spec = None
-        if '>=' in package_declaration:
+        single_specifier = True
+
+        match = re.match(r'([a-zA-Z0-9_-]+)(.+)', package_declaration)
+
+        if match:
+            package['package_name'] = match.group(1)
+            package['package_version'] = match.group(2)
+
+        if ',' in package_declaration:
+            single_specifier = False
+            package['version_type'] = 'multiple'
+        elif '>=' in package_declaration:
             version_spec = '>='
         elif '~=' in package_declaration:
             version_spec = '~='
@@ -400,10 +411,14 @@ class KospexDependencies:
             print(f"Unknown version type in {package_declaration}")
             return None
 
-        package['package_name'] = package_declaration.split(version_spec)[0]
-        package['package_version'] = package_declaration.split(version_spec)[1]
-        package['version_type'] = version_spec
+        if single_specifier:
+            package['package_name'] = package_declaration.split(version_spec)[0]
+            package['package_version'] = package_declaration.split(version_spec)[1]
+            package['version_type'] = version_spec
+
         return package
+
+
 
     def pypi_assess(self, filename,results_file=None,repo_info=None,
                     store=False, dependency_authors=None, print_table=False):
@@ -467,8 +482,15 @@ class KospexDependencies:
                 row['package_name'] = package
                 row['package_version'] = version
 
-                print(f"Checking {package} version |{version}|")
-                record = self.depsdev_record("pypi",package,version)
+                record = {}
+                #print(f"Checking {package} version |{version}|")
+                # Check for multiple versions specifiers, we can't handle that
+                if package_declaration.get('version_type') == 'multiple':
+                    print(f"Skipping multiple version specifiers in {line.strip()}")
+                    record['package_name'] = package_declaration['package_name']
+                    #continue
+                else:
+                    record = self.depsdev_record("pypi",package,version)
 
                 #record['authors'] = 0
 
@@ -612,7 +634,7 @@ class KospexDependencies:
         """ Query deps.dev API for package details."""
 
         # Define the base URL for deps.dev API
-        
+
         base_url = f"https://deps.dev/_/s/{package_manager}/p/{package_name}/v/{version}"
 
         # Make a request to get package details
