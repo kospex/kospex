@@ -7,6 +7,11 @@ from kospex_git import KospexGit, MissingGitDirectory
 import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
 
+#
+# WARNING note: This code works, but is no longer used in kospex
+# It is kept here for reference and possible future use
+#
+
 class KospexMergeStat:
     """ Utility class for MergeStat """
     def __init__(self, repo_directory=None):
