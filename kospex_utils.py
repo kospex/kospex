@@ -276,8 +276,8 @@ def get_last_commit_info(filename,remote=None):
         commit_hash, author_date, committer_date = commit_info.strip().split('|', 2)
 
         remote = get_git_remote_url(file_dir)
-        #if remote:
-        #    remote = remote.rstrip('/.git') # remove the .git extension if present
+        if remote:
+            remote = remote.rstrip('\.git') # remove the .git extension if present
 
         return {
             'filename': filename,

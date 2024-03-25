@@ -187,12 +187,12 @@ def deps(repo, file, directory, out):
         records = []
 
         if results:
-        
+
             for file_path in results:
                 commit_info = KospexUtils.get_last_commit_info(file_path)
                 if commit_info:
                     records.append(commit_info)
-        
+
             if records:
                 table = KospexUtils.get_dependency_files_table(records)
                 print(table)
@@ -234,19 +234,22 @@ def deps(repo, file, directory, out):
         for record in records:
             if 'versions_behind' in record and record['versions_behind'] > 2:
                 count += 1
-            if 'authors' in record:
+            if 'authors' in record and record['authors']:
                 author_count += record['authors']
 
         if count and total:
             print(f"Total dependencies: {total} | Outdated(>2): {count}")
             print(f"Non Compliant: {count/total*100:.2f}%")
             print(f"Compliant: {(total-count)/total*100:.2f}%")
+            print()
             print(f"# Dependency Authors: {author_count}")
             if repo_authors:
                 print(f"# Repo Authors: {repo_authors}")
             print(f"Dependency:Repo Author Ratio: {(repo_authors/author_count)*100:.5f}%")
         else:
             print("No dependencies found.")
+
+        print()
 
     else:
         print("Please specify either a '-repo', '-directory' or a '-file'.")

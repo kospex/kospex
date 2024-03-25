@@ -64,7 +64,6 @@ class KospexGit:
         # TODO - check SSH URLs
 
         if slashes_count > 4 and gitlab_match:
-            print("gitlab URL")
             return {
                 "remote": gitlab_match.group("hostname"),
                 "org": gitlab_match.group("directories").removeprefix("/"),
@@ -72,7 +71,6 @@ class KospexGit:
                 "remote_type": gitlab_match.group("protocol")
             }
         elif match:
-            print("default match")
             return {
                 "remote": match.group(2),
                 "org": match.group(3),
@@ -80,7 +78,6 @@ class KospexGit:
                 "remote_type": match.group(1)
             }
         elif google_match:
-            print("google match")
             return {
                 "remote": google_match.group("domain"),
                 "org": "",

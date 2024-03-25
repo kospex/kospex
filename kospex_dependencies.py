@@ -342,7 +342,9 @@ class KospexDependencies:
         # TODO - this is a hacky way of duplicating the keys needed
         details['package_name'] = package_name
         details['package_version'] = package_version
-        details['authors'] = self.get_repo_authors(details['source_repo'])
+        details['authors'] = None
+        if details['source_repo']:
+            details['authors'] = self.get_repo_authors(details['source_repo'])
 
         return details
 
@@ -465,7 +467,9 @@ class KospexDependencies:
                 row['package_name'] = package
                 row['package_version'] = version
 
+                print(f"Checking {package} version |{version}|")
                 record = self.depsdev_record("pypi",package,version)
+
                 #record['authors'] = 0
 
                 #if record["source_repo"] and dependency_authors:
