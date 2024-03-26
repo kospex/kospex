@@ -418,8 +418,6 @@ class KospexDependencies:
 
         return package
 
-
-
     def pypi_assess(self, filename,results_file=None,repo_info=None,
                     store=False, dependency_authors=None, print_table=False):
         """ Using deps.dev to assess and provide a summary of a 

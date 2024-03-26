@@ -277,7 +277,8 @@ def get_last_commit_info(filename,remote=None):
 
         remote = get_git_remote_url(file_dir)
         if remote:
-            remote = remote.rstrip('\.git') # remove the .git extension if present
+            # remove the .git extension if present
+            remote = remote.removesuffix('.git')
 
         return {
             'filename': filename,
@@ -292,7 +293,7 @@ def get_last_commit_info(filename,remote=None):
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e}")
     except Exception as e:
-        print(f"An unexpected error occurred: {e} for {filename}, potentially not managed by git")
+        print(f"An unexpected error occurred: {e} for {filename}, potentially not managed by git.")
     finally:
         os.chdir(original_dir)
 

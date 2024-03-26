@@ -365,8 +365,9 @@ class Kospex:
 
         return table
 
-    def summary(self, results_file=None):
+    def summary(self, results_file=None, **kwargs):
         """ Display some basic stats what has been sync'ed from repos to the kospex db."""
+
         print("\nKospex Summary\nChecking status ...\n")
         print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
         print("# Authors:\t" + self.get_one("SELECT COUNT(DISTINCT(author_email)) FROM commits"))
@@ -408,21 +409,16 @@ class Kospex:
                 GROUP BY 1'''
 
         for row in self.kospex_db.query(sql):
+
             all_devs = self.kospex_query.authors_by_repo(row["repo"])
             set_devs = set(all_devs)
+
             row["status"] = KospexUtils.development_status(row["last_commit"])
             row["active"] = repo_active_devs.get(row["repo"], 0)
             row["present"] = len(set_devs.intersection(active_devs))
             row['active_days'] = round(row["first_commit"] - row["last_commit"])
 
             table.add_row(KospexUtils.get_values_by_keys(row, headers))
-
-            #table.add_row([row["repo"], row["status"],
-            #               row["last_commit"], row["first_commit"],
-            #               row["developers"], row["commits"], row["active"], row["present"] ])
-            
-                           #len(set_devs.intersection(active_devs))])
-            #print(row)
             results.append(row)
 
         if results_file:
