@@ -619,6 +619,7 @@ class KospexDependencies:
                 for pattern in regex_patterns:
                     if pattern.match(filename):
                         # Add matching file path to the list
+                        print(f"Found package file {filename} in {root}")
                         detected_files.append(os.path.join(root, filename))
                         break  # No need to match other patterns if one has matched
                 #if filename in package_files:
