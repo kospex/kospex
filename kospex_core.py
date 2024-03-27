@@ -443,7 +443,8 @@ class Kospex:
         params = []
         sql = '''SELECT distinct(author_email) as author,
         round((julianday('now') - julianday(max(author_when))) ,1) as last_seen,
-        COUNT(author_email) as commits
+        COUNT(author_email) as commits,
+        COUNT(DISTINCT(_repo_id)) as repos
         FROM commits'''
         where = f"WHERE date(author_when) > date('now','-{days} day')"
         group_by = '''GROUP BY author_email ORDER BY commits DESC'''
@@ -478,10 +479,11 @@ class Kospex:
         sql_query = f"{sql} {where} {group_by}"
 
         table = PrettyTable()
-        table.field_names = ["username", "last_seen", "commits", "author"]
+        table.field_names = ["username", "last_seen", "commits", "repos", "author"]
         table.align["username"] = "l"
         table.align["last_seen"] = "r"
         table.align["commits"] = "r"
+        table.align["repos"] = "r"
         table.align["author"] = "l"
 
         results = None
@@ -496,7 +498,7 @@ class Kospex:
         for row in results:
             row["username"] = KospexUtils.extract_github_username(row["author"])
             records.append(row)
-            table.add_row([row["username"],row["last_seen"], row["commits"],row["author"]])
+            table.add_row([row["username"],row["last_seen"], row["commits"], row["repos"], row["author"]])
             row_count += 1
 
         if row_count > 0:
@@ -505,7 +507,7 @@ class Kospex:
         if row_count == 0:
             print("No active developers found in the kospex DB")
         else:
-            print("Total active developers: " + str(row_count))
+            print(f"{row_count} active developers in the last {days} days.")
 
         outfile = kwargs.get("out",None)
         if outfile:
