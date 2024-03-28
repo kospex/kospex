@@ -6,7 +6,6 @@ import logging
 from datetime import datetime
 from shutil import which
 import click
-from prettytable import PrettyTable
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -58,9 +57,14 @@ def kospex_init(default):
 
 @cli.command("summary")
 @click.option('-out', type=click.STRING,help="filename to write CSV results to.")
-def summary(out):
+@click.option('-server', type=click.STRING, help="Git server to query.")
+def summary(out,server):
     """ Provide a summary of all the known repositories."""
-    kospex.summary(results_file=out)
+    params = locals()
+    if server:
+        print("Server querying is not implemented yet.")
+        exit(1)
+    kospex.summary(results_file=out, **params)
 
 @cli.command("sync")
 @click.option('--no-scc', is_flag=True, default=False, help="Skip scc analysis.")
@@ -175,14 +179,15 @@ def hotspot(repo, repo_id, by_file):
 @click.option('-repo', type=GitRepo())
 @click.option('-file', type=click.Path(exists=True))
 @click.option('-directory', type=click.Path(), help="Directory to search for dependency files.")
+@click.option('--dev', is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL.")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")
-def deps(repo, file, directory, out):
+def deps(repo, file, directory, out, dev):
     """Find dependency files or assess a specific file."""
     kquery = KospexQuery()
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
 
     if directory:
-        
+
         results = kdeps.find_dependency_files(directory)
         records = []
 
@@ -226,8 +231,16 @@ def deps(repo, file, directory, out):
             if results:
                 repo_authors = len(results)
 
-        records = kdeps.assess(file_path, results_file=out, repo_info=repo_info,
-                               print_table=True)
+        params = {}
+        params['dev'] = dev
+        params['repo_info'] = repo_info
+        params['print_table'] = True
+        params['results_file'] = out
+
+        #records = kdeps.assess(file_path, results_file=out, repo_info=repo_info,
+        #                       print_table=True)
+        records = kdeps.assess(file_path, **params)
+
         total = len(records)
         count = 0
         author_count = 0
@@ -245,7 +258,8 @@ def deps(repo, file, directory, out):
             print(f"# Dependency Authors: {author_count}")
             if repo_authors:
                 print(f"# Repo Authors: {repo_authors}")
-            print(f"Dependency:Repo Author Ratio: {(repo_authors/author_count)*100:.5f}%")
+            if author_count and repo_authors:
+                print(f"Dependency:Repo Author Ratio: {(repo_authors/author_count)*100:.5f}%")
         else:
             print("No dependencies found.")
 
@@ -340,10 +354,6 @@ def orgs():
         table.add_row(KospexUtils.get_values_by_keys(o, table.field_names))
     print(table)
 
-@cli.command("test")
-def testy():
-    """List all the organizations in the database."""
-    print(kospex.git.extract_git_url_parts("https://go.googlesource.com/oauth2"))
 
 @cli.command("sync-dependencies")
 @click.option('-file', type=click.Path(exists=True))
@@ -361,9 +371,16 @@ def sync_dependencies(repo,file):
             repo_info = kospex.file_repo_details(file)
             records = kdeps.assess(file_path, repo_info=repo_info, print_table=True)
             for rec in records:
-                print(f'About to clone and sync {rec["source_repo"]}')
-                repo_path = kospex.git.clone_repo(rec["source_repo"])
-                kospex.sync_repo(repo_path)
+
+                if rec.get("source_repo"):
+                    print(f'About to clone and sync {rec["source_repo"]}')
+                    repo_path = kospex.git.clone_repo(rec["source_repo"])
+                    if repo_path:
+                        kospex.sync_repo(repo_path)
+                    else:
+                        print("No source repo URL for this dependency.")
+                else:
+                    print(f"No source repo URL for this dependency {rec.get('package_name')}")
 
         if repo:
             print(f"Syncing dependencies for repo: {repo}")
