@@ -279,7 +279,7 @@ def get_last_commit_info(filename,remote=None):
         if remote:
             # remove the .git extension if present
             remote = remote.removesuffix('.git')
-
+ 
         return {
             'filename': filename,
             'author_date': author_date,

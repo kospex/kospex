@@ -176,8 +176,8 @@ def hotspot(repo, repo_id, by_file):
         print("Please specify either a '-repo' or a '-repo_id'.")
 
 @cli.command("deps")
-@click.option('-repo', type=GitRepo())
-@click.option('-file', type=click.Path(exists=True))
+@click.option('-repo', type=GitRepo(), help="File path to git repo.")
+@click.option('-file', type=click.Path(exists=True), help="Package file to assess.")
 @click.option('-directory', type=click.Path(), help="Directory to search for dependency files.")
 @click.option('--dev', is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL.")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")
