@@ -191,10 +191,15 @@ class KospexDependencies:
         pattern = re.compile(r'^requirements(-\w+)?\.txt$', re.IGNORECASE)
         return bool(pattern.match(filename))
 
-    def assess(self, filename, results_file=None, repo_info=None, print_table=False):
+    #def assess(self, filename, results_file=None, repo_info=None, print_table=False):
+    def assess(self, filename, **kwargs):
         """ Using deps.dev to assess and provide a summary of the package manager file.
         Args:
         filename (str): The filename to assess."""
+        results_file = kwargs.get('results_file',None)
+        repo_info = kwargs.get('repo_info',None)
+        print_table = kwargs.get('print_table',False)
+        dev_deps = kwargs.get('dev',False)
 
         #file_path = os.path.abspath(file)
         #kospex.set_repo_dir(KospexUtils.find_git_base(file))
@@ -315,10 +320,18 @@ class KospexDependencies:
         """ Convert a deps.dev package info record into a dictionary with other metadata """
 
         details = {}
+        details['package_name'] = package_name
+        details['package_version'] = package_version
+
         today = datetime.datetime.now(datetime.timezone.utc)
         # TODO - Handle bad package names
         # TODO - Handle 404 errors (most likely due to bad package name)
         deps_info = self.deps_dev(package_type,package_name,package_version)
+
+        # If we don't get any info back, we'll just return an empty dictionary
+        if not deps_info:
+            #details['source_repo'] = "Unknown, maybe internal library"
+            return details
 
         pub_date = None
         if deps_info:
@@ -328,6 +341,7 @@ class KospexDependencies:
             pub_date = dateutil.parser.isoparse(deps_info.get("publishedAt"))
             diff = today - pub_date
             details["days_ago"] = diff.days
+
         details["published_at"] = deps_info.get("publishedAt")
         details["default"] = deps_info.get("isDefault")
         # TODO - need to parse the source repo to create proper links for NPM .. looks 
@@ -340,8 +354,8 @@ class KospexDependencies:
         details['versions_behind'] = days_info.get("versions_behind","Unknown")
 
         # TODO - this is a hacky way of duplicating the keys needed
-        details['package_name'] = package_name
-        details['package_version'] = package_version
+        #details['package_name'] = package_name
+        #details['package_version'] = package_version
         details['authors'] = None
         if details['source_repo']:
             details['authors'] = self.get_repo_authors(details['source_repo'])
@@ -372,8 +386,9 @@ class KospexDependencies:
             print(item)
             table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
 
-        for item in data['devDependencies']:
-            print(f"Skipping check for dev {item} version {data['devDependencies'][item]}")
+        if 'devDependencies' in data:
+            for item in data['devDependencies']:
+                print(f"Skipping check for dev {item} version {data['devDependencies'][item]}")
 
         table.add_rows(table_rows)
         print(table)
