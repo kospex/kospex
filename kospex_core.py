@@ -435,10 +435,12 @@ class Kospex:
         """
         Query the kospex db for active developers
         """
+        all_history = kwargs.get('all', False)
         days = kwargs.get('days', 90)
         # Make sure days is an integer before we use it in the SQL query to avoid SQL injection
         if not isinstance(days, int):
             raise ValueError(f"The value of days '{days}' is NOT an integer")
+        date_where = ""
 
         params = []
         sql = '''SELECT distinct(author_email) as author,
@@ -446,7 +448,9 @@ class Kospex:
         COUNT(author_email) as commits,
         COUNT(DISTINCT(_repo_id)) as repos
         FROM commits'''
-        where = f"WHERE date(author_when) > date('now','-{days} day')"
+        if not all_history:
+            where = f"WHERE date(author_when) > date('now','-{days} day')"
+            date_where = f"AND date(author_when) > date('now','-{days} day')"
         group_by = '''GROUP BY author_email ORDER BY commits DESC'''
 
         row_count = 0
@@ -467,13 +471,15 @@ class Kospex:
                 org = org_bits[1]
                 #[_git_server] TEXT,
                 #[_git_owner] TEXT,
-                where = f"WHERE _git_server = ? AND _git_owner = ? AND date(author_when) > date('now','-{days} day')"
+                #where = f"WHERE _git_server = ? AND _git_owner = ? AND date(author_when) > date('now','-{days} day')"
+                where = f"WHERE _git_server = ? AND _git_owner = ? {date_where}"
                 params.append(server)
                 params.append(org)
             #kwargs['repo_id'] = self.kospex_query.repo_id_by_org_key(org_key)
 
         if kwargs.get('repo_id', None):
-            where = f"WHERE _repo_id = ? AND date(author_when) > date('now','-{days} day')"
+            #where = f"WHERE _repo_id = ? AND date(author_when) > date('now','-{days} day')"
+            where = f"WHERE _repo_id = ? {date_where}"
             params.append(kwargs['repo_id'])
 
         sql_query = f"{sql} {where} {group_by}"

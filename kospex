@@ -5,6 +5,7 @@ import os.path
 import logging
 from datetime import datetime
 from shutil import which
+import pprint
 import click
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
@@ -120,12 +121,16 @@ def sync_directory(directory):
 @click.option('-days', type=int, default=90, help='Committed in the last X days.')
 @click.option('-org_key', type=click.STRING, help='Format of SERVER~ORG')
 @click.option('-repo_id', type=click.STRING)
+@click.option('--all', is_flag=True, default=False, help="Find all developer history. ")
 @click.option('-out', type=click.Path(), help='filename to write CSV results to.')
 # pylint: disable=unused-argument
-def devs(repo, days, repo_id, org_key, out):
+def devs(repo, days, repo_id, org_key, out, all):
     """ Information Stats about developers."""
     params = locals()
-    click.echo(f'Searching for active developers (last {days} days)')
+    if all:
+        click.echo(f'Finding all developer history')
+    else:
+        click.echo(f'Searching for active developers (last {days} days)')
     kospex.active_developers(**params)
 
 @cli.command("list-repos")
@@ -223,6 +228,7 @@ def deps(repo, file, directory, out, dev):
             print("No package/dependency manager files found.")
 
     elif file:
+
         file_path = os.path.abspath(file)
         repo_info = kospex.file_repo_details(file)
         repo_authors = 0
@@ -232,7 +238,7 @@ def deps(repo, file, directory, out, dev):
                 repo_authors = len(results)
 
         params = {}
-        params['dev'] = dev
+        params['dev_deps'] = dev
         params['repo_info'] = repo_info
         params['print_table'] = True
         params['results_file'] = out
@@ -240,15 +246,18 @@ def deps(repo, file, directory, out, dev):
         #records = kdeps.assess(file_path, results_file=out, repo_info=repo_info,
         #                       print_table=True)
         records = kdeps.assess(file_path, **params)
-
+        # TODO - refactor this into a function
         total = len(records)
         count = 0
         author_count = 0
+        repos_observerd = []
         for record in records:
             if 'versions_behind' in record and record['versions_behind'] > 2:
                 count += 1
             if 'authors' in record and record['authors']:
-                author_count += record['authors']
+                if not record.get('source_repo') in repos_observerd:
+                    repos_observerd.append(record.get('source_repo'))
+                    author_count += record['authors']
 
         if count and total:
             print(f"Total dependencies: {total} | Outdated(>2): {count}")
@@ -354,11 +363,11 @@ def orgs():
         table.add_row(KospexUtils.get_values_by_keys(o, table.field_names))
     print(table)
 
-
 @cli.command("sync-dependencies")
-@click.option('-file', type=click.Path(exists=True))
+@click.option('-file', type=click.Path(exists=True), help="The dependency file to sync.")
 @click.option('-repo', type=GitRepo())
-def sync_dependencies(repo,file):
+@click.option('--dev', is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL.")
+def sync_dependencies(repo,file,dev):
     """ Clone and sync the dependencies for a repo/dependency file."""
     kquery = KospexQuery()
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
@@ -369,7 +378,8 @@ def sync_dependencies(repo,file):
             file_path = os.path.abspath(file)
             print(f"Syncing dependencies for file: {file}")
             repo_info = kospex.file_repo_details(file)
-            records = kdeps.assess(file_path, repo_info=repo_info, print_table=True)
+            records = kdeps.assess(file_path, repo_info=repo_info,
+                                   print_table=True,dev_deps=dev)
             for rec in records:
 
                 if rec.get("source_repo"):

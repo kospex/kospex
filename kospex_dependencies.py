@@ -199,7 +199,7 @@ class KospexDependencies:
         results_file = kwargs.get('results_file',None)
         repo_info = kwargs.get('repo_info',None)
         print_table = kwargs.get('print_table',False)
-        dev_deps = kwargs.get('dev',False)
+        dev_deps = kwargs.get('dev_deps',False)
 
         #file_path = os.path.abspath(file)
         #kospex.set_repo_dir(KospexUtils.find_git_base(file))
@@ -219,7 +219,7 @@ class KospexDependencies:
         elif self.is_npm_package(filename):
             print(f"Found npm package file: {basefile}")
             results = self.npm_assess(filename,results_file=results_file,
-                            repo_info=repo_info)
+                            repo_info=repo_info,dev_deps=dev_deps)
 
         elif self.is_nuget_package(filename):
             print(f"Found nuget package file: {basefile}")
@@ -266,13 +266,16 @@ class KospexDependencies:
             writer.writerow(headers)
             writer.writerows(table_rows)
 
-    def get_npm_dependency_dict(self, item, data):
+    def get_npm_dependency_dict(self, item, data, dependency_key=None):
         """ parse a dependency details from the package.json json structure into a dictionary """
         details = {}
         today = datetime.datetime.now(datetime.timezone.utc)
 
+        if not dependency_key:
+            dependency_key = "dependencies"
+
         details['package'] = item
-        details['version'] = data['dependencies'][item]
+        details['version'] = data[dependency_key][item]
         details['semantic'] = ""
         # Handling semantic versioning
         # https://dev.to/typescripttv/understanding-npm-versioning-3hn4
@@ -281,13 +284,14 @@ class KospexDependencies:
             details['version'] = details['version'].replace("~","")
             details['semantic'] = "~"
         if "^" in details['version']:
-            # The caret symbol indicates that npm should restrict upgrades to 
+            # The caret symbol indicates that npm should restrict upgrades to
             # patch or minor level updates
             details['version'] = details['version'].replace("^","")
             details['semantic'] = "^"
 
         record = self.depsdev_record("npm",item,details['version'])
         record['semantic'] = details['semantic']
+
         #print(f"Checking {item} version {details['version']}")
         #deps_info = self.deps_dev("npm",item,details['version'])
         #pub_date = deps_info.get("publishedAt")
@@ -314,7 +318,6 @@ class KospexDependencies:
 
         #return details
         return record
-
 
     def depsdev_record(self, package_type, package_name, package_version):
         """ Convert a deps.dev package info record into a dictionary with other metadata """
@@ -362,9 +365,12 @@ class KospexDependencies:
 
         return details
 
-    def npm_assess(self, filename, results_file=None, repo_info=None):
+    def npm_assess(self, filename, results_file=None, repo_info=None, dev_deps=None):
         """ Using deps.dev to assess and provide a summary of a 
             npm package.json compatible file """
+        
+        params = locals()
+        print(params)
 
         #today = datetime.datetime.now(datetime.timezone.utc)
         table = self.get_cli_pretty_table()
@@ -388,7 +394,13 @@ class KospexDependencies:
 
         if 'devDependencies' in data:
             for item in data['devDependencies']:
-                print(f"Skipping check for dev {item} version {data['devDependencies'][item]}")
+                if dev_deps:
+                    details = self.get_npm_dependency_dict(item,data,dependency_key="devDependencies")
+                    results.append(details)
+                    print(item)
+                    table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
+                else:
+                    print(f"Skipping check for dev {item} version {data['devDependencies'][item]}")
 
         table.add_rows(table_rows)
         print(table)
@@ -580,6 +592,7 @@ class KospexDependencies:
             result = [ {"package_name": pkg.attrib["Include"],
                     "package_version": pkg.attrib["Version"]} for pkg in package_references]
             #print(result)
+            
         except Exception as e:
             print(f"Error parsing {filename}: {e}")
             return False
