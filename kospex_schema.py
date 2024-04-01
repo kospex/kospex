@@ -16,7 +16,8 @@ TBL_KRUNNER = "krunner"
 TBL_OBSERVATIONS = "observations"
 
 KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
-                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE, TBL_KRUNNER, TBL_OBSERVATIONS ]
+                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA,
+                 TBL_URL_CACHE, TBL_KRUNNER, TBL_OBSERVATIONS ]
 
 # Table data structure based upon Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
@@ -152,7 +153,6 @@ SQL_CREATE_KRUNNER = f'''CREATE TABLE  IF NOT EXISTS [{TBL_KRUNNER}] (
     [_repo_id] TEXT,
     PRIMARY KEY(_repo_id,hash,file_path)
     )'''
-
 
 
 #SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (

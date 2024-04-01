@@ -17,6 +17,22 @@ Also check out the [list of commands](commands) that are part of the kospex tool
  - Identify potential complexity challenges (or conceptual integrity concerns)
  - Aggregate repo metadata into a single database for easier and faster querying
 
+## General description of aging "things"
+
+Many reports or commands generate a description of active, aging, stale or unmaintained. This description is a simple calculation based on give date using the following default rules.
+
+| Description   | Rule |
+| -----------   | ---- |
+| Acitve        | < 90 days |
+| Aging         | > 90 and < 180 days |
+| Stale         | > 180 and < 365 days |
+| Unmaintained  | >  365 days |
+
+There are several places where this description may be used:
+ - On a repo, to say it looks like it's "aging" 
+ - On a package manager file, where we'd expect them to be updated monthly to quarterly
+ - On the release date of a pacakge or libraries we're using. 
+
 ## What is a kospex?
 
 We're aiming to [k]now your c[o]de by in[spe]cting the haruspe[x].
