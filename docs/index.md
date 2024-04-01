@@ -29,9 +29,11 @@ Many reports or commands generate a description of active, aging, stale or unmai
 | Unmaintained  | >  365 days |
 
 There are several places where this description may be used:
- - On a repo, to say it looks like it's "aging" 
- - On a package manager file, where we'd expect them to be updated monthly to quarterly
- - On the release date of a pacakge or libraries we're using. 
+ - On the last commit in a repo, to say it looks like it's "aging" 
+ - On a last updated date of package manager file, where we'd expect them to be updated monthly to quarterly
+ - On the release date of a package or libraries we're using. 
+
+It's possibly that something labelled "unmaintained" is feature complete and doesn't require changes. However, generally there are any external dependencies, a code or library usually needs a change a couple of times a year.
 
 ## What is a kospex?
 
