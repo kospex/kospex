@@ -42,7 +42,7 @@ If you are ok to use the ~/code directory for cloned repos, then run:
 >
 > kospex tech-landscape -metadata
 
-You can also use the _kgit_ command to clone and synx a repo (if you have access)
+You can also use the _kgit_ command to clone and sync a repo you have access to
 
 > kgit clone -sync -repo https://github.com/mergestat/mergestat-lite
 
