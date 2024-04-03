@@ -23,7 +23,7 @@ When was it last changed? (Date of last commit)
 
 This nifty command shows all the authors, their email and displays and sorts by number of commits.
 
-> git short -sne
+> git shortlog -sne
 
 Description of switches from _git shortlog --help_ 
 
