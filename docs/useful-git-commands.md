@@ -13,7 +13,7 @@ The date will be in the RFC2822 format.
 
 How old is the repo? (Date of the first commit)
 
-> git log --reverse --format=%aD | head -1
+> git log --reverse --format=%aD \| head -1
 
 When was it last changed? (Date of last commit)
 
@@ -23,7 +23,7 @@ When was it last changed? (Date of last commit)
 
 This nifty command shows all the authors, their email and displays and sorts by number of commits.
 
-> git shortly -sne
+> git short -sne
 
 Description of switches from _git shortlog --help_ 
 
