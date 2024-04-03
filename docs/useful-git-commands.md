@@ -17,7 +17,7 @@ How old is the repo? (Date of the first commit)
 
 When was it last changed? (Date of last commit)
 
-> git log --format=%aD -1
+> git log \-\-format=%aD -1
 
 ### How many authors (developers) are in this repo? (with how many commits)
 
@@ -25,13 +25,13 @@ This nifty command shows all the authors, their email and displays and sorts by 
 
 > git shortlog -sne
 
-Description of switches from _git shortlog --help_ 
+Description of switches from _git shortlog \-\-help_ 
 
--s, --summary Suppress commit description and provide a commit count summary only.
+-s, \-\-summary Suppress commit description and provide a commit count summary only.
 
 -n, Sort output according to the number of commits per author instead of author alphabetic order.
 
--e, --email Show the email address of each author.
+-e, \-\-email Show the email address of each author.
 
 
 
