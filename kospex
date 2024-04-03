@@ -128,7 +128,7 @@ def devs(repo, days, repo_id, org_key, out, all):
     """ Information Stats about developers."""
     params = locals()
     if all:
-        click.echo(f'Finding all developer history')
+        click.echo('Finding all developer history')
     else:
         click.echo(f'Searching for active developers (last {days} days)')
     kospex.active_developers(**params)
@@ -380,6 +380,7 @@ def sync_dependencies(repo,file,dev):
             repo_info = kospex.file_repo_details(file)
             records = kdeps.assess(file_path, repo_info=repo_info,
                                    print_table=True,dev_deps=dev)
+            
             for rec in records:
 
                 if rec.get("source_repo"):

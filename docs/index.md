@@ -9,6 +9,8 @@ Follow our guide on [Installation and setup](getting-started)
 
 Also check out the [list of commands](commands) that are part of the kospex toolkit.
 
+If you are after some generally useful git commands then take a look at [Useful Git commands](useful-git-commands)
+
 ## Key Use Cases and features
 
  - Identify technology landscape
