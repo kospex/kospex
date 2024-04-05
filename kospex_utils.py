@@ -341,7 +341,7 @@ def get_dependency_files_table(list_of_commit_info):
     table = PrettyTable()
     table.field_names = ["File path", "Author Date", "Committer Date",
                          "Days Ago", "Status",  "Repo", "Commit Hash"]
-    table.align["Filename"] = "l"
+    table.align["File path"] = "l"
     table.align["Repo"] = "l"
     table.align["Status"] = "l"
     table.align["Days Ago"] = "r"

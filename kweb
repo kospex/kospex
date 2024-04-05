@@ -24,16 +24,12 @@ def active_developers(repo_id):
     print(results)
     return render_template('developers.html',data=data, authors=results)
 
-
-
 @app.route('/developers/')
 def developers():
     """ Developer info page. """
     author_email = request.args.get('author_email')
     download = request.args.get('download')
     days = request.args.get('days',None)
-
-    devs = KospexQuery().authors(days=days)
 
     if author_email:
         print(author_email)
@@ -57,7 +53,9 @@ def developers():
                                labels=labels, datapoints=datapoints)
 
     elif download:
+        devs = KospexQuery().authors(days=days)
         return KospexWeb.download_csv(devs)
+    
     else:
         data = KospexQuery().summary(days=days)
         return render_template('developers.html', authors=devs, data=data )
@@ -101,6 +99,19 @@ def repos():
         row['active_devs'] = active_devs.get(row['_repo_id'],0)
 
     return render_template('repos.html',data=data, page=page, techs=techs)
+
+@app.route('/servers/')
+def servers():
+    """ display Git server information. """
+
+    kquery = KospexQuery()
+    data = kquery.server_summary()
+    print(data)
+
+    #for row in data:
+    #    row['active_devs'] = active_devs.get(row['_repo_id'],0)
+
+    return render_template('servers.html',data=data)
 
 @app.route('/observations/')
 def observations():

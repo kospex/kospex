@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bootstrap Web App</title>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+{% include 'header.html' %}
+
+<!-- Main content area -->
+
+<div class="container mt-5">
+    <h1 class="mb-4"> Servers </h1>
+
+    <table class="table table-striped sortable compact" id="myTable">
+        <thead>
+            <tr>
+                <th>Server</th>
+                <th># Repos</th>
+                <th># developers</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data %}
+            <tr>
+                <td class="dt-body-left">{{ row['_git_server'] }}</td>
+                <td class="dt-body-right">{{ row['repos'] }}</td>
+                <td class="dt-body-right">{{ row['developers'] }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+
+{% include '_footer_scripts.html' %}
+{% include '_datatable_scripts.html' %}
+
+<script>
+    $(document).ready( function () {
+        $('#myTable').DataTable({
+            order: [[1, 'desc']]
+        });
+    } );
+</script>
+
+</body>
+</html>

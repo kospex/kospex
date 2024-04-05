@@ -13,7 +13,7 @@ class KospexQuery:
         # Initialize the kospex environment
         KospexUtils.init()
         self.kospex_db = kospex_db or Database(KospexUtils.get_kospex_db_path())
-        
+
         #if kospex_db:
         #    self.kospex_db = kospex_db
         #else:
@@ -21,6 +21,7 @@ class KospexQuery:
 
     def summary(self, days=None, repo_id=None):
         """ Provide a summary of the known repositories."""
+
         summary_sql = """SELECT count(distinct(_repo_id)) AS 'repos', count(*) 'commits',
         count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
         count(distinct(_git_server)) AS servers
@@ -52,6 +53,19 @@ class KospexQuery:
         WHERE _repo_id = ?
         """
         data = next(self.kospex_db.query(summary_sql, [repo_id]), None)
+        return data
+
+    def server_summary(self):
+        """ Provide a summary of the known servers."""
+        summary_sql = """SELECT _git_server, count(distinct(_repo_id)) 'repos',
+        count(distinct(author_email)) 'developers'
+        FROM commits
+        GROUP BY _git_server
+        """
+        data = []
+        for row in self.kospex_db.query(summary_sql):
+            data.append(row)
+
         return data
 
     def tech_landscape(self, repo_id=None,org_key=None):
@@ -684,6 +698,15 @@ class KospexQuery:
 #        for row in data:
 #            results.append(row)
 #        return results
+        
+    def git_servers(self):
+        """ Return a list of git servers """
+        sql = f"""SELECT DISTINCT(server) FROM {KospexSchema.TBL_REPOS}"""
+        data = self.kospex_db.query(sql)
+        results = []
+        for row in data:
+            results.append(row['server'])
+        return results
 
     def commit_stats(self, days=None, repo_id=None):
         """ Return stats about commits. """
