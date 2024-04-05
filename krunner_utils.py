@@ -1,4 +1,5 @@
 """ Helper functions for krunner """
+import os
 
 def extract_grep_parameters(input_string):
     """Extracts a grep command string into filename, line_number and string_contents. """
@@ -15,3 +16,26 @@ def extract_grep_parameters(input_string):
 
     # Return the extracted parameters and the rest of the string as an array
     return [first_param, second_param, rest_of_string]
+
+def find_dockerfiles_in_repos(repo_dirs):
+    """Find docker files in a list of repo directories"""
+
+    results_files = []
+
+    for rp in repo_dirs:
+
+        # Walk through the directory
+        for root, dirs, files in os.walk(rp):
+
+            for file in files:
+                # Check if the filename matches case insensitive options
+                lower_name = file.lower()
+                if lower_name == "dockerfile":
+                    #print("Dockerfile: " + os.path.join(d, file))
+                    results_files.append(os.path.join(root, file))
+
+                if lower_name.startswith("docker-compose"):
+                    #print("Dockerfile: " + os.path.join(d, file))
+                    results_files.append(os.path.join(root, file))
+
+    return results_files

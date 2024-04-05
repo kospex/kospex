@@ -263,6 +263,8 @@ def get_last_commit_info(filename,remote=None):
     basefile = os.path.basename(abs_path)
     file_dir = os.path.dirname(abs_path)
 
+    default = { 'file_path': filename }
+
     # TODO: Check if the file is in a git repo
 
     try:
@@ -279,25 +281,44 @@ def get_last_commit_info(filename,remote=None):
         if remote:
             # remove the .git extension if present
             remote = remote.removesuffix('.git')
- 
+
+        os.chdir(original_dir)
+
         return {
-            'filename': filename,
+            'file_path': filename,
             'author_date': author_date,
             'committer_date': committer_date,
             'days_ago': days_ago(author_date),
             'status': development_status(days_ago(author_date)),
-            'commit_hash': commit_hash,
-            'repo': remote
+            'repo': remote,
+            'commit_hash': commit_hash
         }
 
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e} for {filename}, potentially not managed by git.")
+        default['error'] = "Potentially not managed by git"
     finally:
         os.chdir(original_dir)
 
-    return None
+    return default
+
+def get_git_metadata(file_list):
+    """ Get the last commit info for a list of files"""
+
+    records = []
+
+    for f in file_list:
+        #details = { "file_path": f }
+        details = get_last_commit_info(f)
+        if details and details.get("repo"):
+            details["repo"] = extract_git_url(details["repo"])
+        else:
+            print(f)
+        records.append(details)
+    
+    return records
 
 def repo_stats(records, fieldname):
     """ Get the stats for a given field in a list of records"""
@@ -318,8 +339,8 @@ def get_dependency_files_table(list_of_commit_info):
     """ Take a list of commit info requests and return a Pretty Table """
 
     table = PrettyTable()
-    table.field_names = ["Filename", "Author Date", "Committer Date",
-                         "Days Ago", "Status", "Commit Hash", "Repo"]
+    table.field_names = ["File path", "Author Date", "Committer Date",
+                         "Days Ago", "Status",  "Repo", "Commit Hash"]
     table.align["Filename"] = "l"
     table.align["Repo"] = "l"
     table.align["Status"] = "l"
@@ -327,13 +348,13 @@ def get_dependency_files_table(list_of_commit_info):
 
     for commit_info in list_of_commit_info:
         table.add_row([
-            commit_info['filename'],
+            commit_info['file_path'],
             commit_info['author_date'],
             commit_info['committer_date'],
             commit_info['days_ago'],
             commit_info['status'],
-            commit_info['commit_hash'],
-            commit_info['repo']
+            commit_info['repo'],
+            commit_info['commit_hash']
         ])
 
     return table
@@ -500,7 +521,7 @@ def parse_sql_primary_keys(sql):
 
 def extract_git_url(url):
     """ Extract the Git URL from a string"""
-    # Function to extrac the web Git URL
+    # Function to extract the web Git URL
     # from examples like this:
     # "git+https://example.com/apollographql/react-apollo.git"
     # "git+ssh://git@example.com/palantir/blueprint.git"
@@ -524,6 +545,13 @@ def extract_git_url(url):
         domain = match.group(1)
         repo = match.group(2)
         url = f'https://{domain}/{repo}'
+
+    # if we have a https https://user@example.com/org/repo
+    if "@" in url:
+        parts = url.split('@')
+        if len(parts) == 2:
+            # If a username is found, reconstruct the URL without it
+            url = 'https://' + parts[1]
 
     if url.startswith("git:"):
         url = url.replace("git:", "https:")

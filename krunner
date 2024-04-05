@@ -23,6 +23,26 @@ def cli():
     
     """
 
+@cli.command("find-docker")
+#@click.option('--metadata', is_flag=True, default=False, help="Provide git metadata and last modified. ")
+@click.option('-out', type=click.STRING, help="filename to write CSV results to.")
+@click.argument('directory', type=click.Path(exists=True))
+def find_docker(directory,out):
+    """Find docker related files in the given directory."""
+
+    print("\nDirectory: " + os.path.abspath(directory))
+    dirs = KospexUtils.find_repos(directory)
+    files = KrunnerUtils.find_dockerfiles_in_repos(dirs)
+    records = KospexUtils.get_git_metadata(files)
+
+    table = KospexUtils.get_dependency_files_table(records)
+    print(table)
+
+    if out:
+        KospexUtils.list_dict_2_csv(records,out)
+
+
+
 @cli.command("list-repos")
 @click.argument('directory', type=click.Path(exists=True))
 def find_repos(directory):
