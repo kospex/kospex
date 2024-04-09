@@ -399,7 +399,9 @@ class KospexQuery:
                 WHEN julianday(committer_when) >= julianday('now') - 90 THEN 'active'
                 WHEN julianday(committer_when) >= julianday('now') - 180 AND 
                 julianday(committer_when) < julianday('now') - 90 THEN 'aging'
-                ELSE 'older'
+                WHEN julianday(committer_when) >= julianday('now') - 365 AND 
+                julianday(committer_when) < julianday('now') - 180 THEN 'stale'
+                ELSE 'unmaintained'
             END AS date_category
         FROM commits
         {where_clause}

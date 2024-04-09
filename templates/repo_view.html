@@ -13,45 +13,31 @@
 <div class="container mt-5">
 
     <h1 class="mb-4">{{ repo_id }}</h1>
-
-    <a href="/commits/?repo_id={{ repo_id }}">View Commits for {{ repo_id }}</a>
-    <br>
-    <br>
     
+    <h2> Commit summary </h2>
 
-    <div class="row">
-        <!-- # of Repos -->
-        <div class="col-4">
-            <div class="card">
+    <a href="/commits/?repo_id={{ repo_id }}">View commits for {{ repo_id }}</a>
+    <br>
+    <br>
+    <table class="table" id="commits_table">
+        <thead>
+            <tr>
+                <th> Active </th>
+                <th> Aging </th>
+                <th> Stale </th>
+                <th> Unmaintained </th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td> {{ ranges['active'] }} </a></td>
+                <td> {{ ranges['aging'] }} </a></td>
+                <td> {{ ranges['stale'] }} </a></td>
+                <td> {{ ranges['unmaintained'] }} </a></td>
+            </tr>
+        </tbody>
+    </table>
 
-                <div class="card-body text-center">
-                    <h4>Active</h4>
-                    <h2>{{ ranges['active'] }}</h2>
-                </div>
-            </div>
-        </div>
-
-        <!-- # of Commits -->
-        <div class="col-4">
-            <div class="card">
-                <div class="card-body text-center">
-                    <h4>Aging</h4>
-                    <h2>{{ ranges['aging'] }}</h2>
-                </div>
-            </div>
-        </div>
-
-        <!-- # of Commits -->
-        <div class="col-4">
-            <div class="card">
-                <div class="card-body text-center">
-                    <h4>Older</h4>
-                    <h2>{{ ranges['older'] }}</h2>
-                </div>
-            </div>
-        </div>
-
-    </div>
     <br/>
     View repo <a href="/hotspots/{{ repo_id }}">Hotspots</a>, <a href="/landscape/?repo_id={{ repo_id }}">Tech Landscape</a>
 
