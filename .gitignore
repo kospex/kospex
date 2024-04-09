@@ -40,6 +40,11 @@ spikes/
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Jekyll files used for local testing
+docs/_site/
+docs/Gemfile
+docs/Gemfile.lock
+
 # Unit test / coverage reports
 htmlcov/
 .tox/
