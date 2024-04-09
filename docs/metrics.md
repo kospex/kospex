@@ -28,7 +28,7 @@ Trying to identify where we should apply predictive maintenance needs to take in
 
 While we may known if our repo is feature complete, still in active development, scheduled for decommission we won't really know decisions an opensource project has made.
 
-## Easy(ish) indicators
+## Easy(ish) indicators to collect
 
 The following are some suggestions which might give an indication that a repo is healthier than another, 
 or simply start categorising. 
@@ -39,7 +39,7 @@ or simply start categorising.
 | Number of authors             | All time authors to a repo                                        |
 | Number of active authors      | List of developers who've commited in the last X Days (e.g. 90)   |
 | Number of dependency files    | How many dependency files (e.g. package.json, go.mod) are there   |
-| Number of direct depdencies   | In a dependency/package file, how many libraries are we including | 
+| Number of direct dependencies | In a dependency/package file, how many libraries are we including | 
 | Age of repository             | How old is this repo? 1 month, 1 quarter, older than 1 year?      | 
 
 
