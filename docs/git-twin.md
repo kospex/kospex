@@ -5,7 +5,7 @@ _A Git twin is a file system which continuously syncs repos from the original so
 That's our definition. When we have a twin, we can analyse the code and history of changes "locally".
 A twin allows for different methods of filesystem analysis, but still being able to see developers work (commits and changes) and the time series nature of changes. 
 
-This idea has been adapted from, a "ditial twin".
+This idea has been adapted from, a "digital twin".
 
 _A digital twin is a virtual representation of an object or system designed to reflect a physical object accurately. It spans the object's lifecycle, is updated from real-time data and uses simulation, machine learning and reasoning to help make decisions._
 
@@ -27,15 +27,28 @@ When dealing with thousands of files and large repositories (several hundreds me
 
 ## Filesystem layout for a Git Twin
 
-Here's the kospex model for the Git twin layout
+Here's the kospex filesystem model for the Git twin layout
 
 /KOSPEX_CODE/GIT_SERVER/ORG_OWNER/REPO
+
+KOSPEX_CODE: A base directory, the default in kospex is ~/code
+
+GIT_SERVER: The domain name of the Git provider like github.com, bitbucket.org etc
+
+ORG_OWNER: Mostly a reference to a team or organisation, like spring-project, expressjs, kospex
+
+REPO: that actual repo slug, like kospex, spring-boot, express
+
 
 | Example repo                           | Git twin filepath                    |
 | ------------                           | -----------------                    |
 | https://github.com/mergestat/mergestat | /code/github.com/mergestat/mergestat |
 | https://github.com/kospex/kospex/      | /code/github.com/kospex/kospex       |
-| https://go.googlesource.com/text       | /code/go.googlesource.com/text       | 
+| https://go.googlesource.com/text       | /code/go.googlesource.com/text       |
+| https://github.com/expressjs/express   | /code/github.com/expressjs/express   |
+| https://git.ruby-lang.org/ruby         | /code/git.ruby-lang.org/ruby         |
+
+ 
 
 
 ## How is this different from a git mirror?

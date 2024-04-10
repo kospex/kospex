@@ -809,6 +809,28 @@ class Kospex:
     def generate_krunner_filename(self, function=None, ext="out"):
         """ Get the path to a krunner file """
         krunner_path = self.get_krunner_directory()
-        # TODO - do better path join method and validate no .. etc
+        # TODO - do better path join method and validate no path traversal .. etc
         return os.path.join(krunner_path, self.git.get_repo_id() + "."  + function + "." + ext)
+
+    def extract_krunner_file_details(self, filename, krunner_home=None):
+        """ Extract the repo_id and function from a krunner filename """
+        metadata = filename.removeprefix(krunner_home + "/")
+        details = {}
+        repo_mash = metadata.split("~")
+        # repo mash will split on ~ to more easily the git server 
+        # Which can have multiple . in a domain name
+        details['org'] = repo_mash[1]
+        details['git_server'] = repo_mash[0]
+        repo_function_ext = repo_mash[2]
+        parts = repo_function_ext.split(".")
+        details['repo'] = parts[0]
+        details['function'] = parts[1]
+        details['ext'] = parts[2]
+        details['repo_id'] = details['git_server'] + "~" + details['org'] + "~" + details['repo']
+
+        #parts = metadata.split(".")
+        #details['repo_id'] = parts[0]
+        #details['function'] = parts[1]
+        #details['ext'] = parts[2]
+        return details
 
