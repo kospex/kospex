@@ -1,5 +1,7 @@
 """ Helper functions for krunner """
 import os
+import json
+from prettytable import PrettyTable
 
 def extract_grep_parameters(input_string):
     """Extracts a grep command string into filename, line_number and string_contents. """
@@ -39,3 +41,47 @@ def find_dockerfiles_in_repos(repo_dirs):
                     results_files.append(os.path.join(root, file))
 
     return results_files
+
+def load_gitleaks(filename):
+    """Load gitleaks output from a file"""
+    f = open(filename, "r")
+    data = json.load(f)
+    f.close()
+    return data
+
+def load_trufflehog(filename):
+    """Load trufflehog output from a file"""
+    f = open(filename, "r")
+    lines = f.readlines()
+    data = []
+    for line in lines:
+        try:
+            data.append(json.loads(line))
+        except json.decoder.JSONDecodeError:
+            print(f"Error loading trufflehog output in {filename}")
+            print(line)
+    f.close()
+    return data
+
+def get_secrets_heatmap_table(heatmap_data):
+    """Get a heatmap table from secrets heatmap data"""
+
+    table = PrettyTable()
+    table.field_names = ["Repo ID", "Total", "trufflehog", "gitleaks"]
+    table.align["Repo ID"] = "l"
+    table.align["Total"] = "r"
+    table.align["trufflehog"] = "r"
+    table.align["gitleaks"] = "r"
+    table.sortby = "Total"
+    table.reversesort = True
+
+    for repo_id, data in heatmap_data.items():
+        if not data.get("gitleaks"):
+            data["gitleaks"] = 0
+        if not data.get("trufflehog"):
+            data["trufflehog"] = 0
+        data["Total"] = data["trufflehog"] + data["gitleaks"]
+
+        table.add_row((repo_id, data["Total"], data["trufflehog"], data["gitleaks"]))
+
+    return table

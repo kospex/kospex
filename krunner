@@ -28,7 +28,8 @@ def cli():
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")
 @click.argument('directory', type=click.Path(exists=True))
 def find_docker(directory,out):
-    """Find docker related files in the given directory."""
+    """Find docker related files in the given directory.
+    """
 
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
@@ -41,8 +42,6 @@ def find_docker(directory,out):
     if out:
         KospexUtils.list_dict_2_csv(records,out)
 
-
-
 @cli.command("list-repos")
 @click.argument('directory', type=click.Path(exists=True))
 def find_repos(directory):
@@ -52,7 +51,7 @@ def find_repos(directory):
 
 @cli.command("trufflehog")
 @click.argument('directory', type=click.Path(exists=True))
-def trufflehog(directory):
+def trufflehog_scan(directory):
     """Run trufflehog on all git repositories found in the given directory."""
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
@@ -62,8 +61,11 @@ def trufflehog(directory):
         kospex.set_repo_dir(d)
         fname = kospex.generate_krunner_filename(function="TRUFFLEHOG",ext="json")
         command = f"trufflehog filesystem -j . > {fname}"
-        print(command)
-        os.system(command)
+        if not os.path.exists(fname):
+            print(command)
+            os.system(command)
+        else:
+            print(f"Skipping, file {fname} exists")
         os.chdir(cwd)
 
 @cli.command("grep")
@@ -122,8 +124,9 @@ def todo(directory):
         os.chdir(cwd)
 
 @cli.command("git-pull")
+@click.option('-sync', is_flag=True, default=False, help="Sync to kospex DB.")
 @click.argument('directory', type=click.Path(exists=True))
-def git_pull(directory):
+def git_pull(directory,sync):
     """Run a 'git pull' on all git repositories found in the given directory."""
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
@@ -134,50 +137,101 @@ def git_pull(directory):
         os.chdir(d)
         os.system("git pull")
         os.chdir(cwd)
+        if sync:
+            kospex.sync_repo(d)
+
 
 @cli.command("gitleaks")
 @click.argument('directory', type=click.Path(exists=True))
-def git_leaks(directory):
+def gitleaks_scan(directory):
     """Run a 'gitleaks detect' on all git repositories found in the given directory."""
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
+    print(f"About to run gitleaks on {len(dirs)} repos\nThis may take a while ...")
     cwd = os.getcwd()
-    print("# repos: " + str(len(dirs)))
     for d in dirs:
         print("\nRepo: " + d)
-        #os.chdir(d)
         kospex.set_repo_dir(d)
-        print(kospex.git.get_repo_id())
+        #print(kospex.git.get_repo_id())
         fname = kospex.generate_krunner_filename(function="GITLEAKS",ext="json")
-        os.system(f"gitleaks detect -r {fname}")
+        if not os.path.exists(fname):
+            os.system(f"gitleaks detect -r {fname}")
+        else:
+            print(f"Skipping, file {fname} exists")
         os.chdir(cwd)
+        print("\n")
 
-@cli.command("deps-age")
-@click.argument('directory', type=click.Path(exists=True))
-def deps_age(directory):
-    """Find the age of dependency files in all git repositories found in the given directory."""
-    print("\nDirectory: " + os.path.abspath(directory))
-    dirs = KospexUtils.find_repos(directory)
-    kdeps = KospexDependencies(kospex_query=kospex.kospex_query)
-    cwd = os.getcwd()
+#@cli.command("deps-age")
+#@click.argument('directory', type=click.Path(exists=True))
+#def deps_age(directory):
+#    """Find the age of dependency files in all git repositories found in the given directory."""
+#    print("\nDirectory: " + os.path.abspath(directory))
+#    dirs = KospexUtils.find_repos(directory)
+#    kdeps = KospexDependencies(kospex_query=kospex.kospex_query)
+#    cwd = os.getcwd()
 
-    findings = []
+#    findings = []
 
-    print("# repos: " + str(len(dirs)))
-    for d in dirs:
-        print("\nRepo: " + d)
-        kospex.set_repo_dir(d)
-        results = kdeps.find_dependency_files(".")
-        if results:
-            for file_path, pkg_type in results:
-                dep_file = KospexUtils.get_last_commit_info(file_path)
-                dep_file['type'] = pkg_type
-                dep_file['file_path'] = file_path
-                #print(KospexUtils.get_last_commit_info(file_path))
-                findings.append(dep_file)
-        os.chdir(cwd)
+#    print("# repos: " + str(len(dirs)))
+#    for d in dirs:
+#        print("\nRepo: " + d)
+#        kospex.set_repo_dir(d)
+#        results = kdeps.find_dependency_files(".")
+#        if results:
+#            for file_path, pkg_type in results:
+#                dep_file = KospexUtils.get_last_commit_info(file_path)
+#                dep_file['type'] = pkg_type
+#                dep_file['file_path'] = file_path
+#                #print(KospexUtils.get_last_commit_info(file_path))
+#                findings.append(dep_file)
+#        os.chdir(cwd)
+#    print(KospexUtils.count_key_occurrences(findings, 'status'))
 
-    print(KospexUtils.count_key_occurrences(findings, 'status'))
+@cli.command("secrets-hotspots")
+def secrets_hotspots():
+    """Identify secrets hotspots from tools that have been run."""
+    user_kospex_home = os.path.expanduser("~/kospex")
+    heatmap = {}
+    print(user_kospex_home)
+    krunner_path = f"{user_kospex_home}/krunner"
+    globber = f"{user_kospex_home}/krunner/*GITLEAKS*.json"
+    print(globber)
+    results = glob.glob(globber)
+    for r in results:
+
+        if details := kospex.extract_krunner_file_details(r, krunner_home=krunner_path):
+            if details['repo_id'] not in heatmap:
+                print("New repo_id in heatmap")
+                heatmap[details['repo_id']] = {}
+            gitleaks = KrunnerUtils.load_gitleaks(r)
+            #print(gitleaks)
+            if gitleaks:
+                heatmap[details['repo_id']]['gitleaks'] = len(gitleaks)
+            else:
+                heatmap[details['repo_id']]['gitleaks'] = 1
+
+        #details = kospex.extract_krunner_file_details(r, krunner_home=krunner_path)
+        #print(details)
+        #print(r)
+
+    trufflehog_globber = f"{user_kospex_home}/krunner/*TRUFFLEHOG*.json"
+    results = glob.glob(trufflehog_globber)
+    for r in results:
+
+        if details := kospex.extract_krunner_file_details(r, krunner_home=krunner_path):
+            if details['repo_id'] not in heatmap:
+                print("New repo_id in heatmap")
+                heatmap[details['repo_id']] = {}
+            trufflehog = KrunnerUtils.load_trufflehog(r)
+            if trufflehog:
+                heatmap[details['repo_id']]['trufflehog'] = len(trufflehog)
+            else:
+                heatmap[details['repo_id']]['trufflehog'] = 1
+
+
+    print(heatmap)
+    table = KrunnerUtils.get_secrets_heatmap_table(heatmap)
+    print(table)
 
 @cli.command("semgrep")
 @click.argument('directory', type=click.Path(exists=True))
@@ -194,66 +248,54 @@ def semgrep(directory):
         print(kospex.git.get_repo_id())
         #fname = kospex.generate_krunner_filename(function="SEMGREP",ext="txt")
         fname = kospex.generate_krunner_filename(function="SEMGREP",ext="json")
+        if not os.path.exists(fname):
+            #os.system(f"gitleaks detect -r {fname}")
+            os.system(f"semgrep scan --json -o {fname}")
+        else:
+            print(f"Skipping, file {fname} exists")
         # we should output as json, but for inital test, we'll use txt
         #os.system(f"semgrep scan > {fname}")
-        os.system(f"semgrep scan --json -o {fname}")
+        #os.system(f"semgrep scan --json -o {fname}")
+
         os.chdir(cwd)
 
-@cli.command("pretty-json")
-@click.argument('json_file', type=click.Path(exists=True))
-def pretty_json(json_file):
-    """ Pretty print a JSON file"""
-    with open(json_file, 'r') as file:
-        data = json.load(file)
-    pretty = json.dumps(data, indent=4)
-    print(pretty)
+#@cli.command("pretty-json")
+#@click.argument('json_file', type=click.Path(exists=True))
+#def pretty_json(json_file):
+#    """ Pretty print a JSON file"""
+#    with open(json_file, 'r') as file:
+#        data = json.load(file)
+#    pretty = json.dumps(data, indent=4)
+#    print(pretty)
 
-@cli.command("test")
-@click.argument('json_file', type=click.Path(exists=True))
-def test(json_file):
-    """ Test coding"""
-    with open(json_file, 'r') as file:
-        data = json.load(file)
-    #for finding in data:
-    #    print(finding)
-    if data.get("results"):
-        print("Results found")
-        for r in data["results"]:
-            print()
-            print(json.dumps(r, indent=4))
-            print()
-            print(r['check_id'])
-            print(r['path'])
-            print(r['end']['line'])
-            print(r['start']['line'])
 
-@cli.command("semgrep-csv")
-def semgrep_csv():
-    """ print out sql injection findings from semgrep"""
-    user_kospex_home = os.path.expanduser("~/kospex")
-    print(user_kospex_home)
-    globber = f"{user_kospex_home}/krunner/*SEMGREP*.json"
-    print(globber)
-    results = glob.glob(globber)
-    csv_file = "semgrep-sql.csv"
-    findings = []
-    for r in results:
-        base = os.path.basename(r)
-        repo_id = base.split('.SEMGREP')[0]
-        repo = repo_id.split('~')[-1]
-        with open(r, 'r') as file:
-            data = json.load(file)
-        for finding in data['results']:
-            if "sql" in finding['check_id']:
+#@cli.command("semgrep-csv")
+#def semgrep_csv():
+#    """ print out sql injection findings from semgrep"""
+#    user_kospex_home = os.path.expanduser("~/kospex")
+#    print(user_kospex_home)
+#    globber = f"{user_kospex_home}/krunner/*SEMGREP*.json"
+#    print(globber)
+#    results = glob.glob(globber)
+#    csv_file = "semgrep-sql.csv"
+#    findings = []
+#    for r in results:
+#        base = os.path.basename(r)
+#        repo_id = base.split('.SEMGREP')[0]
+#        repo = repo_id.split('~')[-1]
+#        with open(r, 'r') as file:
+#            data = json.load(file)
+#        for finding in data['results']:
+#            if "sql" in finding['check_id']:
                 #print(finding['check_id'])
-                x = {}
-                x['repo'] = repo
-                x['path'] = finding['path']
-                x['line'] = finding['start']['line']
-                x['check_id'] = finding['check_id']
+#                x = {}
+#                x['repo'] = repo
+#                x['path'] = finding['path']
+#                x['line'] = finding['start']['line']
+#                x['check_id'] = finding['check_id']
                 #print(finding['path'] + ":" + str(finding['start']['line']) + ":" + finding['extra']['message'])
-                findings.append(x)
-    KospexUtils.list_dict_2_csv(findings, csv_file)
+#                findings.append(x)
+#    KospexUtils.list_dict_2_csv(findings, csv_file)
 
 @cli.command("find-urls")
 def find_urls():

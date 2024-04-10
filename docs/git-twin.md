@@ -43,4 +43,4 @@ Here's the kospex model for the Git twin layout
 Effectively this approach aims to mirror a lot of repositories. 
 Mirroring is more about redundancy and access, where as the twin is more about analytics.
 
-Conceptually, we're borrowing the "digital twin", where we are observing the asset to identify to identify faults and areas for maintenance.
+We're borrowing the "digital twin" concept, where we are observing the asset to identify to identify faults and areas for maintenance.
