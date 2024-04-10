@@ -34,11 +34,13 @@ Here's the kospex model for the Git twin layout
 | Example repo                           | Git twin filepath                    |
 | ------------                           | -----------------                    |
 | https://github.com/mergestat/mergestat | /code/github.com/mergestat/mergestat |
-| https://github.com/mergestat/mergestat | /code/github.com/mergestat/mergestat |
+| https://github.com/kospex/kospex/      | /code/github.com/kospex/kospex       |
+| https://go.googlesource.com/text       | /code/go.googlesource.com/text       | 
+
 
 ## How is this different from a git mirror?
 
 Effectively this approach aims to mirror a lot of repositories. 
-Mirroring is more about redundancy, where as the twin is more about analytics
+Mirroring is more about redundancy and access, where as the twin is more about analytics.
 
-Conceptually, we're borrowing the "digital twin" 
+Conceptually, we're borrowing the "digital twin", where we are observing the asset to identify to identify faults and areas for maintenance.
