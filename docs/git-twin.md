@@ -50,10 +50,9 @@ REPO: that actual repo slug, like kospex, spring-boot, express
 
  
 
-
 ## How is this different from a git mirror?
 
-Effectively this approach aims to mirror a lot of repositories. 
-Mirroring is more about redundancy and access, where as the twin is more about analytics.
+Effectively the twin approach aims to mirror a lot of repositories. 
+However, mirroring is more about redundancy and access, where as the twin is more about analytics.
 
 We're borrowing the "digital twin" concept, where we are observing the asset to identify to identify faults and areas for maintenance.

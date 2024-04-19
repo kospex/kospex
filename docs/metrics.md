@@ -38,11 +38,15 @@ or simply start categorising.
 | Last updated                  | Last commit to the repo                                           |
 | Number of authors             | All time authors to a repo                                        |
 | Number of active authors      | List of developers who've commited in the last X Days (e.g. 90)   |
-| Number of dependency files    | How many dependency files (e.g. package.json, go.mod) are there   |
-| Number of direct dependencies | In a dependency/package file, how many libraries are we including | 
 | Age of repository             | How old is this repo? 1 month, 1 quarter, older than 1 year?      | 
+| Days active                   | How many days was there developer? 1 day for a spike, 3 years     |
+| Number of dependency files    | How many dependency files (e.g. package.json, go.mod) are there   |
+| Number of direct dependencies | In a dependency/package file, how many libraries are we including |
+| % upto date dependency files  | What percentage of dependency files are n-2 or newer              |
+| % upto date dependencies      | What percentage of ALL dependency files are n-2 or newer          |
 
 
+### Separate indicators per file
 
 
 
