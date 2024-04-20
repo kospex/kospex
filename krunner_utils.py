@@ -1,6 +1,8 @@
 """ Helper functions for krunner """
 import os
 import json
+import re
+import yaml
 from prettytable import PrettyTable
 
 def extract_grep_parameters(input_string):
@@ -85,3 +87,81 @@ def get_secrets_heatmap_table(heatmap_data):
         table.add_row((repo_id, data["Total"], data["trufflehog"], data["gitleaks"]))
 
     return table
+
+def find_docker_from_statements(filename):
+    """ Find FROM statements in Docker files."""
+    # Define a regular expression pattern to match Docker FROM statements.
+    # This pattern captures the base image and the type (if present) after 'as'
+    pattern = re.compile(r'^FROM\s+([\w.:/-]+)(?:\s+as\s+(\w+))?')
+
+    results = []
+
+    with open(filename, 'r') as file:
+        for line_number, line in enumerate(file, start=1):
+            match = pattern.match(line)
+            if match:
+                # Extract the base image and the type (if present)
+                base_image = match.group(1)
+                type_key = match.group(2) if match.group(2) is not None else ""
+                results.append({
+                    'filename': filename,
+                    'line_number': line_number,
+                    'base_image': base_image,
+                    'type': type_key,
+                })
+    return results
+
+def find_docker_compose_images(filename):
+    """ Find images in Docker Compose files."""
+
+    conf = {}
+    with open(filename) as f:
+        conf = yaml.safe_load(f)
+
+    images = []
+
+    if conf:
+        for service in conf['services']:
+            print(service)
+            image = {}
+            image["base_image"] = conf['services'][service].get("image")
+            image["type"] = service
+            image["filename"] = filename
+            images.append(image)
+
+    return images
+
+def get_docker_images(records):
+    """
+    Extract the base image and type from a list of records."""
+
+    record_images = []
+
+    for rec in records:
+
+        record_mod = rec.copy()
+        record_mod['base_image'] = ""
+        record_mod['type'] = ""
+
+        filename = rec.get('file_path',"")
+        basename = os.path.basename(filename)
+        from_images = []
+
+        if basename and basename.startswith("Dockerfile"):
+            from_images = find_docker_from_statements(rec['file_path'])
+
+        elif basename and basename.startswith("docker-compose"):
+            from_images = find_docker_compose_images(rec['file_path'])
+
+        if from_images and len(from_images) > 0:
+            for img in from_images:
+                record_mod = rec.copy()
+                record_mod['base_image'] = img['base_image']
+                record_mod['type'] = img['type']
+                record_images.append(record_mod)
+
+        else:
+            record_images.append(record_mod)
+
+    return record_images
+    

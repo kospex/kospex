@@ -5,13 +5,11 @@ import os.path
 import subprocess
 import sys
 import shlex
-import json
 import glob
 import click
 from kospex_core import Kospex
 import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
-from kospex_dependencies import KospexDependencies
 
 kospex = Kospex()
 
@@ -20,27 +18,35 @@ def cli():
     """krunner (Kospex Runner) is a utility for running shell commands on multiple git repos.
 
     For documentation on how commands run `krunner COMMAND --help`.
+
+    See also https://kospex.io/krunner
     
     """
 
 @cli.command("find-docker")
-#@click.option('--metadata', is_flag=True, default=False, help="Provide git metadata and last modified. ")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")
+@click.option('-images', is_flag=True, default=False, help="Extract image names")
 @click.argument('directory', type=click.Path(exists=True))
-def find_docker(directory,out):
-    """Find docker related files in the given directory.
+def find_docker(directory,out,images):
+    """
+    Find docker related files in the given directory.
     """
 
-    print("\nDirectory: " + os.path.abspath(directory))
+    print("\nSearch directory: " + os.path.abspath(directory))
+
     dirs = KospexUtils.find_repos(directory)
     files = KrunnerUtils.find_dockerfiles_in_repos(dirs)
     records = KospexUtils.get_git_metadata(files)
 
-    table = KospexUtils.get_dependency_files_table(records)
+    if images:
+        records = KrunnerUtils.get_docker_images(records)
+
+    table = KospexUtils.get_dependency_files_table(records, images=images)
     print(table)
 
     if out:
         KospexUtils.list_dict_2_csv(records,out)
+
 
 @cli.command("list-repos")
 @click.argument('directory', type=click.Path(exists=True))
@@ -188,12 +194,16 @@ def gitleaks_scan(directory):
 #    print(KospexUtils.count_key_occurrences(findings, 'status'))
 
 @cli.command("secrets-hotspots")
-def secrets_hotspots():
+@click.option('-git_server', type=click.STRING, help="Git server to limit results to.")
+@click.option('-org_key', type=click.STRING, help="Org key [server~org] to limit results to.")
+def secrets_hotspots(git_server,org_key):
     """Identify secrets hotspots from tools that have been run."""
+
     user_kospex_home = os.path.expanduser("~/kospex")
     heatmap = {}
     print(user_kospex_home)
     krunner_path = f"{user_kospex_home}/krunner"
+
     globber = f"{user_kospex_home}/krunner/*GITLEAKS*.json"
     print(globber)
     results = glob.glob(globber)
@@ -201,18 +211,14 @@ def secrets_hotspots():
 
         if details := kospex.extract_krunner_file_details(r, krunner_home=krunner_path):
             if details['repo_id'] not in heatmap:
-                print("New repo_id in heatmap")
                 heatmap[details['repo_id']] = {}
+
             gitleaks = KrunnerUtils.load_gitleaks(r)
-            #print(gitleaks)
+
             if gitleaks:
                 heatmap[details['repo_id']]['gitleaks'] = len(gitleaks)
             else:
-                heatmap[details['repo_id']]['gitleaks'] = 1
-
-        #details = kospex.extract_krunner_file_details(r, krunner_home=krunner_path)
-        #print(details)
-        #print(r)
+                heatmap[details['repo_id']]['gitleaks'] = 0
 
     trufflehog_globber = f"{user_kospex_home}/krunner/*TRUFFLEHOG*.json"
     results = glob.glob(trufflehog_globber)
@@ -226,7 +232,7 @@ def secrets_hotspots():
             if trufflehog:
                 heatmap[details['repo_id']]['trufflehog'] = len(trufflehog)
             else:
-                heatmap[details['repo_id']]['trufflehog'] = 1
+                heatmap[details['repo_id']]['trufflehog'] = 0
 
 
     print(heatmap)
@@ -258,16 +264,6 @@ def semgrep(directory):
         #os.system(f"semgrep scan --json -o {fname}")
 
         os.chdir(cwd)
-
-#@cli.command("pretty-json")
-#@click.argument('json_file', type=click.Path(exists=True))
-#def pretty_json(json_file):
-#    """ Pretty print a JSON file"""
-#    with open(json_file, 'r') as file:
-#        data = json.load(file)
-#    pretty = json.dumps(data, indent=4)
-#    print(pretty)
-
 
 #@cli.command("semgrep-csv")
 #def semgrep_csv():
