@@ -48,6 +48,18 @@ or simply start categorising.
 
 ### Separate indicators per file
 
+*Dependency Files*
 
+For dependency or package manager file (e.g. package.json, go.mod, requirements.txt), 
+its possibly to deep dive into specific details as highlighted in the table below
+
+| Detail                     | Description                                                       |
+| -----------------          | ----                                                              |
+| Name                       | Name of the package                                               |
+| Version                    | Version of the package                                            |
+| version type               | was it semantic, exact pinning, no version etc                    |
+| # versions behind          | Useful in looking at how "maintained" something is                |
+| Date version published     | When was this published? Correlate with # versions behind         |
+| # vulnerabilities          | If there are known vulnerabilities                                |
 
 
