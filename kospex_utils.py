@@ -252,6 +252,19 @@ def git_url_to_repo_id(git_url):
 
     return git_url
 
+def parse_repo_id(repo_id):
+    """ Parse a repo ID into its components"""
+    parts = repo_id.split('~')
+    if len(parts) != 3:
+        return None
+    return {
+        'git_server': parts[0],
+        'org': parts[1],
+        'repo': parts[2],
+        'repo_id': repo_id,
+        'org_key': f"{parts[0]}~{parts[1]}",
+    }
+
 def get_last_commit_info(filename,remote=None):
     """ Get the last commit info for a given file."""
 
@@ -315,9 +328,10 @@ def get_git_metadata(file_list):
         if details and details.get("repo"):
             details["repo"] = extract_git_url(details["repo"])
         else:
-            print(f)
+            print(f"Error getting last commit infor for {f}")
+
         records.append(details)
-    
+
     return records
 
 def repo_stats(records, fieldname):
@@ -335,27 +349,42 @@ def repo_stats(records, fieldname):
     return stats
 
 
-def get_dependency_files_table(list_of_commit_info):
+def get_dependency_files_table(list_of_commit_info, images=None):
     """ Take a list of commit info requests and return a Pretty Table """
 
     table = PrettyTable()
-    table.field_names = ["File path", "Author Date", "Committer Date",
-                         "Days Ago", "Status",  "Repo", "Commit Hash"]
+    if images:
+        table.field_names = ["base_image", "type", "File path", "Author Date", "Committer Date",
+                         "Days Ago", "Status", "Repo"]
+        table.align["base_image"] = "l"
+        table.align["type"] = "l"
+
+    else:
+        table.field_names = ["File path", "Author Date", "Committer Date",
+                         "Days Ago", "Status", "Repo"]
+
     table.align["File path"] = "l"
     table.align["Repo"] = "l"
     table.align["Status"] = "l"
     table.align["Days Ago"] = "r"
 
     for commit_info in list_of_commit_info:
-        table.add_row([
+
+        table_row = []
+        if images:
+            table_row.append(commit_info['base_image'])
+            table_row.append(commit_info['type'])
+
+        table_row.extend((
             commit_info['file_path'],
             commit_info['author_date'],
             commit_info['committer_date'],
             commit_info['days_ago'],
             commit_info['status'],
             commit_info['repo'],
-            commit_info['commit_hash']
-        ])
+        ))
+
+        table.add_row(table_row)
 
     return table
 
@@ -634,6 +663,15 @@ def key_person_prettytable():
     table.align["% active"] = "r"
 
     return table
+
+def get_krunner_directory():
+    """ Return the krunner directory. """
+
+    user_kospex_home = os.path.expanduser("~/kospex")
+    kospex_home = os.getenv("KOSPEX_HOME",user_kospex_home)
+    krunner_path = f"{kospex_home}/krunner"
+
+    return krunner_path
 
 def orgs_prettytable():
     """ Return a prettytable object for the orgs query."""
