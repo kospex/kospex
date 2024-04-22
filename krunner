@@ -49,9 +49,14 @@ def find_docker(directory,out,images):
 
 
 @cli.command("list-repos")
-@click.argument('directory', type=click.Path(exists=True))
+@click.argument('directory', required=False, type=click.Path(exists=True))
 def find_repos(directory):
-    """List all git repositories found in the given directory."""
+    """
+    List all git repositories found in the given directory.
+    If no directory is given, the current directory is used.
+    """
+    if not directory:
+        directory = os.getcwd()
     print("\nDirectory: " + os.path.abspath(directory))
     kospex.list_repos(directory)
 
@@ -167,31 +172,6 @@ def gitleaks_scan(directory):
         os.chdir(cwd)
         print("\n")
 
-#@cli.command("deps-age")
-#@click.argument('directory', type=click.Path(exists=True))
-#def deps_age(directory):
-#    """Find the age of dependency files in all git repositories found in the given directory."""
-#    print("\nDirectory: " + os.path.abspath(directory))
-#    dirs = KospexUtils.find_repos(directory)
-#    kdeps = KospexDependencies(kospex_query=kospex.kospex_query)
-#    cwd = os.getcwd()
-
-#    findings = []
-
-#    print("# repos: " + str(len(dirs)))
-#    for d in dirs:
-#        print("\nRepo: " + d)
-#        kospex.set_repo_dir(d)
-#        results = kdeps.find_dependency_files(".")
-#        if results:
-#            for file_path, pkg_type in results:
-#                dep_file = KospexUtils.get_last_commit_info(file_path)
-#                dep_file['type'] = pkg_type
-#                dep_file['file_path'] = file_path
-#                #print(KospexUtils.get_last_commit_info(file_path))
-#                findings.append(dep_file)
-#        os.chdir(cwd)
-#    print(KospexUtils.count_key_occurrences(findings, 'status'))
 
 @cli.command("secrets-hotspots")
 @click.option('-git_server', type=click.STRING, help="Git server to limit results to.")
