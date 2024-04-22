@@ -293,6 +293,12 @@ def semgrep(directory):
 #                findings.append(x)
 #    KospexUtils.list_dict_2_csv(findings, csv_file)
 
+@cli.command("bob")
+@click.argument('directory', required=False, type=click.Path(exists=True))
+def bob(directory):
+    
+    print()
+
 @cli.command("find-urls")
 def find_urls():
     """ find all urls in files in the current directory"""
