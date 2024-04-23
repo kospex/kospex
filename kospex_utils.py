@@ -48,7 +48,17 @@ def get_kospex_config():
 
 def get_kospex_db_path():
     """ Get the kospex database """
-    default_kospex_db = os.path.expanduser(f"~/kospex/{KOSPEX_DB_FILENAME}")
+
+    kospex_path = os.path.expanduser("~/kospex/")
+    kospex_home = os.getenv("KOSPEX_HOME",kospex_path)
+
+    kospex_home = kospex_home.rstrip("/") # Removing trailing slash if it's there
+
+    if not os.path.exists(kospex_home):
+        os.makedirs(kospex_home)
+
+    default_kospex_db = f"{kospex_home}/{KOSPEX_DB_FILENAME}"
+
     return os.getenv("KOSPEX_DB",default_kospex_db)
 
 def load_config(config_file):
