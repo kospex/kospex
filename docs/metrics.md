@@ -33,17 +33,17 @@ While we may known if our repo is feature complete, still in active development,
 The following are some suggestions which might give an indication that a repo is healthier than another, 
 or simply start categorising. 
 
-| Indicator                     | Description                                                       |
-| -----------------             | ----                                                              |
-| Last updated                  | Last commit to the repo                                           |
-| Number of authors             | All time authors to a repo                                        |
-| Number of active authors      | List of developers who've commited in the last X Days (e.g. 90)   |
-| Age of repository             | How old is this repo? 1 month, 1 quarter, older than 1 year?      | 
-| Days active                   | How many days was there developer? 1 day for a spike, 3 years     |
-| Number of dependency files    | How many dependency files (e.g. package.json, go.mod) are there   |
-| Number of direct dependencies | In a dependency/package file, how many libraries are we including |
-| % upto date dependency files  | What percentage of dependency files are n-2 or newer              |
-| % upto date dependencies      | What percentage of ALL dependency files are n-2 or newer          |
+| Indicator                     | Description                                                       | Indicator   |
+| -----------------             | ----                                                              | -----       |
+| Last updated                  | Last commit to the repo                                           | Maintenance |
+| Number of authors             | All time authors to a repo                                        | Complexity  |
+| Number of active authors      | List of developers who've commited in the last X Days (e.g. 90)   | Maintenance |
+| Age of repository             | How old is this repo? 1 month, 1 quarter, older than 1 year?      | Maintenance |
+| Days active                   | How many days was there developer? 1 day for a spike, 3 years     | Info        |
+| Number of dependency files    | How many dependency files (e.g. package.json, go.mod) are there   | Complexity  |
+| Number of direct dependencies | In a dependency/package file, how many libraries are we including | Complexity  |
+| % upto date dependency files  | What percentage of dependency files are n-2 or newer              | Maintenance |
+| % upto date dependencies      | What percentage of ALL dependency files are n-2 or newer          | Maintenance |
 
 
 ### Separate indicators per file
@@ -53,13 +53,13 @@ or simply start categorising.
 For dependency or package manager file (e.g. package.json, go.mod, requirements.txt), 
 its possibly to deep dive into specific details as highlighted in the table below
 
-| Detail                     | Description                                                       |
-| -----------------          | ----                                                              |
-| Name                       | Name of the package                                               |
-| Version                    | Version of the package                                            |
-| version type               | was it semantic, exact pinning, no version etc                    |
-| # versions behind          | Useful in looking at how "maintained" something is                |
-| Date version published     | When was this published? Correlate with # versions behind         |
-| # vulnerabilities          | If there are known vulnerabilities                                |
+| Detail                     | Description                                                       | Indicator   |
+| -----------------          | ----                                                              | -----       |
+| Name                       | Name of the package                                               | Info        |
+| Version                    | Version of the package                                            | Maintenance |
+| version type               | was it semantic, exact pinning, no version etc                    | Practices   |
+| # versions behind          | Useful in looking at how "maintained" something is                | Maintenance |
+| Date version published     | When was this published? Correlate with # versions behind         | Maintenance |
+| # vulnerabilities          | If there are known vulnerabilities                                | Risk        |
 
 

@@ -183,7 +183,7 @@ def hotspot(repo, repo_id, by_file):
 @cli.command("health-check")
 @click.argument('directory', required=False, type=click.Path(exists=True))
 def health_check(directory):
-    """ Run a health check on the git repository directory."""
+    """ Run a health check on a git repository."""
 
     warning_message = "\nWARNING: This is an experimental WIP feature."
     print(warning_message)
