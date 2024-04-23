@@ -222,7 +222,9 @@ def secrets_hotspots(git_server,org_key):
 @cli.command("semgrep")
 @click.argument('directory', type=click.Path(exists=True))
 def semgrep(directory):
-    """Run a 'semgrep scan' on all git repositories found in the given directory."""
+    """
+    Run a 'semgrep scan' on all git repositories found in the given directory.
+    """
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
     cwd = os.getcwd()

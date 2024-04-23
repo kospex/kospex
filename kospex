@@ -180,6 +180,30 @@ def hotspot(repo, repo_id, by_file):
     else:
         print("Please specify either a '-repo' or a '-repo_id'.")
 
+@cli.command("health-check")
+@click.argument('directory', required=False, type=click.Path(exists=True))
+def health_check(directory):
+    """ Run a health check on the git repository directory."""
+
+    warning_message = "\nWARNING: This is an experimental WIP feature."
+    print(warning_message)
+    if not directory:
+        directory = os.getcwd()
+        print("No directory specified, using current directory.")
+
+    print("\nDirectory: " + os.path.abspath(directory))
+    # Get the # of authors
+    # Get the active authors
+    # Get the number of depencencies files
+    kquery = KospexQuery()
+    kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
+    results = kdeps.find_dependency_files(directory)
+    print(f"Found {len(results)} dependency files.")
+    # Get the number of total dependencies
+    # Get the status label
+    print(f"{warning_message}\n")
+
+
 @cli.command("deps")
 @click.option('-repo', type=GitRepo(), help="File path to git repo.")
 @click.option('-file', type=click.Path(exists=True), help="Package file to assess.")
@@ -340,19 +364,6 @@ def key_person(directory,top):
     print(table)
     print()
 
-# TODO - move this to deps, this is redundant but it's -directory will be broken now
-#@cli.command("find-dependencies")
-#@click.argument('directory',  type=click.Path())
-#def find_deps(directory):
-#    """ Find all the known dependency management files in a directory."""
-#    print(f"Finding dependency management files in the directory: {directory}")
-#    kdeps = KospexDependencies()
-#    results = kdeps.find_dependency_files(directory)
-    #for file_path, pkg_type in results:
-    #    print(f"File: {file_path} | Type: {pkg_type}")
-#    for file in results:
-#        print(file)
-
 @cli.command("orgs")
 def orgs():
     """List all the organizations in the database."""
@@ -380,7 +391,7 @@ def sync_dependencies(repo,file,dev):
             repo_info = kospex.file_repo_details(file)
             records = kdeps.assess(file_path, repo_info=repo_info,
                                    print_table=True,dev_deps=dev)
-            
+
             for rec in records:
 
                 if rec.get("source_repo"):
@@ -399,6 +410,7 @@ def sync_dependencies(repo,file,dev):
 
     else:
         print("Please specify either a '-repo' or a '-file'.")
+
 
 @cli.command("know")
 @click.argument('email',  type=click.STRING)
