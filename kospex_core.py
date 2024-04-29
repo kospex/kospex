@@ -504,7 +504,8 @@ class Kospex:
         for row in results:
             row["username"] = KospexUtils.extract_github_username(row["author"])
             records.append(row)
-            table.add_row([row["username"],row["last_seen"], row["commits"], row["repos"], row["author"]])
+            table.add_row([row["username"],row["last_seen"],
+                           row["commits"], row["repos"], row["author"]])
             row_count += 1
 
         if row_count > 0:
@@ -817,7 +818,7 @@ class Kospex:
         metadata = filename.removeprefix(krunner_home + "/")
         details = {}
         repo_mash = metadata.split("~")
-        # repo mash will split on ~ to more easily the git server 
+        # repo mash will split on ~ to more easily the git server
         # Which can have multiple . in a domain name
         details['org'] = repo_mash[1]
         details['git_server'] = repo_mash[0]
@@ -833,4 +834,5 @@ class Kospex:
         #details['function'] = parts[1]
         #details['ext'] = parts[2]
         return details
+
 

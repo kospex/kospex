@@ -5,7 +5,6 @@ import os.path
 import logging
 from datetime import datetime
 from shutil import which
-import pprint
 import click
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
@@ -187,9 +186,17 @@ def health_check(directory):
 
     warning_message = "\nWARNING: This is an experimental WIP feature."
     print(warning_message)
+    print()
     if not directory:
-        directory = os.getcwd()
+        #directory = os.getcwd()
+        directory = "."
         print("No directory specified, using current directory.")
+
+    if not KospexUtils.is_git(directory):
+        print("Directory is not a git repository.")
+        exit(1)
+
+    details = KospexUtils.get_git_stats(directory)
 
     print("\nDirectory: " + os.path.abspath(directory))
     # Get the # of authors
@@ -198,17 +205,30 @@ def health_check(directory):
     kquery = KospexQuery()
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
     results = kdeps.find_dependency_files(directory)
+    records = KospexUtils.get_all_last_commit_info(results)
+    stats = KospexUtils.repo_stats(records,"author_date")
+    print(stats)
+
+    details['dependency_files'] = len(results)
     print(f"Found {len(results)} dependency files.")
+    active_dep_files = stats.get("Active",0)
+    if active_dep_files > 0:
+        active_dep_files_percent = (active_dep_files / len(results)) * 100
+        details['active_dependency_files'] = f"{active_dep_files_percent:.2f}%"
+    else:
+        details['active_dependency_files'] = "0%"
+
     # Get the number of total dependencies
     # Get the status label
     print(f"{warning_message}\n")
+    print(KospexUtils.get_keyvalue_table(details))
 
 
 @cli.command("deps")
 @click.option('-repo', type=GitRepo(), help="File path to git repo.")
 @click.option('-file', type=click.Path(exists=True), help="Package file to assess.")
 @click.option('-directory', type=click.Path(), help="Directory to search for dependency files.")
-@click.option('--dev', is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL.")
+@click.option('-dev', is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL.")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")
 def deps(repo, file, directory, out, dev):
     """Find dependency files or assess a specific file."""
@@ -222,10 +242,12 @@ def deps(repo, file, directory, out, dev):
 
         if results:
 
-            for file_path in results:
-                commit_info = KospexUtils.get_last_commit_info(file_path)
-                if commit_info:
-                    records.append(commit_info)
+            #for file_path in results:
+            #    commit_info = KospexUtils.get_last_commit_info(file_path)
+            #    if commit_info:
+            #        records.append(commit_info)
+
+            records = KospexUtils.get_all_last_commit_info(results)
 
             if records:
                 table = KospexUtils.get_dependency_files_table(records)

@@ -77,12 +77,12 @@ class KospexDependencies:
             req = requests.get(url, timeout=10)
             if req.status_code == 200:
                 data = req.json()
-            #return req.json()["info"]["version"]
 
         if data:
             return data["info"]["version"]
         else:
             return None
+
 
     def extract_github_url(self,s):
         """
@@ -410,6 +410,34 @@ class KospexDependencies:
 
         return results
 
+    def get_pypi_source_repo(self, package_name):
+        """ Get the source repo for a PyPi package """
+        url = f"https://pypi.org/pypi/{package_name}/json"
+
+        data = None
+        if self.kospex_query:
+            content = self.kospex_query.url_request(url)
+            data = json.loads(content)
+        else:
+            req = requests.get(url, timeout=10)
+            if req.status_code == 200:
+                data = req.json()
+
+        if data:
+            repo = None
+            info = data.get("info")
+            purls = info.get("project_urls")
+            if purls:
+                repo = purls.get("Source")
+                if not repo:
+                    repo = purls.get("Source Code")
+            # TODO check description for source repo if the above fails
+            return repo
+
+        else:
+            return None
+
+
     def parse_pypi_package_declaration(self, package_declaration):
         """ Parse a PyPi package declaration into a dictionary """
         # TODO - need to double check the version specifiers as described in:
@@ -516,6 +544,8 @@ class KospexDependencies:
                     #continue
                 else:
                     record = self.depsdev_record("pypi",package,version)
+                    if not record.get("source_repo"):
+                        record["source_repo"] = self.get_pypi_source_repo(package)
 
                 #record['authors'] = 0
 

@@ -184,6 +184,10 @@ def find_git_base(filename):
 
 def development_status(days, active_limit=90, aging_limit=180, stale_limit=365):
     """Get the development status of a repo based on the number of days since the last commit"""
+
+    if days is None:
+        return "Unknown"
+
     if days <= active_limit:
         return "Active"
     elif active_limit < days <= aging_limit:
@@ -327,6 +331,23 @@ def get_last_commit_info(filename,remote=None):
 
     return default
 
+def get_all_last_commit_info(file_list):
+    """ Get the last commit info for a list of files"""
+
+    records = []
+
+    for f in file_list:
+        #details = { "file_path": f }
+        details = get_last_commit_info(f)
+        if details and details.get("repo"):
+            details["repo"] = extract_git_url(details["repo"])
+        else:
+            print(f"Error getting last commit information for {f}")
+
+        records.append(details)
+
+    return records
+
 def get_git_metadata(file_list):
     """ Get the last commit info for a list of files"""
 
@@ -338,7 +359,7 @@ def get_git_metadata(file_list):
         if details and details.get("repo"):
             details["repo"] = extract_git_url(details["repo"])
         else:
-            print(f"Error getting last commit infor for {f}")
+            print(f"Error getting last commit information for {f}")
 
         records.append(details)
 
@@ -352,9 +373,15 @@ def repo_stats(records, fieldname):
         stats[status] = 0
 
     for item in records:
-        last_seen = days_ago(item[fieldname])
-        status = development_status(last_seen)
-        stats[status] += 1
+        lookup = item.get(fieldname)
+        if lookup:
+            last_seen = days_ago(lookup)
+            status = development_status(last_seen)
+            stats[status] += 1
+        #last_seen = days_ago(item.get(fieldname))
+        #status = development_status(last_seen)
+        #stats[status] += 1
+
 
     return stats
 
@@ -386,12 +413,12 @@ def get_dependency_files_table(list_of_commit_info, images=None):
             table_row.append(commit_info['type'])
 
         table_row.extend((
-            commit_info['file_path'],
-            commit_info['author_date'],
-            commit_info['committer_date'],
-            commit_info['days_ago'],
-            commit_info['status'],
-            commit_info['repo'],
+            commit_info.get('file_path'),
+            commit_info.get('author_date'),
+            commit_info.get('committer_date'),
+            commit_info.get('days_ago'),
+            commit_info.get('status'),
+            commit_info.get('repo'),
         ))
 
         table.add_row(table_row)
@@ -467,10 +494,13 @@ def run_git_command(directory, args):
     """ Generic function to run a git command in a given directory"""
     return subprocess.check_output(['git', '-C', directory] + args).decode().strip()
 
-def get_git_stats(directory, last_days=30):
+def get_git_stats(directory, last_days=None):
     """ Return some basicgit stats for a given directory"""
     if not os.path.isdir(os.path.join(directory, '.git')):
         raise ValueError("The specified directory is not a Git repository.")
+
+    if not last_days:
+        last_days = 90
 
     #def run_git_command(args):
     #    return subprocess.check_output(['git', '-C', directory] + args).decode().strip()
@@ -699,3 +729,20 @@ def orgs_prettytable():
     table.align["last_commit"] = "r"
 
     return table
+
+def get_keyvalue_table(details=None):
+    """ Return a prettytable object for the keyvalue query."""
+
+    table = PrettyTable()
+    table.field_names = ["key", "value"]
+    table.align["key"] = "l"
+    table.align["value"] = "l"
+
+    if details:
+        for key, value in details.items():
+            table.add_row([key, value])
+
+    return table
+
+
+
