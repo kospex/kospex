@@ -88,10 +88,16 @@ def extract_github_username(author_email):
 def find_repos(directory):
     """ Find all git repos in the directory and subdirectories"""
     repos = []
-    results = glob.glob(directory + "/**/.git", recursive=True)
-    for file in results:
-        git_dir = file.replace("/.git", "")
-        repos.append(git_dir)
+
+    #results = glob.glob(directory + "/**/.git", recursive=True)
+    #for file in results:
+    #    git_dir = file.replace("/.git", "")
+    #    repos.append(git_dir)
+
+    for root, dirs, files in os.walk(directory):
+        if '.git' in dirs:
+            #repos.append(os.path.join(root, '.git'))
+            repos.append(root)
 
     return repos
 
