@@ -146,11 +146,6 @@ class Kospex:
         if not no_scc:
             self.file_metadata(directory)
         self.set_repo_dir(directory)
-        
-        #git_remote = get_git_remote()
-        #kgit = KospexGit()
-        #kgit.set_remote_url(git_remote)
-        #print(kgit.get_repo_id())
 
         if not from_date:
             latest_datetime = self.get_latest_commit_datetime(self.git.get_repo_id())
@@ -264,84 +259,6 @@ class Kospex:
 
         self.chdir_original()
 
-    #def sync_repo(self, directory, **kwargs):
-    #    """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
-
-        # If newer, sync them
-    #    newer = False
-    #    first_sync = False
-    #    # If we have a previous, we need to work backwards from the oldest commit we've sync'ed
-    #    previous = kwargs.get('previous', None)
-    #    if previous:
-    #        last = self.get_hash(repo=directory, oldest=True)
-    #        if last:
-    #            kwargs['before'] = last['committer_when']
-    #    else:
-    #        last = self.get_hash(repo=directory, newest=True)
-    #        newer = True
-    #        if last:
-    #            kwargs['after'] = last['committer_when']
-    #        else:
-    #            first_sync = True
-
-        # Think we need to  save the committer_when from 'commits' for the commit_files table
-    #    committer_when = last['committer_when']
-        # If we're doing a first sync, we need to get the newest commit from the repo directory
-        # Then we need to calculate the default number of days to sync as a date for committer_when
-
-        # If first_sync - default last committer to 15 months
-        # Otherwise, for previous, we'll use the oldest committer_when from the commits table
-        # Then calculate the previous number of days to sync backwards until we hit it
-    #    self.sync_commits(directory, **kwargs)
-        # Get the updated last hash and committer_when
-    #    updated = self.get_hash(repo=directory, oldest=True)
-
-        # We want to sync all the commit files for the commits we've just synced
-    #    params = {}
-    #    if newer:
-    #        last = self.get_hash(repo=directory, newest=True, table=KospexSchema.TBL_COMMIT_FILES)
-    #        if last:
-    #            params['after'] = last['committer_when']
-
-    #    if previous:
-    #        last = self.get_hash(repo=directory, oldest=True, table=KospexSchema.TBL_COMMIT_FILES)
-            # Set a before date to the oldest commit_files table committer_when we've sync'ed
-    #        if last:
-    #            params['before'] = last.get('committer_when')
-            # Set an after date to the oldest commit (from commits table) we've sync'ed
-    #        if updated:
-    #            params['after'] = updated.get('committer_when')
-
-    #    kwargs['previous'] = None
-    #    kwargs['next'] = None
-    #    last = None
-    #    self.sync_commit_files(directory, last, **params)
-
-    #    self.file_metadata(directory)
-
-    #def sync_commits(self, directory, **kwargs):
-    #    """Sync the commits for the given directory to the kospex db,
-    #    which are more recent than the last hash"""
-
-    #    self.set_repo_dir(directory)
-    #    print("Sync'ing repo directory: " + os.getcwd())
-
-        # results is the raw results from the query
-    #    results = self.mergestat.commits(**kwargs)
-        # data_rows will be the enriched data we'll insert into the kospex db
-    #    data_rows = []
-
-    #    for row in results:
-    #        data_rows.append(self.git.add_git_to_dict(row))
-
-    #    self.kospex_db.table(KospexSchema.TBL_COMMITS).insert_all(data_rows)
-
-    #    print("# commits:\t" + str(len(data_rows)))
-
-    #    self.chdir_original()
-
-        # Return the number of rows we've sync'ed
-    #    return len(data_rows)
 
     def get_one(self, query):
         """ helper function to return a single value from a query"""
