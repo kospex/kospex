@@ -437,42 +437,12 @@ def sync_dependencies(repo,file,dev):
 def knol(email):
     """Show the tech landscape for a given author."""
 
-    #results = kospex.kospex_query.author_tech(**kwargs)
-    #for result in results:
-    #    print(result)
-
-    #    sql = f"""SELECT DISTINCT(author_email) as author_email, _ext, count(*) 'commits',
-    #    MAX(author_when) 'last_commit', MIN(author_when) 'first_commit',
-    #    COUNT(DISTINCT(c._repo_id)) 'repos'
-    #    FROM commit_files cf, commits c
-    #    WHERE cf._repo_id = c._repo_id
-    #    AND cf.hash = c.hash {author_where} {repo_where}
-    #    GROUP BY author_email, _ext
-    #    ORDER BY commits DESC
-    #    """
-    #kd = KospexData()
-    #kd.from_table("commits", "commit_files")
-    #kd.select_as("DISTINCT(author_email)", "author_email")
-    #kd.select("_ext")
-    #kd.select_as("COUNT(*)", "commits")
-    #kd.select_as("MAX(commits.committer_when)", "last_commit")
-    #kd.select_as("MIN(commits.committer_when)", "first_commit")
-
-    #kd.where("commits.author_email", "=", email)
+    print("WARNING: This is a work in progress.")
 
     nowish = datetime.now().isoformat()
     print(nowish)
     last30 = KospexUtils.date_days_ago(nowish, 60)
 
-    #kd.where("commits.committer_when", ">=", last30)
-    #kd.where_join("commits", "_repo_id", "commit_files", "_repo_id")
-    #kd.where_join("commits", "hash", "commit_files", "hash")
-
-    #kd.where_join("commits", "hash", "dependency_data", "hash")
-    #kd.where_join("commits", "_repo_id", "dependency_data", "_repo_id")
-
-    #kd.group_by("_ext")
-    #kd.order_by("commits", "DESC")
     kquery = KospexQuery()
 
     kd = kquery.tech_commits(author_email=email)
