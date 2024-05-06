@@ -51,3 +51,16 @@ def test_git_rename_event():
     replace_and_2braces = '{bin/act => utilities/developer_utils}/cookiecutter/static/css/{{cookiecutter.app_name}}.css'
     expected = 'utilities/developer_utils/cookiecutter/static/css/{{cookiecutter.app_name}}.css'
     assert expected == KospexUtils.parse_git_rename_event(replace_and_2braces)
+
+def test_days_functions():
+    """ Test the days calculation functions """
+
+    d1 = "2023-08-14T17:06:01+10:00"
+    d2 = "2021-03-01T01:10:23+00:00"
+    assert KospexUtils.days_between_datetimes(d1, d2) == 896.2
+
+    # The same date should return 0.0
+    # (i.e. no days between them and 1 decimal places)
+    d1 = "2024-05-06T15:50:01+10:00"
+    d2 = d1
+    assert KospexUtils.days_between_datetimes(d1, d2) == 0.0
