@@ -14,12 +14,13 @@ TBL_DEPENDENCY_DATA = "dependency_data"
 TBL_URL_CACHE = "url_cache"
 TBL_KRUNNER = "krunner"
 TBL_OBSERVATIONS = "observations"
+TBL_REPOS = "repos"
 
 KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
                  TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA,
-                 TBL_URL_CACHE, TBL_KRUNNER, TBL_OBSERVATIONS ]
+                 TBL_URL_CACHE, TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS ]
 
-# Table data structure based upon Mergestat sync 'git-commits'
+# Table data structure inspired by Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
 SQL_CREATE_COMMITS = f'''CREATE TABLE [{TBL_COMMITS}] (
     [hash] TEXT,
@@ -40,7 +41,7 @@ SQL_CREATE_COMMITS = f'''CREATE TABLE [{TBL_COMMITS}] (
     PRIMARY KEY(_repo_id,hash)
     )'''
 
-# Table based up Mergestat sync 'git-commit-stats'
+# Table inspired by Mergestat sync 'git-commit-stats'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commit-stats/schema.sql
 SQL_CREATE_COMMIT_FILES = f'''CREATE TABLE [{TBL_COMMIT_FILES}] (
     [hash] TEXT,
@@ -83,6 +84,18 @@ SQL_CREATE_FILE_METADATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_FILE_METADATA}] 
     [_git_repo] TEXT,
     [_repo_id] TEXT,
     PRIMARY KEY(Provider,hash,_repo_id)
+    )'''
+
+# We're going to store the unique repo details separately
+SQL_CREATE_REPOS = f'''CREATE TABLE IF NOT EXISTS [{TBL_REPOS}] (
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [_repo_id] TEXT,
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
+    [last_sync] TEXT,  -- date of last sync
+    [first_seen] TEXT,  -- date of first commit, to be updated by the sync
+    PRIMARY KEY(_repo_id,_git_server,_git_owner,_git_repo)
     )'''
 
 # This table will capture detail some hotspot indicators about a repo
@@ -241,6 +254,8 @@ def connect_or_create_kospex_db():
     kospex_db.execute(SQL_CREATE_URL_CACHE)
     kospex_db.execute(SQL_CREATE_KRUNNER)
     kospex_db.execute(SQL_CREATE_OBSERVATIONS)
+    kospex_db.execute(SQL_CREATE_REPOS)
+
     # TODO - look at moving all table creates to "create if not exits"
 
     return kospex_db
