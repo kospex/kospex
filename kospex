@@ -9,7 +9,8 @@ import click
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
-from kospex_query import KospexQuery
+from kospex_query import KospexQuery, KospexData
+import kospex_schema as KospexSchema
 from kospex_dependencies import KospexDependencies
 
 KospexUtils.init()
@@ -61,9 +62,6 @@ def kospex_init(default):
 def summary(out,server):
     """ Provide a summary of all the known repositories."""
     params = locals()
-    if server:
-        print("Server querying is not implemented yet.")
-        exit(1)
     kospex.summary(results_file=out, **params)
 
 @cli.command("sync")
@@ -438,6 +436,7 @@ def sync_dependencies(repo,file,dev):
 @click.argument('email',  type=click.STRING)
 def knol(email):
     """Show the tech landscape for a given author."""
+
     #results = kospex.kospex_query.author_tech(**kwargs)
     #for result in results:
     #    print(result)

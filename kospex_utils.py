@@ -1,8 +1,8 @@
 """ Helper functions for kospex """
 import os
 import re
-import glob
 from datetime import datetime, timezone, timedelta
+from dateutil import parser
 import subprocess
 import shlex
 import csv
@@ -161,6 +161,20 @@ def date_days_ago(given_date, num_days):
     # Convert the new date back to a string in ISO format
     return new_date.isoformat()
 
+def days_between_datetimes(datetime1: str, datetime2: str) -> float:
+    """
+    Calculate the difference in days between two ISO 8601 formatted datetime strings.
+    """
+    # Parse the ISO 8601 formatted datetime strings
+    d1 = parser.parse(datetime1)
+    d2 = parser.parse(datetime2)
+
+    # Calculate the absolute difference in days
+    difference = abs((d2 - d1).total_seconds() / 86400)  # Convert seconds to days
+
+    # Return the difference rounded to one decimal place
+    return round(difference, 1)
+
 def find_git_base(filename):
     """
     Find the base Git directory for a given file path.
@@ -193,6 +207,9 @@ def development_status(days, active_limit=90, aging_limit=180, stale_limit=365):
 
     if days is None:
         return "Unknown"
+
+    if isinstance(days, str):
+        days = days_ago(days)
 
     if days <= active_limit:
         return "Active"
@@ -501,7 +518,7 @@ def run_git_command(directory, args):
     return subprocess.check_output(['git', '-C', directory] + args).decode().strip()
 
 def get_git_stats(directory, last_days=None):
-    """ Return some basicgit stats for a given directory"""
+    """ Return some basic git stats for a given directory"""
     if not os.path.isdir(os.path.join(directory, '.git')):
         raise ValueError("The specified directory is not a Git repository.")
 
@@ -750,5 +767,45 @@ def get_keyvalue_table(details=None):
 
     return table
 
+def convert_to_percentage(data):
+    """
+    Take a dictionary with numerical values as input,
+    calculate the total and return a dict with the same keys 
+    and their percentage value of the total
+    """
+    # Calculate the total sum of all values in the dictionary
+    total = sum(data.values())
 
+    # Create a new dictionary where each value is the percentage of the total
+    percentage_data = {}
+    for key, value in data.items():
+        percentage = (value / total) * 100
+        percentage_data[key] = round(percentage, 2)
 
+    return percentage_data
+
+def get_status_table(status):
+    """
+    Return a prettytable object for the status results ("Active", "Aging", "Stale", "Unmaintained").
+    The raw numbers are shown in the first row and the percentages in the second row.
+    """
+
+    total = sum(status.values())
+    status_percentage = convert_to_percentage(status)
+    # Need to run convert first, or the generic function
+    # will include the percentage values in the calculation
+    status["Total"] = total
+
+    status_percentage["Total"] = 100
+
+    table = PrettyTable()
+    table.field_names = ["Active", "Aging", "Stale", "Unmaintained", "Total"]
+    values = [status.get(key) for key in table.field_names]
+
+    table.add_row(values)
+
+    status_percentage["Total"] = 100
+    values = [ f"{status_percentage.get(key)}%" for key in table.field_names]
+    table.add_row(values)
+
+    return table

@@ -10,7 +10,8 @@ from prettytable import PrettyTable, from_db_cursor
 from kospex_git import KospexGit, MissingGitDirectory
 import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
-import kospex_query as KospexQuery
+#import kospex_query as KospexQuery
+from kospex_query import KospexQuery, KospexData
 #from kospex_mergestat import KospexMergeStat
 
 class GitRepo(click.ParamType):
@@ -35,7 +36,7 @@ class Kospex:
         self.git = KospexGit()
         self.kospex_db = KospexSchema.connect_or_create_kospex_db()
         #self.mergestat = KospexMergeStat()
-        self.kospex_query = KospexQuery.KospexQuery(kospex_db=self.kospex_db)
+        self.kospex_query = KospexQuery(kospex_db=self.kospex_db)
 
     def set_repo_dir(self, directory):
         """ Set the repo directory """
@@ -285,6 +286,8 @@ class Kospex:
     def summary(self, results_file=None, **kwargs):
         """ Display some basic stats what has been sync'ed from repos to the kospex db."""
 
+        server = kwargs.get('server', None)
+
         print("\nKospex Summary\nChecking status ...\n")
         print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
         print("# Authors:\t" + self.get_one("SELECT COUNT(DISTINCT(author_email)) FROM commits"))
@@ -316,16 +319,31 @@ class Kospex:
         repo_active_devs = self.kospex_query.active_devs()
         active_devs = self.kospex_query.active_developer_set()
 
-        #print("Repository IDs")
-        sql = '''SELECT distinct(_repo_id) as repo,
-                round((julianday('now') - julianday(max(committer_when))) ,1) as last_commit,
-                round((julianday('now') - julianday(min(committer_when))) ,1) as first_commit,
-                count(distinct(author_email)) as developers,
-                count(_repo_id) as commits
-                FROM commits
-                GROUP BY 1'''
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.select_as("DISTINCT(_repo_id)", "repo")
+        kd.select_as("MAX(committer_when)", "last_commit")
+        kd.select_as("MIN(committer_when)", "first_commit")
+        kd.select_raw("COUNT(DISTINCT(author_email)) as developers")
+        kd.select_as("COUNT(_repo_id)", "commits")
+        kd.group_by("repo")
 
-        for row in self.kospex_db.query(sql):
+        if server:
+            kd.where("_git_server", "=", server)
+
+        #results = kd.execute()
+
+        #print("Repository IDs")
+        # sql = '''SELECT distinct(_repo_id) as repo,
+        #         round((julianday('now') - julianday(max(committer_when))) ,1) as last_commit,
+        #         round((julianday('now') - julianday(min(committer_when))) ,1) as first_commit,
+        #         count(distinct(author_email)) as developers,
+        #         count(_repo_id) as commits
+        #         FROM commits
+        #         GROUP BY 1'''
+
+        for row in kd.execute():
+        #for row in self.kospex_db.query(sql):
 
             all_devs = self.kospex_query.authors_by_repo(row["repo"])
             set_devs = set(all_devs)
@@ -333,7 +351,8 @@ class Kospex:
             row["status"] = KospexUtils.development_status(row["last_commit"])
             row["active"] = repo_active_devs.get(row["repo"], 0)
             row["present"] = len(set_devs.intersection(active_devs))
-            row['active_days'] = round(row["first_commit"] - row["last_commit"])
+            #row['active_days'] = round(row["first_commit"] - row["last_commit"])
+            row['active_days'] = KospexUtils.days_between_datetimes(row["last_commit"], row["first_commit"])
 
             table.add_row(KospexUtils.get_values_by_keys(row, headers))
             results.append(row)
@@ -344,7 +363,13 @@ class Kospex:
 
         if table.rows:
             print(table)
-            print(KospexUtils.count_key_occurrences(results, "status"))
+            #print(KospexUtils.count_key_occurrences(results, "status"))
+            status = KospexUtils.count_key_occurrences(results, "status")
+            status_table = KospexUtils.get_status_table(status)
+            print()
+            print(status_table)
+            print()
+
         else:
             print("No repositories found in the kospex DB\n")
 

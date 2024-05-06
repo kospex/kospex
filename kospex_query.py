@@ -414,7 +414,8 @@ class KospexQuery:
         ages = {
             'active': 0,
             'aging': 0,
-            'older': 0
+            'stale': 0,
+            'unmaintained': 0
         }
         data = self.kospex_db.query(sql, params)
         for row in data:
