@@ -613,15 +613,25 @@ class Kospex:
             # Check we've got scc installed
             installed = which('scc')
             if not installed:
-                sys.exit("scc is not installed. Please install scc from https://github.com/boyter/scc")
+                sys.exit("""scc is not installed.
+                         Please install scc from https://github.com/boyter/scc""")
             # Let's grab the file metadata using 'scc'
             metadata = subprocess.run(["scc", "--by-file", "-f", "csv"],
                                       stdout=subprocess.PIPE,
                                       text=True, check=False)
             data_rows = []
             csv_reader = csv.DictReader(metadata.stdout.splitlines())
+            # TODO - revist parsing of scc output
+            # As of version 3.3.3, the output is:
+            # Language,Provider,Filename,Lines,Code,Comments,Blanks,Complexity,Bytes,ULOC
+            # A new ULOC parameter was added, which is not currently in our schema
+            meta_cols = [ "Language","Provider","Filename","Lines",
+                         "Code","Comments","Blanks","Complexity","Bytes" ]
+
             for row in csv_reader:
+                row = {key: row[key] for key in meta_cols if key in row}
                 row['hash'] = git_hash
+
                 # TODO - this doesn't work, a newly cloned repo will have mtime of when it was cloned
                 #row['_mtime'] = os.path.getmtime(row['Filename'])
                 # Set this entry to the latest. Required for tech landscape queries

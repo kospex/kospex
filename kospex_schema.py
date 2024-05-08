@@ -114,6 +114,11 @@ SQL_CREATE_REPO_HOTSPOTS = f'''CREATE TABLE [{TBL_REPO_HOTSPOTS}] (
         PRIMARY KEY(_repo_id,hash)
         )'''
 
+# TODO - revist parsing of scc output, and required schema changes
+# As of version 3.3.3, the output is:
+# Language,Provider,Filename,Lines,Code,Comments,Blanks,Complexity,Bytes,ULOC
+# A new ULOC parameter was added, which is not currently in our schema
+
 # We're going to capture additional metadata about the commits
 SQL_CREATE_COMMIT_METADATA = f'''CREATE TABLE [{TBL_COMMIT_METADATA}] (
     [hash] TEXT,        -- hash of the commit
