@@ -9,7 +9,7 @@ import click
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
-from kospex_query import KospexQuery, KospexData
+from kospex_query import KospexQuery
 import kospex_schema as KospexSchema
 from kospex_dependencies import KospexDependencies
 
@@ -26,6 +26,8 @@ def cli():
     changes over time.
 
     For documentation on how commands run `kospex COMMAND --help`.
+
+    See also https://kospex.io/
     
     """
 
