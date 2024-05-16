@@ -32,14 +32,24 @@ def find_docker(directory,out,images):
     Find docker related files in the given directory.
     """
     if not directory:
-        #directory = os.getcwd()
         directory = "." # default to current directory
 
     print("\nSearch directory: " + os.path.abspath(directory))
 
+    print("\nDockerfiles and docker-compose* files found ...\n")
+
     dirs = KospexUtils.find_repos(directory)
+    repo_data = KospexUtils.get_all_last_commit_info(dirs)
+    repos = [data['repo'] for data in repo_data]
+    unique_repos = list(set(repos))
+    stats_dict = {key: KospexUtils.init_repo_stats() for key in unique_repos}
+
     files = KrunnerUtils.find_dockerfiles_in_repos(dirs)
     records = KospexUtils.get_git_metadata(files)
+    for r in records:
+        repo = r.get('repo')
+        if repo:
+            stats_dict[repo] = KospexUtils.add_status(stats_dict[repo], r.get('status'))
 
     if images:
         records = KrunnerUtils.get_docker_images(records)
@@ -49,6 +59,10 @@ def find_docker(directory,out,images):
 
     if out:
         KospexUtils.list_dict_2_csv(records,out)
+
+    print("\nMaintenance stats for Docker file types\n")
+    status_table = KospexUtils.get_repo_stats_table(stats=stats_dict)
+    print(status_table)
 
 
 @cli.command("list-repos")

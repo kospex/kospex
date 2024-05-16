@@ -308,10 +308,19 @@ def get_last_commit_info(filename,remote=None):
     # TODO: check if remote = false, and then
     # We won't run the git remote data
 
+    is_dir = False
+
+    if os.path.isdir(filename):
+        is_dir = True
+
     original_dir = os.getcwd()
+
     abs_path = os.path.abspath(filename)
     basefile = os.path.basename(abs_path)
-    file_dir = os.path.dirname(abs_path)
+    if is_dir:
+        file_dir = abs_path
+    else:
+        file_dir = os.path.dirname(abs_path)
 
     default = { 'file_path': filename }
 
@@ -320,8 +329,13 @@ def get_last_commit_info(filename,remote=None):
     try:
         # Get the last commit for the file
         os.chdir(file_dir)
+        last_cmd = f"git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict -- {basefile}"
+        if is_dir:
+            last_cmd = "git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict"
+
         commit_info = subprocess.check_output(
-            shlex.split(f"git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict -- {basefile}"),
+            #shlex.split(f"git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict -- {basefile}"),
+            shlex.split(last_cmd),
             encoding='utf-8'
         )
         # Split the output to get commit hash, author date, and committer date
@@ -379,6 +393,7 @@ def get_git_metadata(file_list):
     for f in file_list:
         #details = { "file_path": f }
         details = get_last_commit_info(f)
+
         if details and details.get("repo"):
             details["repo"] = extract_git_url(details["repo"])
         else:
@@ -388,12 +403,20 @@ def get_git_metadata(file_list):
 
     return records
 
-def repo_stats(records, fieldname):
-    """ Get the stats for a given field in a list of records"""
-    # Get the list of values for the given field
+def init_repo_stats():
+    """ Initialize the repo stats dictionary"""
     stats = {}
     for status in get_development_status_options():
         stats[status] = 0
+
+    return stats
+
+def repo_stats(records, fieldname):
+    """ Get the stats for a given field in a list of records"""
+    # Get the list of values for the given field
+    stats = init_repo_stats()
+    #for status in get_development_status_options():
+    #    stats[status] = 0
 
     for item in records:
         lookup = item.get(fieldname)
@@ -405,9 +428,37 @@ def repo_stats(records, fieldname):
         #status = development_status(last_seen)
         #stats[status] += 1
 
-
     return stats
 
+def add_status(record,status):
+    """
+    Add the status to the count in the record.
+    """
+    if status in get_development_status_options():
+        record[status] += 1
+    else:
+        print(f"Invalid status: {status}")
+
+    return record
+
+def get_repo_stats_table(stats=None):
+    """
+    Return a Pretty Table for the repo stats.
+    Should have the columns: repo = {Active: #, Aging: #, Stale: #, Unmaintained: #}
+    """
+    table = PrettyTable()
+    table.field_names = ["Repo", "Active", "Aging", "Stale", "Unmaintained"]
+    table.align["Repo"] = "l"
+    table.align["Active"] = "r"
+    table.align["Aging"] = "r"
+    table.align["Stale"] = "r"
+    table.align["Unmaintained"] = "r"
+
+    if stats:
+        for repo, status in stats.items():
+            table.add_row([repo, status["Active"], status["Aging"], status["Stale"], status["Unmaintained"]])
+
+    return table
 
 def get_dependency_files_table(list_of_commit_info, images=None):
     """ Take a list of commit info requests and return a Pretty Table """

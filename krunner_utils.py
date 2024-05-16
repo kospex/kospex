@@ -122,7 +122,6 @@ def find_docker_compose_images(filename):
 
     if conf:
         for service in conf['services']:
-            print(service)
             image = {}
             image["base_image"] = conf['services'][service].get("image","")
             image["type"] = service

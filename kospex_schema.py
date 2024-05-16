@@ -15,10 +15,11 @@ TBL_URL_CACHE = "url_cache"
 TBL_KRUNNER = "krunner"
 TBL_OBSERVATIONS = "observations"
 TBL_REPOS = "repos"
+TBL_KOSPEX_META = "kospex_meta"
 
 KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
-                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA,
-                 TBL_URL_CACHE, TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS ]
+                TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE,
+                TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META ]
 
 # Table data structure inspired by Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
@@ -226,6 +227,27 @@ SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
     [_repo_id] TEXT,
     PRIMARY KEY(_repo_id,hash,file_path,observation_key)
     )'''
+
+SQL_CREATE_KOSPEX_META = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
+    [hash] TEXT,             -- hash of the commit
+    [file_path] TEXT,        -- file path in the repo (if applicable, can be repo level)
+    [format] TEXT,           -- format type e.g. JSON, JSONL, CSV, LINE
+    [data] TEXT,             -- cleaned data / output from the command
+    [raw] TEXT,              -- Raw data / output from the command
+    [source] TEXT,           -- what tool/function was used to get the metadata
+    [observation_key] TEXT,  -- unique identified for the observation e.g. SEMGREP, GREP_TODO 
+    [observation_type] TEXT, -- should be one of the REPO, FILE 
+    [line_number] INTEGER,   -- line number in the file (optional)
+    [command] TEXT,          -- command ran to get the data (optional)
+    [latest] INTEGER,        -- 1 if this is the latest version of the file, 0 otherwise
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [_repo_id] TEXT,
+    PRIMARY KEY(_repo_id,hash,file_path,observation_key)
+    )'''
+
 
 # Functions for SQLite stuff
 

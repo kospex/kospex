@@ -289,6 +289,7 @@ class Kospex:
         server = kwargs.get('server', None)
 
         print("\nKospex Summary\nChecking status ...\n")
+        # TODO - this needs to add 'server' if added
         print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
         print("# Authors:\t" + self.get_one("SELECT COUNT(DISTINCT(author_email)) FROM commits"))
         print("# Committers:\t" +
@@ -331,6 +332,13 @@ class Kospex:
         if server:
             kd.where("_git_server", "=", server)
 
+        #
+        # Load the query CSV
+        # Make sure the query column match the table column names
+        # shuold be be in the form DB_COLUMN : CSV_COLUMN
+        #
+        # We'll have to drop the table later
+
         #results = kd.execute()
 
         #print("Repository IDs")
@@ -352,7 +360,8 @@ class Kospex:
             row["active"] = repo_active_devs.get(row["repo"], 0)
             row["present"] = len(set_devs.intersection(active_devs))
             #row['active_days'] = round(row["first_commit"] - row["last_commit"])
-            row['active_days'] = KospexUtils.days_between_datetimes(row["last_commit"], row["first_commit"])
+            row['active_days'] = KospexUtils.days_between_datetimes(
+                                        row["last_commit"], row["first_commit"])
 
             table.add_row(KospexUtils.get_values_by_keys(row, headers))
             results.append(row)
