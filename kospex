@@ -226,7 +226,6 @@ def health_check(directory):
     print(f"{warning_message}\n")
     print(KospexUtils.get_keyvalue_table(details))
 
-
 @cli.command("deps")
 @click.option('-repo', type=GitRepo(), help="File path to git repo.")
 @click.option('-file', type=click.Path(exists=True), help="Package file to assess.")
@@ -252,16 +251,29 @@ def deps(repo, file, directory, out, dev):
 
             records = KospexUtils.get_all_last_commit_info(results)
 
+            repos = [data.get('repo','Unknown') for data in records]
+            unique_repos = list(set(repos))
+            stats_dict = {key: KospexUtils.init_repo_stats() for key in unique_repos}
+
             if records:
                 table = KospexUtils.get_dependency_files_table(records)
                 print(table)
+                for r in records:
+                    repo = r.get('repo','Unknown')
+                    if repo:
+                        stats_dict[repo] = KospexUtils.add_status(stats_dict[repo], r.get('status'))
 
             if out:
                 KospexUtils.list_dict_2_csv(records,out)
 
             stats = KospexUtils.repo_stats(records,"author_date")
-            print("\nSummary of dependency files found in the directory:")
+            print("\nOverall Summary of dependency files found")
             print(stats)
+            print()
+
+            print("\nSummary of dependency files found in the directory by repo\n")
+            status_table = KospexUtils.get_repo_stats_table(stats=stats_dict)
+            print(status_table)
             print()
 
         else:
