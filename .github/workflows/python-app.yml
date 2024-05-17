@@ -37,3 +37,7 @@ jobs:
     - name: Test with pytest
       run: |
         pytest -v
+    - name: Run CLI tests
+      run: |
+        # Run CLI tests
+        ./test-cli.sh
