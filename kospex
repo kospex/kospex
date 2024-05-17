@@ -61,12 +61,15 @@ def kospex_init(default):
 @cli.command("summary")
 @click.option('-out', type=click.STRING,help="filename to write CSV results to.")
 @click.option('-server', type=click.STRING, help="Git server to query.")
-@click.option('-query_file', type=click.Path(exists=True), help="CSV file to query with.")
-@click.option('-query', type=click.STRING, help="Query for CSV file. E.g.  to query with.")
+@click.option('-repo_file', type=click.Path(exists=True), help="CSV file to query with.")
+#@click.option('-query', type=click.STRING, help="Query for CSV file. E.g.  to query with.")
 # pylint: disable=unused-argument
-def summary(out,server,query_file):
+def summary(out,server,repo_file):
     """ Provide a summary of all the known repositories."""
     params = locals()
+    if repo_file:
+        print("repo_file NOT IMPLEMENTED YET")
+        exit(1)
     kospex.summary(results_file=out, **params)
 
 @cli.command("sync")
