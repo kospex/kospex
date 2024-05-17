@@ -269,7 +269,8 @@ def deps(repo, file, directory, out, dev):
             stats = KospexUtils.repo_stats(records,"author_date")
             print("\nOverall Summary of dependency files found")
             print(stats)
-            print()
+            status_table = KospexUtils.get_status_table(stats)
+            print(status_table)
 
             print("\nSummary of dependency files found in the directory by repo\n")
             status_table = KospexUtils.get_repo_stats_table(stats=stats_dict)
