@@ -40,7 +40,8 @@ def find_docker(directory,out,images):
 
     dirs = KospexUtils.find_repos(directory)
     repo_data = KospexUtils.get_all_last_commit_info(dirs)
-    repos = [data['repo'] for data in repo_data]
+    # only access repo key if repo key is present
+    repos = [data.get('repo') for data in repo_data if 'repo' in data]
     unique_repos = list(set(repos))
     stats_dict = {key: KospexUtils.init_repo_stats() for key in unique_repos}
 
