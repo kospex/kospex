@@ -111,24 +111,46 @@ def find_docker_from_statements(filename):
                 })
     return results
 
+# helper function to recursively pull out image info from docker-compose file
+def find_docker_compose_images_recursively(data, filename, parent_key=''):
+    images = []
+    
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == 'image':
+                image = {
+                    "base_image": value,
+                    "type": parent_key,
+                    "filename": filename
+                }
+                images.append(image)
+            else:
+                images.extend(find_docker_compose_images_recursively(value, filename, parent_key if parent_key else key))
+    
+    return images
+
 def find_docker_compose_images(filename):
     """ Find images in Docker Compose files."""
 
     conf = {}
-    with open(filename) as f:
-        conf = yaml.safe_load(f)
+    # add some error handling for unresolved yaml files
+    try:
+        with open(filename) as f:
+            conf = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"Error parsing YAML file {filename}: {e}")
+        return []
 
     images = []
 
+    # extract image info from docker-compose file
     if conf:
-        for service in conf['services']:
-            image = {}
-            image["base_image"] = conf['services'][service].get("image","")
-            image["type"] = service
-            image["filename"] = filename
-            images.append(image)
-
-    return images
+        images = find_docker_compose_images_recursively(conf, filename)
+        print(images)
+    else:
+        print(f"Configuration is empty or invalid for file: {filename}")
+    
+    return images 
 
 def get_docker_images(records):
     """
