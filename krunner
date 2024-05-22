@@ -51,8 +51,19 @@ def find_docker(directory,out,images):
         if repo:
             stats_dict[repo] = KospexUtils.add_status(stats_dict[repo], r.get('status'))
 
+
+
     if images:
         records = KrunnerUtils.get_docker_images(records)
+        images_list = []
+        for r in records:
+            img = r.get('base_image')
+            images_list.append(KospexUtils.parse_docker_image(img))
+        registries = KrunnerUtils.count_dict_keyvalues(images_list, 'registry')
+        
+
+
+
 
     table = KospexUtils.get_dependency_files_table(records, images=images)
     print(table)
@@ -63,6 +74,12 @@ def find_docker(directory,out,images):
     print("\nMaintenance stats for Docker file types\n")
     status_table = KospexUtils.get_repo_stats_table(stats=stats_dict)
     print(status_table)
+
+    if images:
+        print("\n# of Docker images by registry")
+        print(registries)
+        print(KospexUtils.get_keyvalue_table(registries))
+        print()
 
 
 @cli.command("list-repos")

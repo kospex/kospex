@@ -163,4 +163,27 @@ def get_docker_images(records):
             record_images.append(record_mod)
 
     return record_images
+
+def count_dict_keyvalues(records,keyname):
+    """
+    Count the occurence of the value for a specific key in a list of records.
+    A bit like a group by in SQL.
+    """
+    # Initialize an empty dictionary to hold the counts
+    base_image_count = {}
+    
+    # Loop through each record in the records list
+    for record in records:
+        # Check if 'base_image' key exists in the record
+        if keyname in record:
+            # Get the value of 'base_image'
+            base_image_value = record[keyname]
+            
+            # Increment the count for this base_image_value in the base_image_count dictionary
+            if base_image_value in base_image_count:
+                base_image_count[base_image_value] += 1
+            else:
+                base_image_count[base_image_value] = 1
+    
+    return base_image_count
     
