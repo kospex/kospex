@@ -247,24 +247,37 @@ def deps(repo, file, directory, out, dev):
 
         if results:
 
-            #for file_path in results:
-            #    commit_info = KospexUtils.get_last_commit_info(file_path)
-            #    if commit_info:
-            #        records.append(commit_info)
-
             records = KospexUtils.get_all_last_commit_info(results)
 
             repos = [data.get('repo','Unknown') for data in records]
             unique_repos = list(set(repos))
             stats_dict = {key: KospexUtils.init_repo_stats() for key in unique_repos}
+            repo_activity_stats = {key: KospexUtils.init_repo_stats() for key in KospexUtils.get_development_status_options()}
+            # This will hold a Git url : status mapping
+            # E.g. repos_status['https://github.com/kospex/kospex'] = 'Active'
+            repo_status = {}
 
             if records:
                 table = KospexUtils.get_dependency_files_table(records)
                 print(table)
+
                 for r in records:
                     repo = r.get('repo','Unknown')
+                    file_path = r.get('file_path')
+                    git_base = KospexUtils.find_git_base(file_path)
+                    get_last_commit_info = KospexUtils.get_last_commit_info(git_base)
+                    #print(f"Git Base: {git_base}")
+                    repo_status[repo] = get_last_commit_info.get('status')
+                    #print(get_last_commit_info)
                     if repo:
                         stats_dict[repo] = KospexUtils.add_status(stats_dict[repo], r.get('status'))
+                        repo_activity_stats[repo_status[repo]] = KospexUtils.add_status(repo_activity_stats[repo_status[repo]], r.get('status'))
+
+                    # Get repo status
+
+            print(repo_status)
+
+            activity_table = KospexUtils.get_repo_stats_table(stats=repo_activity_stats,fieldname="Repo Status")
 
             if out:
                 KospexUtils.list_dict_2_csv(records,out)
@@ -279,6 +292,11 @@ def deps(repo, file, directory, out, dev):
             status_table = KospexUtils.get_repo_stats_table(stats=stats_dict)
             print(status_table)
             print()
+
+            print("\nSummary of dependency files found by Repo Status\n")
+            print(activity_table)
+            print()
+
 
         else:
             print("No package/dependency manager files found.")
@@ -326,7 +344,7 @@ def deps(repo, file, directory, out, dev):
                     repos_observerd.append(record.get('source_repo'))
                     author_count += record['authors']
 
-        if count and total:
+        if total:
             print(f"Total dependencies: {total} | Outdated(>2): {count}")
             print(f"Non Compliant: {count/total*100:.2f}%")
             print(f"Compliant: {(total-count)/total*100:.2f}%")

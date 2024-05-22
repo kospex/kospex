@@ -441,14 +441,17 @@ def add_status(record,status):
 
     return record
 
-def get_repo_stats_table(stats=None):
+def get_repo_stats_table(stats=None, fieldname=None):
     """
     Return a Pretty Table for the repo stats.
     Should have the columns: repo = {Active: #, Aging: #, Stale: #, Unmaintained: #}
+    fieldname will usually be "repo" or "Repo Status", but can pass in anything
     """
+    if not fieldname:
+        fieldname = "Repo"
     table = PrettyTable()
-    table.field_names = ["Repo", "Active", "Aging", "Stale", "Unmaintained"]
-    table.align["Repo"] = "l"
+    table.field_names = [fieldname, "Active", "Aging", "Stale", "Unmaintained"]
+    table.align[fieldname] = "l"
     table.align["Active"] = "r"
     table.align["Aging"] = "r"
     table.align["Stale"] = "r"
@@ -860,3 +863,56 @@ def get_status_table(status):
     table.add_row(values)
 
     return table
+
+def parse_docker_image(image):
+    """
+    Take a Docker image and return a Dict with the keys
+    registry (default to docker.io), namespace, image_name and tag.
+    """
+
+    registry = "docker.io"
+    namespace = None
+    image_name = None
+    tag = ""
+
+    if not "/" in image:
+    # No slash, so no namespace or registry
+    # E.g. postgres:14
+    # or python
+
+        if ":" in image:
+            image_name, tag = image.split(":")
+        else:
+            image_name = image
+
+    else:
+        # Handle namespace and/or registry
+        # We have a slash if we're here
+        element, image_name = image.split("/", 1)
+
+        # Once we've split, if we see a dot, it's probably a registry
+        # E.g. ghcr.io
+        # TODO - think how to check for URLS, this should still work it if has a .
+        # but MAY miss some cases like https://Registry:8000
+        if "." in element:
+            registry = element
+        else:
+            namespace = element
+
+        if "/" in image_name:
+            #if namespace:
+            #    print("WARNING: already had a namespace, overwriting")
+            # TODO - Log if we already had a namespace
+            namespace, image_name = image_name.split("/", 1)
+
+        if ":" in image_name:
+            image_name, tag = image_name.split(":")
+
+    return {
+            "registry": registry,
+            "namespace": namespace,
+            "image": image_name,
+            "tag": tag,
+            "raw": image
+        }
+
