@@ -854,12 +854,12 @@ def get_status_table(status):
 
     table = PrettyTable()
     table.field_names = ["Active", "Aging", "Stale", "Unmaintained", "Total"]
-    values = [status.get(key) for key in table.field_names]
+    values = [status.get(key,0) for key in table.field_names]
 
     table.add_row(values)
 
     status_percentage["Total"] = 100
-    values = [ f"{status_percentage.get(key)}%" for key in table.field_names]
+    values = [ f"{status_percentage.get(key,0)}%" for key in table.field_names]
     table.add_row(values)
 
     return table
@@ -915,4 +915,20 @@ def parse_docker_image(image):
             "tag": tag,
             "raw": image
         }
+
+
+def validate_only_one(params, message, exit_required=None):
+    """
+    Validate that one of the parameters is set.
+    """
+    # Only set the exit_required flag if it's not already set
+    # an it's NOT False
+    # E.g. if it's False, we don't want to override it and exit
+    if exit_required is None:
+        exit_required = True
+
+    if sum(params) != 1:
+        print(f"ERROR: {message}")
+        if exit_required:
+            exit(1)
 

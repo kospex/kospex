@@ -261,9 +261,29 @@ class Kospex:
         self.chdir_original()
 
 
-    def get_one(self, query):
+    def get_one(self, query, table, params=None):
         """ helper function to return a single value from a query"""
-        return str(self.kospex_db.execute(query).fetchone()[0])
+
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(table)
+        kd.select_raw(query)
+
+        if params:
+            if server := params.get("server"):
+                kd.where("_git_server", "=", server)
+
+            if org := params.get("org"):
+                kd.where("_git_owner", "=", org)
+
+            if group := params.get("group"):
+                kd.group_name_where_subselect(group)
+
+        results = kd.execute()
+
+        if results:
+            first_key = next(iter(results[0]))
+            return str(results[0][first_key])
+
 
     def author_tech_pretty_table(self, author_techs):
         """Pretty print the author_techs data"""
@@ -287,16 +307,21 @@ class Kospex:
         """ Display some basic stats what has been sync'ed from repos to the kospex db."""
 
         server = kwargs.get('server', None)
+        org = kwargs.get('org', None)
+        group = kwargs.get('group', None)
 
         print("\nKospex Summary\nChecking status ...\n")
-        # TODO - this needs to add 'server' if added
-        print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
-        print("# Authors:\t" + self.get_one("SELECT COUNT(DISTINCT(author_email)) FROM commits"))
-        print("# Committers:\t" +
-              self.get_one("SELECT COUNT(DISTINCT(committer_email)) FROM commits"))
-        print("")
+        #print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
+        print("# Repositories:\t" + self.get_one("COUNT(DISTINCT(_repo_id))", KospexSchema.TBL_COMMITS, kwargs))
+        #print("# Authors:\t" + self.get_one("SELECT COUNT(DISTINCT(author_email)) FROM commits"))
+        print("# Authors:\t" + self.get_one("COUNT(DISTINCT(author_email))",KospexSchema.TBL_COMMITS,kwargs))
 
-        table = PrettyTable()
+        #self.get_one("SELECT COUNT(DISTINCT(committer_email)) FROM commits"))
+        print("# Committers:\t" +
+              self.get_one("COUNT(DISTINCT(committer_email))", KospexSchema.TBL_COMMITS, kwargs))
+        print()
+
+        table = PrettyTable()   
         headers = ["repo", "status", "developers", "active", "present", "last_commit",
                              "first_commit", "active_days", "commits" ]
 
@@ -332,14 +357,14 @@ class Kospex:
         if server:
             kd.where("_git_server", "=", server)
 
-        #
-        # Load the query CSV
-        # Make sure the query column match the table column names
-        # shuold be be in the form DB_COLUMN : CSV_COLUMN
-        #
-        # We'll have to drop the table later
+        if org:
+            kd.where("_git_owner", "=", org)
 
-        #results = kd.execute()
+        if group:
+            #kd.where_subselect("_repo_id", "IN", f"SELECT _repo_id FROM {KospexSchema.TBL_REPOS} WHERE _group = ?", [group])
+            #kd.where_subselect("_repo_id", "IN", "_repo_id", KospexSchema.TBL_REPOS, "group_name", group)
+            kd.group_name_where_subselect(group)
+
 
         #print("Repository IDs")
         # sql = '''SELECT distinct(_repo_id) as repo,

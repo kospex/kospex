@@ -61,15 +61,17 @@ def kospex_init(default):
 @cli.command("summary")
 @click.option('-out', type=click.STRING,help="filename to write CSV results to.")
 @click.option('-server', type=click.STRING, help="Git server to query.")
-@click.option('-repo_file', type=click.Path(exists=True), help="CSV file to query with.")
-#@click.option('-query', type=click.STRING, help="Query for CSV file. E.g.  to query with.")
+@click.option('-group', type=click.STRING, help="Name of group (of repos) to query with.")
+@click.option('-org', type=click.STRING, help="Name of Org/Team to query with.")
+#@click.option('-', type=click.STRING, help="Name of group (of repos) to query with.")
 # pylint: disable=unused-argument
-def summary(out,server,repo_file):
+def summary(out,server,group,org):
     """ Provide a summary of all the known repositories."""
     params = locals()
-    if repo_file:
-        print("repo_file NOT IMPLEMENTED YET")
+    if group and org:
+        print("Please specify either a group or an org, not both.")
         exit(1)
+
     kospex.summary(results_file=out, **params)
 
 @cli.command("sync")
@@ -519,6 +521,113 @@ def knol(email):
 
     ext_dif = KospexUtils.merge_dicts(ar1, ar2)
     print(ext_dif)
+
+@cli.command("groups")
+@click.option('-name', type=click.STRING, help="Name of the group")
+@click.option('-add', is_flag=True, default=False, help="Add items to a group.")
+@click.option('-remove', is_flag=True, default=False, help="Remove items from a group.")
+@click.option('-delete', is_flag=True, default=False, help="Delete ALL items in a group.")
+@click.option('-show', is_flag=True, default=False, help="List the items in a group.")
+@click.option('-file', type=click.Path(), help="The dependency file to sync.")
+@click.option('-value', type=click.STRING, help="Value to add or remove from the group.")
+@click.option('-email', is_flag=True, default=False, help="Specify the values are emails.")
+@click.option('-repo', is_flag=True, default=False, help="Specify the values are repo URLs.")
+def groups(name,add,remove,delete,show,file,value,email,repo):
+    """
+    List all the groups in the database.
+    """
+    params = locals()
+    kquery = KospexQuery()
+
+    actions = [add, remove, delete, show]
+    types = [email, repo]
+    input_type = [file,value]
+
+    # By default, if there are no action parameters and we'll display the groups and exit
+    if sum(actions) == 0:
+        group_list = kquery.groups()
+        if group_list:
+            for g in group_list:
+                print(g)
+        else:
+            print("No groups found.")
+        exit(0)
+
+    # Start validating the parameters
+
+    if not name:
+        print("Please specify a group name.")
+        exit(1)
+
+    KospexUtils.validate_only_one(actions,
+                                  "Please specify either -add, -list, -remove or -delete.")
+
+    if remove:
+        print("Not implemented yet.")
+        exit(1)
+
+    if add:
+        KospexUtils.validate_only_one(types,
+                                      "Please specify either -email or -repo.")
+
+    lines = []
+
+    if file:
+        with open(file, 'r') as content:
+            lines = content.readlines()
+        # Remove any trailing newlines
+        lines = [line.strip() for line in lines]
+    elif value:
+        lines.append(value)
+
+    if add:
+        # create a list of hashsed with lines
+        # Then use sqliteutils to upsert them
+        print(f"Should add the values to the group '{name}'")
+        records = []
+        data_keyname = "email" if email else "git_url"
+        kgit = KospexGit()
+
+        for l in lines:
+            record = {}
+            record['group_name'] = name
+            record[data_keyname] = l
+            record['_repo_id'] = ""
+            record['email'] = ""
+            if repo:
+                kgit.set_remote_url(l)
+                #record['_repo_id'] = KospexUtils.git_url_to_repo_id(l)
+                record['_repo_id'] = kgit.get_repo_id()
+                print(f"Repo ID: {record['_repo_id']}")
+
+            record['data_type'] = data_keyname
+            records.append(record)
+
+        kospex.kospex_db.table(KospexSchema.TBL_GROUPS).upsert_all(records,pk=['group_name', '_repo_id', 'email'])
+
+    elif show:
+        print(f"Listing the values in the group '{name}'")
+        results = kquery.groups(params)
+        if results:
+            for r in results:
+                print(r)
+        else:
+            print("No items found in the group.")
+
+    elif delete:
+        print(f"Deleting all the values in the group '{name}'")
+        kquery.groups(params)
+
+    else:
+        print("Please specify either -add, -list, -remove or -delete.")
+
+
+
+    print(lines)
+
+# 
+# Start of the main program
+#
 
 if __name__ == '__main__':
     cli()

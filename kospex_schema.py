@@ -15,11 +15,13 @@ TBL_URL_CACHE = "url_cache"
 TBL_KRUNNER = "krunner"
 TBL_OBSERVATIONS = "observations"
 TBL_REPOS = "repos"
+# Experimental tables
 TBL_KOSPEX_META = "kospex_meta"
+TBL_GROUPS = "kospex_groups"
 
 KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE,
-                TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META ]
+                TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META, TBL_GROUPS ]
 
 # Table data structure inspired by Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
@@ -228,17 +230,8 @@ SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
     PRIMARY KEY(_repo_id,hash,file_path,observation_key)
     )'''
 
-SQL_CREATE_KOSPEX_META = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
-    [hash] TEXT,             -- hash of the commit
-    [file_path] TEXT,        -- file path in the repo (if applicable, can be repo level)
+SQL_CREATE_KOSPEX_META = f'''CREATE TABLE  IF NOT EXISTS [{TBL_KOSPEX_META}] (
     [format] TEXT,           -- format type e.g. JSON, JSONL, CSV, LINE
-    [data] TEXT,             -- cleaned data / output from the command
-    [raw] TEXT,              -- Raw data / output from the command
-    [source] TEXT,           -- what tool/function was used to get the metadata
-    [observation_key] TEXT,  -- unique identified for the observation e.g. SEMGREP, GREP_TODO 
-    [observation_type] TEXT, -- should be one of the REPO, FILE 
-    [line_number] INTEGER,   -- line number in the file (optional)
-    [command] TEXT,          -- command ran to get the data (optional)
     [latest] INTEGER,        -- 1 if this is the latest version of the file, 0 otherwise
     [created_at] DEFAULT CURRENT_TIMESTAMP,
     [_git_server] TEXT,
@@ -248,6 +241,16 @@ SQL_CREATE_KOSPEX_META = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
     PRIMARY KEY(_repo_id,hash,file_path,observation_key)
     )'''
 
+SQL_CREATE_GROUPS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_GROUPS}] (
+    [group_name] TEXT,  -- Name of the group
+    [git_url] TEXT,     -- repo_url (if applicable) optional (either repo_url or email)
+    [email] TEXT,       -- email (if applicable) optional (either repo_url or email),
+    [data] TEXT,        -- type of data (e.g. 'git_url', 'email', other)
+    [data_type] TEXT,   -- type of data (e.g. 'git_url', 'email', other)
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
+    [_repo_id] TEXT,    -- normalised _repo_id from git_url
+    PRIMARY KEY(group_name,_repo_id,email)
+    )'''
 
 # Functions for SQLite stuff
 
@@ -282,6 +285,7 @@ def connect_or_create_kospex_db():
     kospex_db.execute(SQL_CREATE_KRUNNER)
     kospex_db.execute(SQL_CREATE_OBSERVATIONS)
     kospex_db.execute(SQL_CREATE_REPOS)
+    kospex_db.execute(SQL_CREATE_GROUPS)
 
     # TODO - look at moving all table creates to "create if not exits"
 
@@ -292,5 +296,6 @@ def drop_table(table):
     db = connect_or_create_kospex_db()
     if table in KOSPEX_TABLES:
         db.execute(f"DROP TABLE IF EXISTS [{table}]")
+        print(f"Dropped table '{table}', if it existed")
     else:
         print(f"Invalid table '{table}', was not in KOSPEX_TABLES")

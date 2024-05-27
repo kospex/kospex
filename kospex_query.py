@@ -731,6 +731,24 @@ class KospexQuery:
 
         return kd.execute()
 
+    def groups(self, params=None):
+        """ Return a list of groups """
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(KospexSchema.TBL_GROUPS)
+
+        if not params:
+            kd.select_as("DISTINCT(group_name)", "name")
+        elif params.get("delete"):
+            kd.delete()
+            kd.where("group_name", "=", params.get("name"))
+        elif params.get("show"):
+            kd.select("*")
+            kd.where("group_name", "=", params.get("name"))
+        else:
+            exit("Not implemented")
+
+        return kd.execute()
+
 
 class KospexData:
     """ Data wrangling DSL like functions for Kospex """
@@ -739,6 +757,7 @@ class KospexData:
         self.kospex_db = kospex_db
         self.params = []
         self.from_tables = []
+        self.delete_statement = False
         self.select_columns = []
         self.where_clause = []
         self.group_by_columns = []
@@ -807,8 +826,17 @@ class KospexData:
         else:
             return False
 
+    def delete(self):
+        """ Set the query to delete data """
+        self.delete_statement = True
+        if self.select_columns:
+            raise ValueError("Cannot delete and select columns in the same query")
+
     def select(self, *columns):
         """ Add a column to the query """
+        if self.delete_statement:
+            raise ValueError("Cannot delete and select columns in the same query")
+        
         for col in columns:
             if self.is_valid_sql_name(col):
                 self.select_columns.append(col)
@@ -818,7 +846,6 @@ class KospexData:
     def select_raw(self, raw_column):
         """ HACK - add a raw column to the query """
         self.select_columns.append(raw_column)
-
 
     def extract_select_function_parts(self,sql_string):
         """ Regular expression pattern to match SQL function and its argument """
@@ -897,6 +924,17 @@ class KospexData:
 
         return True
 
+    def group_name_where_subselect(self, group_name):
+        """ Add a subselect where clause to the query """
+
+        #if not self.is_valid_sql_name(column):
+        #    raise ValueError(f"Column '{column}' is not a valid SQL name")
+
+        subselect_where = f""" _repo_id IN ( SELECT _repo_id FROM {KospexSchema.TBL_GROUPS} WHERE group_name = ? )"""
+
+        self.where_clause.append(subselect_where)
+        self.params.append(group_name)
+
     def generate_sql(self,line=None):
         """ Generate the SQL for the query """
         # The line will be used to add an extra carriage return if we want to print things.
@@ -904,12 +942,17 @@ class KospexData:
         if line:
             line_end = "\n"
 
-        sql = "SELECT "
-        if self.select_columns:
-            sql += ", ".join(self.select_columns)
+        sql = ""
+
+        if self.delete_statement:
+            sql = "DELETE "
         else:
-            sql += "*"
-        sql += line_end
+            sql = "SELECT "
+            if self.select_columns:
+                sql += ", ".join(self.select_columns)
+            else:
+                sql += "*"
+            sql += line_end
 
         sql += "FROM "
         sql += ", ".join(self.from_tables)
@@ -937,9 +980,22 @@ class KospexData:
             raise ValueError("No KospexDB object set")
 
         results = []
-        data = self.kospex_db.query(self.generate_sql(), self.params)
+        data = []
 
-        for row in data:
-            results.append(row)
+        if self.delete_statement:
+            res = self.kospex_db.execute(self.generate_sql(), self.params)
+            if res:
+                results = res.rowcount
+            # TODO check why we need to commit here
+            # Didn't delete rows unless we did this
+            self.kospex_db.conn.commit()
+        else:
+            data = self.kospex_db.query(self.generate_sql(), self.params)
+
+        # we'll only get data on a read
+        # deletes won't return anything
+        if data:
+            for row in data:
+                results.append(row)
 
         return results
