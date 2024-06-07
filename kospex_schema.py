@@ -91,14 +91,17 @@ SQL_CREATE_FILE_METADATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_FILE_METADATA}] 
 
 # We're going to store the unique repo details separately
 SQL_CREATE_REPOS = f'''CREATE TABLE IF NOT EXISTS [{TBL_REPOS}] (
+    [_repo_id] TEXT,
     [_git_server] TEXT,
     [_git_owner] TEXT,
     [_git_repo] TEXT,
-    [_repo_id] TEXT,
     [created_at] DEFAULT CURRENT_TIMESTAMP,
-    [last_sync] TEXT,  -- date of last sync
-    [first_seen] TEXT,  -- date of first commit, to be updated by the sync
-    PRIMARY KEY(_repo_id,_git_server,_git_owner,_git_repo)
+    [last_sync] TEXT,  -- date of last kospex sync
+    [last_seen] TEXT,  -- date of last commit, to be updated by the sync
+    [first_seen] TEXT, -- date of first commit, to be updated by the sync
+    [git_remote] TEXT,    -- URL of the git repo
+    [file_path] TEXT,  -- path to the repo on the local filesystem
+    PRIMARY KEY(_repo_id)
     )'''
 
 # This table will capture detail some hotspot indicators about a repo
