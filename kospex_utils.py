@@ -585,9 +585,9 @@ def get_git_stats(directory, last_days=None):
     # Get first and last commit dates
     #  git log --pretty=format:"%ci" --max-parents=0 HEAD
     #first_commit_date = run_git_command(['log', '--reverse', '--format=%ci', '-1'])
-    first_commit_date = run_git_command(directory,['log', '--pretty=format:%ci', '--max-parents=0', 'HEAD'])
+    first_commit_date = run_git_command(directory,['log', '--pretty=format:%cI', '--max-parents=0', 'HEAD'])
 
-    last_commit_date = run_git_command(directory,['log', '--format=%ci', '-1'])
+    last_commit_date = run_git_command(directory,['log', '--format=%cI', '-1'])
 
     # Count total number of commits
     total_commits = int(run_git_command(directory,['rev-list', '--count', 'HEAD']))
@@ -632,6 +632,28 @@ def get_git_stats(directory, last_days=None):
         'total_authors': total_authors,
         'unique_recent_authors': unique_recent_authors
     }
+
+def get_first_commit_date(directory):
+    """ Get the first commit date for a given directory"""
+    first_commit_date = ""
+    try:
+        first_commit_date = run_git_command(directory,['log', '--pretty=format:%cI', '--max-parents=0', 'HEAD'])
+    finally:
+        pass
+
+    return first_commit_date
+
+def get_last_commit_date(directory):
+    """ Get the first commit date for a given directory"""
+    last_commit_date = ""
+    try:
+        last_commit_date = run_git_command(directory,['log', '--format=%cI', '-1'])
+
+    finally:
+        pass
+
+    return last_commit_date
+
 
 def parse_sql_create_columns(sql):
     ''' A function to return a dict of column names and types from a SQL CREATE statement
