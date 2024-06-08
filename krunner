@@ -77,12 +77,12 @@ def find_docker(directory,out,images):
         print()
 
 
-@cli.command("list-repos")
+@cli.command("find-repos")
 @click.argument('directory', required=False, type=click.Path(exists=True))
 def find_repos(directory):
     """
-    List all git repositories found in the given directory.
-    If no directory is given, the current directory is used.
+    Find all git repositories found in the given directory.
+    If no directory is passed, the current directory is used.
     """
     if not directory:
         #directory = os.getcwd()
@@ -166,7 +166,7 @@ def todo(directory):
         os.chdir(cwd)
 
 @cli.command("git-pull")
-@click.option('-sync', is_flag=True, default=False, help="Sync to kospex DB.")
+@click.option('-sync', is_flag=True, default=True, help="Sync to kospex DB. (Default: True)")
 @click.argument('directory', required=False, type=click.Path(exists=True))
 def git_pull(directory,sync):
     """Run a 'git pull' on all git repositories found in the given directory."""
@@ -283,7 +283,7 @@ def semgrep(directory):
 
 @cli.command("find-urls")
 def find_urls():
-    """ find all urls in files in the current directory"""
+    """ Find all URLs in files in the current directory"""
     # Define the URL pattern for grep
     # This is a basic URL pattern to capture http, https and ftp
 
