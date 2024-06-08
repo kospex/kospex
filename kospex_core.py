@@ -5,6 +5,7 @@ import sys
 import subprocess
 import csv
 from shutil import which
+from datetime import datetime, timezone
 import click
 from prettytable import PrettyTable, from_db_cursor
 from kospex_git import KospexGit, MissingGitDirectory
@@ -247,7 +248,6 @@ class Kospex:
                                                                 pk=['file_path', '_repo_id',
                                                                     'hash'])
 
-            #print(f'Synced commit {commit["hash"]}...')
             # we'll print a + for each commit and a newline every 80 commits
             print('+', end='')
             if (counter % 80) == 0:
@@ -257,6 +257,10 @@ class Kospex:
 
         print()
         print(f"Synced {len(commits)} total commits")
+
+        # Update the repos table with the last sync time
+        last_sync = datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+        self.update_repo_status(last_sync=last_sync)
 
         self.chdir_original()
 
@@ -496,8 +500,9 @@ class Kospex:
         if outfile:
             KospexUtils.list_dict_2_csv(records, outfile,table.field_names)
 
-    def list_repos(self, directory):
+    def list_repos(self, directory, **kwargs):
         """ Print all the git repos in the specified directory and subdirectories"""
+        db = kwargs.get('db', False)
         table = PrettyTable()
         #table.field_names = ["Path", "Full path", "Remote"]
         table.field_names = ["Path", "Remote"]
@@ -505,11 +510,17 @@ class Kospex:
         #table.align["Full path"] = "l"
         table.align["Remote"] = "l"
 
-        results = KospexUtils.find_repos(directory)
-        for file in results:
-            self.git.set_repo(file)
-            #table.add_row([file, os.path.abspath(file), self.git.get_remote_url()])
-            table.add_row([file, self.git.get_remote_url()])
+        if directory:
+            results = KospexUtils.find_repos(directory)
+            for file in results:
+                self.git.set_repo(file)
+                #table.add_row([file, os.path.abspath(file), self.git.get_remote_url()])
+                table.add_row([file, self.git.get_remote_url()])
+        elif db:
+            sql = '''SELECT DISTINCT(_repo_id) as repo, file_path, git_remote
+            FROM repos'''
+            for row in self.kospex_db.query(sql):
+                table.add_row([row['file_path'], row['git_remote']])
 
         print(table)
 
@@ -821,4 +832,24 @@ class Kospex:
         #details['ext'] = parts[2]
         return details
 
+    def update_repo_status(self, repo_dir=None, last_sync=None):
+        """ Update the status of a repo """
 
+        if repo_dir:
+            self.set_repo_dir(repo_dir)
+        # if no repo_dir is passed, we'll assume that a set_repo_dir
+        # has already been called
+
+        details = {}
+        details['file_path'] = self.repo_directory
+        details = self.git.add_git_to_dict(details)
+
+        if last_sync:
+            details['last_sync'] = last_sync
+
+        details["first_seen"] = KospexUtils.get_first_commit_date(self.repo_directory)
+        details["last_seen"] = KospexUtils.get_last_commit_date(self.repo_directory)
+        details['git_remote'] = self.git.get_remote_url()
+
+        #print(details)
+        self.kospex_db.table(KospexSchema.TBL_REPOS).upsert(details,pk=['_repo_id'])

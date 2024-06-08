@@ -52,8 +52,6 @@ def find_docker(directory,out,images):
         if repo:
             stats_dict[repo] = KospexUtils.add_status(stats_dict[repo], r.get('status'))
 
-
-
     if images:
         records = KrunnerUtils.get_docker_images(records)
         images_list = []
@@ -61,10 +59,6 @@ def find_docker(directory,out,images):
             img = r.get('base_image')
             images_list.append(KospexUtils.parse_docker_image(img))
         registries = KrunnerUtils.count_dict_keyvalues(images_list, 'registry')
-        
-
-
-
 
     table = KospexUtils.get_dependency_files_table(records, images=images)
     print(table)

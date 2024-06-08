@@ -3,7 +3,7 @@
 import os
 import os.path
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from shutil import which
 import click
 from kospex_core import Kospex, GitRepo
@@ -140,12 +140,31 @@ def devs(repo, days, repo_id, org_key, out, all):
         click.echo(f'Searching for active developers (last {days} days)')
     kospex.active_developers(**params)
 
+#@cli.command("list-repos")
+#@click.argument('directory', type=click.Path(exists=True))
+#def find_repos(directory):
+    # """List all git repositories found in the given directory."""
+    # print("\nDirectory: " + os.path.abspath(directory))
+    # kospex.list_repos(directory)
+
 @cli.command("list-repos")
-@click.argument('directory', type=click.Path(exists=True))
-def find_repos(directory):
-    """List all git repositories found in the given directory."""
-    print("\nDirectory: " + os.path.abspath(directory))
-    kospex.list_repos(directory)
+@click.option('-db', is_flag=True, default=False, help="List repos sync'ed to db.")
+@click.argument('directory', required=False, type=click.Path(exists=True))
+def list_repos(directory,db):
+    """
+    List all git repositories found in either:
+    - the given directory or
+    - the kospex database from sync operations.
+    """
+    if directory:
+        print("\nDirectory: " + os.path.abspath(directory))
+    elif db:
+        print("\nListing repos from the kospex database.")
+    else:
+        print("Please specify either a directory or use the -db flag.")
+        exit(1)
+
+    kospex.list_repos(directory,db=db)
 
 @cli.command("tech-landscape")
 @click.option('-repo', type=GitRepo())
@@ -475,52 +494,52 @@ def sync_dependencies(repo,file,dev):
         print("Please specify either a '-repo' or a '-file'.")
 
 
-@cli.command("know")
-@click.argument('email',  type=click.STRING)
-def knol(email):
-    """Show the tech landscape for a given author."""
+# @cli.command("know")
+# @click.argument('email',  type=click.STRING)
+# def knol(email):
+#     """Show the tech landscape for a given author."""
 
-    print("WARNING: This is a work in progress.")
+#     print("WARNING: This is a work in progress.")
 
-    nowish = datetime.now().isoformat()
-    print(nowish)
-    last30 = KospexUtils.date_days_ago(nowish, 60)
+#     nowish = datetime.now().isoformat()
+#     print(nowish)
+#     last30 = KospexUtils.date_days_ago(nowish, 60)
 
-    kquery = KospexQuery()
+#     kquery = KospexQuery()
 
-    kd = kquery.tech_commits(author_email=email)
-    kd.where("commits.committer_when", ">=", last30)
+#     kd = kquery.tech_commits(author_email=email)
+#     kd.where("commits.committer_when", ">=", last30)
 
-    print(kd.generate_sql(line=True))
-    print(kd.get_bind_parameters())
+#     print(kd.generate_sql(line=True))
+#     print(kd.get_bind_parameters())
 
-    ar1 = {}
-    ar2 = {}
+#     ar1 = {}
+#     ar2 = {}
 
-    results = kospex.kospex_db.execute(kd.generate_sql(), kd.get_bind_parameters())
-    for result in results:
-        ar1[result[0]] = result[1]
-        #print(result[0])
-        print(result)
+#     results = kospex.kospex_db.execute(kd.generate_sql(), kd.get_bind_parameters())
+#     for result in results:
+#         ar1[result[0]] = result[1]
+#         #print(result[0])
+#         print(result)
 
-    print(ar1)
+#     print(ar1)
 
-    kd2 = kquery.tech_commits(author_email=email)
-    kd2.where("commits.committer_when", "<", last30)
-    kd2_from = KospexUtils.date_days_ago(last30, 90)
-    kd2.where("commits.committer_when", ">=", kd2_from)
+#     kd2 = kquery.tech_commits(author_email=email)
+#     kd2.where("commits.committer_when", "<", last30)
+#     kd2_from = KospexUtils.date_days_ago(last30, 90)
+#     kd2.where("commits.committer_when", ">=", kd2_from)
 
-    print("###")
-    print(kd2.generate_sql(line=True))
-    print(kd2.get_bind_parameters())
+#     print("###")
+#     print(kd2.generate_sql(line=True))
+#     print(kd2.get_bind_parameters())
 
-    results = kospex.kospex_db.execute(kd2.generate_sql(), kd2.get_bind_parameters())
-    for result in results:
-        ar2[result[0]] = result[1]
-        print(result)
+#     results = kospex.kospex_db.execute(kd2.generate_sql(), kd2.get_bind_parameters())
+#     for result in results:
+#         ar2[result[0]] = result[1]
+#         print(result)
 
-    ext_dif = KospexUtils.merge_dicts(ar1, ar2)
-    print(ext_dif)
+#     ext_dif = KospexUtils.merge_dicts(ar1, ar2)
+#     print(ext_dif)
 
 @cli.command("groups")
 @click.option('-name', type=click.STRING, help="Name of the group")
@@ -621,11 +640,10 @@ def groups(name,add,remove,delete,show,file,value,email,repo):
     else:
         print("Please specify either -add, -list, -remove or -delete.")
 
-
-
     print(lines)
 
-# 
+
+#
 # Start of the main program
 #
 
