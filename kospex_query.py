@@ -875,6 +875,7 @@ class KospexData:
         """ Add a column, including aggregate functions to the query as an alias """
         # TODO - handing only one function at the moment
         function_name, argument = self.extract_select_function_parts(column_query)
+
         if function_name and argument and self.is_valid_sql_name(alias):
             if self.allowed_sql_function(function_name) and self.is_valid_sql_name(argument):
                 self.select_columns.append(f"{function_name}({argument}) AS {alias}")
@@ -883,6 +884,73 @@ class KospexData:
             self.select_columns.append(f"{column_query} AS {alias}")
         else:
             raise ValueError(f"Invalid column query: '{column_query}' and alias: '{alias}'")
+
+    def has_parentheses(self, string):
+        """
+        Check if a string has a pair of parentheses.
+
+        :param string: A string to check for parentheses.
+        :return: True if the string contains a pair of parentheses, False otherwise.
+        """
+        # Check for the presence of both opening and closing parentheses
+        return '(' in string and ')' in string
+
+    def parse_expression_with_regex_exact(self,expression):
+        """
+        Parse an expression using regular expressions and return the values of the functions,
+        including the exact match of the arguments with parentheses.
+
+        :param expression: A string representing the function expression.
+        :return: A dictionary with the function names as keys and their arguments as values.
+        """
+
+        # Regular expression pattern to capture functions and their arguments, including parentheses
+        #pattern = r'(\w+)\(((?:[^()]|\([^)]*\))*)\)'
+        pattern = r'^([^()]*)\(((?:[^()]|\([^)]*\))*)\)'
+
+        # Find the first match in the expression (assuming there's only one main function to parse)
+        match = re.search(pattern, expression)
+
+        # Convert match to a dictionary
+        if match:
+            parsed_function = {'function': match.group(1), 'value': match.group(2)}
+        else:
+            parsed_function = {}
+
+        return parsed_function
+
+    def validate_nested_expressions(self, s):
+        """
+        Validate that a string with parentheses uses allowed keywords only.
+        """
+        # Check for the presence of both opening and closing parentheses
+        if not self.has_parentheses(s):
+            return False
+        sql = s
+
+        while self.has_parentheses(sql):
+
+            #res = parse_expression_with_regex_exact(sql)
+            result = self.parse_expression_with_regex_exact(sql)
+            function = result.get("function")
+            value = result.get("value")
+
+            #print(f"Checking function {function}")
+            # Check if the function name is allowed
+            if function and not self.allowed_sql_function(function):
+                #print(f"Invalid function: {function}")
+                return False
+
+            #if self.has_parentheses(res["value"]):
+            if self.has_parentheses(value):
+                #print(f"valid nested expression {value}")
+                sql = value
+            else:
+                #print(f"Checking if {value} is a valid sql name")
+                if self.is_valid_sql_name(value):
+                    break
+
+        return True
 
     def group_by(self, *columns):
         """ Add a column to the query """
@@ -915,18 +983,27 @@ class KospexData:
 
         # Check if the name is a reserved keyword
         if name.upper() in reserved_keywords:
-            raise ValueError(f"Invalid name: '{name}' is a reserved SQL keyword.")
+            #raise ValueError(f"Invalid name: '{name}' is a reserved SQL keyword.")
+            # TODO - log this instead of print
+            print(f"Invalid name: '{name}' is a reserved SQL keyword.")
+            return False
 
         # Regular expression for valid SQL table/column names
         # Starts with a letter or underscore, followed by letters, digits, or underscores
         if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', name):
             # TODO .. check for valid table prefix and return an error for that
             # We can get this error for a NOT_EXIST_TBL.col
-            raise ValueError(f"Invalid name: '{name}' does not match SQL naming conventions.")
+            # TODO - log this instead of print
+            #raise ValueError(f"Invalid name: '{name}' does not match SQL naming conventions.")
+            print(f"Invalid name: '{name}' does not match SQL naming conventions.")
+            return False
 
         # Optional: Check for length limits (default: 64 characters)
         if len(name) > 64:
-            raise ValueError(f"Invalid name: '{name}' exceeds the maximum allowed length.")
+            #raise ValueError(f"Invalid name: '{name}' exceeds the maximum allowed length.")
+            # TODO - log this instead of print
+            print(f"Invalid name: '{name}' exceeds the maximum allowed length.")
+            return False
 
         return True
 

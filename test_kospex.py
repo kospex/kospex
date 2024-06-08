@@ -2,6 +2,7 @@
 from kospex_core import Kospex
 import krunner_utils as KrunnerUtils
 import kospex_utils as KospexUtils
+from kospex_query import KospexQuery, KospexData
 
 def test_kospex():
     """ Test object creation works"""
@@ -64,3 +65,27 @@ def test_days_functions():
     d1 = "2024-05-06T15:50:01+10:00"
     d2 = d1
     assert KospexUtils.days_between_datetimes(d1, d2) == 0.0
+
+# Tests for KospexData
+
+def test_has_complex_sql():
+    """ Test validators for more complex SQL expressions """
+
+    kd = KospexData()
+    assert kd.is_valid_sql_name("SUM") is True
+
+    assert kd.has_parentheses("SUM") is False
+
+    # Test a simple SQL expression
+    simple_sql = "count(author_email)"
+    assert kd.has_parentheses(simple_sql) is True
+    assert kd.validate_nested_expressions(simple_sql) is True
+
+    #complex_sql = "Count(Distinct(author_email))"
+    complex_sql = "count(distinct(author_email))"
+    assert kd.has_parentheses(complex_sql) is True
+    assert kd.validate_nested_expressions(complex_sql) is True
+
+    invalid_complex = "cou!nt(distinct(author_email))"
+    assert kd.validate_nested_expressions(invalid_complex) is False
+
