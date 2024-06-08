@@ -11,8 +11,6 @@ app = Flask(__name__)
 @app.route('/')
 def index():
     """ Serve up the summary home page """
-    #kospex = KospexQuery()
-    #data = kospex.summary()
     data = KospexQuery().summary()
     return render_template('index.html', **data)
 
@@ -30,6 +28,7 @@ def developers():
     author_email = request.args.get('author_email')
     download = request.args.get('download')
     days = request.args.get('days',None)
+    devs = KospexQuery().authors(days=days)
 
     if author_email:
         print(author_email)
@@ -53,9 +52,7 @@ def developers():
                                labels=labels, datapoints=datapoints)
 
     elif download:
-        devs = KospexQuery().authors(days=days)
         return KospexWeb.download_csv(devs)
-    
     else:
         data = KospexQuery().summary(days=days)
         return render_template('developers.html', authors=devs, data=data )
@@ -223,6 +220,15 @@ def hotspots(repo_id):
     data = KospexQuery().hotspots(repo_id=repo_id)
     return render_template('hotspots.html', data=data)
 
+# Error Handling Routes
+
+@app.errorhandler(404)
+def page_not_found(e):
+    """ Serve up the 404 page """
+    return render_template('404.html'), 404
+
+# Experimental and Development Routes
+
 @app.route('/bootstrap/')
 def bootstrap():
     """ bootstrap 5 dev playground. """
@@ -234,10 +240,11 @@ def tech_change():
     labels = [ "Java", "Go", "JavaScript", "Python", "Kotlin" ]
     return render_template('tech-change.html', labels=labels)
 
-@app.errorhandler(404)
-def page_not_found(e):
-    """ Serve up the 404 page """
-    return render_template('404.html'), 404
+@app.route('/events/')
+def events():
+    """ Radars for tech change. """
+    labels = [ "Java", "Go", "JavaScript", "Python", "Kotlin" ]
+    return render_template('tech-change.html', labels=labels)
 
 if __name__ == "__main__":
 
