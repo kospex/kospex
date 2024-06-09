@@ -240,11 +240,11 @@ def tech_change():
     labels = [ "Java", "Go", "JavaScript", "Python", "Kotlin" ]
     return render_template('tech-change.html', labels=labels)
 
-@app.route('/events/')
-def events():
-    """ Radars for tech change. """
-    labels = [ "Java", "Go", "JavaScript", "Python", "Kotlin" ]
-    return render_template('tech-change.html', labels=labels)
+@app.route('/metadata/')
+def metadata():
+    """ Metadata about the kospex DB. """
+    details = {}
+    return render_template('metadata.html')
 
 if __name__ == "__main__":
 
