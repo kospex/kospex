@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title or "Metadata"}}</title>
+    <!-- Link to Bootstrap CSS -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    
+</head>
+
+<body>
+
+{% include 'header.html' %}
+
+<!-- Main content area -->
+<div class="container mt-5">
+
+    <h1 class="text-center">Metadata</h1>
+
+    <!-- Row 1 / 3 -->
+
+    <div class="row">
+        <!-- # of Repos -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4># of Sync'ed Repos</h4>
+                    <h2>{{ repos }}</h2>
+                    <!-- <a href="/repos/">View More</a> -->
+                </div>
+            </div>
+        </div>
+
+        <!-- # of Commits -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4># of Commits</h4>
+                    <h2>{{ commits }}</h2>
+                    <a href="/commits/">View More</a>
+                </div>
+            </div>
+        </div>
+
+        
+
+    </div>
+    
+    <!-- Row 2 / 3 -->
+
+    <div class="row mt-4">
+
+        <!-- # of Orgs -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4># of Orgs</h4>
+                    <h2>{{ orgs }}</h2>
+                    <a href="/orgs/">View More</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- # of Authors -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h4># of Authors</h4>
+                    <h2>{{ authors }}</h2>
+                    <a href="/developers/">View More</a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Row 3 / 3 -->
+
+    <div class="row mt-4">
+
+        <!-- # of Commits -->
+        <div class="col-md-6">
+         <div class="card">
+             <div class="card-body text-center">
+                 <h4># of Git servers</h4>
+                 <h2>{{ servers }}</h2>
+                 <a href="/servers/">View More</a>
+             </div>
+         </div>
+     </div>
+
+    <!-- # of Committers -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body text-center">
+                <h4># of Committers</h4>
+                <h2>{{ committers }}</h2>
+                <a href="/developers/">View More</a>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+    <div class="container">
+        <br/>
+        
+        <!-- PLACEHOLDER FOR CONTENT -->
+
+    </div>
+    <!-- End of Main content area -->
+</div>
+
+{% include '_footer_scripts.html' %}
+
+</body>
+</html>
