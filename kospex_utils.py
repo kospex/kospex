@@ -161,6 +161,58 @@ def date_days_ago(given_date, num_days):
     # Convert the new date back to a string in ISO format
     return new_date.isoformat()
 
+def generate_date_ranges(to_date, days_apart, previous_days):
+    """
+    This function calulcalates a set of dates,
+    with the to_date and the the days_apart
+    being the number of days between a from and to date (e.g 7 days for a week)
+    and the previous_days being the number of days to go back from the to_date
+    Eg. to_date = "2024-01-07", days_apart = 5, previous_days = 365
+    would return the following date ranges:
+    [
+        {
+            'from_date': '2023-01-02T00:00:00',
+            'to_date': '2023-01-07T00:00:00',
+        }
+        {
+            'from_date': '2024-01-02T00:00:00',
+            'to_date': '2024-01-07T00:00:00',
+        },
+
+    ]
+    So we have the current year and the previous year
+    """
+    # TODO - Think about how to handle timezone, these functions are ignorant of that
+    # Parse the to_date to a datetime object
+    current_to_date = datetime.fromisoformat(to_date)
+    # Calculate the start date for the first range
+    from_date = current_to_date - timedelta(days=days_apart)
+
+    date_format = '%Y-%m-%dT%H:%M:%S%z'
+
+    # List to hold the date ranges
+    date_ranges = []
+
+    older_to_date = current_to_date - timedelta(days=previous_days)
+    older_from_date = older_to_date - timedelta(days=days_apart)
+
+    recent_range = {
+            'from_date': from_date.strftime(date_format),
+            'to_date': current_to_date.strftime(date_format),
+        }
+
+    previous_range = {
+            'from_date': older_from_date.strftime(date_format),
+            'to_date': older_to_date.strftime(date_format),
+    }
+
+    # Add the oldest date range first
+    date_ranges.append(previous_range)
+    # Add the most recent date range
+    date_ranges.append(recent_range)
+
+    return date_ranges
+
 def days_between_datetimes(datetime1: str, datetime2: str) -> float:
     """
     Calculate the difference in days between two ISO 8601 formatted datetime strings.
