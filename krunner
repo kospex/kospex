@@ -314,6 +314,20 @@ def find_urls():
             filename, line_num, url = parts
             print(filename + " " + line_num + " " + url)
 
+@cli.command("find-js-src")
+def find_js_src():
+    """ Find javascript refs in HTML files in the current directory"""
+    # Define the URL pattern for grep
+    # This is a basic URL pattern to capture http, https and ftp
+    #directory = os.getcwd()
+    directory = "."
+    print("\nDirectory: " + os.path.abspath(directory))
+
+    for root, _, files in os.walk(directory):
+
+        for file in files:
+            if file.endswith(".html") or file.endswith(".htm"):
+                KrunnerUtils.find_js_libraries(os.path.join(root, file))
 
 
 if __name__ == '__main__':

@@ -44,6 +44,52 @@ def find_dockerfiles_in_repos(repo_dirs):
 
     return results_files
 
+def extract_js_version(url):
+    """
+    Try to find a version number x.y.z in a URL.
+    """
+    # Regular expression pattern to match version numbers in the URL
+    pattern = r'/(\d+\.\d+\.\d+)/'
+
+    # Search for the pattern in the URL
+    match = re.search(pattern, url)
+
+    # If a match is found, return the version number
+    if match:
+        return match.group(1)
+    else:
+        return None
+
+def find_js_libraries(file_path):
+    """
+    Find all script tags with src attribute that contain a JavaScript library reference.
+    """
+    # Regular expression pattern
+    pattern = r'<script\s+.*src="(https?://[^/]+(?:/[^/]+)*/([^/]+))"></script>'
+
+    # Open the file in read mode
+    with open(file_path, 'r') as file:
+        # Read the entire file content into a string
+        html_string = file.read()
+
+    # Split the input string into lines
+    lines = html_string.split('\n')
+
+    file_path = file_path.removeprefix("./")
+
+    # Iterate over the lines and apply the regular expression
+    results = []
+    for line_number, line in enumerate(lines, start=1):
+        matches = re.findall(pattern, line)
+        for match in matches:
+            full_url, filename = match
+            version = extract_js_version(full_url)
+            results.append((line_number, full_url, filename, version))
+
+    # Print the results
+    for line_number, full_url, filename, version in results:
+        print(f"{file_path}, Line {line_number}: Full URL: {full_url}, Filename: {filename}, version: {version}")
+
 def load_gitleaks(filename):
     """Load gitleaks output from a file"""
     f = open(filename, "r")
