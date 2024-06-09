@@ -196,12 +196,7 @@ def repo_with_tech(tech):
 
     return render_template(template,data=repos_with_tech)
 
-@app.route('/meta/author-domains')
-def author_domains():
-    """ display repo information. """
-    kospex = KospexQuery()
-    email_domains = kospex.email_domains()
-    return render_template('meta-author-domains.html',email_domains=email_domains)
+
 
 @app.route('/commits/')
 def commits():
@@ -219,6 +214,13 @@ def hotspots(repo_id):
     """ display Git commits information. """
     data = KospexQuery().hotspots(repo_id=repo_id)
     return render_template('hotspots.html', data=data)
+
+@app.route('/meta/author-domains')
+def author_domains():
+    """ display repo information. """
+    kospex = KospexQuery()
+    email_domains = kospex.email_domains()
+    return render_template('meta-author-domains.html',email_domains=email_domains)
 
 # Error Handling Routes
 

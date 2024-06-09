@@ -397,9 +397,16 @@ def author_tech(author_email,repo_id):
 
 @cli.command("key-person")
 @click.option('-top', type=int, default=4, help='The number of top authors to assess.')
-@click.argument('directory',  type=GitRepo())
+@click.argument('directory', required=False, type=GitRepo())
 def key_person(directory,top):
     """ Identify the key person for a repo."""
+    if not directory:
+        directory = os.getcwd()
+        if not KospexUtils.is_git(directory):
+            print(f"Directory '{directory}' is not a git repository.")
+            print("Please either cd in a git repository directory, or specify one.")
+            exit(1)
+    
     kgit = KospexGit()
     kgit.set_repo(directory)
     kquery = KospexQuery()
@@ -415,7 +422,7 @@ def key_person(directory,top):
     authors = kquery.commit_stats(repo_id=kgit.get_repo_id())
     key = "commits"
     total_commits = sum(item[key] for item in authors if key in item)
-    print(f"total commits: {total_commits}")
+    print(f"Total commits: {total_commits}")
     for a in authors:
         a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
         a['% commits'] = f"{a['commits'] / total_commits * 100:.1f}%"
