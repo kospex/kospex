@@ -213,19 +213,28 @@ def generate_date_ranges(to_date, days_apart, previous_days):
 
     return date_ranges
 
-def days_between_datetimes(datetime1: str, datetime2: str) -> float:
+def days_between_datetimes(datetime1: str, datetime2: str, min_one=None) -> float:
     """
     Calculate the difference in days between two ISO 8601 formatted datetime strings.
+    If min_one is set to True, the function will return at least one day
+      if the difference is less than one day.
     """
     # Parse the ISO 8601 formatted datetime strings
     d1 = parser.parse(datetime1)
     d2 = parser.parse(datetime2)
 
     # Calculate the absolute difference in days
-    difference = abs((d2 - d1).total_seconds() / 86400)  # Convert seconds to days
+    try:
+        difference = abs((d2 - d1).total_seconds() / 86400)  # Convert seconds to days
+    except ValueError:
+        print(f"Error calculating the difference between {datetime1} and {datetime2}")
+        return None
 
     # Return the difference rounded to one decimal place
-    return round(difference, 1)
+    days = round(difference, 1)
+    if min_one:
+        return max(days, 1)
+    return days
 
 def find_git_base(filename):
     """
@@ -935,6 +944,20 @@ def get_status_table(status):
     status_percentage["Total"] = 100
     values = [ f"{status_percentage.get(key,0)}%" for key in table.field_names]
     table.add_row(values)
+
+    return table
+
+def orphan_prettytable():
+    """ Return a prettytable object for showing orphaned repos."""
+
+    table = PrettyTable()
+    headers = ["_repo_id", "committers", "active", "Orphaned", "% Here"]
+    table.field_names = headers
+    table.align["_repo_id"] = "l"
+    table.align["committers"] = "r"
+    table.align["active"] = "r"
+    table.align["Orphaned"] = "l"
+    table.align["% Here"] = "r"
 
     return table
 

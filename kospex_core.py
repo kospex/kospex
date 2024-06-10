@@ -293,7 +293,7 @@ class Kospex:
         """Pretty print the author_techs data"""
 
         table = PrettyTable()
-        headers = ["author_email", "repos", "_ext", "commits", "first_commit", 
+        headers = ["author_email", "repos", "_ext", "commits", "first_commit",
                    "last_commit", "last_seen", "first_seen", "days_active"]
         table.field_names = headers
         table.align["author_email"] = "l"
@@ -420,17 +420,29 @@ class Kospex:
         # Make sure days is an integer before we use it in the SQL query to avoid SQL injection
         if not isinstance(days, int):
             raise ValueError(f"The value of days '{days}' is NOT an integer")
+        where = ""
         date_where = ""
 
         params = []
+
+        # sql = '''SELECT distinct(author_email) as author,
+        # round((julianday('now') - julianday(max(author_when))) ,1) as last_seen,
+        # COUNT(author_email) as commits,
+        # COUNT(DISTINCT(_repo_id)) as repos
+        # FROM commits'''
+
         sql = '''SELECT distinct(author_email) as author,
+        MIN(author_when) as first_commit,
+        MAX(author_when) as last_commit,
         round((julianday('now') - julianday(max(author_when))) ,1) as last_seen,
         COUNT(author_email) as commits,
         COUNT(DISTINCT(_repo_id)) as repos
         FROM commits'''
+
         if not all_history:
             where = f"WHERE date(author_when) > date('now','-{days} day')"
             date_where = f"AND date(author_when) > date('now','-{days} day')"
+
         group_by = '''GROUP BY author_email ORDER BY commits DESC'''
 
         row_count = 0
@@ -443,6 +455,7 @@ class Kospex:
             kwargs['repo_id'] = self.git.get_repo_id()
 
         org_key = kwargs.get('org_key', None)
+
         if org_key:
             # Get the repo_id for the org_key
             org_bits = org_key.split("~")
@@ -465,11 +478,13 @@ class Kospex:
         sql_query = f"{sql} {where} {group_by}"
 
         table = PrettyTable()
-        table.field_names = ["username", "last_seen", "commits", "repos", "author"]
+        table.field_names = ["username", "last_seen", "first_commit", "commits", "repos", "days_active", "author"]
         table.align["username"] = "l"
         table.align["last_seen"] = "r"
+        table.align["first_commit"] = "r"
         table.align["commits"] = "r"
         table.align["repos"] = "r"
+        table.align["days_active"] = "r"
         table.align["author"] = "l"
 
         results = None
@@ -483,9 +498,17 @@ class Kospex:
 
         for row in results:
             row["username"] = KospexUtils.extract_github_username(row["author"])
+
+            row["days_active"] = KospexUtils.days_between_datetimes(row["last_commit"],
+                                                                    row["first_commit"],
+                                                                    min_one=True)
             records.append(row)
-            table.add_row([row["username"],row["last_seen"],
-                           row["commits"], row["repos"], row["author"]])
+
+            table.add_row([row["username"], row["last_seen"],
+                           KospexUtils.extract_db_date(row['first_commit']),
+                           row["commits"], row["repos"],
+                           row["days_active"],
+                           row["author"]])
             row_count += 1
 
         if row_count > 0:
@@ -493,12 +516,16 @@ class Kospex:
 
         if row_count == 0:
             print("No active developers found in the kospex DB")
+        elif all_history:
+            print(f"{row_count} developers in the kospex DB for all time.")
         else:
             print(f"{row_count} active developers in the last {days} days.")
 
         outfile = kwargs.get("out",None)
         if outfile:
             KospexUtils.list_dict_2_csv(records, outfile,table.field_names)
+
+        return records
 
     def list_repos(self, directory, **kwargs):
         """ Print all the git repos in the specified directory and subdirectories"""

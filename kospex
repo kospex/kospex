@@ -3,7 +3,7 @@
 import os
 import os.path
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from shutil import which
 import click
 from kospex_core import Kospex, GitRepo
@@ -133,11 +133,14 @@ def sync_directory(directory):
 # pylint: disable=unused-argument
 def devs(repo, days, repo_id, org_key, out, all):
     """ Information Stats about developers."""
+
     params = locals()
+
     if all:
         click.echo('Finding all developer history')
     else:
         click.echo(f'Searching for active developers (last {days} days)')
+
     kospex.active_developers(**params)
 
 #@cli.command("list-repos")
@@ -648,6 +651,76 @@ def groups(name,add,remove,delete,show,file,value,email,repo):
         print("Please specify either -add, -list, -remove or -delete.")
 
     print(lines)
+
+@cli.command("orphans")
+@click.option('-days', type=int, default=90, help='Committed in X days is considered active.(default 90)')
+@click.option('-window', type=int, default=365, help='Days to consider for orphaned repos. (default 365)')
+def orphans(days,window):
+    """
+    Find orphaned repos.
+
+    An orphaned repo is one where:
+
+     - all the developers who've committed in the window (default 365 days) \
+     - have not been active in the last X days (default 90 days).
+
+    """
+    print("Experimental - Work in Progress.")
+    params = locals()
+
+    active_devs = kospex.active_developers(**params)
+    active_set = set(map(lambda item: item['author'], active_devs))
+
+    # Find all the repos in the database
+    repos = kospex.kospex_query.repos()
+
+    now_utc = datetime.now(timezone.utc)
+    from_date = now_utc - timedelta(days=window)
+
+    table = KospexUtils.orphan_prettytable()
+    orphaned = 0
+    working_knowledge = 0
+
+    # Loop through every repo
+    for r in repos:
+        # find all the authors in the last 'window' days
+        print(f'\n{r["_repo_id"]}')
+        row = []
+        row.append(r["_repo_id"])
+
+        commits = kospex.kospex_query.commits(
+            repo_id=r["_repo_id"],
+            after=from_date.strftime("%Y-%m-%dT%H:%M:%S%z"))
+
+        #print(f"Commits: {len(commits)}")
+        committers = set([c['committer_email'] for c in commits])
+        row.append(len(committers))
+
+        intersection_count = len(committers.intersection(active_set))
+        row.append(intersection_count)
+
+        print(f"Present: {intersection_count}, Total: {len(committers)} in 12 months.")
+
+        # if all the authors are not in the active_devs_emails list
+        # then print the repo status of orphaned
+
+        if intersection_count == 0:
+            print("Orphaned")
+            row.append(True)
+            row.append("0%")
+            orphaned += 1
+        else:
+            print("Working knowledge exists")
+            row.append(False)
+            row.append(f"{intersection_count/len(committers)*100:.2f}%")
+            working_knowledge += 1
+
+        table.add_row(row)
+
+    print()
+    print(table)
+    print(f"\nOrphaned: {orphaned} | Working Knowledge: {working_knowledge} | Total: {len(repos)}")
+    print(f"Orphaned: {orphaned/len(repos)*100:.2f}% | Working Knowledge: {working_knowledge/len(repos)*100:.2f}%\n")
 
 
 #

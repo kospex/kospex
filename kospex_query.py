@@ -748,12 +748,20 @@ class KospexQuery:
             exit("Not implemented")
 
         return kd.execute()
-    
+
     def get_repo_by_id(self, repo_id):
         """ Return a repo by id """
         sql = f"""SELECT * FROM {KospexSchema.TBL_REPOS} WHERE _repo_id = ?"""
         data = self.kospex_db.query(sql, [repo_id])
         return next(data, None)
+    
+    # TODO - refactor to one repos query using KospexData
+    #def repos(self,  **kwargs):
+    #    """ Return a list of repos """
+    #    kd = KospexData(kospex_db=self.kospex_db)
+    #    kd.from_table(KospexSchema.TBL_REPOS)
+    #    kd.select("*")
+    #    return kd.execute()
 
 
 class KospexData:
