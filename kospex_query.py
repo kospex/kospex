@@ -20,7 +20,9 @@ class KospexQuery:
         #    self.kospex_db = Database(KospexUtils.get_kospex_db_path())
 
     def summary(self, days=None, repo_id=None):
-        """ Provide a summary of the known repositories."""
+        """
+        Provide a summary of the known repositories.
+        """
 
         summary_sql = """SELECT count(distinct(_repo_id)) AS 'repos', count(*) 'commits',
         count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
@@ -754,7 +756,7 @@ class KospexQuery:
         sql = f"""SELECT * FROM {KospexSchema.TBL_REPOS} WHERE _repo_id = ?"""
         data = self.kospex_db.query(sql, [repo_id])
         return next(data, None)
-    
+
     # TODO - refactor to one repos query using KospexData
     #def repos(self,  **kwargs):
     #    """ Return a list of repos """

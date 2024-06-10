@@ -326,13 +326,15 @@ def deps(repo, file, directory, out, dev):
             print("No package/dependency manager files found.")
 
     elif repo:
-        #os.chdir(repo)
-        #results = kdeps.find_dependency_files(".")
+
         results = kdeps.find_dependency_files(repo)
-        # TODO - refactor, we no longer get the pkg_type
+
         if results:
-            for file_path, pkg_type in results:
-                print(f"File: {file_path} | Type: {pkg_type}")
+            print("\nDependency files found in the repo:")
+            for file_path in results:
+                print(f"{file_path}")
+            print(f"\nFound {len(results)} dependency files.\n")
+
         else:
             print("No package/dependency manager files found.")
 
