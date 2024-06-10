@@ -681,6 +681,8 @@ def get_git_stats(directory, last_days=None):
     recent_authors = run_git_command(directory,['log', '--since', since_date, '--format=%aN'])
     unique_recent_authors = len(set(recent_authors.splitlines()))
 
+    status = development_status(last_commit_date)
+
     return {
         'first_commit': first_commit_date,
         'last_commit': last_commit_date,
@@ -691,7 +693,8 @@ def get_git_stats(directory, last_days=None):
         'git_dir_size': git_dir_size,
         'repo_size_without_git': repo_size_without_git,
         'total_authors': total_authors,
-        'unique_recent_authors': unique_recent_authors
+        'unique_recent_authors': unique_recent_authors,
+        'status': status
     }
 
 def get_first_commit_date(directory):
