@@ -6,6 +6,8 @@ The main command is _kospex_ however there are some other helper commands as wel
 
 The main "do-er" of tasks. 
 
+See [kospex](kospex) for more details. 
+
 ## kgit
 
 Git wrappers and useful git utilities. 
