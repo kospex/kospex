@@ -45,12 +45,16 @@ def find_docker(directory,out,images):
     unique_repos = list(set(repos))
     stats_dict = {key: KospexUtils.init_repo_stats() for key in unique_repos}
 
+    repo_status= {data.get('repo'): data.get("status") for data in repo_data if 'status' in data }
+
     files = KrunnerUtils.find_dockerfiles_in_repos(dirs)
     records = KospexUtils.get_git_metadata(files)
+
     for r in records:
         repo = r.get('repo')
         if repo:
             stats_dict[repo] = KospexUtils.add_status(stats_dict[repo], r.get('status'))
+            r['repo_status'] = repo_status.get(repo)
 
     if images:
         records = KrunnerUtils.get_docker_images(records)

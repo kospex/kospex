@@ -1,11 +1,11 @@
 """ Helper functions for kospex """
 import os
 import re
-from datetime import datetime, timezone, timedelta
-from dateutil import parser
 import subprocess
 import shlex
 import csv
+from datetime import datetime, timezone, timedelta
+from dateutil import parser
 from prettytable import PrettyTable
 from dotenv import load_dotenv
 
@@ -530,16 +530,17 @@ def get_dependency_files_table(list_of_commit_info, images=None):
     table = PrettyTable()
     if images:
         table.field_names = ["base_image", "type", "File path", "Author Date", "Committer Date",
-                         "Days Ago", "Status", "Repo"]
+                         "Days Ago", "Status", "Repo", "Repo Status"]
         table.align["base_image"] = "l"
         table.align["type"] = "l"
 
     else:
         table.field_names = ["File path", "Author Date", "Committer Date",
-                         "Days Ago", "Status", "Repo"]
+                         "Days Ago", "Status", "Repo", "Repo Status"]
 
     table.align["File path"] = "l"
     table.align["Repo"] = "l"
+    table.align["Repo Status"] = "l"
     table.align["Status"] = "l"
     table.align["Days Ago"] = "r"
 
@@ -557,6 +558,7 @@ def get_dependency_files_table(list_of_commit_info, images=None):
             commit_info.get('days_ago'),
             commit_info.get('status'),
             commit_info.get('repo'),
+            commit_info.get('repo_status'),
         ))
 
         table.add_row(table_row)
@@ -607,7 +609,7 @@ def get_directory_size(directory):
     :return: Size of the directory in kilobytes
     """
     # Running the 'du' command with '-s' (summarize) and '-k' (kilobytes) options
-    result = subprocess.run(['du', '-sk', directory], 
+    result = subprocess.run(['du', '-sk', directory],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     if result.stderr:
@@ -1031,4 +1033,3 @@ def validate_only_one(params, message, exit_required=None):
         print(f"ERROR: {message}")
         if exit_required:
             exit(1)
-
