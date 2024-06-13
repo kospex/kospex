@@ -591,7 +591,7 @@ def list_dict_2_csv(list_of_dicts, csv_file, headers=None):
         keys = headers
 
     # Open the csv file for writing
-    with open(csv_file, 'w', newline='') as output_file:
+    with open(csv_file, 'w', newline='', encoding='utf-8') as output_file:
         # Create a csv writer object
         dict_writer = csv.DictWriter(output_file, keys)
 

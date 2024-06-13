@@ -276,6 +276,13 @@ class Kospex:
             if server := params.get("server"):
                 kd.where("_git_server", "=", server)
 
+            if email := params.get("email"):
+                kd.where("author_email", "=", email)
+
+            # TODO - check how we want to handle committer_email
+            if email_contains:= params.get("email_contains"):
+                kd.where("author_email", "LIKE", f"%{email_contains}%")
+
             if org := params.get("org"):
                 kd.where("_git_owner", "=", org)
 
@@ -313,6 +320,8 @@ class Kospex:
         server = kwargs.get('server', None)
         org = kwargs.get('org', None)
         group = kwargs.get('group', None)
+        email = kwargs.get('email', None)
+        email_contains = kwargs.get('email_contains', None)
 
         print("\nKospex Summary\nChecking status ...\n")
         #print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
@@ -325,7 +334,7 @@ class Kospex:
               self.get_one("COUNT(DISTINCT(committer_email))", KospexSchema.TBL_COMMITS, kwargs))
         print()
 
-        table = PrettyTable()   
+        table = PrettyTable()
         headers = ["repo", "status", "developers", "active", "present", "last_commit",
                              "first_commit", "active_days", "commits" ]
 
@@ -363,6 +372,12 @@ class Kospex:
 
         if org:
             kd.where("_git_owner", "=", org)
+
+        if email:
+            kd.where("author_email", "=", email)
+
+        if email_contains:
+            kd.where("author_email", "LIKE", f"%{email_contains}%")
 
         if group:
             #kd.where_subselect("_repo_id", "IN", f"SELECT _repo_id FROM {KospexSchema.TBL_REPOS} WHERE _group = ?", [group])
@@ -402,14 +417,16 @@ class Kospex:
         if table.rows:
             print(table)
             #print(KospexUtils.count_key_occurrences(results, "status"))
-            status = KospexUtils.count_key_occurrences(results, "status")
-            status_table = KospexUtils.get_status_table(status)
-            print()
-            print(status_table)
-            print()
+        #    status = KospexUtils.count_key_occurrences(results, "status")
+        #    status_table = KospexUtils.get_status_table(status)
+        #    print()
+            #print(status_table)
+        #    print()
 
-        else:
-            print("No repositories found in the kospex DB\n")
+        #else:
+        #    print("No repositories found in the kospex DB\n")
+
+        return results
 
     def active_developers(self, **kwargs):
         """

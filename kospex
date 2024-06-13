@@ -61,18 +61,36 @@ def kospex_init(default):
 @cli.command("summary")
 @click.option('-out', type=click.STRING,help="filename to write CSV results to.")
 @click.option('-server', type=click.STRING, help="Git server to query.")
+@click.option('-email', type=click.STRING, help="Email of user to query.")
+@click.option('-email-contains', type=click.STRING, help="Email of user to query.")
 @click.option('-group', type=click.STRING, help="Name of group (of repos) to query with.")
 @click.option('-org', type=click.STRING, help="Name of Org/Team to query with.")
 #@click.option('-', type=click.STRING, help="Name of group (of repos) to query with.")
 # pylint: disable=unused-argument
-def summary(out,server,group,org):
+def summary(out,server,email,email_contains,group,org):
     """ Provide a summary of all the known repositories."""
     params = locals()
     if group and org:
         print("Please specify either a group or an org, not both.")
         exit(1)
+    elif group and email:
+        print("Please specify either a group or an email, not both.")
+        exit(1)
 
-    kospex.summary(results_file=out, **params)
+    results = kospex.summary(results_file=out, **params)
+
+    if results:
+        print(f"\nSummary of {len(results)} repositories found.\n")
+
+        # Print status stats of the repos found
+        print("Repo status summary")
+        status = KospexUtils.count_key_occurrences(results, "status")
+        status_table = KospexUtils.get_status_table(status)
+        print(status_table)
+        print()
+
+    else:
+        print("No repositories found in the kospex DB.\n")
 
 @cli.command("sync")
 @click.option('--no-scc', is_flag=True, default=False, help="Skip scc analysis.")
@@ -172,11 +190,14 @@ def list_repos(directory,db):
 @cli.command("tech-landscape")
 @click.option('-repo', type=GitRepo())
 @click.option('-repo_id', type=click.STRING)
+@click.option("-days", type=int, default=90, help="Committed in the last X days.")
 @click.option("-metadata", is_flag=True, default=False,
               help="Use file metadata, NOT Git committed filenames.")
 # pylint: disable=unused-argument
 def tech_landscape(repo, repo_id, metadata):
-    """Show the tech landscape (file extensions or metadata)."""
+    """
+    Show the tech landscape either by file extensions 
+    or scc metadata (use the -metadata switch)."""
     kwargs = locals()
     kospex.tech_landscape(**kwargs)
 
@@ -411,7 +432,7 @@ def key_person(directory,top):
             print(f"Directory '{directory}' is not a git repository.")
             print("Please either cd in a git repository directory, or specify one.")
             exit(1)
-    
+
     kgit = KospexGit()
     kgit.set_repo(directory)
     kquery = KospexQuery()
