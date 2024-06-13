@@ -523,7 +523,9 @@ class Kospex:
 
         outfile = kwargs.get("out",None)
         if outfile:
-            KospexUtils.list_dict_2_csv(records, outfile,table.field_names)
+            #KospexUtils.list_dict_2_csv(records, outfile, table.field_names)
+            KospexUtils.list_dict_2_csv(records, outfile)
+
 
         return records
 
@@ -577,6 +579,7 @@ class Kospex:
         repo_id = kwargs.get('repo_id', None)
         metadata = kwargs.get('metadata', False)
         repo = kwargs.get('repo', None)
+        active = kwargs.get("active",None)
 
         where_clause = ""
         sync_warnings = []
