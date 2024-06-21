@@ -99,7 +99,7 @@ SQL_CREATE_REPOS = f'''CREATE TABLE IF NOT EXISTS [{TBL_REPOS}] (
     [last_sync] TEXT,  -- date of last kospex sync
     [last_seen] TEXT,  -- date of last commit, to be updated by the sync
     [first_seen] TEXT, -- date of first commit, to be updated by the sync
-    [git_remote] TEXT,    -- URL of the git repo
+    [git_remote] TEXT, -- URL of the git repo
     [file_path] TEXT,  -- path to the repo on the local filesystem
     PRIMARY KEY(_repo_id)
     )'''

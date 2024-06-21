@@ -757,6 +757,18 @@ class KospexQuery:
         data = self.kospex_db.query(sql, [repo_id])
         return next(data, None)
 
+    def get_repo_id_lookup(self):
+        """ 
+        Return a repo_id lookup
+        """
+        sql = f"""SELECT * FROM {KospexSchema.TBL_REPOS}"""
+        data = self.kospex_db.query(sql)
+        results = {}
+        for row in data:
+            #print(row)
+            results[row['_repo_id']] = row
+        return results
+
     # TODO - refactor to one repos query using KospexData
     #def repos(self,  **kwargs):
     #    """ Return a list of repos """

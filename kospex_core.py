@@ -394,6 +394,8 @@ class Kospex:
         #         FROM commits
         #         GROUP BY 1'''
 
+        repoid_lookup = self.kospex_query.get_repo_id_lookup()
+
         for row in kd.execute():
         #for row in self.kospex_db.query(sql):
 
@@ -408,6 +410,12 @@ class Kospex:
                                         row["last_commit"], row["first_commit"])
 
             table.add_row(KospexUtils.get_values_by_keys(row, headers))
+
+            if repo := repoid_lookup.get(row["repo"]):
+                row["git_url"] = repo.get("git_remote")
+            else:
+                row["git_url"] = "Unknown"
+
             results.append(row)
 
         if results_file:
