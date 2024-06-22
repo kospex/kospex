@@ -2,6 +2,21 @@
 
 This is the main command to run analysis, sync directories, find orphaned repos, check dependencies, manage groups, health checks and more!
 
+## sync
+
+The sync command takes all the commit history and adds it to the kospex database.
+
+> kospex sync [DIRECTORY]
+
+Most likely, you'll cd to a repo and then run the following command
+
+> kospex sync .
+
+
+*Parameters*
+
+'--no-scc', is_flag=True, default=False, help="Skip scc analysis."
+
 ## orphans
 
 Orphans occur when a repo no longer has someone working in the organisation or team who's active. 
