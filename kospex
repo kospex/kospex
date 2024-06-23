@@ -62,12 +62,13 @@ def kospex_init(default):
 @click.option('-out', type=click.STRING,help="filename to write CSV results to.")
 @click.option('-server', type=click.STRING, help="Git server to query.")
 @click.option('-email', type=click.STRING, help="Email of user to query.")
+@click.option('-active', is_flag=True, default=False, help="Find only actively modified (90 days).")
 @click.option('-email-contains', type=click.STRING, help="Email of user to query.")
 @click.option('-group', type=click.STRING, help="Name of group (of repos) to query with.")
 @click.option('-org', type=click.STRING, help="Name of Org/Team to query with.")
 #@click.option('-', type=click.STRING, help="Name of group (of repos) to query with.")
 # pylint: disable=unused-argument
-def summary(out,server,email,email_contains,group,org):
+def summary(out,server,email, active, email_contains,group,org):
     """ Provide a summary of all the known repositories."""
     params = locals()
     if group and org:

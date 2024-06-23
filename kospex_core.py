@@ -289,6 +289,9 @@ class Kospex:
             if group := params.get("group"):
                 kd.group_name_where_subselect(group)
 
+            if active := params.get("active"):
+                kd.where("committer_when", ">=", KospexUtils.days_ago_iso_date(90))
+
         results = kd.execute()
 
         if results:
@@ -322,6 +325,7 @@ class Kospex:
         group = kwargs.get('group', None)
         email = kwargs.get('email', None)
         email_contains = kwargs.get('email_contains', None)
+        active = kwargs.get('active', None)
 
         print("\nKospex Summary\nChecking status ...\n")
         #print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
@@ -378,6 +382,11 @@ class Kospex:
 
         if email_contains:
             kd.where("author_email", "LIKE", f"%{email_contains}%")
+
+        if active:
+            # Only show repos with commits in the last 90 days
+            # TODO  : think about changing this to a better parameter
+            kd.where("committer_when", ">=", KospexUtils.days_ago_iso_date(90)) 
 
         if group:
             #kd.where_subselect("_repo_id", "IN", f"SELECT _repo_id FROM {KospexSchema.TBL_REPOS} WHERE _group = ?", [group])
