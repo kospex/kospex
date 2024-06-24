@@ -12,6 +12,7 @@ from kospex_git import KospexGit
 from kospex_query import KospexQuery
 import kospex_schema as KospexSchema
 from kospex_dependencies import KospexDependencies
+import krunner_utils as KrunnerUtils
 
 KospexUtils.init()
 kospex = Kospex()
@@ -63,12 +64,14 @@ def kospex_init(default):
 @click.option('-server', type=click.STRING, help="Git server to query.")
 @click.option('-email', type=click.STRING, help="Email of user to query.")
 @click.option('-active', is_flag=True, default=False, help="Find only actively modified (90 days).")
+@click.option('-docker', is_flag=True, default=False, help="Summary of Docker files.")
+@click.option('-dependencies', is_flag=True, default=False, help="Summary of dependencies.")
 @click.option('-email-contains', type=click.STRING, help="Email of user to query.")
 @click.option('-group', type=click.STRING, help="Name of group (of repos) to query with.")
 @click.option('-org', type=click.STRING, help="Name of Org/Team to query with.")
 #@click.option('-', type=click.STRING, help="Name of group (of repos) to query with.")
 # pylint: disable=unused-argument
-def summary(out,server,email, active, email_contains,group,org):
+def summary(out,server,email, active, docker, dependencies, email_contains,group,org):
     """ Provide a summary of all the known repositories."""
     params = locals()
     if group and org:
@@ -89,6 +92,50 @@ def summary(out,server,email, active, email_contains,group,org):
         status_table = KospexUtils.get_status_table(status)
         print(status_table)
         print()
+
+        unknown = 0
+        repo_dirs = []
+        for r in results:
+            if repo_path := r.get("file_path"):
+                if repo_path.lower() != "unknown":
+                    repo_dirs.append(repo_path)
+                else:
+                    unknown += 1
+
+        if docker:
+            print("Docker file summary")
+            #docker = KospexUtils.count_key_occurrences(results, "docker")
+            #docker_table = KospexUtils.get_status_table(docker)
+            #print(docker_table)
+            #docker_files = KrunnerUtils.find_dockerfiles_in_repos(dirs)
+
+            docker_files = KrunnerUtils.find_dockerfiles_in_repos(repo_dirs)
+            #print(docker_files)
+            records = KospexUtils.get_git_metadata(docker_files)
+            #print(records)
+            docker_status = KospexUtils.count_key_occurrences(records, "status")
+            docker_status_table = KospexUtils.get_status_table(docker_status)
+            print(docker_status_table)
+
+        if dependencies:
+            kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kospex.kospex_query)
+            deps = []
+            for d in repo_dirs:
+                results = kdeps.find_dependency_files(d)
+                deps.extend(results)
+            #results = kdeps.find_dependency_files(directory)
+            records = KospexUtils.get_all_last_commit_info(deps)
+            dep_stats = KospexUtils.repo_stats(records,"author_date")
+            deps_status_table = KospexUtils.get_status_table(dep_stats)
+            print("\nDependencies summary")
+            print(deps_status_table)
+
+
+        print()
+
+        if unknown > 0:
+            print(f"WARNING: {unknown} repos found without an entry in 'repos' table.\n")
+
 
     else:
         print("No repositories found in the kospex DB.\n")

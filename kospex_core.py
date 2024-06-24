@@ -422,8 +422,10 @@ class Kospex:
 
             if repo := repoid_lookup.get(row["repo"]):
                 row["git_url"] = repo.get("git_remote")
+                row["file_path"] = repo.get("file_path")
             else:
                 row["git_url"] = "Unknown"
+                row["file_path"] = "Unknown"
 
             results.append(row)
 
