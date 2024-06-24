@@ -7,6 +7,7 @@ from prettytable import PrettyTable
 from kospex_core import GitRepo, Kospex
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
+from kospex_github import KospexGithub
 
 KospexUtils.init()
 kgit = KospexGit()
@@ -61,7 +62,7 @@ def clone(repo, sync, filename):
             kospex.sync_repo(repo_path)
 
     elif filename:
-        with open(filename, "r") as file:
+        with open(filename, "r", encoding='utf-8') as file:
             for line in file:
                 repo = line.strip()
                 if repo.startswith("#"):
@@ -75,6 +76,89 @@ def clone(repo, sync, filename):
                         print("Syncing: " + repo)
                         kospex = Kospex()
                         kospex.sync_repo(repo_path)
+
+
+@cli.command("github")
+@click.option('-org', type=click.STRING)
+@click.option('-user',  type=click.STRING)
+@click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")
+@click.option('-list-repos', is_flag=True, type=click.STRING)
+@click.option('-sync', is_flag=True)
+@click.option('-out-repo-list', type=click.Path(), help="File to write clone URLs to.")
+def github(org, user, no_auth, list_repos, sync, out_repo_list):
+    """
+    Interact with the GitHub API.
+    """
+
+    gh = KospexGithub()
+    repos = []
+
+    if not org and not user:
+        print("You must specify either an organization or a user.")
+        exit(1)
+
+    auth = False
+    if not no_auth:
+        gh.set_access_token(os.environ.get("GITHUB_PAT"))
+        auth = True
+
+    owner = org or user
+    account_type = gh.get_account_type(owner)
+    kospex = Kospex()
+
+    if not account_type:
+        print(f"Could not find account type for {owner}.")
+        print(f"Most likely {owner} does not exist or has a typo.")
+        exit(1)
+
+    if org:
+        repos = gh.get_org_repos(org)
+    elif user:
+        repos = gh.get_user_repos(user)
+    else:
+        print("You must specify either an organization or a user.")
+
+    details = []
+
+    print(f"\nFinding repos for: {owner} ({account_type})\n")
+
+    if repos:
+        for repo in repos:
+            record = {}
+            record['name'] = repo.get('name')
+            record['fork'] = repo.get('fork')
+            #if record.get("fork"):
+            #    full_repo = gh.get_repo(owner=")
+            #    record['parent'] = repo.get('parent').get('full_name')
+            record['private'] = repo.get('private')
+            record['clone_url'] = repo.get('clone_url')
+            print(f"Found repo: {repo['name']}")
+            details.append(record)
+
+            if sync:
+                clone_url = repo.get('clone_url')
+                repo_path = kgit.clone_repo(clone_url)
+                print(f"Syncing repo: {clone_url} in directorty {repo_path}")
+                kospex.sync_repo(repo_path)
+
+    table = PrettyTable()
+    table.field_names = ["Name", "fork", "private", "owner", "clone_url"]
+    table.align["Name"] = "l"
+    table.align["clone_url"] = "l"
+
+    for detail in details:
+        #print(detail)
+        table.add_row([detail.get("name"), detail.get("fork"),
+                       detail.get("private"), owner, detail.get("clone_url")])
+
+    print(table)
+
+    # Write out the repo list to a file
+    if out_repo_list:
+        with open(out_repo_list, "w", encoding='utf-8') as file:
+            for detail in details:
+                file.write(detail['clone_url'] + "\n")
+
 
 
 if __name__ == '__main__':
