@@ -632,7 +632,15 @@ def get_git_remote_url(directory):
 
 def run_git_command(directory, args):
     """ Generic function to run a git command in a given directory"""
-    return subprocess.check_output(['git', '-C', directory] + args).decode().strip()
+    result = None
+    #return subprocess.check_output(['git', '-C', directory] + args).decode().strip()
+    try:
+        result = subprocess.check_output(['git', '-C', directory] + args).decode().strip()
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred: {e}.")
+        print(f"Probably {directory} is NOT a repo or is empty, but initiliased.\n")
+
+    return result
 
 def get_git_stats(directory, last_days=None):
     """ Return some basic git stats for a given directory"""

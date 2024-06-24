@@ -101,7 +101,15 @@ class KospexGit:
         """
         self.remote_url = remote_url
 
-        parts = self.extract_git_url_parts(self.remote_url)
+        parts = None
+        if remote_url:
+            parts = self.extract_git_url_parts(self.remote_url)
+        else:
+            # TODO - add logging
+            # This situation should not really happen
+            print("No remote URL provided")
+            return None
+
         if parts:
             self.remote = parts["remote"]
             self.org = parts["org"]
