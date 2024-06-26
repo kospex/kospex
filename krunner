@@ -189,6 +189,7 @@ def git_pull(directory,sync):
         os.system("git pull")
         os.chdir(cwd)
         if sync:
+            print("Syncing to kospex DB ...")
             kospex.sync_repo(d)
 
 @cli.command("gitleaks")

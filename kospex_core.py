@@ -162,7 +162,8 @@ class Kospex:
             print(f'Syncing commits from {from_date} to {to_date}...')
         elif from_date:
             cmd += ['--since={}'.format(from_date)]
-            print("Syncing commits from {}...".format(from_date))
+            #print("Syncing commits from {}...".format(from_date))
+            print(f"Syncing commits from {from_date}...")
         elif limit:
             cmd += ['-n', str(limit)]
             print(f'Syncing {limit} commits...')
@@ -898,7 +899,7 @@ class Kospex:
         #details['ext'] = parts[2]
         return details
 
-    def update_repo_status(self, repo_dir=None, last_sync=None):
+    def update_repo_status(self, repo_dir=None, last_sync=None, display_progress=True):
         """ Update the status of a repo """
 
         if repo_dir:
@@ -916,6 +917,11 @@ class Kospex:
         details["first_seen"] = KospexUtils.get_first_commit_date(self.repo_directory)
         details["last_seen"] = KospexUtils.get_last_commit_date(self.repo_directory)
         details['git_remote'] = self.git.get_remote_url()
+
+        if display_progress:
+            print(f"Updating repo status for {self.repo_directory}")
+            print(f"\twith repo_id {self.git.get_repo_id()}")
+            print(f"\tgit_remote: {self.git.get_remote_url()}")
 
         #print(details)
         self.kospex_db.table(KospexSchema.TBL_REPOS).upsert(details,pk=['_repo_id'])
