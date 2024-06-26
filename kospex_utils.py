@@ -42,6 +42,17 @@ def init():
     if not os.path.isdir(os.getenv("KOSPEX_CODE")):
         print(f"WARNING: KOSPEX_CODE directory '{kospex_code} does not exist!")
 
+    kospex_logs = os.getenv("KOSPEX_LOGS",f"{kospex_home}/logs")
+    # Set up the logging directory
+    if os.getenv("KOSPEX_LOGS") is None:
+        os.environ["KOSPEX_LOGS"] = f"{kospex_home}/logs"
+
+    # Create the logs directory if it doesn't exist
+    if not os.path.exists(kospex_logs):
+        print(f"Creating logs directory: {kospex_logs}")
+        os.mkdir(kospex_logs)
+
+
 def get_kospex_config():
     """ Get the kospex config """
     return os.getenv("KOSPEX_CONFIG",os.path.expanduser("~/kospex/kospex.env"))
@@ -928,9 +939,10 @@ def convert_to_percentage(data):
 
     # Create a new dictionary where each value is the percentage of the total
     percentage_data = {}
-    for key, value in data.items():
-        percentage = (value / total) * 100
-        percentage_data[key] = round(percentage, 2)
+    if total and total > 0:
+        for key, value in data.items():
+            percentage = (value / total) * 100
+            percentage_data[key] = round(percentage, 2)
 
     return percentage_data
 
