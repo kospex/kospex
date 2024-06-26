@@ -919,3 +919,45 @@ class Kospex:
 
         #print(details)
         self.kospex_db.table(KospexSchema.TBL_REPOS).upsert(details,pk=['_repo_id'])
+
+    def get_kospex_table_summary(self, display_progress=False):
+        """
+        Get a summary of the kospex tables
+        """
+
+        table = PrettyTable()
+        headers = ["Table", "Rows", "Exists"]
+        table.field_names = headers
+
+        table.align["Table"] = "l"
+        table.align["Rows"] = "r"
+        #table.align["commits"] = "r"
+
+        for db_table in KospexSchema.KOSPEX_TABLES:
+
+            if display_progress:
+                print(f"Checking {db_table} table")
+
+            t = self.kospex_db.table(db_table)
+
+            table_exists = t.exists()
+
+            row_count = 0
+
+            if table_exists:
+                row_count = t.count
+
+            table.add_row([db_table, row_count, table_exists])
+
+        return table
+
+    def get_kospex_config_table(self):
+        """
+        Get the kospex configuration
+        return it in a PrettyTable """
+
+        config = KospexUtils.get_all_config()
+        table = KospexUtils.get_keyvalue_table(config)
+
+        return table
+

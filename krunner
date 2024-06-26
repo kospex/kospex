@@ -11,6 +11,7 @@ from kospex_core import Kospex
 import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
 
+KospexUtils.init()
 kospex = Kospex()
 
 @click.group()

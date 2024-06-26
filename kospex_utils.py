@@ -15,6 +15,15 @@ KOSPEX_DEFAULT_ENV = """
 #KOSPEX_CODE=ENTER_YOUR_CODE_DIRECTORY
 """
 
+KOSPEX_CONFIG_ITEMS = [
+    "KOSPEX_CODE",
+    "KOSPEX_LOGS",
+    "KOSPEX_DB",
+    "KOSPEX_HOME",
+    "KOSPEX_DB",
+    "KOSPEX_CONFIG"
+]
+
 def is_git(directory):
     """Simple directory check to see if it's a git repo"""
     git_path = f"{directory}/.git/"
@@ -24,11 +33,21 @@ def init():
     """ Initialize the kospex environment """
     user_kospex_home = os.path.expanduser("~/kospex")
     kospex_home = os.getenv("KOSPEX_HOME",user_kospex_home)
+
+    # TODO check if this equality misses something, or needs removing
     if kospex_home == user_kospex_home:
         if not os.path.exists(kospex_home):
             os.mkdir(kospex_home)
             with open(f"{kospex_home}/kospex.env","w") as env_file:
                 env_file.write(KOSPEX_DEFAULT_ENV)
+
+    if not os.getenv("KOSPEX_HOME"):
+        os.environ["KOSPEX_HOME"] = kospex_home
+
+    default_kospex_db = f"{kospex_home}/{KOSPEX_DB_FILENAME}"
+    os.environ["KOSPEX_DB"] = default_kospex_db
+
+    # Check if the KOSPEX_CONFIG is set, if not set it to the default
     os.environ["KOSPEX_CONFIG"] = f"{kospex_home}/kospex.env"
     load_config(f"{kospex_home}/kospex.env")
 
@@ -52,6 +71,12 @@ def init():
         print(f"Creating logs directory: {kospex_logs}")
         os.mkdir(kospex_logs)
 
+def get_all_config():
+    """ Get the kospex config """
+    details = {}
+    for item in KOSPEX_CONFIG_ITEMS:
+        details[item] = os.getenv(item)
+    return details
 
 def get_kospex_config():
     """ Get the kospex config """
@@ -65,10 +90,13 @@ def get_kospex_db_path():
 
     kospex_home = kospex_home.rstrip("/") # Removing trailing slash if it's there
 
+    # TODO - Check if we need to create the directory, as we're doing it in init
     if not os.path.exists(kospex_home):
         os.makedirs(kospex_home)
 
     default_kospex_db = f"{kospex_home}/{KOSPEX_DB_FILENAME}"
+
+
 
     return os.getenv("KOSPEX_DB",default_kospex_db)
 

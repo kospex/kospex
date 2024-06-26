@@ -801,6 +801,24 @@ def orphans(days,window):
     print(f"\nOrphaned: {orphaned} | Working Knowledge: {working_knowledge} | Total: {len(repos)}")
     print(f"Orphaned: {orphaned/len(repos)*100:.2f}% | Working Knowledge: {working_knowledge/len(repos)*100:.2f}%\n")
 
+@cli.command("system-status")
+def status():
+    """
+    Show the system status.
+    """
+    print("\nKospex System Status")
+    print("====================\n")
+
+    table = kospex.get_kospex_table_summary(display_progress=True)
+    print()
+    print(table)
+    print()
+
+    print("Environment configuration\n")
+    config = kospex.get_kospex_config_table()
+    print(config)
+    print()
+
 
 #
 # Start of the main program
