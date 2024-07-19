@@ -19,3 +19,6 @@ A simple web interface to view the data in the kospex database.
 ## krunner
 
 Run commands on all repos in a directory (usually the KOSPEX_CODE directory.)
+
+See [krunner](krunner) for more details. 
+
