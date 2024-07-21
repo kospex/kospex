@@ -33,17 +33,22 @@ def cli():
     """
 
 @cli.command("init")
-@click.option('--default', is_flag=True, default=False, help="Create the default ~/code directory.")
-def kospex_init(default):
-    """ Perform basic initial setup."""
-    kospex_code = os.path.expanduser("~/code")
+@click.option('-create', is_flag=True, default=False, help="Create the default ~/code or KOSPEX_CODE directory.")
+def kospex_init(create):
+    """
+    Perform basic initial setup.
+    
+    Use -create to create the default ~/code or KOSPEX_CODE directory.
+    
+    """
+    kospex_code = KospexUtils.get_kospex_code_path()
     kconf = KospexUtils.get_kospex_config()
     installed = which('scc')
     if not installed:
         print("Please install scc from https://github.com/boyter/scc")
         print("This is used to count lines of code, complexity and determine the language.")
 
-    if default:
+    if create:
         if not os.path.exists(kospex_code):
             os.makedirs(kospex_code)
         else:
@@ -52,11 +57,14 @@ def kospex_init(default):
         if os.path.exists(kospex_code):
             print("~/code directory exists.")
             print("If you want to overide the code directory")
-            print(f"edit the {kconf} file.")
+            print(f"edit the {kconf} file or")
+            print("set the KOSPEX_CODE environment variable.\n")
         else:
             print("Directory does not exist.")
-            print("Run with --default to create ~/code directory.")
-            print(f"or edit the {kconf} file and change the KOSPEX_CODE.")
+            print("Run with -create to create either the")
+            print("~/code (default) directory, or")
+            print("a directory specified in the KOSPEX_CODE variable.")
+            print(f"or edit the {kconf} file and change the KOSPEX_CODE evironment variable.\n")
 
 
 @cli.command("summary")
@@ -216,18 +224,11 @@ def devs(repo, days, repo_id, org_key, out, all):
         click.echo(f"Found {len(developers)} active developers in the last {days} days.")
 
 
-
-#@cli.command("list-repos")
-#@click.argument('directory', type=click.Path(exists=True))
-#def find_repos(directory):
-    # """List all git repositories found in the given directory."""
-    # print("\nDirectory: " + os.path.abspath(directory))
-    # kospex.list_repos(directory)
-
 @cli.command("list-repos")
 @click.option('-db', is_flag=True, default=False, help="List repos sync'ed to db.")
+@click.option('-repo_id', is_flag=True, default=False, help="Include repo_id in output.")
 @click.argument('directory', required=False, type=click.Path(exists=True))
-def list_repos(directory,db):
+def list_repos(directory,db,repo_id):
     """
     List all git repositories found in either:
     - the given directory or
@@ -241,7 +242,7 @@ def list_repos(directory,db):
         print("Please specify either a directory or use the -db flag.")
         exit(1)
 
-    kospex.list_repos(directory,db=db)
+    kospex.list_repos(directory,db=db,repo_id=repo_id)
 
 @cli.command("tech-landscape")
 @click.option('-repo', type=GitRepo())
@@ -397,7 +398,6 @@ def deps(repo, file, directory, out, dev):
             print("\nSummary of dependency files found by Repo Status\n")
             print(activity_table)
             print()
-
 
         else:
             print("No package/dependency manager files found.")
