@@ -12,6 +12,8 @@ See [kospex](kospex) for more details.
 
 Git wrappers and useful git utilities. 
 
+See [kgit](kgit) for more details. 
+
 ## kweb
 
 A simple web interface to view the data in the kospex database. 

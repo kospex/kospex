@@ -569,24 +569,38 @@ class Kospex:
     def list_repos(self, directory, **kwargs):
         """ Print all the git repos in the specified directory and subdirectories"""
         db = kwargs.get('db', False)
+        repo_id = kwargs.get('repo_id', False)
+
         table = PrettyTable()
-        #table.field_names = ["Path", "Full path", "Remote"]
-        table.field_names = ["Path", "Remote"]
+        fields = ["Path", "Remote"]
+        if repo_id:
+            fields.append("Repo ID")
+
+        table.field_names = fields
+
         table.align["Path"] = "l"
-        #table.align["Full path"] = "l"
         table.align["Remote"] = "l"
+        if repo_id:
+            table.align["Repo ID"] = "l"
 
         if directory:
             results = KospexUtils.find_repos(directory)
             for file in results:
                 self.git.set_repo(file)
+                parts = [file, self.git.get_remote_url()]
                 #table.add_row([file, os.path.abspath(file), self.git.get_remote_url()])
-                table.add_row([file, self.git.get_remote_url()])
+                if repo_id:
+                    parts.append(self.git.get_repo_id())
+                table.add_row(parts)
+
         elif db:
             sql = '''SELECT DISTINCT(_repo_id) as repo, file_path, git_remote
             FROM repos'''
             for row in self.kospex_db.query(sql):
-                table.add_row([row['file_path'], row['git_remote']])
+                parts = [row['file_path'], row['git_remote']]
+                if repo_id:
+                    parts.append(row['repo'])
+                table.add_row(parts)
 
         print(table)
 
@@ -727,6 +741,7 @@ class Kospex:
             if not installed:
                 sys.exit("""scc is not installed.
                          Please install scc from https://github.com/boyter/scc""")
+            
             # Let's grab the file metadata using 'scc'
             metadata = subprocess.run(["scc", "--by-file", "-f", "csv"],
                                       stdout=subprocess.PIPE,

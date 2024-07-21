@@ -82,6 +82,10 @@ def get_kospex_config():
     """ Get the kospex config """
     return os.getenv("KOSPEX_CONFIG",os.path.expanduser("~/kospex/kospex.env"))
 
+def get_kospex_code_path():
+    """ Get the kospex code directory """
+    return os.getenv("KOSPEX_CODE",os.path.expanduser("~/code"))
+
 def get_kospex_db_path():
     """ Get the kospex database """
 
