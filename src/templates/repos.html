@@ -13,6 +13,7 @@
 <!-- Main content area -->
 
 <div class="container mt-5">
+
     <h1 class="mb-4">{{ page['git_owner']}} Repositories</h1>
     {% if page['git_server'] %} <h3 class="mb-4">{{ page['git_server'] }}</h3> {% endif %}
     {% if page['git_owner'] %}
@@ -42,6 +43,30 @@
             {% endfor %}
         </tbody>
     </table>
+
+    {% if ranges %}
+    <br/>
+    <h1 class="mb-4">Maintenance Status</h1>
+    <table class="table" id="status_table">
+        <thead>
+            <tr>
+                <th> Active </th>
+                <th> Aging </th>
+                <th> Stale </th>
+                <th> Unmaintained </th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td> {{ ranges.get('Active') }} </a></td>
+                <td> {{ ranges.get('Aging') }} </a></td>
+                <td> {{ ranges.get('Stale') }} </a></td>
+                <td> {{ ranges.get('Unmaintained') }} </a></td>
+            </tr>
+        </tbody>
+    </table>
+    {% endif %}
+
 </div>
 
 {% include '_footer_scripts.html' %}

@@ -385,14 +385,74 @@ class KospexQuery:
 
         return results
 
-    def commit_ranges(self, repo_id=None):
+    def commit_ranges2(self, repo_id=None, org_key=None):
+        """ Get the range of commits for a repo """
+
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.select_as("DISTINCT(_repo_id)","repo")
+        kd.select_as("MAX(committer_when)", "last_commit")
+        kd.group_by("_repo_id")
+
+        if repo_id:
+            kd.where("_repo_id", "=", repo_id)
+
+        if org_key:
+            parts = org_key.split('~')
+            if len(parts) != 2:
+                print("org_key must be of the form <server>~<owner>")
+                return None
+            kd.where("_git_server", "=", parts[0])
+            kd.where("_git_owner", "=", parts[1])
+
+        results =  kd.execute()
+
+        ages = {
+            'Active': 0,
+            'Aging': 0,
+            'Stale': 0,
+            'Unmaintained': 0
+        }
+
+        for i in results:
+            i['status'] = KospexUtils.development_status(i['last_commit'])
+            ages[i['status']] += 1
+
+        return ages
+
+#        return results
+
+    def commit_ranges(self, repo_id=None, org_key=None):
         """ Get the range of commits for a repo """
         where_clause = ""
+
+        # this boolean lets us know if we have set a where yet
+        where = False
         params = []
 
         if repo_id:
             where_clause = "WHERE _repo_id = ?"
+            where = True
             params.append(repo_id)
+
+        if org_key:
+            parts = org_key.split('~')
+            if len(parts) != 2:
+                print("org_key must be of the form <server>~<owner>")
+                return None
+            params.append(parts[0])
+            params.append(parts[1])
+
+            if where:
+                where_clause += " AND _git_server = ? AND _git_owner = ?"
+            else:
+                where = True
+                where_clause = "WHERE _git_server = ? AND _git_owner = ?"
+
+            print(where_clause)
+            print(parts)
+
+            #where_clause += "AND _git_server = ? AND _git_owner = ?"
 
         sql = f"""
         WITH DateCategories AS (
@@ -419,6 +479,9 @@ class KospexQuery:
             'stale': 0,
             'unmaintained': 0
         }
+
+        print(sql)
+
         data = self.kospex_db.query(sql, params)
         for row in data:
             ages[row['date_category']] = row['row_count']
@@ -864,7 +927,7 @@ class KospexData:
         """ Add a column to the query """
         if self.delete_statement:
             raise ValueError("Cannot delete and select columns in the same query")
-        
+
         for col in columns:
             if self.is_valid_sql_name(col):
                 self.select_columns.append(col)
@@ -957,7 +1020,6 @@ class KospexData:
             function = result.get("function")
             value = result.get("value")
 
-            #print(f"Checking function {function}")
             # Check if the function name is allowed
             if function and not self.allowed_sql_function(function):
                 #print(f"Invalid function: {function}")

@@ -5,7 +5,6 @@ from flask import Flask, render_template, request
 from kospex_query import KospexQuery
 import kospex_web as KospexWeb
 
-
 app = Flask(__name__)
 
 @app.route('/')
@@ -81,21 +80,26 @@ def repos():
     page = {}
     # TODO - validate params
     techs = None
+    # Maintenance ranges
+    ranges = None
 
     page['repo_id'] = repo_id
+
     if org_key:
         parts = org_key.split("~")
         if len(parts) == 2:
             page['git_server'] = parts[0]
             page['git_owner'] = parts[1]
             techs = kospex.tech_landscape(org_key=org_key)
+            ranges = kospex.commit_ranges2(org_key=org_key)
+            print(kospex.commit_ranges2(repo_id=repo_id,org_key=org_key))
 
     data = kospex.repos(org_key=org_key)
     active_devs = kospex.active_devs()
     for row in data:
         row['active_devs'] = active_devs.get(row['_repo_id'],0)
 
-    return render_template('repos.html',data=data, page=page, techs=techs)
+    return render_template('repos.html',data=data, page=page, ranges=ranges, techs=techs)
 
 @app.route('/servers/')
 def servers():
@@ -104,9 +108,6 @@ def servers():
     kquery = KospexQuery()
     data = kquery.server_summary()
     print(data)
-
-    #for row in data:
-    #    row['active_devs'] = active_devs.get(row['_repo_id'],0)
 
     return render_template('servers.html',data=data)
 
@@ -247,6 +248,18 @@ def metadata():
     """ Metadata about the kospex DB. """
     details = {}
     return render_template('metadata.html')
+
+def kweb():
+    """ Run the web server. """
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "-debug":
+            print("\n#\nRunning in DEBUG mode.\n#\n\n")
+            app.run(debug=True)
+        else:
+            exit("Unknown option, try -debug.")
+    else:
+        print("\n#\nRunning in NON debug mode.\n#\n\n")
+        app.run()
 
 if __name__ == "__main__":
 

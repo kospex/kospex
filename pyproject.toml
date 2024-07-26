@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=70.1.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kospex"
+version = "0.0.2"
+description = "The kospex CLI tool."
+authors = [
+    {name = "Peter Freiberg", email = "peter.freiberg@gmail.com"}
+]
+dependencies = [
+    "Click","flask"
+]
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+readme = "README.short.md"
+keywords = ["analytics", "git", "code analytics", "predictive maintenance"]
+
+[tool.setuptools.package-data]
+templates = ["*.html"]
+
+[project.scripts]
+kgit = "kgit:cli"
+kospex = "kospex:cli"
+krunner = "krunner:cli"
+kreaper = "kreaper:cli"
+kweb = "kweb:kweb"
+
+[project.urls]
+Homepage = "https://kospex.io"
+Issues = "https://github.com/kospex/kospex/issues"
+Repository = "https://github.com/kospex/kospex"
