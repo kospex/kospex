@@ -9,13 +9,23 @@ description = "The kospex CLI tool."
 authors = [
     {name = "Peter Freiberg", email = "peter.freiberg@gmail.com"}
 ]
+
 dependencies = [
-    "Click","flask"
+    "Click",
+    "flask",
+    "prettytable",
+    "dateutils",
+    "python-dotenv",
+    "sqlite_utils",
+    "requests",
+    "PyYAML",
 ]
+
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
 readme = "README.short.md"
 keywords = ["analytics", "git", "code analytics", "predictive maintenance"]
+
 
 [tool.setuptools.package-data]
 templates = ["*.html"]
