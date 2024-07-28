@@ -2,12 +2,14 @@
 """This is the kospex git CLI helper tool."""
 import time
 import os
+import json
 import click
 from prettytable import PrettyTable
 from kospex_core import GitRepo, Kospex
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 from kospex_github import KospexGithub
+from kospex_bitbucket import KospexBitbucket
 
 KospexUtils.init()
 kgit = KospexGit()
@@ -44,9 +46,9 @@ def status(repo):
     print('\nExecution time:', elapsed_time, 'seconds', "\n")
 
 @cli.command("clone")
-@click.option('-sync', is_flag=True)
-@click.option('-repo',  type=click.STRING)
-@click.option('-filename',  type=click.STRING)
+@click.option('-sync', is_flag=True, help="Sync the repo to the database (Default)")
+@click.option('-repo',  type=click.STRING, help="HTTP Git clone URL")
+@click.option('-filename',  type=click.STRING, help="File with HTTP git clone URLs")
 def clone(repo, sync, filename):
     """Clone the given repo into our KOSPEX_CODE directory."""
     # We're going to shell out to git to do the clone
@@ -159,6 +161,54 @@ def github(org, user, no_auth, list_repos, sync, out_repo_list):
             for detail in details:
                 file.write(detail['clone_url'] + "\n")
 
+@cli.command("bitbucket")
+@click.option('-workspace', type=click.STRING, help="Workspace to query (Mandatory)")
+#@click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")
+#@click.option('-list-repos', is_flag=True, type=click.STRING)
+#@click.option('-sync', is_flag=True)
+@click.option('-out-repo-list', type=click.Path(), help="File to write clone URLs to.")
+@click.option('-out-raw', type=click.Path(), help="Output raw JSON results to the specified filename")
+def bitbucket(workspace, out_repo_list, out_raw):
+    """
+    Interact with the BitBucket API to query repos in a workspace
+    """
+
+    bb = KospexBitbucket()
+    if bb.get_env_credentials():
+        print("Found bitbucket credentials in the environment.")
+    else:
+        print("Could not find bitbucket credentials in the environment.")
+        print("Please set BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD.")
+        exit(1)
+
+    if not workspace:
+        print("\nERROR: You MUST specify a workspace.\n")
+        exit(1)
+
+    table = PrettyTable()
+    table.field_names = ["Name", "clone_url", "is_private"]
+    table.align["Name"] = "l"
+    table.align["clone_url"] = "l"
+    table.align["is_private"] = "c"
+
+    repos = bb.get_repos(workspace)
+
+    # TODO - provide an option to write this table to a CSV
+    # TODO - add extra metadata like created, last updated and repo status
+    for r in repos:
+        #print(r.get("full_name"), bb.get_https_clone_url(r))
+        table.add_row([r.get("slug"), bb.get_https_clone_url(r), r.get("is_private")])
+
+    print(table)
+
+    if out_repo_list:
+        with open(out_repo_list, "w", encoding='utf-8') as file:
+            for r in repos:
+                file.write(bb.get_https_clone_url(r) + "\n")
+
+    if out_raw:
+        with open(out_raw, "w", encoding='utf-8') as raw_file:
+            raw_file.write(json.dumps(repos))
 
 
 if __name__ == '__main__':
