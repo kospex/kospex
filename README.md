@@ -124,7 +124,14 @@ List the tech stack in the given repo_id (sync'ed data in the kospex DB)
 Most tables have a column, _repo_id, in the format of GIT_SERVER&tilde;OWNER&tilde;REPO  
 So for the repository https://github.com/kospex/kospex the _repo_id would be _github.com&tilde;kospex&tilde;kospex_
 
-Most queries use author_email from git to mean a "developer". This is not always accurate as GitHub 
+Most queries use author_email from git to mean a "developer". 
+
+## How do I develop and improve kospex?
+
+The easiest way to do development on the kospex repo is to clone kospex and run in "dev mode" using the following commands:
+> git clone https://github.com/kospex/kospex
+> cd kospex
+> pip install -e .
 
 ## What is a kospex?
 

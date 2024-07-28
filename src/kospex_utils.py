@@ -438,7 +438,6 @@ def get_last_commit_info(filename,remote=None):
             last_cmd = "git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict"
 
         commit_info = subprocess.check_output(
-            #shlex.split(f"git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict -- {basefile}"),
             shlex.split(last_cmd),
             encoding='utf-8'
         )
@@ -563,7 +562,8 @@ def get_repo_stats_table(stats=None, fieldname=None):
 
     if stats:
         for repo, status in stats.items():
-            table.add_row([repo, status["Active"], status["Aging"], status["Stale"], status["Unmaintained"]])
+            table.add_row([repo, status["Active"], status["Aging"],
+                           status["Stale"], status["Unmaintained"]])
 
     return table
 
@@ -699,7 +699,9 @@ def get_git_stats(directory, last_days=None):
     # Get first and last commit dates
     #  git log --pretty=format:"%ci" --max-parents=0 HEAD
     #first_commit_date = run_git_command(['log', '--reverse', '--format=%ci', '-1'])
-    first_commit_date = run_git_command(directory,['log', '--pretty=format:%cI', '--max-parents=0', 'HEAD'])
+    first_commit_date = run_git_command(directory,['log',
+                                                   '--pretty=format:%cI',
+                                                   '--max-parents=0', 'HEAD'])
 
     last_commit_date = run_git_command(directory,['log', '--format=%cI', '-1'])
 
@@ -754,7 +756,8 @@ def get_first_commit_date(directory):
     """ Get the first commit date for a given directory"""
     first_commit_date = ""
     try:
-        first_commit_date = run_git_command(directory,['log', '--pretty=format:%cI', '--max-parents=0', 'HEAD'])
+        first_commit_date = run_git_command(directory,['log', '--pretty=format:%cI',
+                                                       '--max-parents=0', 'HEAD'])
     finally:
         pass
 
