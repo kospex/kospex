@@ -3,54 +3,54 @@
 Kospex is a CLI which aims to _"look at the guts of your code"_ to help gain insights into your developers and technology landscape.
 It uses database structure from the excellent [Mergestat lite](https://github.com/mergestat/mergestat-lite) to model data from git repositories. 
 
-## Installation, setup and usage
+## Step 1: Installation, setup and usage
 
-kospex is currently a collection of tools, bound together by python in a docker container. 
-It works by analysing cloned repositories on the filesystem. 
-
-### Step 0: Prepare (clone) the repositories you want to assess
-
-See section "Git code layout for running analysis" below. For simple "one off" analysis just clone some repo's into a directory as a starting point. 
-
-Ideally, a structure like \
-/BASE/GIT_SERVER/ORG/REPO
-
-### Step 1: Clone kospex
-
-> git clone https://github.com/kospex/kospex.git
-
-### Step 2: Install the python dependencies (and scc)
+kospex is currently a python module with commands. It works by analysing cloned repositories on the filesystem. 
 
 **Optional but strongely recommended** - use a python virtual env. 
 
-> pip install -r requirements.txt
+Installing using pip:
 
+> pip install kospex
+
+For complexity and file type analysis, kospex uses the scc binary. 
+It is optional, but enables much better file type guessing and provide complexity metrics.
 Follow the instructions for installing [scc](https://github.com/boyter/scc)
 
-> export PATH=$PATH:$PWD
+### Step 2: Initial kospex
 
-Add this directory to your path, kospex toolkit is a collection on python executables.
+kospex uses a git repositoriy layout for cloning repos to disk. 
+
+The following structure is used \
+/BASE/GIT_SERVER/ORG/REPO
 
 If you are ok to use the ~/code directory for cloned repos, then run: 
 > kospex init --default
 
+See section "Git code layout for running analysis" below for more details. 
+
+
 ### Step 3: sync some data and play with some commands
 
+For an existing repo on disk:
 > kospex sync [GIT_REPO]
->
+
+You can also use the _kgit_ command to clone and sync a repo you have access to
+
+> kgit clone https://github.com/mergestat/mergestat-lite
+
+The above command will clone into the KOSPEX_CODE/GIT_SERVER/ORG/REPO structure
+
+Some commands to try:
+
 > kospex developers -repo [GIT_REPO]
 >
 > kospex tech-landscape -metadata
 
-You can also use the _kgit_ command to clone and sync a repo you have access to
-
-> kgit clone -sync -repo https://github.com/mergestat/mergestat-lite
-
-The above command will clone into the KOSPEX_CODE/GIT_SERVER/ORG/REPO structure
 
 ## Git code layout for running analysis
 
-One option, if you're inspecting code on your own laptop is to use use your home directory. 
+One option, if you're inspecting code on your own laptop (or virtual machine), is to use use your home directory. 
 
 ~/kospex/ \
 We'll place config files and the kospex DB (Sqlite3) in here for sync'ed data \
