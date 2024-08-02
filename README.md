@@ -17,7 +17,7 @@ For complexity and file type analysis, kospex uses the scc binary.
 It is optional, but enables much better file type guessing and provide complexity metrics.
 Follow the instructions for installing [scc](https://github.com/boyter/scc)
 
-### Step 2: Initial kospex
+### Step 2: Initial kospex setup
 
 kospex uses a git repositoriy layout for cloning repos to disk. 
 

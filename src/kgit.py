@@ -46,8 +46,8 @@ def status(repo):
     print('\nExecution time:', elapsed_time, 'seconds', "\n")
 
 @cli.command("clone")
-@click.option('-sync', is_flag=True, help="Sync the repo to the database (Default)")
-@click.option('-repo',  type=click.STRING, help="HTTP Git clone URL")
+@click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
+@click.option('-repo',  type=click.STRING, help="HTTPS Git clone URL")
 @click.option('-filename',  type=click.STRING, help="File with HTTP git clone URLs")
 def clone(repo, sync, filename):
     """Clone the given repo into our KOSPEX_CODE directory."""
@@ -99,9 +99,12 @@ def github(org, user, no_auth, list_repos, sync, out_repo_list):
         print("You must specify either an organization or a user.")
         exit(1)
 
+    gh.get_env_credentials()
+
     auth = False
     if not no_auth:
-        gh.set_access_token(os.environ.get("GITHUB_PAT"))
+        gh.get_env_credentials()
+        #gh.set_access_token(os.environ.get("GITHUB_PAT"))
         auth = True
 
     owner = org or user
@@ -129,6 +132,8 @@ def github(org, user, no_auth, list_repos, sync, out_repo_list):
             record = {}
             record['name'] = repo.get('name')
             record['fork'] = repo.get('fork')
+            record['updated_at'] = repo.get('updated_at')
+            record['pushed_at'] = repo.get('pushed_at')
             #if record.get("fork"):
             #    full_repo = gh.get_repo(owner=")
             #    record['parent'] = repo.get('parent').get('full_name')
@@ -136,6 +141,7 @@ def github(org, user, no_auth, list_repos, sync, out_repo_list):
             record['clone_url'] = repo.get('clone_url')
             print(f"Found repo: {repo['name']}")
             details.append(record)
+            print(repo)
 
             if sync:
                 clone_url = repo.get('clone_url')
@@ -144,14 +150,14 @@ def github(org, user, no_auth, list_repos, sync, out_repo_list):
                 kospex.sync_repo(repo_path)
 
     table = PrettyTable()
-    table.field_names = ["Name", "fork", "private", "owner", "clone_url"]
+    table.field_names = ["Name", "fork", "private", "owner", "clone_url", "pushed_at"]
     table.align["Name"] = "l"
     table.align["clone_url"] = "l"
 
     for detail in details:
         #print(detail)
         table.add_row([detail.get("name"), detail.get("fork"),
-                       detail.get("private"), owner, detail.get("clone_url")])
+                       detail.get("private"), owner, detail.get("clone_url"), detail.get("pushed_at")])
 
     print(table)
 

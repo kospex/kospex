@@ -1,9 +1,13 @@
 """High level functions for common queries on Github orgs and users. """
 import json
+import os
 import requests
 
 class KospexGithub:
     """High level GitHub functions for common kospex queries."""
+
+    ENV_GITHUB_AUTH_TOKEN = "GITHUB_AUTH_TOKEN"
+
     def __init__(self):
 
         self.access_token = ""
@@ -20,6 +24,16 @@ class KospexGithub:
     def set_timeout(self, timeout):
         """Set the timeout for requests"""
         self.timeout = timeout
+
+    def get_env_credentials(self):
+        """Get the Github PAT / Auth token from the environment."""
+        access_token = os.getenv(self.ENV_GITHUB_AUTH_TOKEN)
+
+        if access_token:
+            self.set_access_token(access_token)
+            return True
+        else:
+            return False
 
     def github_url_to_api_url(self, github_url):
         """
