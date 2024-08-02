@@ -141,7 +141,6 @@ def github(org, user, no_auth, list_repos, sync, out_repo_list):
             record['clone_url'] = repo.get('clone_url')
             print(f"Found repo: {repo['name']}")
             details.append(record)
-            print(repo)
 
             if sync:
                 clone_url = repo.get('clone_url')
@@ -150,14 +149,20 @@ def github(org, user, no_auth, list_repos, sync, out_repo_list):
                 kospex.sync_repo(repo_path)
 
     table = PrettyTable()
-    table.field_names = ["Name", "fork", "private", "owner", "clone_url", "pushed_at"]
+    table.field_names = ["Name", "fork", "private", "owner", "clone_url", "pushed_at", "status"]
     table.align["Name"] = "l"
     table.align["clone_url"] = "l"
-
+    table.align["status"] = "l"
+    
     for detail in details:
         #print(detail)
+        days_ago = KospexUtils.days_ago(detail.get("pushed_at"))
+        status = "Unknown"
+        if days_ago:
+            status = KospexUtils.development_status(days_ago)
         table.add_row([detail.get("name"), detail.get("fork"),
-                       detail.get("private"), owner, detail.get("clone_url"), detail.get("pushed_at")])
+                       detail.get("private"), owner, detail.get("clone_url"), 
+                       detail.get("pushed_at"), status])
 
     print(table)
 
