@@ -187,3 +187,22 @@ class KospexGithub:
             print(f"Timeout: {err}")
 
         return account_type
+
+    def test_auth(self):
+        """
+        Test the authentication token
+        """
+        url = 'https://api.github.com/user'
+        response = requests.get(url, headers=self.headers, timeout=self.timeout)
+        data = response.json()
+        if data:
+            status = data.get('status')
+            # '401' is unauthorized, so if the status is not 401,
+            if status == '401':
+                return False
+            else:
+                print(data)
+                return True
+        else:
+            print("No data returned")
+            return False

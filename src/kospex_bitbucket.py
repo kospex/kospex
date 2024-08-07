@@ -80,3 +80,18 @@ class KospexBitbucket:
                     return i.get("href")
 
         return None
+
+    def test_auth(self):
+        """
+        Test the BITBUCKET_USER and BITBUCKET_APP_PASSWORD can authenticate
+        """
+
+        url = "https://api.bitbucket.org/2.0/user"
+        auth = (self.username, self.app_password)
+        response = requests.get(url, auth=auth, timeout=self.timeout)
+        #print(response.status_code)
+        if response.status_code == 200:
+            return True
+        else:
+            return False
+        

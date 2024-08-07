@@ -29,16 +29,40 @@ https://github.com/mergestat/mergestat-lite
 
 ## bitbucket
 
-> kgit bitbucket -workspace _WORKSPACE_
-
-This command expects your to have the following environment variables set: \
+All bitbucket commands require the credentials to be set
+The following environment variables are required: \
 BITBUCKET_USERNAME \
 BITBUCKET_APP_PASSWORD
+
+> kgit bitbucket -test-auth
+
+This flag will check if the credentials work, display the status and exit.
+
+> kgit bitbucket -workspace _WORKSPACE_
 
 If you want to write all the clone URLs to a file you can use the _-out-repo-list FILENAME_ switch
 > kgit bitbucket -workspace _WORKSPACE_ -out-repo-list FILENAME
 
 This can be used with the kgit clone _-filename_ switch as shown above. 
+
+## github
+
+The _github_ function can interact with both authenticated and public orgs and users. 
+
+For authenticated requests the GITHUB_AUTH_TOKEN must be set in the environment. 
+
+> kgit github -test-auth 
+
+This _-test-auth_ flag will check if the token (Github PAT) works, display the status and exit.
+
+To list the repos for a user:
+
+> kgit github -user _USERNAME_
+
+For an organisation:
+
+> kgit gihub -org _ORG OR TEAM_
+
 
 
 

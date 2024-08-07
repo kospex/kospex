@@ -86,14 +86,35 @@ def clone(repo, sync, filename):
 @click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")
 @click.option('-list-repos', is_flag=True, type=click.STRING)
 @click.option('-sync', is_flag=True)
+@click.option('-test-auth', is_flag=True, default=False, help="Test GITHUB_AUTH_TOKEN can authenticate.")
 @click.option('-out-repo-list', type=click.Path(), help="File to write clone URLs to.")
-def github(org, user, no_auth, list_repos, sync, out_repo_list):
+def github(org, user, no_auth, list_repos, sync, test_auth, out_repo_list):
     """
     Interact with the GitHub API.
+
+    For authenticated access, you must set the GITHUB_AUTH_TOKEN environment variable.
+    This is a Personal Access Token (PAT) with the necessary permissions.
+
     """
 
     gh = KospexGithub()
     repos = []
+
+    if test_auth:
+
+        found = gh.get_env_credentials()
+        if found:
+            print("Found Github GITHUB_AUTH_TOKEN in the environment.")
+        else:
+            print("Could not find Github GITHUB_AUTH_TOKEN in the environment.")
+            print("Please set GITHUB_AUTH_TOKEN.")
+            exit(1)
+
+        if gh.test_auth():
+            print("Authentication successful.")
+        else:
+            print("Authentication failed. Check your GITHUB_AUTH_TOKEN")
+        exit(0)
 
     if not org and not user:
         print("You must specify either an organization or a user.")
@@ -153,7 +174,7 @@ def github(org, user, no_auth, list_repos, sync, out_repo_list):
     table.align["Name"] = "l"
     table.align["clone_url"] = "l"
     table.align["status"] = "l"
-    
+
     for detail in details:
         #print(detail)
         days_ago = KospexUtils.days_ago(detail.get("pushed_at"))
@@ -178,19 +199,37 @@ def github(org, user, no_auth, list_repos, sync, out_repo_list):
 #@click.option('-list-repos', is_flag=True, type=click.STRING)
 #@click.option('-sync', is_flag=True)
 @click.option('-out-repo-list', type=click.Path(), help="File to write clone URLs to.")
+@click.option('-test-auth', is_flag=True, default=False, help="Test BitBucket credentials can authenticate.")
 @click.option('-out-raw', type=click.Path(), help="Output raw JSON results to the specified filename")
-def bitbucket(workspace, out_repo_list, out_raw):
+def bitbucket(workspace, out_repo_list, test_auth, out_raw):
     """
-    Interact with the BitBucket API to query repos in a workspace
+    Interact with the BitBucket API to query repos in a workspace.
+
+    This command requires the following environment variables to be set:
+    BITBUCKET_USERNAME and 
+    BITBUCKET_APP_PASSWORD
+
+    The bitbucket username is in the "account settings" section of your bitbucket account.
+    This is NOT your email address. 
+
     """
 
     bb = KospexBitbucket()
+    click.echo()
     if bb.get_env_credentials():
         print("Found bitbucket credentials in the environment.")
     else:
         print("Could not find bitbucket credentials in the environment.")
-        print("Please set BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD.")
+        print("Please set BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD.\n")
         exit(1)
+
+    if test_auth:
+        if bb.test_auth():
+            print("Authentication successful.\n")
+        else:
+            print("\nAuthentication FAILED!.",
+                  "\nCheck your BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD\n")
+        exit(0)
 
     if not workspace:
         print("\nERROR: You MUST specify a workspace.\n")
