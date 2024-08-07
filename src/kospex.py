@@ -201,13 +201,15 @@ def sync_directory(directory):
               help='Git repo directory to assess, confirm sync status')
 @click.option('-days', type=int, default=90, help='Committed in the last X days.')
 @click.option('-org_key', type=click.STRING, help='Format of SERVER~ORG')
-@click.option('-repo_id', type=click.STRING)
-@click.option('--all', is_flag=True, default=False, help="Find all developer history. ")
+@click.option('-repo_id', type=click.STRING, help="Repo ID to query, in the format SERVER~ORG~REPO.")
+@click.option('-server', type=click.STRING, help="Domain of the git server. E.g. github.com")
+@click.option('-all', is_flag=True, default=False, help="Find all developer history. ")
 @click.option('-out', type=click.Path(), help='filename to write CSV results to.')
 # pylint: disable=unused-argument
-def devs(repo, days, repo_id, org_key, out, all):
-    """ Information Stats about developers."""
-
+def devs(repo, days, org_key, repo_id, server, all, out):
+    """
+    Information about developers history.
+    """
     params = locals()
 
     if all:
@@ -227,8 +229,9 @@ def devs(repo, days, repo_id, org_key, out, all):
 @cli.command("list-repos")
 @click.option('-db', is_flag=True, default=False, help="List repos sync'ed to db.")
 @click.option('-repo_id', is_flag=True, default=False, help="Include repo_id in output.")
+@click.option('-server', type=click.STRING, help="Domain of the git server. E.g. github.com")
 @click.argument('directory', required=False, type=click.Path(exists=True))
-def list_repos(directory,db,repo_id):
+def list_repos(directory,db,repo_id,server):
     """
     List all git repositories found in either:
     - the given directory or
@@ -242,7 +245,7 @@ def list_repos(directory,db,repo_id):
         print("Please specify either a directory or use the -db flag.")
         exit(1)
 
-    kospex.list_repos(directory,db=db,repo_id=repo_id)
+    kospex.list_repos(directory,db=db,repo_id=repo_id,server=server)
 
 @cli.command("tech-landscape")
 @click.option('-repo', type=GitRepo())

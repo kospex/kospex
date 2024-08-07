@@ -459,6 +459,7 @@ class Kospex:
             raise ValueError(f"The value of days '{days}' is NOT an integer")
         where = ""
         date_where = ""
+        server = kwargs.get('server', None)
 
         params = []
 
@@ -506,6 +507,9 @@ class Kospex:
                 params.append(server)
                 params.append(org)
             #kwargs['repo_id'] = self.kospex_query.repo_id_by_org_key(org_key)
+        elif server:
+            where = f"WHERE _git_server = ? {date_where}"
+            params.append(server)
 
         if kwargs.get('repo_id', None):
             #where = f"WHERE _repo_id = ? AND date(author_when) > date('now','-{days} day')"
@@ -596,7 +600,12 @@ class Kospex:
         elif db:
             sql = '''SELECT DISTINCT(_repo_id) as repo, file_path, git_remote
             FROM repos'''
-            for row in self.kospex_db.query(sql):
+            params = []
+            if server := kwargs.get("server"):
+                sql += " WHERE _git_server = ?"
+                params.append(server)
+
+            for row in self.kospex_db.query(sql,params):
                 parts = [row['file_path'], row['git_remote']]
                 if repo_id:
                     parts.append(row['repo'])
