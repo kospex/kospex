@@ -37,6 +37,11 @@ There are several places where this description may be used:
 
 It's possibly that something labelled "unmaintained" is feature complete and doesn't require changes. However, generally there are any external dependencies, a code or library usually needs a change a couple of times a year.
 
+## Thoughts and articles
+
+["What are orphaned repos?"](articles/orphaned-repos) take a look at some basics of knowledge loss and the challenges. 
+
+
 ## What is a kospex?
 
 We're aiming to [k]now your c[o]de by in[spe]cting the haruspe[x].
