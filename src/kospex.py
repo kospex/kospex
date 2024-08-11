@@ -77,9 +77,10 @@ def kospex_init(create):
 @click.option('-email-contains', type=click.STRING, help="Email of user to query.")
 @click.option('-group', type=click.STRING, help="Name of group (of repos) to query with.")
 @click.option('-org', type=click.STRING, help="Name of Org/Team to query with.")
+@click.option('-debug', is_flag=True, default=False, help="Debug mode.")
 #@click.option('-', type=click.STRING, help="Name of group (of repos) to query with.")
 # pylint: disable=unused-argument
-def summary(out,server,email, active, docker, dependencies, email_contains,group,org):
+def summary(out,server,email, active, docker, dependencies, email_contains,group,org,debug):
     """ Provide a summary of all the known repositories."""
     params = locals()
     if group and org:
@@ -108,6 +109,8 @@ def summary(out,server,email, active, docker, dependencies, email_contains,group
                 if repo_path.lower() != "unknown":
                     repo_dirs.append(repo_path)
                 else:
+                    if debug:
+                        print(f"Unknown repo:\n{r}\n")
                     unknown += 1
 
         if docker:
@@ -118,7 +121,6 @@ def summary(out,server,email, active, docker, dependencies, email_contains,group
             #docker_files = KrunnerUtils.find_dockerfiles_in_repos(dirs)
 
             docker_files = KrunnerUtils.find_dockerfiles_in_repos(repo_dirs)
-            #print(docker_files)
             records = KospexUtils.get_git_metadata(docker_files)
             #print(records)
             docker_status = KospexUtils.count_key_occurrences(records, "status")
@@ -737,7 +739,8 @@ def groups(name,add,remove,delete,show,file,value,email,repo):
 @cli.command("orphans")
 @click.option('-days', type=int, default=90, help='Committed in X days is considered active.(default 90)')
 @click.option('-window', type=int, default=365, help='Days to consider for orphaned repos. (default 365)')
-def orphans(days,window):
+@click.option('-server', type=click.STRING, help="Git server to query.")
+def orphans(days,window,server):
     """
     Find orphaned repos.
 
@@ -754,7 +757,7 @@ def orphans(days,window):
     active_set = set(map(lambda item: item['author'], active_devs))
 
     # Find all the repos in the database
-    repos = kospex.kospex_query.repos()
+    repos = kospex.kospex_query.repos(server=server)
 
     now_utc = datetime.now(timezone.utc)
     from_date = now_utc - timedelta(days=window)
@@ -822,7 +825,23 @@ def status():
     print(config)
     print()
 
+    print("Database table version status\n")
 
+    print("Installed tool status")
+    print("---------------------")
+    installed = which('scc')
+    if installed:
+        print(f"scc:\t{installed}")
+    else:
+        print("scc:\tNot installed")
+
+    installed = which('git')
+    if installed:
+        print(f"git:\t{installed}")
+    else:
+        print("git:\tNot installed")
+
+    print("\n")
 #
 # Start of the main program
 #

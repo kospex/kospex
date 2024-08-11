@@ -169,7 +169,7 @@ class KospexQuery:
 
         return data
 
-    def repos(self,org_key=None):
+    def repos(self,org_key=None,server=None):
         """ Provide a summary of the known repositories."""
         params = []
         where = ""
@@ -182,6 +182,9 @@ class KospexQuery:
             params.append(parts[0])
             params.append(parts[1])
             where = "WHERE _git_server = ? AND _git_owner = ?"
+        elif server:
+            where = "WHERE _git_server = ?"
+            params.append(server)
 
         summary_sql = f"""SELECT _repo_id, _git_server, _git_owner, _git_repo, count(*) 'commits',
         count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
