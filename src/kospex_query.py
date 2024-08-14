@@ -740,6 +740,43 @@ class KospexQuery:
 
         #return kd.execute()
 
+    def get_repos(self,**kwargs):
+        """
+        Return a list of repos.
+        Parameters:
+            server: git server
+            email: author email
+            
+        The parameters are "ands" and not "ors"
+        which means that if both are provided, the query will return
+        repos that match both criteria.
+        """
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(KospexSchema.TBL_REPOS)
+        kd.select("*")
+
+        if server := kwargs.get("server"):
+            kd.where("_git_server", "=", server)
+
+        repos = kd.execute()
+
+        if email := kwargs.get("email"):
+            # We have to do a query on the commits table
+            # to get the repos for a given email
+            kd_email = KospexData(kospex_db=self.kospex_db)
+            kd_email.from_table(KospexSchema.TBL_COMMITS)
+            kd_email.select_as("DISTINCT(_repo_id)", "_repo_id")
+            kd_email.where("author_email", "=", email)
+            author_repos = kd_email.execute()
+            author_set = set([r['_repo_id'] for r in author_repos])
+            author_results = []
+            for repo in repos:
+                if repo['_repo_id'] in author_set:
+                    author_results.append(repo)
+            repos = author_results
+
+        return repos
+
     def get_observations(self, repo_id=None, observation_key=None):
         """ Return a list of observations for a repo_id and observation_key """
         kd = KospexData(kospex_db=self.kospex_db)

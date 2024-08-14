@@ -167,7 +167,16 @@ def days_ago(dt_str: str) -> float:
     # TODO check why we need to do this.
     dt_str = dt_str.replace("Z","+00:00")
     #print(dt_str)
-    dt = datetime.fromisoformat(dt_str)
+    dt = None
+    try:
+        dt = datetime.fromisoformat(dt_str)
+    except ValueError:
+        print(f"Error parsing the date: {dt_str}")
+        # Try to do something else
+        if "T" in dt_str:
+            dt_str = dt_str.split("T")[0]
+            dt = datetime.fromisoformat(dt_str).astimezone(timezone.utc)
+        #return None
 
     # Current datetime in UTC
     now = datetime.now(timezone.utc)

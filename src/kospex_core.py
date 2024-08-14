@@ -387,7 +387,7 @@ class Kospex:
         if active:
             # Only show repos with commits in the last 90 days
             # TODO  : think about changing this to a better parameter
-            kd.where("committer_when", ">=", KospexUtils.days_ago_iso_date(90)) 
+            kd.where("committer_when", ">=", KospexUtils.days_ago_iso_date(90))
 
         if group:
             #kd.where_subselect("_repo_id", "IN", f"SELECT _repo_id FROM {KospexSchema.TBL_REPOS} WHERE _group = ?", [group])
@@ -571,7 +571,9 @@ class Kospex:
         return records
 
     def list_repos(self, directory, **kwargs):
-        """ Print all the git repos in the specified directory and subdirectories"""
+        """
+        Print all the git repos in either the specified directory or database
+        """
         db = kwargs.get('db', False)
         repo_id = kwargs.get('repo_id', False)
 
@@ -598,14 +600,21 @@ class Kospex:
                 table.add_row(parts)
 
         elif db:
-            sql = '''SELECT DISTINCT(_repo_id) as repo, file_path, git_remote
-            FROM repos'''
-            params = []
-            if server := kwargs.get("server"):
-                sql += " WHERE _git_server = ?"
-                params.append(server)
+            
+            # sql = '''SELECT DISTINCT(_repo_id) as repo, file_path, git_remote
+            # FROM repos'''
 
-            for row in self.kospex_db.query(sql,params):
+            # params = []
+            # if server := kwargs.get("server"):
+            #     sql += " WHERE _git_server = ?"
+            #     params.append(server)
+
+            #results = self.kospex_db.query(sql, params)
+            print(kwargs)
+            results = self.kospex_query.get_repos(**kwargs)
+
+            for row in results:
+            #for row in self.kospex_db.query(sql,params):
                 parts = [row['file_path'], row['git_remote']]
                 if repo_id:
                     parts.append(row['repo'])

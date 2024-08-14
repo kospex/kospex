@@ -232,8 +232,9 @@ def devs(repo, days, org_key, repo_id, server, all, out):
 @click.option('-db', is_flag=True, default=False, help="List repos sync'ed to db.")
 @click.option('-repo_id', is_flag=True, default=False, help="Include repo_id in output.")
 @click.option('-server', type=click.STRING, help="Domain of the git server. E.g. github.com")
+@click.option('-email', type=click.STRING, help="Email of user to query.")
 @click.argument('directory', required=False, type=click.Path(exists=True))
-def list_repos(directory,db,repo_id,server):
+def list_repos(db,repo_id,server,email,directory,):
     """
     List all git repositories found in either:
     - the given directory or
@@ -247,7 +248,10 @@ def list_repos(directory,db,repo_id,server):
         print("Please specify either a directory or use the -db flag.")
         exit(1)
 
-    kospex.list_repos(directory,db=db,repo_id=repo_id,server=server)
+    kospex.list_repos(directory,db=db,repo_id=repo_id,server=server,email=email)
+
+    if directory and email:
+        print("\nWARNING! email search ONLY works with the -db flag.\n")
 
 @cli.command("tech-landscape")
 @click.option('-repo', type=GitRepo())
