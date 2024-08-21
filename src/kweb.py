@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """ This is the local development web server to view the Kospex database. """
 import sys
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from kospex_query import KospexQuery
 import kospex_web as KospexWeb
+import kospex_utils as KospexUtils
 
 app = Flask(__name__)
 
@@ -248,6 +249,94 @@ def metadata():
     """ Metadata about the kospex DB. """
     details = {}
     return render_template('metadata.html')
+
+@app.route('/graph', defaults={'org_key': None})
+@app.route('/graph/', defaults={'org_key': None})
+@app.route('/graph/<org_key>')
+def graph(org_key):
+    """
+    Metadata about the kospex DB.
+    """
+    author_email = request.args.get('author_email')
+
+    if not org_key:
+        org_key = f"?author_email={author_email}"
+
+    return render_template('graph.html',org_key=org_key)
+
+@app.route('/org-graph', defaults={'org_key': None})
+@app.route('/org-graph/', defaults={'org_key': None})
+@app.route('/org-graph/<org_key>')
+def org_graph(org_key):
+    """
+    Return JSON data for the force directed graph.
+
+    """
+    ### MVP
+
+    org_info = []
+    if org_key:
+        org_info = KospexQuery().get_graph_info(org_key=org_key)
+    else:
+        org_info = KospexQuery().get_graph_info(author_email=request.args.get('author_email'))
+
+    #org_info = KospexQuery().get_graph_info(org_key=org_key)
+    #print(org_info)
+    dev_lookup = {}
+    repo_lookup = {}
+    links = []
+    nodes = []
+    for element in org_info:
+
+        if element['author'] not in dev_lookup:
+            dev_lookup[element['author']] = { "id": element['author'],
+                                             "group": 1,
+                                             "label": KospexUtils.extract_github_username(element['author']),
+                                             "info": element['author'],
+                                             "repos": 1 }
+        else:
+            dev_lookup[element['author']]['repos'] += 1
+
+        if element['_repo_id'] not in repo_lookup:
+            repo_lookup[element['_repo_id']] = { "id": element['_repo_id'],
+                                                "group": 2,
+                                                "info": element['_repo_id'] }
+
+        links.append({"source": element['author'],
+                      "target": element['_repo_id'],
+                      "commits": element['commits']})
+
+    for element in dev_lookup:
+        nodes.append(dev_lookup[element])
+
+    for element in repo_lookup:
+        nodes.append(repo_lookup[element])
+
+    data = {
+            "nodes": [
+                { "id": "Dev1", "group": 1, "info": "Developer 1 info" },
+                { "id": "Dev2", "group": 1, "info": "Developer 2 info" },
+                { "id": "Dev3", "group": 1, "info": "Developer 3 info" },
+                { "id": "Repo1", "group": 2, "info": "Repository 1 info" },
+                { "id": "Repo2", "group": 2, "info": "Repository 2 info" },
+                { "id": "Repo3", "group": 2, "info": "Repository 3 info" }
+            ],
+            "links": [
+                { "source": "Dev1", "target": "Repo1", "commits": 50 },
+                { "source": "Dev1", "target": "Repo2", "commits": 30 },
+                { "source": "Dev2", "target": "Repo1", "commits": 20 },
+                { "source": "Dev2", "target": "Repo3", "commits": 40 },
+                { "source": "Dev3", "target": "Repo2", "commits": 60 },
+                { "source": "Dev3", "target": "Repo3", "commits": 10 }
+            ]
+        }
+
+    data["nodes"] = nodes
+    data["links"] = links
+    #print(links)
+    #print(jsonify(data))
+    #return jsonify(data)
+    return data
 
 def kweb():
     """ Run the web server. """

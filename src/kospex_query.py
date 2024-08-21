@@ -137,7 +137,7 @@ class KospexQuery:
 
         if repo_id:
             where_clause += "AND _repo_id = ?"
-            params.append(repo_id)   
+            params.append(repo_id)
 
         summary_sql = f"""SELECT _repo_id, _git_server, _git_owner, _git_repo,
         Provider, Filename, committer_when, Language
@@ -460,11 +460,11 @@ class KospexQuery:
         sql = f"""
         WITH DateCategories AS (
         SELECT
-            CASE 
+            CASE
                 WHEN julianday(committer_when) >= julianday('now') - 90 THEN 'active'
-                WHEN julianday(committer_when) >= julianday('now') - 180 AND 
+                WHEN julianday(committer_when) >= julianday('now') - 180 AND
                 julianday(committer_when) < julianday('now') - 90 THEN 'aging'
-                WHEN julianday(committer_when) >= julianday('now') - 365 AND 
+                WHEN julianday(committer_when) >= julianday('now') - 365 AND
                 julianday(committer_when) < julianday('now') - 180 THEN 'stale'
                 ELSE 'unmaintained'
             END AS date_category
@@ -675,10 +675,10 @@ class KospexQuery:
 
         # we need the number of distinct authors per file as well as the number of commits per file
         sql = f"""SELECT DISTINCT(author_email) as author_email, _ext, count(*) 'commits',
-        MAX(author_when) 'last_commit', MIN(author_when) 'first_commit', 
+        MAX(author_when) 'last_commit', MIN(author_when) 'first_commit',
         COUNT(DISTINCT(c._repo_id)) 'repos'
         FROM commit_files cf, commits c
-        WHERE cf._repo_id = c._repo_id 
+        WHERE cf._repo_id = c._repo_id
         AND cf.hash = c.hash {author_where} {repo_where}
         GROUP BY author_email, _ext
         ORDER BY commits DESC
@@ -746,7 +746,7 @@ class KospexQuery:
         Parameters:
             server: git server
             email: author email
-            
+
         The parameters are "ands" and not "ors"
         which means that if both are provided, the query will return
         repos that match both criteria.
@@ -795,7 +795,7 @@ class KospexQuery:
             KospexSchema.TBL_OBSERVATIONS).upsert(
                 observation,pk=["_repo_id","hash","file_path","observation_key"])
         #self.kospex_db.table(KospexSchema.TBL_OBSERVATIONS).insert_all(observations)
-    
+
 # TODO - this is copilot generated code, needs refactoring to a kdata object
 #    def get_observations_summary(self, repo_id=None, observation_key=None):
 #        """ Return a list of observations for a repo_id and observation_key """
@@ -806,7 +806,7 @@ class KospexQuery:
 #        for row in data:
 #            results.append(row)
 #        return results
-        
+
     def git_servers(self):
         """ Return a list of git servers """
         sql = f"""SELECT DISTINCT(server) FROM {KospexSchema.TBL_REPOS}"""
@@ -861,7 +861,7 @@ class KospexQuery:
         return next(data, None)
 
     def get_repo_id_lookup(self):
-        """ 
+        """
         Return a repo_id lookup
         """
         sql = f"""SELECT * FROM {KospexSchema.TBL_REPOS}"""
@@ -879,6 +879,36 @@ class KospexQuery:
     #    kd.from_table(KospexSchema.TBL_REPOS)
     #    kd.select("*")
     #    return kd.execute()
+
+    def get_graph_info(self, org_key=None, author_email=None):
+        """
+        Return a list of repos and developers for graphing
+        """
+        org = None
+        server = None
+
+        if org_key:
+            org = org_key.split('~')[1]
+            server = org_key.split('~')[0]
+
+        print(f"author_email = {author_email}")
+
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.select_as("DISTINCT(author_email)", "author")
+        kd.select("_repo_id")
+        kd.select_as("COUNT(*)", "commits")
+        #kd.select_as("_git_repo", "repo")
+        kd.select("_git_repo")
+        if org_key:
+            kd.where("_git_owner", "=", org)
+            kd.where("_git_server", "=", server)
+
+        if author_email:
+            kd.where("author_email", "=", author_email)
+
+        kd.group_by("author","_repo_id")
+        return kd.execute()
 
 
 class KospexData:

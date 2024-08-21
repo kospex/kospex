@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Developer-Repository Network</title>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                display: flex;
+            }
+            #sidebar {
+                width: 250px;
+                height: 100vh;
+                background-color: #f0f0f0;
+                padding: 20px;
+                box-sizing: border-box;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+            }
+            #graph {
+                flex-grow: 1;
+                height: 100vh;
+            }
+            #resetButton {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                padding: 10px;
+                background-color: #f0f0f0;
+                border: 1px solid #999;
+                border-radius: 5px;
+                cursor: pointer;
+            }
+            .slider {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            .sliderValue {
+                display: block;
+                margin-top: 5px;
+                margin-bottom: 15px;
+            }
+            hr {
+                width: 100%;
+                border: none;
+                border-top: 1px solid #ccc;
+                margin: 15px 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="sidebar">
+            <h3>Filters</h3>
+            <label for="commitSlider">Commit Filter:</label>
+            <input
+                type="range"
+                id="commitSlider"
+                class="slider"
+                min="0"
+                max="100"
+                value="0"
+            />
+            <span id="commitValue" class="sliderValue">Minimum commits: 0</span>
+
+            <label for="repoSlider">Repository Filter:</label>
+            <input
+                type="range"
+                id="repoSlider"
+                class="slider"
+                min="0"
+                max="10"
+                value="0"
+            />
+            <span id="repoValue" class="sliderValue">Minimum repos: 0</span>
+            <hr />
+            <h3>Node Information</h3>
+            <div id="nodeInfo">
+                <p>Click on a node to see its information.</p>
+            </div>
+        </div>
+        <div id="graph"></div>
+        <button id="resetButton">Reset Positions</button>
+        <script>
+            let data = {
+                nodes: [],
+                links: [],
+            };
+
+            const width = window.innerWidth - 250; // Subtract sidebar width
+            const height = window.innerHeight;
+
+            const svg = d3
+                .select("#graph")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            const g = svg.append("g");
+
+            let simulation = d3
+                .forceSimulation()
+                .force(
+                    "link",
+                    d3.forceLink().id((d) => d.id),
+                )
+                .force("charge", d3.forceManyBody().strength(-400))
+                .force("center", d3.forceCenter(width / 2, height / 2));
+
+            let linkScale = d3.scaleLinear().range([1, 10]);
+
+            let link = g.append("g").selectAll("line");
+            let node = g.append("g").selectAll("circle");
+            let text = g.append("g").selectAll("text");
+            let commitText = g.append("g").selectAll("text");
+
+            const zoom = d3.zoom().scaleExtent([0.1, 4]).on("zoom", zoomed);
+
+            svg.call(zoom);
+
+            function zoomed(event) {
+                g.attr("transform", event.transform);
+            }
+
+            async function fetchGraphData() {
+                try {
+                    const response = await fetch("/org-graph/{{org_key}}");
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP error! status: ${response.status}`,
+                        );
+                    }
+                    const data = await response.json();
+                    return data;
+                } catch (error) {
+                    console.error("Could not fetch graph data:", error);
+                }
+            }
+
+            function updateGraph(newData) {
+                data = newData;
+
+                linkScale.domain([0, d3.max(data.links, (d) => d.commits)]);
+
+                // Calculate repos for each developer
+                const repoCount = new Map();
+                data.links.forEach((link) => {
+                    const sourceId =
+                        typeof link.source === "object"
+                            ? link.source.id
+                            : link.source;
+                    const targetId =
+                        typeof link.target === "object"
+                            ? link.target.id
+                            : link.target;
+                    const devNode = data.nodes.find(
+                        (n) => n.id === sourceId && n.group === 1,
+                    );
+                    const repoNode = data.nodes.find(
+                        (n) => n.id === targetId && n.group === 2,
+                    );
+
+                    if (devNode && repoNode) {
+                        repoCount.set(
+                            sourceId,
+                            (repoCount.get(sourceId) || 0) + 1,
+                        );
+                    }
+                });
+
+                data.nodes.forEach((node) => {
+                    if (node.group === 1) {
+                        node.repos = repoCount.get(node.id) || 0;
+                    }
+                });
+
+                // Update links
+                link = link.data(
+                    data.links,
+                    (d) =>
+                        `${d.source.id || d.source}-${d.target.id || d.target}`,
+                );
+                link.exit().remove();
+                link = link
+                    .enter()
+                    .append("line")
+                    .attr("stroke", "#999")
+                    .attr("stroke-opacity", 0.6)
+                    .merge(link)
+                    .attr("stroke-width", (d) => linkScale(d.commits));
+
+                // Update nodes
+                node = node.data(data.nodes, (d) => d.id);
+                node.exit().remove();
+                node = node
+                    .enter()
+                    .append("circle")
+                    .attr("r", 10)
+                    .attr("fill", (d) =>
+                        d.group === 1 ? "#3498db" : "#2ecc71",
+                    )
+                    .call(
+                        d3
+                            .drag()
+                            .on("start", dragstarted)
+                            .on("drag", dragged)
+                            .on("end", dragended),
+                    )
+                    .on("click", nodeClicked)
+                    .merge(node);
+
+                // Update text labels
+                text = text.data(data.nodes, (d) => d.id);
+                text.exit().remove();
+                text = text
+                    .enter()
+                    .append("text")
+                    .attr("font-size", 12)
+                    .attr("dx", 12)
+                    .attr("dy", 4)
+                    .merge(text)
+                    .text((d) => d.label || d.id);
+
+                // Update commit text
+                commitText = commitText.data(
+                    data.links,
+                    (d) =>
+                        `${d.source.id || d.source}-${d.target.id || d.target}`,
+                );
+                commitText.exit().remove();
+                commitText = commitText
+                    .enter()
+                    .append("text")
+                    .attr("font-size", 10)
+                    .attr("fill", "#666")
+                    .merge(commitText)
+                    .text((d) => d.commits);
+
+                // Update simulation
+                simulation.nodes(data.nodes);
+                simulation.force("link").links(data.links);
+                simulation.alpha(1).restart();
+
+                // Update slider max values
+                const maxCommits = d3.max(data.links, (d) => d.commits);
+                d3.select("#commitSlider").attr("max", maxCommits);
+                const maxRepos = d3.max(data.nodes, (d) =>
+                    d.group === 1 ? d.repos : 0,
+                );
+                d3.select("#repoSlider").attr("max", maxRepos);
+
+                // Apply filters
+                updateVisibility();
+            }
+
+            function updateVisibility() {
+                const minCommits = +d3
+                    .select("#commitSlider")
+                    .property("value");
+                const minRepos = +d3.select("#repoSlider").property("value");
+
+                // First, determine which developers meet the minimum repos criteria
+                const validDevs = new Set(
+                    data.nodes
+                        .filter((d) => d.group === 1 && d.repos >= minRepos)
+                        .map((d) => d.id),
+                );
+
+                // Filter links
+                const visibleLinks = data.links.filter((d) => {
+                    const sourceId = d.source.id || d.source;
+                    const targetId = d.target.id || d.target;
+                    return d.commits >= minCommits && validDevs.has(sourceId);
+                });
+
+                // Create sets of visible developers and repositories
+                const visibleDevs = new Set();
+                const visibleRepos = new Set();
+                visibleLinks.forEach((d) => {
+                    const sourceId = d.source.id || d.source;
+                    const targetId = d.target.id || d.target;
+                    visibleDevs.add(sourceId);
+                    visibleRepos.add(targetId);
+                });
+
+                // Filter nodes
+                const visibleNodes = data.nodes.filter((d) => {
+                    if (d.group === 1) {
+                        return visibleDevs.has(d.id);
+                    } else {
+                        return visibleRepos.has(d.id);
+                    }
+                });
+
+                // Update links
+                link = link.data(
+                    visibleLinks,
+                    (d) =>
+                        `${d.source.id || d.source}-${d.target.id || d.target}`,
+                );
+                link.exit().remove();
+                link = link
+                    .enter()
+                    .append("line")
+                    .attr("stroke", "#999")
+                    .attr("stroke-opacity", 0.6)
+                    .merge(link)
+                    .attr("stroke-width", (d) => linkScale(d.commits));
+
+                // Update nodes
+                node = node.data(visibleNodes, (d) => d.id);
+                node.exit().remove();
+                node = node
+                    .enter()
+                    .append("circle")
+                    .attr("r", 10)
+                    .attr("fill", (d) =>
+                        d.group === 1 ? "#3498db" : "#2ecc71",
+                    )
+                    .call(
+                        d3
+                            .drag()
+                            .on("start", dragstarted)
+                            .on("drag", dragged)
+                            .on("end", dragended),
+                    )
+                    .on("click", nodeClicked)
+                    .merge(node);
+
+                // Update text labels
+                text = text.data(visibleNodes, (d) => d.id);
+                text.exit().remove();
+                text = text
+                    .enter()
+                    .append("text")
+                    .attr("font-size", 12)
+                    .attr("dx", 12)
+                    .attr("dy", 4)
+                    .merge(text)
+                    .text((d) => d.label || d.id);
+
+                // Update commit text
+                commitText = commitText.data(
+                    visibleLinks,
+                    (d) =>
+                        `${d.source.id || d.source}-${d.target.id || d.target}`,
+                );
+                commitText.exit().remove();
+                commitText = commitText
+                    .enter()
+                    .append("text")
+                    .attr("font-size", 10)
+                    .attr("fill", "#666")
+                    .merge(commitText)
+                    .text((d) => d.commits);
+
+                // Update simulation
+                simulation.nodes(visibleNodes);
+                simulation.force("link").links(visibleLinks);
+                simulation.alpha(1).restart();
+            }
+
+            function ticked() {
+                link.attr("x1", (d) => d.source.x)
+                    .attr("y1", (d) => d.source.y)
+                    .attr("x2", (d) => d.target.x)
+                    .attr("y2", (d) => d.target.y);
+
+                node.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+
+                text.attr("x", (d) => d.x).attr("y", (d) => d.y);
+
+                commitText
+                    .attr("x", (d) => (d.source.x + d.target.x) / 2)
+                    .attr("y", (d) => (d.source.y + d.target.y) / 2);
+            }
+
+            simulation.on("tick", ticked);
+
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                // Node remains fixed at its new position
+            }
+
+            function nodeClicked(event, d) {
+                // Reset all links to their original state
+                link.attr("stroke-width", (d) => linkScale(d.commits))
+                    .attr("stroke", "#999")
+                    .attr("stroke-opacity", 0.6);
+
+                // Highlight links connected to the clicked node
+                link.filter((l) => l.source === d || l.target === d)
+                    .attr("stroke-width", (d) => linkScale(d.commits) * 2)
+                    .attr("stroke", "#ff7f0e")
+                    .attr("stroke-opacity", 1);
+
+                updateSidebar(d);
+            }
+
+            function updateSidebar(d) {
+                const nodeInfo = d3.select("#nodeInfo");
+                nodeInfo.html(`
+                <h4>${d.label || d.id}</h4>
+                <p><strong>Type:</strong> ${d.group === 1 ? "Developer" : "Repository"}</p>
+                <p><strong>ID:</strong> ${d.id}</p>
+                ${d.group === 1 ? `<p><strong>Repos contributed to:</strong> ${d.repos}</p>` : ""}
+                ${d.info ? `<p><strong>Info:</strong> ${d.info}</p>` : ""}
+            `);
+            }
+
+            async function updateGraphPeriodically() {
+                const newData = await fetchGraphData();
+                if (newData) {
+                    updateGraph(newData);
+                }
+            }
+
+            async function setInitialGraph() {
+                const newData = await fetchGraphData();
+                if (newData) {
+                    updateGraph(newData);
+                }
+            }
+
+            // Update every 5 minutes (300000 milliseconds)
+            // setInterval(updateGraphPeriodically, 300000);
+
+            // Reset button functionality
+            d3.select("#resetButton").on("click", async function () {
+                const newData = await fetchGraphData();
+                if (newData) {
+                    newData.nodes.forEach((d) => {
+                        d.fx = null;
+                        d.fy = null;
+                    });
+                    updateGraph(newData);
+                    // Reset zoom
+                    svg.transition()
+                        .duration(750)
+                        .call(zoom.transform, d3.zoomIdentity);
+                }
+            });
+
+            // Commit slider functionality
+            d3.select("#commitSlider").on("input", function () {
+                const minCommits = +this.value;
+                d3.select("#commitValue").text(
+                    `Minimum commits: ${minCommits}`,
+                );
+                updateVisibility();
+            });
+
+            // Repo slider functionality
+            d3.select("#repoSlider").on("input", function () {
+                const minRepos = +this.value;
+                d3.select("#repoValue").text(`Minimum repos: ${minRepos}`);
+                updateVisibility();
+            });
+
+            // Initial data fetch and graph creation
+            // TODO - cleanup the
+            // updateGraphPeriodically();
+            setInitialGraph();
+        </script>
+    </body>
+</html>
