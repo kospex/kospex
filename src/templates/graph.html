@@ -101,6 +101,15 @@
                 .attr("height", height);
 
             const g = svg.append("g");
+            <!-- Pilot - remove orange line on click outside-->
+            // Add this after your SVG creation
+            svg.on("click", function (event) {
+                if (event.target === this) {
+                    // Reset styles here
+                    link.style("stroke", "#999").style("stroke-opacity", 0.6);
+                    node.style("stroke", null).style("stroke-width", null);
+                }
+            });
 
             let simulation = d3
                 .forceSimulation()
@@ -404,10 +413,22 @@
                     .attr("stroke-opacity", 0.6);
 
                 // Highlight links connected to the clicked node
-                link.filter((l) => l.source === d || l.target === d)
-                    .attr("stroke-width", (d) => linkScale(d.commits) * 2)
-                    .attr("stroke", "#ff7f0e")
-                    .attr("stroke-opacity", 1);
+                //link.filter((l) => l.source === d || l.target === d)
+                //    .attr("stroke-width", (d) => linkScale(d.commits) * 2)
+                //    .attr("stroke", "#ff7f0e")
+                //    .attr("stroke-opacity", 1);
+
+                // These lines do the highlighting of links when nodes are clicked on
+                link.style("stroke", (l) =>
+                    l.source === d || l.target === d ? "orange" : "#999",
+                ).style("stroke-opacity", (l) =>
+                    l.source === d || l.target === d ? 1 : 0.6,
+                );
+
+                node.style("stroke", (n) => (n === d ? "black" : null)).style(
+                    "stroke-width",
+                    (n) => (n === d ? 2 : null),
+                );
 
                 updateSidebar(d);
             }
