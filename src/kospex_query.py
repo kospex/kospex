@@ -910,6 +910,22 @@ class KospexQuery:
         kd.group_by("author","_repo_id")
         return kd.execute()
 
+    def get_repo_files_graph_info(self, repo_id):
+        """
+        Return a list of repos and developers for graphing
+        """
+
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.from_table(KospexSchema.TBL_COMMIT_FILES)
+        kd.select_as("DISTINCT(author_email)", "author")
+        kd.select("file_path")
+        kd.select_as("COUNT(*)", "commits")
+        kd.where("commits._repo_id", "=", repo_id)
+        kd.where_join(KospexSchema.TBL_COMMITS, "_repo_id", KospexSchema.TBL_COMMIT_FILES, "_repo_id")
+        kd.where_join(KospexSchema.TBL_COMMITS, "hash", KospexSchema.TBL_COMMIT_FILES, "hash")
+        kd.group_by("author","file_path")
+        return kd.execute()
 
 class KospexData:
     """ Data wrangling DSL like functions for Kospex """

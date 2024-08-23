@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """ This is the local development web server to view the Kospex database. """
+from os.path import basename
 import sys
 from flask import Flask, render_template, request, jsonify
 from kospex_query import KospexQuery
@@ -258,9 +259,16 @@ def graph(org_key):
     Metadata about the kospex DB.
     """
     author_email = request.args.get('author_email')
+    repo_id = request.args.get('repo_id')
 
-    if not org_key:
+
+    if repo_id:
+        org_key = f"?repo_id={repo_id}"
+    elif author_email:
         org_key = f"?author_email={author_email}"
+
+    #if not org_key:
+    #    org_key = f"?author_email={author_email}"
 
     return render_template('graph.html',org_key=org_key)
 
@@ -274,9 +282,14 @@ def org_graph(org_key):
     """
     ### MVP
 
+    repo_id = request.args.get('repo_id')
+    print(f"org_key: {org_key} repo_id: {repo_id}")
+
     org_info = []
     if org_key:
         org_info = KospexQuery().get_graph_info(org_key=org_key)
+    elif repo_id:
+        org_info = KospexQuery().get_repo_files_graph_info(repo_id=repo_id)
     else:
         org_info = KospexQuery().get_graph_info(author_email=request.args.get('author_email'))
 
@@ -284,8 +297,10 @@ def org_graph(org_key):
     #print(org_info)
     dev_lookup = {}
     repo_lookup = {}
+    file_lookup = {}
     links = []
     nodes = []
+
     for element in org_info:
 
         if element['author'] not in dev_lookup:
@@ -297,13 +312,26 @@ def org_graph(org_key):
         else:
             dev_lookup[element['author']]['repos'] += 1
 
-        if element['_repo_id'] not in repo_lookup:
+
+        if repo_id:
+            # We're handling files not repos
+            if element['file_path'] not in file_lookup:
+                file_lookup[element['file_path']] = { "id": element['file_path'],
+                                                "group": 2,
+                                                "label": basename(element['file_path']),
+                                                "info": element['file_path'] }
+
+        elif element['_repo_id'] not in repo_lookup:
             repo_lookup[element['_repo_id']] = { "id": element['_repo_id'],
                                                 "group": 2,
                                                 "info": element['_repo_id'] }
 
+        link_key = "_repo_id"
+        if repo_id:
+            link_key = "file_path"
+
         links.append({"source": element['author'],
-                      "target": element['_repo_id'],
+                      "target": element[link_key],
                       "commits": element['commits']})
 
     for element in dev_lookup:
@@ -312,11 +340,13 @@ def org_graph(org_key):
     for element in repo_lookup:
         nodes.append(repo_lookup[element])
 
+    for element in file_lookup:
+        nodes.append(file_lookup[element])
+
     data = {
             "nodes": [
                 { "id": "Dev1", "group": 1, "info": "Developer 1 info" },
                 { "id": "Dev2", "group": 1, "info": "Developer 2 info" },
-                { "id": "Dev3", "group": 1, "info": "Developer 3 info" },
                 { "id": "Repo1", "group": 2, "info": "Repository 1 info" },
                 { "id": "Repo2", "group": 2, "info": "Repository 2 info" },
                 { "id": "Repo3", "group": 2, "info": "Repository 3 info" }
@@ -333,9 +363,7 @@ def org_graph(org_key):
 
     data["nodes"] = nodes
     data["links"] = links
-    #print(links)
-    #print(jsonify(data))
-    #return jsonify(data)
+
     return data
 
 def kweb():

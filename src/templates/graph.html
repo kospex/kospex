@@ -36,14 +36,30 @@
                 border-radius: 5px;
                 cursor: pointer;
             }
+            .slider-container {
+                display: flex;
+                flex-direction: column;
+                margin-bottom: 20px;
+            }
+            .button-container {
+                display: flex;
+                justify-content: center;
+                margin-top: 10px;
+            }
+            .slider-button {
+                width: 30px;
+                height: 30px;
+                font-size: 18px;
+                margin: 0 5px;
+                cursor: pointer;
+            }
             .slider {
                 width: 100%;
-                margin-bottom: 10px;
+                margin: 10px 0;
             }
             .sliderValue {
-                display: block;
-                margin-top: 5px;
-                margin-bottom: 15px;
+                text-align: center;
+                margin-bottom: 5px;
             }
             hr {
                 width: 100%;
@@ -56,27 +72,41 @@
     <body>
         <div id="sidebar">
             <h3>Filters</h3>
-            <label for="commitSlider">Commit Filter:</label>
-            <input
-                type="range"
-                id="commitSlider"
-                class="slider"
-                min="0"
-                max="100"
-                value="0"
-            />
-            <span id="commitValue" class="sliderValue">Minimum commits: 0</span>
+            <div class="slider-container">
+                <label for="commitSlider">Commit Filter:</label>
+                <input
+                    type="range"
+                    id="commitSlider"
+                    class="slider"
+                    min="0"
+                    max="100"
+                    value="0"
+                />
+                <span id="commitValue" class="sliderValue"
+                    >Minimum commits: 0</span
+                >
+                <div class="button-container">
+                    <button class="slider-button" id="commitMinus">-</button>
+                    <button class="slider-button" id="commitPlus">+</button>
+                </div>
+            </div>
 
-            <label for="repoSlider">Repository Filter:</label>
-            <input
-                type="range"
-                id="repoSlider"
-                class="slider"
-                min="0"
-                max="10"
-                value="0"
-            />
-            <span id="repoValue" class="sliderValue">Minimum repos: 0</span>
+            <div class="slider-container">
+                <label for="repoSlider">Repository Filter:</label>
+                <input
+                    type="range"
+                    id="repoSlider"
+                    class="slider"
+                    min="0"
+                    max="10"
+                    value="0"
+                />
+                <span id="repoValue" class="sliderValue">Minimum repos: 0</span>
+                <div class="button-container">
+                    <button class="slider-button" id="repoMinus">-</button>
+                    <button class="slider-button" id="repoPlus">+</button>
+                </div>
+            </div>
             <hr />
             <h3>Node Information</h3>
             <div id="nodeInfo">
@@ -492,6 +522,39 @@
                 d3.select("#repoValue").text(`Minimum repos: ${minRepos}`);
                 updateVisibility();
             });
+
+            function updateSlider(sliderId, increment) {
+                const slider = document.getElementById(sliderId);
+                let newValue = parseInt(slider.value) + increment;
+                newValue = Math.max(
+                    parseInt(slider.min),
+                    Math.min(parseInt(slider.max), newValue),
+                );
+                slider.value = newValue;
+
+                // Trigger the input event to update the graph
+                const event = new Event("input", { bubbles: true });
+                slider.dispatchEvent(event);
+            }
+
+            document
+                .getElementById("commitMinus")
+                .addEventListener("click", () =>
+                    updateSlider("commitSlider", -1),
+                );
+            document
+                .getElementById("commitPlus")
+                .addEventListener("click", () =>
+                    updateSlider("commitSlider", 1),
+                );
+            document
+                .getElementById("repoMinus")
+                .addEventListener("click", () =>
+                    updateSlider("repoSlider", -1),
+                );
+            document
+                .getElementById("repoPlus")
+                .addEventListener("click", () => updateSlider("repoSlider", 1));
 
             // Initial data fetch and graph creation
             // TODO - cleanup the
