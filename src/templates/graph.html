@@ -5,26 +5,55 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Developer-Repository Network</title>
         <script src="https://d3js.org/d3.v7.min.js"></script>
+        <!-- Add Bootstrap CSS -->
+        <link
+            href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+            rel="stylesheet"
+        />
         <style>
             body {
                 font-family: Arial, sans-serif;
                 margin: 0;
                 padding: 0;
                 display: flex;
+                flex-direction: column;
+                height: 100vh;
             }
+
+            .content-wrapper {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+            }
+
             #sidebar {
                 width: 250px;
-                height: 100vh;
+                min-width: 100px;
+                max-width: 50%;
                 background-color: #f0f0f0;
                 padding: 20px;
                 box-sizing: border-box;
                 overflow-y: auto;
                 display: flex;
                 flex-direction: column;
+                resize: horizontal;
+                position: relative;
             }
+
+            #sidebar::after {
+                content: "";
+                position: absolute;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                width: 5px;
+                background: #ccc;
+                cursor: ew-resize;
+            }
+
             #graph {
                 flex-grow: 1;
-                height: 100vh;
+                position: relative;
             }
             #resetButton {
                 position: absolute;
@@ -70,51 +99,61 @@
         </style>
     </head>
     <body>
-        <div id="sidebar">
-            <h3>Filters</h3>
-            <div class="slider-container">
-                <label for="commitSlider">Commit Filter:</label>
-                <input
-                    type="range"
-                    id="commitSlider"
-                    class="slider"
-                    min="0"
-                    max="100"
-                    value="0"
-                />
-                <span id="commitValue" class="sliderValue"
-                    >Minimum commits: 0</span
-                >
-                <div class="button-container">
-                    <button class="slider-button" id="commitMinus">-</button>
-                    <button class="slider-button" id="commitPlus">+</button>
+        <!-- Bootstrap header -->
+        {% include 'header.html' %}
+        <!-- Sidebar and Graph -->
+        <div class="content-wrapper">
+            <div id="sidebar">
+                <h3>Filters</h3>
+                <div class="slider-container">
+                    <label for="commitSlider">Commit Filter:</label>
+                    <input
+                        type="range"
+                        id="commitSlider"
+                        class="slider"
+                        min="0"
+                        max="100"
+                        value="0"
+                    />
+                    <span id="commitValue" class="sliderValue"
+                        >Minimum commits: 0</span
+                    >
+                    <div class="button-container">
+                        <button class="slider-button" id="commitMinus">
+                            -
+                        </button>
+                        <button class="slider-button" id="commitPlus">+</button>
+                    </div>
                 </div>
-            </div>
 
-            <div class="slider-container">
-                <label for="repoSlider">Repository Filter:</label>
-                <input
-                    type="range"
-                    id="repoSlider"
-                    class="slider"
-                    min="0"
-                    max="10"
-                    value="0"
-                />
-                <span id="repoValue" class="sliderValue">Minimum repos: 0</span>
-                <div class="button-container">
-                    <button class="slider-button" id="repoMinus">-</button>
-                    <button class="slider-button" id="repoPlus">+</button>
+                <div class="slider-container">
+                    <label for="repoSlider">Repository Filter:</label>
+                    <input
+                        type="range"
+                        id="repoSlider"
+                        class="slider"
+                        min="0"
+                        max="10"
+                        value="0"
+                    />
+                    <span id="repoValue" class="sliderValue"
+                        >Minimum repos: 0</span
+                    >
+                    <div class="button-container">
+                        <button class="slider-button" id="repoMinus">-</button>
+                        <button class="slider-button" id="repoPlus">+</button>
+                    </div>
+                </div>
+                <hr />
+                <h3>Node Information</h3>
+                <div id="nodeInfo">
+                    <p>Click on a node to see its information.</p>
                 </div>
             </div>
-            <hr />
-            <h3>Node Information</h3>
-            <div id="nodeInfo">
-                <p>Click on a node to see its information.</p>
+            <div id="graph">
+                <button id="resetButton">Reset Positions</button>
             </div>
         </div>
-        <div id="graph"></div>
-        <button id="resetButton">Reset Positions</button>
         <script>
             let data = {
                 nodes: [],
@@ -122,6 +161,7 @@
             };
 
             const width = window.innerWidth - 250; // Subtract sidebar width
+            //const width = window.innerWidth - sidebar.offsetWidth; // Use sidebar's actual width
             const height = window.innerHeight;
 
             const svg = d3
@@ -560,6 +600,47 @@
             // TODO - cleanup the
             // updateGraphPeriodically();
             setInitialGraph();
+
+            // Code for sidebar resizing
+            const sidebar = document.getElementById("sidebar");
+            const graph = document.getElementById("graph");
+            let isResizing = false;
+            let lastDownX = 0;
+            sidebar.addEventListener("mousedown", (e) => {
+                if (e.offsetX > sidebar.offsetWidth - 10) {
+                    isResizing = true;
+                    lastDownX = e.clientX;
+                }
+            });
+
+            document.addEventListener("mousemove", (e) => {
+                if (!isResizing) return;
+
+                const width = sidebar.offsetWidth + (e.clientX - lastDownX);
+                const minWidth = 100;
+                const maxWidth = window.innerWidth * 0.5; // 50% of window width
+
+                if (width > minWidth && width < maxWidth) {
+                    sidebar.style.width = `${width}px`;
+                    graph.style.width = `${window.innerWidth - width}px`;
+                }
+
+                lastDownX = e.clientX;
+            });
+
+            document.addEventListener("mouseup", () => {
+                isResizing = false;
+            });
+
+            // Update graph width when window is resized
+            window.addEventListener("resize", () => {
+                const sidebarWidth = sidebar.offsetWidth;
+                graph.style.width = `${window.innerWidth - sidebarWidth}px`;
+            });
         </script>
+        <!-- Add Bootstrap JS and its dependencies -->
+        <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     </body>
 </html>

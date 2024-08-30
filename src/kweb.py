@@ -259,6 +259,10 @@ def graph(org_key):
     Metadata about the kospex DB.
     """
     author_email = request.args.get('author_email')
+    if author_email:
+        # This is a weird old skool http thing
+        # where spaces were represented by + signs
+        author_email = author_email.replace(" ","+")
     repo_id = request.args.get('repo_id')
 
 
@@ -291,7 +295,9 @@ def org_graph(org_key):
     elif repo_id:
         org_info = KospexQuery().get_repo_files_graph_info(repo_id=repo_id)
     else:
-        org_info = KospexQuery().get_graph_info(author_email=request.args.get('author_email'))
+        author_email = request.args.get('author_email')
+        author_email = author_email.replace(" ","+")
+        org_info = KospexQuery().get_graph_info(author_email=author_email)
 
     #org_info = KospexQuery().get_graph_info(org_key=org_key)
     #print(org_info)
