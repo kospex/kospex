@@ -79,6 +79,7 @@ def repos():
     repo_id = request.args.get('repo_id')
     kospex = KospexQuery()
     org_key = request.args.get('org_key')
+    server = request.args.get('server')
     page = {}
     # TODO - validate params
     techs = None
@@ -86,6 +87,8 @@ def repos():
     ranges = None
 
     page['repo_id'] = repo_id
+
+    data = []
 
     if org_key:
         parts = org_key.split("~")
@@ -95,8 +98,11 @@ def repos():
             techs = kospex.tech_landscape(org_key=org_key)
             ranges = kospex.commit_ranges2(org_key=org_key)
             print(kospex.commit_ranges2(repo_id=repo_id,org_key=org_key))
+    elif server:
+        page['git_server'] = server
 
-    data = kospex.repos(org_key=org_key)
+    # The repos method handles null values for parameters
+    data = kospex.repos(org_key=org_key,server=server)
     active_devs = kospex.active_devs()
     for row in data:
         row['active_devs'] = active_devs.get(row['_repo_id'],0)

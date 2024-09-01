@@ -13,7 +13,7 @@
 <div class="container mt-5">
 
     <h1 class="mb-4">{{ repo_id }}</h1>
-    
+
     <h2> Commit summary </h2>
 
     <a href="/commits/?repo_id={{ repo_id }}">View commits for {{ repo_id }}</a>
@@ -39,7 +39,9 @@
     </table>
 
     <br/>
-    View repo <a href="/hotspots/{{ repo_id }}">Hotspots</a>, <a href="/landscape/?repo_id={{ repo_id }}">Tech Landscape</a>
+    View repo <a href="/hotspots/{{ repo_id }}">Hotspots</a>,
+    <a href="/landscape/?repo_id={{ repo_id }}">Tech Landscape</a> or
+    <a href="/graph?repo_id={{ repo_id }}"> Explore the graph</a>
 
 </div>
 
