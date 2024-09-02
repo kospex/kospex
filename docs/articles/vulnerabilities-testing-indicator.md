@@ -33,15 +33,17 @@ By asking about the fix process we can understand the "why" a vulnerability migh
 
 ## The number of versions behind can be a useful indicator
 The more versions behind you are, I would argue, the more likely you are to have vulnerabilities and also trouble updating a library. I've used a site called deps.dev to agnostically check libraries for both vulnerabilities and versions behind. There's also quite a few developer tools which look at versions behind as a way of improving maintenance.
-There is [kospex](/kospex)kospex command to find the versions behind in a language package manager file.
+
+[Kospex](/kospex) has a feature to find the versions behind in a language package manager file.
 > kospex deps -file requirements.txt
+
+The output will show the last update date, versions behind, known vulnerabilities and the Git repo location if known.
 
 There is another indicator of "last change". Again, the thinking is the older the library the more likely for vulnerabilties or upgrade challenges. Not always accurate through, one Python date library is years old, but is still the current version, and from SCA tools i've used, both opensource and commercial, it's not vulnerable.
 The age of updates is almost a complete topic to itself. If something hasn't been updated in a year, is it feature complete and stable? or has it been abandoned?
 
 ## What's the "magic number" for reasonable versions behind?
-Apparently, it's on average 2.7 versions behind, according to Sonataype in their previous State of the Software Supply Chain, 2021.
-https://www.sonatype.com/resources/whitepapers/2021-state-of-the-software-supply-chain-report-2021
+Apparently, it's on average 2.7 versions behind, according to Sonataype in their [State of the Software Supply Chain](https://www.sonatype.com/resources/whitepapers/2021-state-of-the-software-supply-chain-report-2021), 2021.
 Basically, latest is not always best, as it might have breaking changes and too much older and their might be bugs or vulnerabilities you don't want.
 From conversations over the last 6 months, it seems like development managers and operations have said that keeping versions of anything N - 2 is a good target.
 
@@ -53,5 +55,7 @@ I think everyone should run an analysis process over their git repositories to l
 - Use SCA tooling to assist with automation of vulnerability detection
 
 Running a code analysis process is useful for understanding current state and possibly hotspots to focus on. Ideally, use this data as a "predictive maintenance" indicator.
-Get ready for some people and process stuff, and possibly budget conversations. Having to do remediate on a library bump can be days, weeks or even months of effort.
+
+Get ready for some people and process stuff, and possibly budget conversations. Having to do remediation by upgrading a library versions can take days, weeks or even months of effort.
+
 As mentioned earlier, finding is easy, fixing is harder, takes time and requires testing.
