@@ -1,7 +1,7 @@
 # kospex
 
 Kospex is a CLI which aims to _"look at the guts of your code"_ to help gain insights into your developers and technology landscape.
-It uses database structure from the excellent [Mergestat lite](https://github.com/mergestat/mergestat-lite) to model data from git repositories. 
+It uses database structure from the excellent [Mergestat lite](https://github.com/mergestat/mergestat-lite) to model data from git repositories.
 
 ## Getting started
 
@@ -31,16 +31,17 @@ Many reports or commands generate a description of active, aging, stale or unmai
 | Unmaintained  | >  365 days |
 
 There are several places where this description may be used:
- - On the last commit in a repo, to say it looks like it's "aging" 
+ - On the last commit in a repo, to say it looks like it's "aging"
  - On a last updated date of package manager file, where we'd expect them to be updated monthly to quarterly
- - On the release date of a package or libraries we're using. 
+ - On the release date of a package or libraries we're using.
 
 It's possibly that something labelled "unmaintained" is feature complete and doesn't require changes. However, generally there are any external dependencies, a code or library usually needs a change a couple of times a year.
 
 ## Thoughts and articles
 
-["What are orphaned repos?"](articles/orphaned-repos) take a look at some basics of knowledge loss and the challenges. 
+["What are orphaned repos?"](articles/orphaned-repos) take a look at some basics of knowledge loss and the challenges.
 
+["Are security vulnerabilities an indicator of development testing practices?"](articles/vulnerabilities-testing-indicator)
 
 ## What is a kospex?
 
