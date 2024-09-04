@@ -336,6 +336,7 @@ def org_graph(org_key):
         elif element['_repo_id'] not in repo_lookup:
             repo_lookup[element['_repo_id']] = { "id": element['_repo_id'],
                                                 "group": 2,
+                                                "label": element['_git_repo'],
                                                 "info": element['_repo_id'] }
 
         link_key = "_repo_id"

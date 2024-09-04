@@ -1,11 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bootstrap Web App</title>
-    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-</head>
+{% set title = "Repos" %}
+{% include '_bootstrap_html_head.html' %}
 <body>
 
 {% include 'header.html' %}
@@ -37,7 +33,7 @@
         <tbody>
             {% for row in data %}
             <tr>
-                <td><a href="/repo/{{ row['_repo_id'] }}">{{ row['_repo_id'] }}</a></td>
+                <td><a href="/repo/{{ row['_repo_id'] }}">{{ row['_git_repo'] }}</a></td>
                 <td class="dt-body-right">{{ row['authors'] }}</td>
                 <td class="dt-body-right">{{ row['committers'] }}</td>
                 <td class="dt-body-right">{{ row['commits'] }}</td>
@@ -50,7 +46,7 @@
 
     {% if ranges %}
     <br/>
-    <h1 class="mb-4">Maintenance Status</h1>
+    <h1 class="mb-4">Repo Maintenance Status</h1>
     <table class="table" id="status_table">
         <thead>
             <tr>
