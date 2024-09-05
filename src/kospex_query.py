@@ -301,7 +301,7 @@ class KospexQuery:
 
         return repos
 
-    def developers(self, org_key=None,repo_id=None):
+    def developers(self, org_key=None,repo_id=None,server=None):
         """
         Return a list of developers (based on author_email) with meta data
             author_email AS author
@@ -318,11 +318,17 @@ class KospexQuery:
         kd.select_as("MAX(committer_when)", "last_commit")
         kd.group_by("author")
 
+        # TODO - Think if we want to sanity check
+        # There should only be one of repo_id, org_key or server used
+
         if repo_id:
             kd.where("_repo_id", "=", repo_id)
 
         if org_key:
             kd.where_org_key(org_key)
+
+        if server:
+            kd.where("_git_server", "=", server)
 
         results =  kd.execute()
         for i in results:

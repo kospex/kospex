@@ -107,7 +107,7 @@ def repos():
     for row in data:
         row['active_devs'] = active_devs.get(row['_repo_id'],0)
 
-    developers = kospex.developers(org_key=org_key)
+    developers = kospex.developers(org_key=org_key,server=server)
     developer_status = KospexUtils.repo_stats(developers,"last_commit")
 
     return render_template('repos.html',data=data,
