@@ -107,7 +107,11 @@ def repos():
     for row in data:
         row['active_devs'] = active_devs.get(row['_repo_id'],0)
 
-    return render_template('repos.html',data=data, page=page, ranges=ranges, techs=techs)
+    developers = kospex.developers(org_key=org_key)
+    developer_status = KospexUtils.repo_stats(developers,"last_commit")
+
+    return render_template('repos.html',data=data,
+        page=page, ranges=ranges, techs=techs, developer_status=developer_status)
 
 @app.route('/servers/')
 def servers():
@@ -171,6 +175,9 @@ def repo(repo_id):
     summary=kospex.author_summary(repo_id)
     techs = kospex.tech_landscape(repo_id=repo_id)
 
+    developers = kospex.developers(repo_id=repo_id)
+    developer_status = KospexUtils.repo_stats(developers,"last_commit")
+
     # TODO - make generic function for radar graph (in developer view too)
     labels = []
     datapoints = []
@@ -187,6 +194,7 @@ def repo(repo_id):
                            ranges=commit_ranges,
                            email_domains=email_domains,
                            landscape = techs,
+                           developer_status=developer_status,
                            labels=labels,datapoints=datapoints,
                            summary=summary)
 

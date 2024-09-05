@@ -301,6 +301,37 @@ class KospexQuery:
 
         return repos
 
+    def developers(self, org_key=None,repo_id=None):
+        """
+        Return a list of developers (based on author_email) with meta data
+            author_email AS author
+            first_commit
+            last_commit
+            days_active
+            status
+        """
+
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.select_as("DISTINCT(author_email)", "author")
+        kd.select_as("MIN(committer_when)", "first_commit")
+        kd.select_as("MAX(committer_when)", "last_commit")
+        kd.group_by("author")
+
+        if repo_id:
+            kd.where("_repo_id", "=", repo_id)
+
+        if org_key:
+            kd.where_org_key(org_key)
+
+        results =  kd.execute()
+        for i in results:
+            i["status"] = KospexUtils.development_status(i['last_commit'])
+            i['tenure'] = KospexUtils.days_between_datetimes(i['first_commit'],
+                i['last_commit'],min_one=True)
+
+        return results
+
     def active_developer_set(self, days=90):
         """ Look for distinct developers in the last 'days' """
         from_date = KospexUtils.days_ago_iso_date(days)
@@ -401,12 +432,15 @@ class KospexQuery:
             kd.where("_repo_id", "=", repo_id)
 
         if org_key:
-            parts = org_key.split('~')
-            if len(parts) != 2:
-                print("org_key must be of the form <server>~<owner>")
-                return None
-            kd.where("_git_server", "=", parts[0])
-            kd.where("_git_owner", "=", parts[1])
+            kd.where_org_key(org_key)
+
+        # if org_key:
+        #     parts = org_key.split('~')
+        #     if len(parts) != 2:
+        #         print("org_key must be of the form <server>~<owner>")
+        #         return None
+        #     kd.where("_git_server", "=", parts[0])
+        #     kd.where("_git_owner", "=", parts[1])
 
         results =  kd.execute()
 
@@ -971,6 +1005,18 @@ class KospexData:
 
         self.where_clause.append(f"{column} {operator} ?")
         self.params.append(value)
+
+    def where_org_key(self,org_key):
+        """ Use parse the org_key and set the required where fields
+            _git_server  and _git_owner"""
+
+        if "~" in org_key:
+            parts = org_key.split('~')
+            if len(parts) != 2:
+                raise ValueError("org_key must be of the form <server>~<owner>")
+            self.where("_git_server", "=", parts[0])
+            self.where("_git_owner", "=", parts[1])
+
 
     def from_table(self, *tables):
         """ Add a table to the query """

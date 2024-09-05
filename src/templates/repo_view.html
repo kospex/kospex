@@ -66,6 +66,29 @@
         </tbody>
     </table>
 
+    {% if developer_status %}
+    <br/>
+    <h2 class="mb-4">Developer Status</h2>
+    <table class="table" id="developer_status_table">
+        <thead>
+            <tr>
+                <th> Active </th>
+                <th> Aging </th>
+                <th> Stale </th>
+                <th> Unmaintained</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td> {{ developer_status.get('Active') }} </a></td>
+                <td> {{ developer_status.get('Aging') }} </a></td>
+                <td> {{ developer_status.get('Stale') }} </a></td>
+                <td> {{ developer_status.get('Unmaintained') }} </a></td>
+            </tr>
+        </tbody>
+    </table>
+    {% endif %}
+
     {% import  '_radar_macro.html' as radar %}
 
     {% if landscape %}

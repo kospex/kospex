@@ -1,95 +1,88 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bootstrap Web App</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    {% set title = "Tech. Landscape" %} {% include '_bootstrap_html_head.html'%}
+    <body>
+        {% include 'header.html' %}
 
-</head>
-<body>
+        <div class="container mt-5">
+            <h1 class="mb-4">Observed Technology Landscape</h1>
+            <canvas id="barChart"></canvas>
+        </div>
 
-{% include 'header.html' %}
-
-<div class="container mt-5">
-    <h1 class="mb-4">Observed Technology Landscape</h1>
-    <canvas id="barChart"></canvas>
-</div>
-
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-    const ctx = document.getElementById('barChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: {{ data|map(attribute='Language')|list|tojson }},
-            datasets: [{
-                label: '# of Occurrences',
-                data: {{ data|map(attribute='count')|list|tojson }},
-                backgroundColor: [
-                    'rgba(255, 99, 132, 0.2)',
-                    'rgba(54, 162, 235, 0.2)',
-                    'rgba(255, 206, 86, 0.2)',
-                    // ... add more colors if you have more categories
-                ],
-                borderColor: [
-                    'rgba(255, 99, 132, 1)',
-                    'rgba(54, 162, 235, 1)',
-                    'rgba(255, 206, 86, 1)',
-                    // ... add more border colors if you have more categories
-                ],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            scales: {
-                y: {
-                    beginAtZero: true
+        <!-- Chart.js -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            const ctx = document.getElementById('barChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: {{ data|map(attribute='Language')|list|tojson }},
+                    datasets: [{
+                        label: '# of Occurrences',
+                        data: {{ data|map(attribute='count')|list|tojson }},
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.2)',
+                            'rgba(54, 162, 235, 0.2)',
+                            'rgba(255, 206, 86, 0.2)',
+                            // ... add more colors if you have more categories
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 206, 86, 1)',
+                            // ... add more border colors if you have more categories
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
                 }
-            }
-        }
-    });
-</script>
+            });
+        </script>
 
-<div class="container mt-5">
-    <div>
-        <a href="/landscape/?download=true">Download</a>
-        <br/>
-    </div>
-    <table class="table table-striped compact" id="myTable">
-        <thead>
-            <tr>
-                <th>Language</th>
-                <th class="dt-body-right"># Files</th>
-                <th class="dt-body-right"># Repos</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in data %}
-            <tr>
-                <td>{{ row['Language'] }}</td>
-                <td class="dt-body-right">{{ row['count'] }}</td>
-                <td class="dt-body-right"><a href="/tech/{{ row['Language'] }}">{{ row['repos'] }}</a></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+        <div class="container mt-5">
+            <div>
+                <a href="/landscape/?download=true">Download</a>
+                <br />
+            </div>
+            <table class="table table-striped compact" id="myTable">
+                <thead>
+                    <tr>
+                        <th>Language</th>
+                        <th class="dt-body-right"># Files</th>
+                        <th class="dt-body-right"># Repos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data %}
+                    <tr>
+                        <td>{{ row['Language'] }}</td>
+                        <td class="dt-body-right">{{ row['count'] }}</td>
+                        <td class="dt-body-right">
+                            <a href="/tech/{{ row['Language'] }}"
+                                >{{ row['repos'] }}</a
+                            >
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
 
-    <br/>
-</div>
+            <br />
+        </div>
 
+        {% include '_footer_scripts.html' %} {% include
+        '_datatable_scripts.html' %}
 
-
-{% include '_footer_scripts.html' %}
-{% include '_datatable_scripts.html' %}
-
-<script>
-    $(document).ready( function () {
-        $('#myTable').DataTable();
-    } );
-</script>
-
-</body>
+        <script>
+            $(document).ready(function () {
+                $("#myTable").DataTable();
+            });
+        </script>
+    </body>
 </html>

@@ -20,8 +20,8 @@
                 <thead>
                     <tr>
                         <th>Server</th>
-                        <th>Graph</th>
                         <th>Org</th>
+                        <th>Graph</th>
                         <th>Repos</th>
                         <th># Authors</th>
                         <th># Commits</th>
@@ -33,13 +33,14 @@
                     {% for row in data %}
                     <tr>
                         <td>{{ row['_git_server'] }}</td>
-                        <td>
-                            <a href="/graph/{{ row['org_key']}}">Explore</a>
-                        </td>
+
                         <td>
                             <a href="/repos/?org_key={{ row['org_key'] }}"
                                 >{{ row['_git_owner'] }}</a
                             >
+                        </td>
+                        <td>
+                            <a href="/graph/{{ row['org_key']}}">Explore</a>
                         </td>
                         <td class="dt-body-right">{{row['repos']}}</td>
                         <td class="dt-body-right">{{ row['authors'] }}</td>
