@@ -14,6 +14,7 @@ TBL_DEPENDENCY_DATA = "dependency_data"
 TBL_URL_CACHE = "url_cache"
 TBL_KRUNNER = "krunner"
 TBL_OBSERVATIONS = "observations"
+TBL_MAILMAP = "mailmaps"
 TBL_REPOS = "repos"
 # Experimental tables
 TBL_KOSPEX_META = "kospex_meta"
@@ -25,7 +26,7 @@ KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_M
 
 # Table data structure inspired by Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
-SQL_CREATE_COMMITS = f'''CREATE TABLE [{TBL_COMMITS}] (
+SQL_CREATE_COMMITS = f'''CREATE TABLE IF NOT EXISTS [{TBL_COMMITS}] (
     [hash] TEXT,
     [author_email] TEXT,
     [author_name] TEXT,
@@ -46,14 +47,14 @@ SQL_CREATE_COMMITS = f'''CREATE TABLE [{TBL_COMMITS}] (
 
 # Table inspired by Mergestat sync 'git-commit-stats'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commit-stats/schema.sql
-SQL_CREATE_COMMIT_FILES = f'''CREATE TABLE [{TBL_COMMIT_FILES}] (
+SQL_CREATE_COMMIT_FILES = f'''CREATE TABLE IF NOT EXISTS [{TBL_COMMIT_FILES}] (
     [hash] TEXT,
     [file_path] TEXT,
     [_ext] TEXT,
     [additions] INTEGER,
     [deletions] INTEGER,
     [committer_when] TEXT,
-    [path_change] TEXT,     -- Raw git change path 
+    [path_change] TEXT,     -- Raw git change path
     [_git_server] TEXT,
     [_git_owner] TEXT,
     [_git_repo] TEXT,
@@ -75,7 +76,7 @@ SQL_CREATE_FILE_METADATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_FILE_METADATA}] 
     [Complexity] INTEGER,   -- Cyclomatic complexity
     [Bytes] INTEGER,        -- Number of bytes in the file
     [hash] TEXT,            -- hash of the current commit of the repo
-    [tech_type] TEXT,       -- type of technology (e.g. 'python', or 'maven'). 
+    [tech_type] TEXT,       -- type of technology (e.g. 'python', or 'maven').
     [latest] INTEGER,       -- 1 if this is the latest version of the file, 0 otherwise
     [authors] INTEGER,      -- number of authors who've modified this file
     [commits] INTEGER,      -- number of commits that have been made to this file
@@ -105,7 +106,7 @@ SQL_CREATE_REPOS = f'''CREATE TABLE IF NOT EXISTS [{TBL_REPOS}] (
     )'''
 
 # This table will capture detail some hotspot indicators about a repo
-SQL_CREATE_REPO_HOTSPOTS = f'''CREATE TABLE [{TBL_REPO_HOTSPOTS}] (
+SQL_CREATE_REPO_HOTSPOTS = f'''CREATE TABLE IF NOT EXISTS [{TBL_REPO_HOTSPOTS}] (
         [commits] INTEGER,  -- number of commits
         [authors] INTEGER,  -- number of authors who've committed
         [files] INTEGER,    -- number of distinct files seen
@@ -126,7 +127,7 @@ SQL_CREATE_REPO_HOTSPOTS = f'''CREATE TABLE [{TBL_REPO_HOTSPOTS}] (
 # A new ULOC parameter was added, which is not currently in our schema
 
 # We're going to capture additional metadata about the commits
-SQL_CREATE_COMMIT_METADATA = f'''CREATE TABLE [{TBL_COMMIT_METADATA}] (
+SQL_CREATE_COMMIT_METADATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_COMMIT_METADATA}] (
     [hash] TEXT,        -- hash of the commit
     [name] TEXT,        -- name of the metadata (e.g. 'directory_size')
     [value] TEXT,       -- data point (e.g. '12345' or "High")
@@ -146,7 +147,7 @@ SQL_CREATE_DEPENDENCY_DATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEPENDENCY_DAT
     [package_name] TEXT,            -- name of the package
     [package_version] TEXT,         -- version of the package
     [package_use] TEXT,             -- free form, most likely direct, development, testing
-    [published_at] TEXT,            -- date the package was published 
+    [published_at] TEXT,            -- date the package was published
     [advisories] INTEGER,           -- # of security security advisories
     [versions_behind] INTEGER,      -- number of versions behind
     [source_repo] TEXT,             -- URL of the source repo for the package
@@ -178,20 +179,6 @@ SQL_CREATE_KRUNNER = f'''CREATE TABLE  IF NOT EXISTS [{TBL_KRUNNER}] (
     PRIMARY KEY(_repo_id,hash,file_path)
     )'''
 
-
-#SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
-#    [url] TEXT, -- URL to cache
-#    content TEXT,
-#    timestamp REAL,
-#    [hash] TEXT,                    -- hash of the commit
-#    [created_at] DEFAULT CURRENT_TIMESTAMP,
-#    [_git_server] TEXT,
-#    [_git_owner] TEXT,
-#    [_git_repo] TEXT,
-#    [_repo_id] TEXT,
-#    PRIMARY KEY(_repo_id,hash,file_path,package_type,package_name,package_version)
-#    )'''
-
 SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
     [url] TEXT, -- URL to cache
     [content] TEXT,
@@ -220,11 +207,11 @@ SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
     [data] TEXT,             -- cleaned data / output from the command
     [raw] TEXT,              -- Raw data / output from the command
     [source] TEXT,           -- what tool/function was used to get the metadata
-    [observation_key] TEXT,  -- unique identified for the observation e.g. SEMGREP, GREP_TODO 
-    [observation_type] TEXT, -- should be one of the REPO, FILE 
+    [observation_key] TEXT,  -- unique identified for the observation e.g. SEMGREP, GREP_TODO
+    [observation_type] TEXT, -- should be one of the REPO, FILE
     [line_number] INTEGER,   -- line number in the file (optional)
     [command] TEXT,          -- command ran to get the data (optional)
-    [latest] INTEGER,        -- 1 if this is the latest version of the file, 0 otherwise
+    [latest] INTEGER,        -- 1 if this is the latest version of the observation, 0 otherwise
     [created_at] DEFAULT CURRENT_TIMESTAMP,
     [_git_server] TEXT,
     [_git_owner] TEXT,
@@ -233,9 +220,10 @@ SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
     PRIMARY KEY(_repo_id,hash,file_path,observation_key)
     )'''
 
+# TODO - This table has not been set up properly or created yet
 SQL_CREATE_KOSPEX_META = f'''CREATE TABLE  IF NOT EXISTS [{TBL_KOSPEX_META}] (
     [format] TEXT,           -- format type e.g. JSON, JSONL, CSV, LINE
-    [latest] INTEGER,        -- 1 if this is the latest version of the file, 0 otherwise
+    [latest] INTEGER,        -- 1 if this is the latest version of the metadata, 0 otherwise
     [created_at] DEFAULT CURRENT_TIMESTAMP,
     [_git_server] TEXT,
     [_git_owner] TEXT,
@@ -244,6 +232,7 @@ SQL_CREATE_KOSPEX_META = f'''CREATE TABLE  IF NOT EXISTS [{TBL_KOSPEX_META}] (
     PRIMARY KEY(_repo_id,hash,file_path,observation_key)
     )'''
 
+# Used for querying based on groups
 SQL_CREATE_GROUPS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_GROUPS}] (
     [group_name] TEXT,  -- Name of the group
     [git_url] TEXT,     -- repo_url (if applicable) optional (either repo_url or email)
@@ -253,6 +242,20 @@ SQL_CREATE_GROUPS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_GROUPS}] (
     [created_at] DEFAULT CURRENT_TIMESTAMP,
     [_repo_id] TEXT,    -- normalised _repo_id from git_url
     PRIMARY KEY(group_name,_repo_id,email)
+    )'''
+
+SQL_CREATE_MAILMAP = f'''CREATE TABLE  IF NOT EXISTS [{TBL_MAILMAP}] (
+    [file_path] TEXT,      -- file path in the repo (if applicable, can be repo level)
+    [proper_name] TEXT,    -- the "correct" name
+    [email] TEXT,
+    [committer_name] TEXT, -- Name we are correcting
+    [committer_email] TEXT,-- Email we are changing from to email
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [_repo_id] TEXT,       -- normalised _repo_id from git_url (optional)
+    PRIMARY KEY(_repo_id,email,committer_email)
     )'''
 
 # Functions for SQLite stuff
@@ -265,7 +268,7 @@ def dict_factory(cursor, row):
     return dict(zip(col_names, row))
 
 def connect_or_create_kospex_db():
-    """ Connect to the kospex DB or create it if it doesn't exist """ 
+    """ Connect to the kospex DB or create it if it doesn't exist """
     new_db = False
     db_path = KospexUtils.get_kospex_db_path()
 
@@ -274,12 +277,10 @@ def connect_or_create_kospex_db():
 
     kospex_db = Database(db_path)
 
-    if new_db:
-        print("Creating new kospex DB")
-        kospex_db.execute(SQL_CREATE_COMMITS)
-        kospex_db.execute(SQL_CREATE_COMMIT_FILES)
-        kospex_db.execute(SQL_CREATE_COMMIT_METADATA)
-        kospex_db.execute(SQL_CREATE_REPO_HOTSPOTS)
+    kospex_db.execute(SQL_CREATE_COMMITS)
+    kospex_db.execute(SQL_CREATE_COMMIT_FILES)
+    kospex_db.execute(SQL_CREATE_COMMIT_METADATA)
+    kospex_db.execute(SQL_CREATE_REPO_HOTSPOTS)
 
     # The following tables only are created if they don't exist
     kospex_db.execute(SQL_CREATE_FILE_METADATA)
