@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+    {% set title = "Summary" %} {% include '_bootstrap_html_head.html' %}
+    <style>
+        .graph {
+            width: 60%;
+            margin: 10px auto;
+            padding: 10px;
+            //border: 1px solid #ccc;
+            border-radius: 10px;
+        }
+        h2 {
+            text-align: left;
+        }
+        .circles {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            align-items: center; /* Vertically center the circles */
+        }
+        .circle-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end; /* Align circles to the bottom */
+            height: 170px; /* Set a fixed height for all containers */
+            width: 170px; /* Set a fixed width for all containers */
+        }
+        .circle {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            font-weight: bold;
+            color: black;
+            margin-bottom: 10px;
+        }
+        .label {
+            font-size: 14px;
+            text-align: center;
+        }
+        .active {
+            background-color: #4caf50;
+        }
+        .aging {
+            background-color: #ffc107;
+        }
+        .stale {
+            background-color: #ff9800;
+        }
+        .dormant {
+            background-color: #e0e0e0;
+            //background-color: #f44336;
+        }
+    </style>
+    <body>
+        {% include 'header.html' %}
+
+        <!-- Main content area -->
+
+        <div class="container">
+            <div class="row">
+                <div class="col">
+                    <!-- Start the summary circle graphs -->
+                    <div class="graph">
+                        <h2>Developers</h2>
+                        <div class="circles">
+                            <div class="circle-container">
+                                {% set active_pixels =
+                                data_size.get('Active','40') %}
+                                <div
+                                    class="circle active"
+                                    style="width: {{ active_pixels }}px; height: {{ active_pixels }}px;"
+                                >
+                                    {{ developers.get("Active","?") }} {{ yada
+                                    }}
+                                </div>
+                                <div class="label">
+                                    <strong>Active</strong> <br />
+                                    {{ developers.Active_percentage}} %
+                                </div>
+                            </div>
+                            <div class="circle-container">
+                                <div
+                                    class="circle aging"
+                                    style="width: {{ data_size.get('Aging','40') }}px; height: {{ data_size.get('Agile','40') }}px;"
+                                >
+                                    {{ developers.get("Aging","?") }}
+                                </div>
+                                <div class="label">
+                                    <strong>Aging</strong> <br />
+                                    {{ developers.Aging_percentage}} %
+                                </div>
+                            </div>
+                            <div class="circle-container">
+                                <div
+                                    class="circle stale"
+                                    style="width: {{ data_size.get('Stale','40') }}px; height: {{ data_size.get('Stale','40') }}px;"
+                                >
+                                    {{ developers.get("Stale","?") }}
+                                </div>
+                                <div class="label">
+                                    <strong>Stale</strong> <br />
+                                    {{ developers.Stale_percentage}} %
+                                </div>
+                            </div>
+                            <div class="circle-container">
+                                <div
+                                    class="circle dormant"
+                                    style="width: {{ data_size.get('Unmaintained','40') }}px; height: {{ data_size.get('Unmaintained','40') }}px;"
+                                >
+                                    {{ developers.get("Unmaintained","?") }}
+                                </div>
+                                <div class="label">
+                                    <strong>Dormant</strong> <br />{{
+                                    developers.Unmaintained_percentage}} %
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <br />
+                    <div class="graph">
+                        <h2>Repos</h2>
+                        <div class="circles">
+                            <div class="circle-container">
+                                <div
+                                    class="circle active"
+                                    style="width: {{ repo_sizes.get('Active','40') }}px; height: {{ repo_sizes.get('Active','40') }}px;"
+                                >
+                                    {{ repos.get("Active","?") }}
+                                </div>
+                                <div class="label">
+                                    <strong>Active</strong> <br />
+                                    {{ repos.Active_percentage}} %
+                                </div>
+                            </div>
+                            <div class="circle-container">
+                                <div
+                                    class="circle aging"
+                                    style="width: {{ repo_sizes.get('Aging','40') }}px; height: {{ repo_sizes.get('Aging','40') }}px;"
+                                >
+                                    {{ repos.get("Aging","?") }}
+                                </div>
+                                <div class="label">
+                                    <strong>Aging</strong><br />
+                                    {{ repos.Aging_percentage}} %
+                                </div>
+                            </div>
+                            <div class="circle-container">
+                                <div
+                                    class="circle stale"
+                                    style="width: {{ repo_sizes.get('Stale','40') }}px; height: {{ repo_sizes.get('Stale','40') }}px;"
+                                >
+                                    {{ repos.get("Stale","?") }}
+                                </div>
+                                <div class="label">
+                                    <strong>Stale</strong><br />
+                                    {{ repos.Stale_percentage}} %
+                                </div>
+                            </div>
+                            <div class="circle-container">
+                                <div
+                                    class="circle dormant"
+                                    style="width: {{ repo_sizes.get('Unmaintained','40') }}px; height: {{ repo_sizes.get('Unmaintained','40') }}px;"
+                                >
+                                    {{ repos.get("Unmaintained","?") }}
+                                </div>
+                                <div class="label">
+                                    <strong>Dormant</strong><br />
+                                    {{ repos.Unmaintained_percentage}} %
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %}
+    </body>
+</html>
