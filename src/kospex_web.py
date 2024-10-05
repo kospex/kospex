@@ -27,7 +27,7 @@ def download_csv(dict_data, filename=None):
 
     # Set the output file name
     if not filename:
-        filename = "example.csv"
+        filename = "download.csv"
 
     # Create a response, setting the Content-Type and Content-Disposition headers
     output = make_response(csv_string)
