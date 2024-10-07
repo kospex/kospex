@@ -3,6 +3,7 @@
 import time
 import os
 import json
+import subprocess
 import click
 from prettytable import PrettyTable
 from kospex_core import GitRepo, Kospex
@@ -13,13 +14,14 @@ from kospex_bitbucket import KospexBitbucket
 
 KospexUtils.init()
 kgit = KospexGit()
+kospex = Kospex()
 
 @click.group()
 def cli():
     """kgit (Kospex Git) is a utility for doing git things with kospex use cases.
 
     For documentation on how commands run `kgit COMMAND --help`.
-    
+
     """
 
 @cli.command("status")
@@ -44,6 +46,37 @@ def status(repo):
     et = time.time()
     elapsed_time = et - st
     print('\nExecution time:', elapsed_time, 'seconds', "\n")
+
+@cli.command("mailmap")
+@click.option('-sync', is_flag=True, default=False, help="Sync .mailmap to the database (Default)")
+@click.argument('filename', required=False, type=click.Path(exists=True))
+def mailmap(sync, filename):
+    """
+    Parse a .mailmap file and disply
+    If the -sync is passed, sync the mailmap file to the kospex database.
+    """
+    mmap = KospexUtils.parse_mailmap(filename)
+    for entry in mmap:
+        print(entry)
+
+@cli.command("branches")
+@click.option('-sync', is_flag=True, default=False, help="Sync branches to the database")
+@click.argument('repo', type=GitRepo())
+def branches(sync, repo):
+    """
+    Show the branches for a given repo
+    If the -sync is passed, sync the branches to the kospex database.
+    """
+    kgit.set_repo(repo)
+    os.chdir(repo)
+    cmd = ['git', 'branch', '--all']
+    result = subprocess.run(cmd, capture_output=True, text=True).stdout.split('\n')
+    bob = []
+    for i in result:
+        if i.lstrip():
+            bob.append(i.lstrip()) # remove leading spaces
+    print(bob)
+
 
 @cli.command("clone")
 @click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
@@ -80,6 +113,25 @@ def clone(repo, sync, filename):
                         kospex.sync_repo(repo_path)
 
 
+@cli.command("pull")
+@click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
+def pull(sync):
+    """
+    Check if we're in a git repo, do a git pull,
+    and sync to the kospex DB.
+    """
+    current = os.getcwd()
+    git_base = KospexUtils.find_git_base(current)
+    if git_base:
+        os.chdir(git_base)
+        os.system("git pull")
+        if sync:
+            print("Syncing to kospex DB ...")
+            kospex.sync_repo(git_base)
+        os.chdir(current)
+    else:
+        print(f"{current} does not appear to be in a git repo")
+
 @cli.command("github")
 @click.option('-org', type=click.STRING)
 @click.option('-user',  type=click.STRING)
@@ -88,7 +140,8 @@ def clone(repo, sync, filename):
 @click.option('-sync', is_flag=True)
 @click.option('-test-auth', is_flag=True, default=False, help="Test GITHUB_AUTH_TOKEN can authenticate.")
 @click.option('-out-repo-list', type=click.Path(), help="File to write clone URLs to.")
-def github(org, user, no_auth, list_repos, sync, test_auth, out_repo_list):
+@click.option('-ssh-clone-url',is_flag=True, help="Write SSH clone urls to file instead of HTTPS")
+def github(org, user, no_auth, list_repos, sync, test_auth, out_repo_list,ssh_clone_url):
     """
     Interact with the GitHub API.
 
@@ -158,8 +211,14 @@ def github(org, user, no_auth, list_repos, sync, test_auth, out_repo_list):
             #if record.get("fork"):
             #    full_repo = gh.get_repo(owner=")
             #    record['parent'] = repo.get('parent').get('full_name')
+
             record['private'] = repo.get('private')
-            record['clone_url'] = repo.get('clone_url')
+
+            if ssh_clone_url:
+                # If the boolean is set set the ssh_url instead
+                record['clone_url'] = repo.get('ssh_url')
+            else:
+                record['clone_url'] = repo.get('clone_url')
             print(f"Found repo: {repo['name']}")
             details.append(record)
 
@@ -182,7 +241,7 @@ def github(org, user, no_auth, list_repos, sync, test_auth, out_repo_list):
         if days_ago:
             status = KospexUtils.development_status(days_ago)
         table.add_row([detail.get("name"), detail.get("fork"),
-                       detail.get("private"), owner, detail.get("clone_url"), 
+                       detail.get("private"), owner, detail.get("clone_url"),
                        detail.get("pushed_at"), status])
 
     print(table)
@@ -206,11 +265,11 @@ def bitbucket(workspace, out_repo_list, test_auth, out_raw):
     Interact with the BitBucket API to query repos in a workspace.
 
     This command requires the following environment variables to be set:
-    BITBUCKET_USERNAME and 
+    BITBUCKET_USERNAME and
     BITBUCKET_APP_PASSWORD
 
     The bitbucket username is in the "account settings" section of your bitbucket account.
-    This is NOT your email address. 
+    This is NOT your email address.
 
     """
 

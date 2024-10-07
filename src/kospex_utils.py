@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import shlex
+import base64
 import csv
 from datetime import datetime, timezone, timedelta
 from dateutil import parser
@@ -100,8 +101,6 @@ def get_kospex_db_path():
 
     default_kospex_db = f"{kospex_home}/{KOSPEX_DB_FILENAME}"
 
-
-
     return os.getenv("KOSPEX_DB",default_kospex_db)
 
 def load_config(config_file):
@@ -165,7 +164,12 @@ def days_ago(dt_str: str) -> float:
     """ Convert an ISO datetime string to days ago"""
     # Parse the datetime string
     # TODO check why we need to do this.
-    dt_str = dt_str.replace("Z","+00:00")
+    # TODO - Also check why we sometimes get nulls in github.com~mergestat~mergestat
+    if dt_str:
+        dt_str = dt_str.replace("Z","+00:00")
+    else:
+
+        return 0.0
     #print(dt_str)
     dt = None
     try:
@@ -197,7 +201,7 @@ def days_ago_iso_date(days):
 
 def date_days_ago(given_date, num_days):
     """
-    This function takes a date and a number of days as input and returns the date 
+    This function takes a date and a number of days as input and returns the date
     going back the specified number of days.
     """
 
@@ -290,7 +294,7 @@ def days_between_datetimes(datetime1: str, datetime2: str, min_one=None) -> floa
 
 def find_git_base(filename):
     """
-    Find the base Git directory for a given file path.
+    Find the base Git directory for a given file path or directory.
 
     :filename: The filename for which to find the Git base directory.
     :return: The path to the base Git directory, or None if not found.
@@ -300,18 +304,21 @@ def find_git_base(filename):
 
     # Start checking from the directory of the file
     directory = os.path.dirname(file_path)
+    if os.path.isdir(filename):
+        directory = filename
 
     while os.path.isdir(directory):
         if os.path.isdir(os.path.join(directory, '.git')):
             # Found the .git directory, return the current directory
             return directory
+
         # Move up one directory
         parent = os.path.dirname(directory)
         if parent == directory:
             # Reached the root directory without finding .git
             return None
-        directory = parent
 
+        directory = parent
 
     return None
 
@@ -403,7 +410,12 @@ def git_url_to_repo_id(git_url):
     return git_url
 
 def parse_repo_id(repo_id):
-    """ Parse a repo ID into its components"""
+    """
+    Parse a repo ID into its components
+    """
+    # TODO - Make this work with Gitlab URLs which have slashes
+    # required for web requests
+
     parts = repo_id.split('~')
     if len(parts) != 3:
         return None
@@ -413,6 +425,24 @@ def parse_repo_id(repo_id):
         'repo': parts[2],
         'repo_id': repo_id,
         'org_key': f"{parts[0]}~{parts[1]}",
+    }
+
+def parse_org_key(org_key):
+    """
+    Parse an org_key into its components
+    """
+    parts = []
+    if org_key:
+        parts = org_key.split('~')
+    else:
+        return None
+
+    if len(parts) != 2:
+        return None
+    return {
+        'git_server': parts[0],
+        'org': parts[1],
+        'org_key': f"{org_key}",
     }
 
 def get_last_commit_info(filename,remote=None):
@@ -678,7 +708,7 @@ def get_git_hash(directory):
     return run_git_command(directory,['rev-parse', 'HEAD'])
 
 def get_git_remote_url(directory):
-    """ Get the git remote url for a given directory using 
+    """ Get the git remote url for a given directory using
     the 'git remote get-url origin' command"""
     return run_git_command(directory,['remote', 'get-url', 'origin'])
 
@@ -693,6 +723,7 @@ def run_git_command(directory, args):
         print(f"Probably {directory} is NOT a repo or is empty, but initiliased.\n")
 
     return result
+
 
 def get_git_stats(directory, last_days=None):
     """ Return some basic git stats for a given directory"""
@@ -751,7 +782,7 @@ def get_git_stats(directory, last_days=None):
         'first_commit': first_commit_date,
         'last_commit': last_commit_date,
         'total_commits': total_commits,
-        'hash': current_hash, 
+        'hash': current_hash,
         'remote_url': git_remote_url,
         'total_size': total_size,
         'git_dir_size': git_dir_size,
@@ -975,7 +1006,7 @@ def get_keyvalue_table(details=None):
 def convert_to_percentage(data):
     """
     Take a dictionary with numerical values as input,
-    calculate the total and return a dict with the same keys 
+    calculate the total and return a dict with the same keys
     and their percentage value of the total
     """
     # Calculate the total sum of all values in the dictionary
@@ -1097,3 +1128,129 @@ def validate_only_one(params, message, exit_required=None):
         print(f"ERROR: {message}")
         if exit_required:
             exit(1)
+
+def get_scc_build_effort(directory):
+    """
+    Run the 'scc' command and capture the output relating to
+    the estimated cost, schedule, and people required.
+    """
+
+    try:
+        result = subprocess.run(['scc', directory], capture_output=True, text=True, check=True)
+        output = result.stdout
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred while running scc: {e}")
+        return None
+
+    # Define a dictionary to store the parsed results
+    results = {}
+
+    # Define the regular expressions for parsing the output
+    cost_pattern = r"Estimated Cost to Develop \(organic\) \$(\d+,\d+|\d+)"
+    schedule_pattern = r"Estimated Schedule Effort \(organic\) ([\d.]+) months"
+    people_pattern = r"Estimated People Required \(organic\) ([\d.]+)"
+
+    cost_match = re.search(cost_pattern, output)
+    schedule_match = re.search(schedule_pattern, output)
+    people_match = re.search(people_pattern, output)
+
+    # If matches are found, convert them to float and store them in the dictionary
+    if cost_match:
+        results['cost'] = float(cost_match.group(1).replace(',', ''))
+    if schedule_match:
+        results['schedule'] = float(schedule_match.group(1))
+    if people_match:
+        results['people'] = float(people_match.group(1))
+
+    return results
+
+def parse_mailmap(file_path):
+    """
+    Parse a .mailmap file and return a list of Dict with
+    proper_name
+    proper_email
+    commit_email
+    commit_name
+    Depending on what was included in the file
+    """
+    result = []
+    with open(file_path, 'r') as file:
+        for line in file:
+
+            line = line.strip()
+
+            if line and not line.startswith('#'):
+                parts = line.split('<')
+                entry = {}
+
+                if len(parts) == 2:
+                    # Example: Proper Name <proper@email.com>
+                    entry['proper_name'] = parts[0].strip()
+                    entry['proper_email'] = parts[1].rstrip('>').strip()
+                elif len(parts) == 3:
+                    # Example: Proper Name <proper@email.com> <commit@email.com>
+                    # Example: Proper Name <proper@email.com> Commit Name <commit@email.com>
+                    entry['proper_name'] = parts[0].strip()
+                    entry['proper_email'] = parts[1].rstrip('>').strip()
+
+                    email, name = parts[1].split('>')
+                    entry['proper_email'] = email
+                    name = name.lstrip().rstrip()
+
+                    if name:
+                        entry['commit_name'] = name
+                    entry['commit_email'] = parts[2].rstrip('>').strip()
+
+                else:
+                    print(f"WARNING parser error for line: {line}")
+
+                if entry:
+                    result.append(entry)
+
+    return result
+
+def is_base64(s):
+    # Check if the string matches the Base64 pattern
+    pattern = r'^[A-Za-z0-9+/]*={0,2}$'
+    if not re.match(pattern, s):
+        return False
+
+    # Check if the length is valid (multiple of 4)
+    if len(s) % 4 != 0:
+        return False
+
+    # Try to decode the string
+    try:
+        base64.b64decode(s)
+        return True
+    except:
+        return False
+
+def decode_base64(data):
+    """
+    Decode a base64 string and return the value
+    or None if there's an error
+    """
+    decoded = None
+
+    try:
+        base64_bytes = data.encode('ascii')
+        message_bytes = base64.b64decode(base64_bytes)
+        decoded = message_bytes.decode('ascii')
+        return decoded
+    except:
+        return None
+
+def encode_base64(data):
+    """
+    Encode a base64 string and return the value
+    or None if there's an error
+    """
+    encoded = None
+
+    try:
+        b64_bytes = base64.b64encode(data.encode("utf-8"))
+        encoded = b64_bytes.decode('utf-8')
+        return encoded
+    except:
+        return None
