@@ -22,14 +22,14 @@ log = logging.getLogger(__name__)
 @click.group()
 def cli():
     """Kospex is a tool for assessing code and git repositories.
-    
+
     It is designed to help understand the structure of code, who are developers and
     changes over time.
 
     For documentation on how commands run `kospex COMMAND --help`.
 
     See also https://kospex.io/
-    
+
     """
 
 @cli.command("init")
@@ -37,9 +37,9 @@ def cli():
 def kospex_init(create):
     """
     Perform basic initial setup.
-    
+
     Use -create to create the default ~/code or KOSPEX_CODE directory.
-    
+
     """
     kospex_code = KospexUtils.get_kospex_code_path()
     kconf = KospexUtils.get_kospex_config()
@@ -262,7 +262,7 @@ def list_repos(db,repo_id,server,email,directory,):
 # pylint: disable=unused-argument
 def tech_landscape(repo, repo_id, days, metadata):
     """
-    Show the tech landscape either by file extensions 
+    Show the tech landscape either by file extensions
     or scc metadata (use the -metadata switch)."""
     kwargs = locals()
     kospex.tech_landscape(**kwargs)
@@ -490,7 +490,15 @@ def author_tech(author_email,repo_id):
 @click.option('-top', type=int, default=4, help='The number of top authors to assess.')
 @click.argument('directory', required=False, type=GitRepo())
 def key_person(directory,top):
-    """ Identify the key person for a repo."""
+    """
+    Identify the key perople for a repo based on number of commits.
+
+    Firstly, the top X committers of all time
+
+    Secondly, the topic X active committers (i.e. last 90 days)
+
+    The top X defaults to 4, but can be provided as a switch with -top Y
+    """
     if not directory:
         directory = os.getcwd()
         if not KospexUtils.is_git(directory):
@@ -505,40 +513,45 @@ def key_person(directory,top):
     table = KospexUtils.key_person_prettytable()
     headers = table.field_names
 
-    active = kquery.commit_stats(repo_id=kgit.get_repo_id(),days=90)
-    active_dict = {d["author"]: d for d in active}
-    key = "commits"
-    total_active_commits = sum(item[key] for item in active if key in item)
+    # active = kquery.commit_stats(repo_id=kgit.get_repo_id(),days=90)
+    # active_dict = {d["author"]: d for d in active}
+    # key = "commits"
+    # total_active_commits = sum(item[key] for item in active if key in item)
 
-    authors = kquery.commit_stats(repo_id=kgit.get_repo_id())
-    key = "commits"
-    total_commits = sum(item[key] for item in authors if key in item)
-    print(f"Total commits: {total_commits}")
+    # authors = kquery.commit_stats(repo_id=kgit.get_repo_id())
+    # key = "commits"
+    # total_commits = sum(item[key] for item in authors if key in item)
+    # print(f"Total commits: {total_commits}")
+    # for a in authors:
+    #     a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
+    #     a['% commits'] = f"{a['commits'] / total_commits * 100:.1f}%"
+    #     # TODO - We only want to do this if we're printing the table, modify if we're dumping to CSV
+    #     a['last_commit'] = KospexUtils.extract_db_date(a['last_commit'])
+    #     a['first_commit'] = KospexUtils.extract_db_date(a['first_commit'])
+
+    #     if total_active_commits > 0:
+    #         a['% active'] = f"{a['active_commits'] / total_active_commits * 100:.1f}%"
+    #     else:
+    #         a['% active'] = "0%"
+
+    # authors_dict = {d["author"]: d for d in authors}
+
+    # for a in authors[:top]:
+    #     #a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
+    #     table.add_row(KospexUtils.get_values_by_keys(a, headers))
+
+    # top_authors_dict = {d["author"]: d for d in authors[:top]}
+
+    # for a in active[:top]:
+    #     a_dict = top_authors_dict.get(a['author'])
+    #     if not a_dict:
+    #         a_dict = authors_dict[a['author']]
+    #         table.add_row(KospexUtils.get_values_by_keys(a_dict, headers))
+    #
+    authors = kquery.key_person(repo_id=kgit.get_repo_id(),top=top)
+
     for a in authors:
-        a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
-        a['% commits'] = f"{a['commits'] / total_commits * 100:.1f}%"
-        # TODO - We only want to do this if we're printing the table, modify if we're dumping to CSV
-        a['last_commit'] = KospexUtils.extract_db_date(a['last_commit'])
-        a['first_commit'] = KospexUtils.extract_db_date(a['first_commit'])
-
-        if total_active_commits > 0:
-            a['% active'] = f"{a['active_commits'] / total_active_commits * 100:.1f}%"
-        else:
-            a['% active'] = "0%"
-
-    authors_dict = {d["author"]: d for d in authors}
-
-    for a in authors[:top]:
-        #a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
         table.add_row(KospexUtils.get_values_by_keys(a, headers))
-
-    top_authors_dict = {d["author"]: d for d in authors[:top]}
-
-    for a in active[:top]:
-        a_dict = top_authors_dict.get(a['author'])
-        if not a_dict:
-            a_dict = authors_dict[a['author']]
-            table.add_row(KospexUtils.get_values_by_keys(a_dict, headers))
 
     print()
     print(table)

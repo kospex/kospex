@@ -200,6 +200,8 @@ class KospexQuery:
 
         for row in data:
             row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
+            row["status"] = KospexUtils.development_status(row['last_commit'])
+
 
         return data
 
@@ -352,14 +354,27 @@ class KospexQuery:
 
         return set(devs)
 
-    def authors(self, days=None):
+    def authors(self, days=None, org_key=None):
         """ Provide a summary of authors in the known repositories."""
 
         params = [] # parameters for the SQL query
         from_date = None
 
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.select_as("DISTINCT(author_email)", "author")
+        kd.select_as("count(*)",'commits')
+        kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
+        kd.select_as("MIN(committer_when)", "first_commit")
+        kd.select_as("MAX(committer_when)", "last_commit")
+        kd.group_by("author")
+
         if days:
             from_date = KospexUtils.days_ago_iso_date(days)
+            kd.where("committer_when", ">", from_date)
+
+        if org_key:
+            kd.where_org_key(org_key)
 
         authors = [] # list of authors from the sql query
         where_clause = ""
@@ -383,6 +398,13 @@ class KospexQuery:
         for row in data:
             row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
             authors.append(row)
+
+        kresults = kd.execute()
+        for row in kresults:
+            row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
+
+        print(len(authors))
+        print(len(kresults))
 
         return authors
 
@@ -876,6 +898,53 @@ class KospexQuery:
 
         return kd.execute()
 
+    def key_person(self, days=None, repo_id=None,top=None):
+        """
+        Return a high level key person based on commits
+        """
+
+        active = self.commit_stats(repo_id=repo_id,days=90)
+        active_dict = {d["author"]: d for d in active}
+        key = "commits"
+        total_active_commits = sum(item[key] for item in active if key in item)
+
+        authors = self.commit_stats(repo_id=repo_id)
+        key = "commits"
+        total_commits = sum(item[key] for item in authors if key in item)
+
+        for a in authors:
+            a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
+            a['% commits'] = f"{a['commits'] / total_commits * 100:.1f}%"
+
+            # TODO - We only want to do this if we're printing the table, modify if we're dumping to CSV
+            a['last_commit'] = KospexUtils.extract_db_date(a['last_commit'])
+            a['first_commit'] = KospexUtils.extract_db_date(a['first_commit'])
+
+            if total_active_commits > 0:
+                a['% active'] = f"{a['active_commits'] / total_active_commits * 100:.1f}%"
+            else:
+                a['% active'] = "0%"
+
+        authors_dict = {d["author"]: d for d in authors}
+
+        if top is None:
+            # If we haven't set a top X
+            # Then we'll return all authors and their active commits
+            return authors
+
+        else:
+
+            top_list = authors[:top]
+            top_authors_dict = {d["author"]: d for d in authors[:top]}
+
+            for a in active[:top]:
+                a_dict = top_authors_dict.get(a['author'])
+                if not a_dict:
+                    a_dict = authors_dict[a['author']]
+                    top_list.append(a_dict)
+
+            return top_list
+
     def groups(self, params=None):
         """ Return a list of groups """
         kd = KospexData(kospex_db=self.kospex_db)
@@ -920,10 +989,14 @@ class KospexQuery:
     #    kd.select("*")
     #    return kd.execute()
 
-    def get_graph_info(self, org_key=None, author_email=None):
+    def get_graph_info(self, org_key=None, author_email=None,
+        repo_id=None, git_server=None, by_repo=None):
         """
         Return a list of repos and developers for graphing
+        If by_repo is True, group by repo and NOT the author
         """
+        params = locals()
+        print(f"params: {params}")
         org = None
         server = None
 
@@ -935,19 +1008,36 @@ class KospexQuery:
 
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
-        kd.select_as("DISTINCT(author_email)", "author")
-        kd.select("_repo_id")
+        if by_repo:
+            kd.select("_repo_id")
+            kd.select_as("author_email", "author")
+        else:
+            kd.select_as("DISTINCT(author_email)", "author")
+            kd.select("_repo_id")
+
         kd.select_as("COUNT(*)", "commits")
+        kd.select_as("MAX(committer_when)", "last_commit")
         #kd.select_as("_git_repo", "repo")
         kd.select("_git_repo")
+
         if org_key:
             kd.where("_git_owner", "=", org)
             kd.where("_git_server", "=", server)
 
+        if git_server:
+            kd.where("_git_server", "=", git_server)
+
         if author_email:
             kd.where("author_email", "=", author_email)
 
-        kd.group_by("author","_repo_id")
+        if repo_id:
+            kd.where("_repo_id", "=", repo_id)
+
+        if by_repo:
+            kd.group_by("_repo_id")
+        else:
+            kd.group_by("author","_repo_id")
+
         return kd.execute()
 
     def get_repo_files_graph_info(self, repo_id):
@@ -966,6 +1056,124 @@ class KospexQuery:
         kd.where_join(KospexSchema.TBL_COMMITS, "hash", KospexSchema.TBL_COMMIT_FILES, "hash")
         kd.group_by("author","file_path")
         return kd.execute()
+
+    def create_nodes(self, raw_data):
+        """
+        Process the details from get_graph_info
+        return a data structure of
+        data = {
+            "nodes": [],
+            "links": []
+        }
+        suitable for forced directed and bubble graphs
+        """
+
+        dev_lookup = {}
+        repo_lookup = {}
+        file_lookup = {}
+        links = []
+        nodes = []
+
+        for element in raw_data:
+
+            last_commit = element.get("last_commit")
+            status = KospexUtils.development_status(KospexUtils.days_ago(last_commit))
+
+            group_numbers = {}
+            group_numbers['Active'] = 1
+            group_numbers['Aging'] = 2
+            group_numbers['Stale'] = 3
+            group_numbers['Unmaintained'] = 4
+
+            group = 1
+            if org_key:
+                # we only have 1 group, and that's developers
+                group = 1
+                # in graph, group is used to link between
+            else:
+                group = group_numbers.get(status,4)
+
+            b64_email = KospexUtils.encode_base64(element.get('author'))
+
+            #b64_bytes = base64.b64encode(element['author'].encode("utf-8"))
+            #b64_email = b64_bytes.decode('utf-8')
+
+            print(b64_email)
+
+            if element['author'] not in dev_lookup:
+                dev_lookup[element['author']] = { "id": element['author'],
+                                                 "id_b64": b64_email,
+                                                 "group": group,
+                                                 "label": KospexUtils.extract_github_username(element['author']),
+                                                 "info": element['author'],
+                                                 "commits": element.get("commits"),
+                                                 "status_group": group_numbers.get(status,4),
+                                                 "status": status,
+                                                 "last_commit": last_commit,
+                                                 "repos": 1 }
+            else:
+                dev_lookup[element['author']]['repos'] += 1
+
+
+            if repo_id and not focus:
+                # We're handling files not repos
+                file_path = element.get('file_path')
+                if element.get('file_path') not in file_lookup:
+                    file_lookup[element['file_path']] = { "id": element['file_path'],
+                                                    "group": 2,
+                                                    "label": basename(element['file_path']),
+                                                    "info": element['file_path'] }
+
+            elif element['_repo_id'] not in repo_lookup:
+                repo_lookup[element['_repo_id']] = { "id": element['_repo_id'],
+                                                    "group": 2,
+                                                    "commits": element.get("commits",0),
+                                                    "status_group": group_numbers.get(status,4),
+                                                    "status": status,
+                                                    "last_commit": last_commit,
+                                                    "label": element['_git_repo'],
+                                                    "info": element['_repo_id'] }
+
+            link_key = "_repo_id"
+
+            if repo_id:
+                link_key = "file_path"
+
+            links.append({"source": element['author'],
+                          "target": element.get(link_key),
+                          "commits": element['commits']})
+
+        for element in dev_lookup:
+            nodes.append(dev_lookup[element])
+
+        for element in repo_lookup:
+            nodes.append(repo_lookup[element])
+
+        for element in file_lookup:
+            nodes.append(file_lookup[element])
+
+        data = {
+                "nodes": [
+                    { "id": "Dev1", "group": 1, "info": "Developer 1 info" },
+                    { "id": "Dev2", "group": 1, "info": "Developer 2 info" },
+                    { "id": "Repo1", "group": 2, "info": "Repository 1 info" },
+                    { "id": "Repo2", "group": 2, "info": "Repository 2 info" },
+                    { "id": "Repo3", "group": 2, "info": "Repository 3 info" }
+                ],
+                "links": [
+                    { "source": "Dev1", "target": "Repo1", "commits": 50 },
+                    { "source": "Dev1", "target": "Repo2", "commits": 30 },
+                    { "source": "Dev2", "target": "Repo1", "commits": 20 },
+                    { "source": "Dev2", "target": "Repo3", "commits": 40 },
+                    { "source": "Dev3", "target": "Repo2", "commits": 60 },
+                    { "source": "Dev3", "target": "Repo3", "commits": 10 }
+                ]
+            }
+
+        data["nodes"] = nodes
+        data["links"] = links
+
+        return data
 
 class KospexData:
     """ Data wrangling DSL like functions for Kospex """
@@ -1088,7 +1296,9 @@ class KospexData:
             return function_name, argument
 
         # Return None if no match is found
-        return None
+        #return None
+        # this may not match, and possibly this is just a column rename
+        return sql_string, None
 
     def allowed_sql_function(self, function_name):
         """ Check if a function is allowed """
