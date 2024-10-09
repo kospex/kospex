@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Details graph</title>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <!-- Add Bootstrap CSS -->
+        <link
+            href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+            rel="stylesheet"
+        />
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+            }
+
+            .content-wrapper {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+            }
+
+            #sidebar {
+                width: 250px;
+                min-width: 100px;
+                max-width: 50%;
+                background-color: #f0f0f0;
+                padding: 20px;
+                box-sizing: border-box;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                resize: horizontal;
+                position: relative;
+            }
+
+            #sidebar::after {
+                content: "";
+                position: absolute;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                width: 5px;
+                background: #ccc;
+                cursor: ew-resize;
+            }
+
+            #graph {
+                flex-grow: 1;
+                position: relative;
+            }
+            #resetButton {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                padding: 10px;
+                background-color: #f0f0f0;
+                border: 1px solid #999;
+                border-radius: 5px;
+                cursor: pointer;
+            }
+            .slider-container {
+                display: flex;
+                flex-direction: column;
+                margin-bottom: 20px;
+            }
+            .button-container {
+                display: flex;
+                justify-content: center;
+                margin-top: 10px;
+            }
+            .slider-button {
+                width: 30px;
+                height: 30px;
+                font-size: 18px;
+                margin: 0 5px;
+                cursor: pointer;
+            }
+            .slider {
+                width: 100%;
+                margin: 10px 0;
+            }
+            .sliderValue {
+                text-align: center;
+                margin-bottom: 5px;
+            }
+            hr {
+                width: 100%;
+                border: none;
+                border-top: 1px solid #ccc;
+                margin: 15px 0;
+            }
+
+            .bubble {
+                cursor: pointer;
+            }
+            .bubble:hover {
+                stroke: #000;
+                stroke-width: 1.5px;
+            }
+            .bubble-label {
+                font: 10px sans-serif;
+                text-anchor: middle;
+                pointer-events: none;
+            }
+
+            .legend {
+                position: absolute;
+                bottom: 20px;
+                left: 3%;
+                display: flex;
+                align-items: center;
+                background-color: rgba(255, 255, 255, 0.8);
+                padding: 10px;
+                border-radius: 5px;
+            }
+
+            .legend-item {
+                display: flex;
+                align-items: center;
+                margin-right: 20px;
+            }
+
+            .legend-color {
+                width: 20px;
+                height: 20px;
+                margin-right: 5px;
+                border-radius: 50%;
+            }
+        </style>
+    </head>
+    <body>
+        <!-- Bootstrap header -->
+        {% include 'header.html' %}
+        <!-- Sidebar and Graph -->
+        <div class="content-wrapper">
+            <div id="sidebar">
+                <h3>Filters</h3>
+                <div class="slider-container">
+                    <label for="commitSlider">Commit Filter</label>
+                    <input
+                        type="range"
+                        id="commitSlider"
+                        class="slider"
+                        min="0"
+                        max="100"
+                        value="0"
+                    />
+                    <span id="commitValue" class="sliderValue"
+                        >Minimum commits: 0</span
+                    >
+                    <div class="button-container">
+                        <button class="slider-button" id="commitMinus">
+                            -
+                        </button>
+                        <button class="slider-button" id="commitPlus">+</button>
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <label for="repoSlider">Repository Filter:</label>
+                    <input
+                        type="range"
+                        id="repoSlider"
+                        class="slider"
+                        min="0"
+                        max="10"
+                        value="0"
+                    />
+                    <span id="repoValue" class="sliderValue"
+                        >Minimum repos: 0</span
+                    >
+                    <div class="button-container">
+                        <button class="slider-button" id="repoMinus">-</button>
+                        <button class="slider-button" id="repoPlus">+</button>
+                    </div>
+                </div>
+
+                <hr />
+                <!-- Node Information</h3> -->
+                <div id="nodeInfo">
+                    <p>Click on a node to see its information.</p>
+                </div>
+            </div>
+            <div id="graph">
+                <button id="resetButton">Reset Positions</button>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div
+                            class="legend-color"
+                            style="background-color: #4caf50"
+                        ></div>
+                        <span>Active</span>
+                    </div>
+                    <div class="legend-item">
+                        <div
+                            class="legend-color"
+                            style="background-color: #fff176"
+                        ></div>
+                        <span>Recent</span>
+                    </div>
+                    <div class="legend-item">
+                        <div
+                            class="legend-color"
+                            style="background-color: #a1887f"
+                        ></div>
+                        <span>Inactive</span>
+                    </div>
+                    <div class="legend-item">
+                        <div
+                            class="legend-color"
+                            style="background-color: #e0e0e0"
+                        ></div>
+                        <span> Dormant </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+            async function fetchGraphData() {
+                try {
+                    const response = await fetch("/org-graph/{{link_url}}");
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP error! status: ${response.status}`,
+                        );
+                    }
+                    const data = await response.json();
+                    return data;
+                } catch (error) {
+                    console.error("Could not fetch graph data:", error);
+                }
+            }
+
+            // Add the following D3 code to create the bubble chart
+            async function createBubbleChart() {
+                const data = await fetchGraphData();
+
+                const width = document.getElementById("graph").offsetWidth;
+                const height = document.getElementById("graph").offsetHeight;
+
+                const svg = d3
+                    .select("#graph")
+                    .append("svg")
+                    .attr("width", width)
+                    .attr("height", height);
+
+                // Create a container group for zoomable content
+                const g = svg.append("g");
+
+                const bubble = d3.pack().size([width, height]).padding(1.5);
+
+                const root = d3
+                    .hierarchy({ children: data.nodes })
+                    .sum((d) => d.commits);
+
+                const nodes = bubble(root).descendants().slice(1);
+
+                // Custom color scale
+                const color = d3
+                    .scaleOrdinal()
+                    .domain([1, 2, 3, 4])
+                    .range(["#4CAF50", "#FFF176", "#A1887F", "#E0E0E0"]);
+
+                const node = g
+                    .selectAll(".node")
+                    .data(nodes)
+                    .enter()
+                    .append("g")
+                    .attr("class", "node")
+                    .attr("transform", (d) => `translate(${d.x},${d.y})`);
+
+                node.append("circle")
+                    .attr("r", (d) => d.r)
+                    .attr("class", "bubble")
+                    .style("fill", (d) => color(d.data.status_group));
+
+                node.append("text")
+                    .attr("class", "bubble-label")
+                    .attr("dy", ".3em")
+                    .text((d) => d.data.label.substring(0, d.r / 3));
+
+                node.append("title").text(
+                    (d) => `${d.data.id}\nCommits: ${d.data.commits}`,
+                );
+
+                // Add click event to show node info in sidebar
+                node.on("click", (event, d) => {
+                    const nodeInfo = document.getElementById("nodeInfo");
+                    node_label = d.data.label || d.data.id;
+                    //<h4><a href="/developer/${d.id_b64}">${node_label}</a></h4>
+                    node_link = d.data.link || "/developer/" + d.data.id_b64;
+                    //<h4><a href="/developer/${d.data.id_b64}">${node_label}</a></h4>
+                    nodeInfo.innerHTML = `
+                      <h4><a href="${node_link}">${node_label}</a></h4>
+                        <p><strong>ID:</strong> ${d.data.id}</p>
+                        <p><strong>Commits:</strong> ${d.data.commits}</p>
+                        <p><strong>Group:</strong> ${d.data.group}</p>
+                        <p><strong>Status:</strong> ${d.data.status}</p>
+                        <p><strong>Last Commit</strong></br> ${d.data.last_commit}</p>
+                    `;
+                });
+                // Create zoom behavior
+                const zoom = d3
+                    .zoom()
+                    .scaleExtent([0.5, 5]) // Set min and max zoom scale
+                    .on("zoom", zoomed);
+
+                // Apply zoom behavior to svg
+                svg.call(zoom);
+
+                // Zoom function
+                function zoomed(event) {
+                    g.attr("transform", event.transform);
+                }
+            }
+
+            // Call the function to create the bubble chart
+            createBubbleChart();
+
+            // Add these functions after createBubbleChart
+
+            function zoomIn() {
+                svg.transition().call(zoom.scaleBy, 1.5);
+            }
+
+            function zoomOut() {
+                svg.transition().call(zoom.scaleBy, 0.75);
+            }
+
+            function resetZoom() {
+                svg.transition().call(zoom.transform, d3.zoomIdentity);
+            }
+
+            // Code for sidebar resizing
+
+            const sidebar = document.getElementById("sidebar");
+            const graph = document.getElementById("graph");
+            let isResizing = false;
+            let lastDownX = 0;
+            sidebar.addEventListener("mousedown", (e) => {
+                if (e.offsetX > sidebar.offsetWidth - 10) {
+                    isResizing = true;
+                    lastDownX = e.clientX;
+                }
+            });
+
+            document.addEventListener("mousemove", (e) => {
+                if (!isResizing) return;
+
+                const width = sidebar.offsetWidth + (e.clientX - lastDownX);
+                const minWidth = 100;
+                const maxWidth = window.innerWidth * 0.5; // 50% of window width
+
+                if (width > minWidth && width < maxWidth) {
+                    sidebar.style.width = `${width}px`;
+                    graph.style.width = `${window.innerWidth - width}px`;
+                }
+
+                lastDownX = e.clientX;
+            });
+
+            document.addEventListener("mouseup", () => {
+                isResizing = false;
+            });
+
+            // Update graph width when window is resized
+            window.addEventListener("resize", () => {
+                const sidebarWidth = sidebar.offsetWidth;
+                graph.style.width = `${window.innerWidth - sidebarWidth}px`;
+            });
+            // End of code for sidebar resizing
+        </script>
+        <!-- Add Bootstrap JS and its dependencies -->
+        <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    </body>
+</html>
