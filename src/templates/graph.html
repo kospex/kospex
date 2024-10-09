@@ -605,6 +605,7 @@
             setInitialGraph();
 
             // Code for sidebar resizing
+
             const sidebar = document.getElementById("sidebar");
             const graph = document.getElementById("graph");
             let isResizing = false;
@@ -640,6 +641,7 @@
                 const sidebarWidth = sidebar.offsetWidth;
                 graph.style.width = `${window.innerWidth - sidebarWidth}px`;
             });
+            // End of code for sidebar resizing
         </script>
         <!-- Add Bootstrap JS and its dependencies -->
         <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
