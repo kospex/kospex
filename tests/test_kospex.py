@@ -89,3 +89,6 @@ def test_has_complex_sql():
     invalid_complex = "cou!nt(distinct(author_email))"
     assert kd.validate_nested_expressions(invalid_complex) is False
 
+def test_repo_id():
+    """ Test repo_id generation """
+    print("bob")

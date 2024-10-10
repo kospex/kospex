@@ -21,7 +21,7 @@ def cli():
     For documentation on how commands run `krunner COMMAND --help`.
 
     See also https://kospex.io/krunner
-    
+
     """
 
 @cli.command("find-docker")
@@ -97,8 +97,9 @@ def find_repos(directory):
     kospex.list_repos(directory)
 
 @cli.command("trufflehog")
+@click.option('--only-verified', is_flag=True, default=False, help="use --only-verified. (Default: False)")
 @click.argument('directory', type=click.Path(exists=True))
-def trufflehog_scan(directory):
+def trufflehog_scan(only_verified,directory):
     """Run trufflehog on all git repositories found in the given directory."""
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
@@ -107,7 +108,10 @@ def trufflehog_scan(directory):
         print("\nRepo: " + d)
         kospex.set_repo_dir(d)
         fname = kospex.generate_krunner_filename(function="TRUFFLEHOG",ext="json")
-        command = f"trufflehog filesystem -j . > {fname}"
+        verif = ""
+        if only_verified:
+            verif = "--only-verified"
+        command = f"trufflehog filesystem -j {verif} . 2&> {fname}"
         if not os.path.exists(fname):
             print(command)
             os.system(command)
