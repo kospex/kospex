@@ -439,6 +439,7 @@ def parse_org_key(org_key):
 
     if len(parts) != 2:
         return None
+
     return {
         'git_server': parts[0],
         'org': parts[1],
