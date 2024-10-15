@@ -2,6 +2,7 @@
 import csv
 from io import StringIO
 from flask import make_response
+import kospex_utils as KospexUtils
 
 def download_csv(dict_data, filename=None):
     """ Download the given dict_data as a csv file """
@@ -35,3 +36,25 @@ def download_csv(dict_data, filename=None):
     output.headers["Content-type"] = "text/csv"
 
     return output
+
+def get_id_params(id):
+    """
+    Parse an id into either:
+        repo_id
+        org_key
+        server
+    and return a dict with that key to be passed into a KospexQuery
+    """
+    params = {}
+
+    if id is None:
+        return params
+
+    if org_key := KospexUtils.parse_org_key(id):
+        params["org_key"] = id
+    elif repo_id := KospexUtils.parse_repo_id(id):
+        params["repo_id"] = id
+    else:
+        params["server"] = id
+
+    return params

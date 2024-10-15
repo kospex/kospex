@@ -23,8 +23,8 @@
             flex-direction: column;
             align-items: center;
             justify-content: flex-end; /* Align circles to the bottom */
-            height: 170px; /* Set a fixed height for all containers */
-            width: 170px; /* Set a fixed width for all containers */
+            height: 180px; /* Set a fixed height for all containers */
+            width: 180px; /* Set a fixed width for all containers */
         }
         .circle {
             display: flex;
@@ -72,7 +72,7 @@
                                     class="circle active"
                                     style="width: {{ active_pixels }}px; height: {{ active_pixels }}px;"
                                 >
-                                    {{ developers.get("Active","?") }} {{ yada
+                                    {{ developers.get("Active","0") }} {{ yada
                                     }}
                                 </div>
                                 <div class="label">
@@ -101,7 +101,7 @@
                                 </div>
                                 <div class="label">
                                     <strong>Stale</strong> <br />
-                                    {{ developers.Stale_percentage}} %
+                                    {{ developers.Stale_percentage }} %
                                 </div>
                             </div>
                             <div class="circle-container">

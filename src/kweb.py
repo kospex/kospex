@@ -17,10 +17,14 @@ def index():
     data = KospexQuery().summary()
     return render_template('index.html', **data)
 
-@app.route('/summary/')
-def summary():
+@app.route('/summary')
+@app.route('/summary/', defaults={'id': None})
+@app.route('/summary/<id>')
+def summary(id):
     """ Serve up the summary home page """
-    devs = KospexQuery().developers()
+    params = KospexWeb.get_id_params(id)
+    devs = KospexQuery().developers(**params)
+
     dev_stats = KospexUtils.count_key_occurrences(devs,"status")
     print(dev_stats)
     dev_percentages = KospexUtils.convert_to_percentage(dev_stats)
@@ -31,7 +35,8 @@ def summary():
             dev_stats[f"{name}_percentage"] = round(percentage)
         result[name] = round(total * (percentage / 100)) + 40
 
-    repos = KospexQuery().repos()
+    repos = KospexQuery().repos(**params)
+
     repo_stats = KospexUtils.count_key_occurrences(repos,"status")
     print(repo_stats)
     repo_sizes = {}
@@ -548,12 +553,7 @@ def org_graph(focus,org_key):
         else:
             group = group_numbers.get(status,4)
 
-        #b64_bytes = base64.b64encode(element['author'].encode("utf-8"))
-        #b64_email = b64_bytes.decode('utf-8')
-
         b64_email = KospexUtils.encode_base64(element.get('author'))
-
-        print(b64_email)
 
         if element['author'] not in dev_lookup:
             dev_lookup[element['author']] = { "id": element['author'],

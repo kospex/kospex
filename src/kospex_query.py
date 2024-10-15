@@ -169,7 +169,7 @@ class KospexQuery:
 
         return data
 
-    def repos(self,org_key=None,server=None):
+    def repos(self,org_key=None,server=None,repo_id=None):
         """ Provide a summary of the known repositories."""
         params = []
         where = ""
@@ -182,6 +182,9 @@ class KospexQuery:
             params.append(parts[0])
             params.append(parts[1])
             where = "WHERE _git_server = ? AND _git_owner = ?"
+        elif repo_id:
+            where = "WHERE _repo_id = ?"
+            params.append(repo_id)
         elif server:
             where = "WHERE _git_server = ?"
             params.append(server)
@@ -402,9 +405,6 @@ class KospexQuery:
         kresults = kd.execute()
         for row in kresults:
             row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
-
-        print(len(authors))
-        print(len(kresults))
 
         return authors
 
