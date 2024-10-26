@@ -37,3 +37,26 @@ There are two ways of identifying aging and unmaintained code:
 
 Bearing in mind, older code can just mean "feature complete" rather than unused
 (E.g. a datetime or file format utility may not need to change every year).
+
+
+## (Derived) Code Ownership
+
+A simple "calculatable" code owenship can be performed by looking at:
+- top committers for a file or repo, who still work in the organisation.
+- Most recent commits for a file or repo, who still work in the organisation.
+
+This ties in with the maintenance view, where if there is no one in the organisation in either of these use cases, your organisation lacks "working knowledge" of the code.
+
+## Generate automated training lists for compliance and capability development.
+
+Some organisations require developers to undergo security training annually for their languages, or provide material for new starters on technology used.
+We can identify the developers and the languages and technologies they’ve worked with by simply looking at code changes over the last year.
+
+Even a comparison for broader snapshot to say, we are currently, based on last 180 days, developing mostly in Python, and modifying Docker and Terraform files.
+
+For a leaving staff member, you can also view that technology or languages they've used over time for identifying "replacement skills".
+E.g. Jane is leaving, what has she committed
+- Last year - mainly frontend javascript with React
+- Previous year - Ruby and Docker
+- Year before - Ruby and HTML
+- 1st year of employment - SQL and Ruby
