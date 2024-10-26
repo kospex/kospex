@@ -19,6 +19,8 @@ If you are after some generally useful git commands then take a look at [Useful 
  - Identify potential complexity challenges (or conceptual integrity concerns)
  - Aggregate repo metadata into a single database for easier and faster querying
 
+ Some better descriptions can be found at [use cases](use-cases).
+
 ## General description of aging "things"
 
 Many reports or commands generate a description of active, aging, stale or unmaintained. This description is a simple calculation based on give date using the following default rules.
