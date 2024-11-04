@@ -47,7 +47,7 @@ def status(repo):
     elapsed_time = et - st
     print('\nExecution time:', elapsed_time, 'seconds', "\n")
 
-@cli.command("mailmap")
+#@cli.command("mailmap")
 @click.option('-sync', is_flag=True, default=False, help="Sync .mailmap to the database (Default)")
 @click.argument('filename', required=False, type=click.Path(exists=True))
 def mailmap(sync, filename):
@@ -59,7 +59,7 @@ def mailmap(sync, filename):
     for entry in mmap:
         print(entry)
 
-@cli.command("branches")
+#@cli.command("branches")
 @click.option('-sync', is_flag=True, default=False, help="Sync branches to the database")
 @click.argument('repo', type=GitRepo())
 def branches(sync, repo):
@@ -80,15 +80,20 @@ def branches(sync, repo):
 
 @cli.command("clone")
 @click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
-@click.option('-repo',  type=click.STRING, help="HTTPS Git clone URL")
-@click.option('-filename',  type=click.STRING, help="File with HTTP git clone URLs")
-def clone(repo, sync, filename):
-    """Clone the given repo into our KOSPEX_CODE directory."""
+@click.option('-filename',  type=click.Path(exists=True), help="File with HTTP git clone URLs")
+@click.argument('repo',type=click.STRING, required=False)
+def clone(sync, filename,repo):
+    """
+    Clone the given repo into our KOSPEX_CODE directory.
+    Example:
+    kgit clone https://github.com/ORG/REPO
+    """
     # We're going to shell out to git to do the clone
     kospex = Kospex()
 
     if repo and filename:
         exit("You can't specify both a repo and a filename. Please choose one.")
+
 
     if repo:
         repo_path = kgit.clone_repo(repo)
