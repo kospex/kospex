@@ -133,6 +133,32 @@
                 margin-right: 5px;
                 border-radius: 50%;
             }
+            .tooltip-text {
+                position: relative;
+                cursor: help;
+            }
+
+            .tooltip-text .tooltiptext {
+                visibility: hidden;
+                width: 200px;
+                background-color: black;
+                color: #fff;
+                text-align: center;
+                border-radius: 6px;
+                padding: 5px;
+                position: absolute;
+                z-index: 1;
+                bottom: 125%;
+                left: 50%;
+                margin-left: -100px;
+                opacity: 0;
+                transition: opacity 0.3s;
+            }
+
+            .tooltip-text:hover .tooltiptext {
+                visibility: visible;
+                opacity: 1;
+            }
         </style>
     </head>
     <body>
@@ -196,28 +222,49 @@
                             class="legend-color"
                             style="background-color: #4caf50"
                         ></div>
-                        <span>Active</span>
+                        <span class="tooltip-text"
+                            >Active
+                            <span class="tooltiptext"
+                                >Committed within last 90 days</span
+                            >
+                        </span>
                     </div>
                     <div class="legend-item">
                         <div
                             class="legend-color"
                             style="background-color: #fff176"
                         ></div>
-                        <span>Recent</span>
+                        <span class="tooltip-text"
+                            >Aging
+                            <span class="tooltiptext"
+                                >Committed within the last 90 an 180 days
+                            </span>
+                        </span>
                     </div>
                     <div class="legend-item">
                         <div
                             class="legend-color"
                             style="background-color: #a1887f"
                         ></div>
-                        <span>Inactive</span>
+                        <span class="tooltip-text"
+                            >Stale
+                            <span class="tooltiptext"
+                                >Committed within last year, but older than 6
+                                months
+                            </span>
+                        </span>
                     </div>
                     <div class="legend-item">
                         <div
                             class="legend-color"
                             style="background-color: #e0e0e0"
                         ></div>
-                        <span> Dormant </span>
+                        <span class="tooltip-text"
+                            >Dormant
+                            <span class="tooltiptext"
+                                >No commits for over a year</span
+                            >
+                        </span>
                     </div>
                 </div>
             </div>
@@ -376,6 +423,11 @@
                 graph.style.width = `${window.innerWidth - sidebarWidth}px`;
             });
             // End of code for sidebar resizing
+        </script>
+        <script>
+            $(document).ready(function () {
+                $('[data-toggle="tooltip"]').tooltip();
+            });
         </script>
         <!-- Add Bootstrap JS and its dependencies -->
         <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>

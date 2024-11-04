@@ -1012,7 +1012,6 @@ def convert_to_percentage(data):
     """
     # Calculate the total sum of all values in the dictionary
     total = sum(data.values())
-
     # Create a new dictionary where each value is the percentage of the total
     percentage_data = {}
     if total and total > 0:

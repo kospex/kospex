@@ -154,12 +154,16 @@ def summary(out,server,email, active, docker, dependencies, email_contains,group
 @click.option('--no-scc', is_flag=True, default=False, help="Skip scc analysis.")
 @click.argument('repo', type=GitRepo())
 def sync(repo,no_scc):
-    """Sync a single repo to the kospex DB, using the native git commands."""
+    """
+    Sync a single repo to the kospex DB, using the native git commands.
+    """
+
     installed = which('scc')
     if not installed:
         print("Please install scc from https://github.com/boyter/scc")
         print("This is used to count lines of code, complexity and determine the language.")
         print("or run sync with --no-scc to skip this step.")
+
     kospex.sync_repo(repo, no_scc=no_scc)
 
 #@cli.command("sync")
@@ -270,15 +274,19 @@ def tech_landscape(repo, repo_id, days, metadata):
 @cli.command("sync-metadata")
 @click.option('-repo', type=GitRepo())
 @click.option('-directory', type=click.Path(exists=True))
-def sync_metadata(repo,directory):
-    """Sync file metadata for either a 'repo' or 'directory' of repos. """
-    #print(f"Finding repos in {directory}")
+@click.option('-no_scc', is_flag=True, default=False, help="Don't use scc for stats.")
+@click.option('-force', is_flag=True, default=False, help="Force a new metadata scan.")
+def sync_metadata(repo,directory,no_scc,force):
+    """
+    Sync file metadata for either a 'repo' or 'directory' of repos.
+    """
     if directory and repo:
         print("Please specify either a -repo or a -directory, not both.")
     elif directory:
         kospex.sync_metadata(directory)
     elif repo:
-        kospex.file_metadata(repo)
+        data = kospex.file_metadata(repo,force=force)
+        print(data)
     else:
         print("Please specify either a '-repo' or a '-directory'.")
 

@@ -1,0 +1,6 @@
+<!-- ID heading macro Macro -->
+{% macro id_headings(details) %} {% if details.org_key %} {% set display_heading
+= details.org_key.replace('~',', ', 1) %}
+<h2>{{ display_heading }}</h2>
+<br />
+{% endif %} {% endmacro %}

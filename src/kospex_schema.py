@@ -67,7 +67,7 @@ SQL_CREATE_COMMIT_FILES = f'''CREATE TABLE IF NOT EXISTS [{TBL_COMMIT_FILES}] (
 SQL_CREATE_FILE_METADATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_FILE_METADATA}] (
     [Language] TEXT,        -- Language detected
     [Provider] TEXT,        -- location of the file (i.e. like file_path in other tables)
-    -- Provider used to be Location
+    -- Provider used to be Location, this is based on the scc output
     [Filename] TEXT,        -- filename
     [Lines] INTEGER,        -- Number of lines in the file
     [Code] INTEGER,         -- Number of lines of code

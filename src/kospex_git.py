@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 #import pygit2
 import kospex_utils as KospexUtils
-
+import panopticas as Panopticas
 
 class KospexGit:
     """Git metadata class for kospex"""
@@ -30,6 +30,63 @@ class KospexGit:
         """Simple diretory check to see if directory is a git repo"""
         git_path = f"{repo_dir}/.git/"
         return os.path.exists(git_path)
+
+    @staticmethod
+    def parse_git_remote(url):
+        """
+        Extracts the domain name, organization, and repository name from a given URL.
+
+        Args:
+        url (str): The URL to extract information from.
+
+        Returns:
+        dict: A dictionary containing the remote, org, repo, and remote_type.
+        """
+        # Regular expression to match the default pattern
+        pattern = r'^(https?|git|ssh)\:\/\/(?:[\w.-]+@)?([\w.-]+)\/([\w.-]+)\/([\w.-]+)(?:\.git)?$'
+        match = re.match(pattern, url)
+        # There are some Go libraries which use a different URL format from Google
+        # https://go.googlesource.com/oauth2
+        g_pattern = r"(?P<protocol>^\w+)://(?P<domain>[^\/?#]+)/(?P<directory>.*)"
+        google_match = re.match(g_pattern,url)
+
+        #gitlab_pattern = r"(?P<protocol>^https?://)" \
+        gitlab_pattern = r"(?P<protocol>^\w+)://" \
+          r"(?P<hostname>[^/]+)" \
+          r"(?P<directories>(?:/[^/]+)*?)/" \
+          r"(?P<last_part>[^/]+)$"
+
+        gitlab_match = re.match(gitlab_pattern, url)
+
+        slashes_count = url.count("/")
+        # Looks like github URLS have 4 slashes,
+        # gitlab URLs have more than 4 slashes (more like 5 or 6 for subprojects),
+        # Google/Go URLs have 3 slashes
+        # TODO - check SSH URLs
+
+        if slashes_count > 4 and gitlab_match:
+            return {
+                "remote": gitlab_match.group("hostname"),
+                "org": gitlab_match.group("directories").removeprefix("/"),
+                "repo": gitlab_match.group("last_part").removesuffix(".git"),
+                "remote_type": gitlab_match.group("protocol")
+            }
+        elif match:
+            return {
+                "remote": match.group(2),
+                "org": match.group(3),
+                "repo": match.group(4).removesuffix(".git"),
+                "remote_type": match.group(1)
+            }
+        elif google_match:
+            return {
+                "remote": google_match.group("domain"),
+                "org": "",
+                "repo": google_match.group("directory").removesuffix(".git"),
+                "remote_type": google_match.group("protocol")
+            }
+        else:
+            return None
 
     def extract_git_url_parts(self, url):
         """
@@ -87,9 +144,26 @@ class KospexGit:
         else:
             return None
 
+    @staticmethod
+    def generate_repo_id(remote,org,repo):
+        """
+        A static method to generate a repo_id
+        some git orgs have slashes, which we'll replace
+        with a double ~~ for parsing and use in web URLs
+        The general format for a repo_id is
+        remote~org~repo
+        """
+        repo_id = f"{remote}~"
+        repo_id += org.replace("/", "~~")
+        repo_id += f"~{repo}"
+
+        return repo_id
+
     def repo_id_from_url_parts(self, parts):
         """Create a simplified repo_id from the parts"""
+        org = parts["org"]
         return f"{parts['remote']}~{parts['org']}~{parts['repo']}"
+
 
     def set_remote_url(self, remote_url):
         """ Set the remote URL and extract the remote, org, repo, etc.
@@ -180,6 +254,15 @@ class KospexGit:
         """ return a list of files in the repo, excluding .git """
         repo_files = {}
         repo_path = Path(self.repo_dir).resolve()
+        print(f"repo_path: {repo_path}")
+        # TODO .. use panopticas here to grab the files.
+
+        p_files = Panopticas.identify_files(repo_path)
+        for entry in p_files:
+            data = {}
+            print(f"{entry} : {p_files[entry]}")
+            self.add_git_to_dict(data)
+            data['hash'] = self.current_hash
 
         for root, dirs, files in os.walk(repo_path):
             # Skip .git directory

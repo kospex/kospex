@@ -15,7 +15,7 @@
         .circles {
             display: flex;
             justify-content: space-between;
-            margin-top: 20px;
+            margin-top: 10px;
             align-items: center; /* Vertically center the circles */
         }
         .circle-container {
@@ -23,8 +23,8 @@
             flex-direction: column;
             align-items: center;
             justify-content: flex-end; /* Align circles to the bottom */
-            height: 180px; /* Set a fixed height for all containers */
-            width: 180px; /* Set a fixed width for all containers */
+            height: 170px; /* Set a fixed height for all containers */
+            width: 170px; /* Set a fixed width for all containers */
         }
         .circle {
             display: flex;
@@ -61,9 +61,15 @@
         <div class="container">
             <div class="row">
                 <div class="col">
+                    {% import '_id_header_macro.html' as header %}
                     <!-- Start the summary circle graphs -->
                     <div class="graph">
-                        <h2>Developers</h2>
+                        {{ header.id_headings(id) if id }}
+                        <h3>Developers</h3>
+                        {% set dev_url = "/developers/"%}
+                        <p>
+                            (<a href="/developers/">{{ developers.total }}</a>)
+                        </p>
                         <div class="circles">
                             <div class="circle-container">
                                 {% set active_pixels =
@@ -76,7 +82,8 @@
                                 </div>
                                 <div class="label">
                                     <strong>Active</strong> <br />
-                                    {{ developers.Active_percentage}} %
+                                    {{ developers.get("Active_percentage", "0
+                                    ")}} %
                                 </div>
                             </div>
                             <div class="circle-container">
@@ -88,7 +95,8 @@
                                 </div>
                                 <div class="label">
                                     <strong>Aging</strong> <br />
-                                    {{ developers.Aging_percentage}} %
+                                    {{ developers.get("Aging_percentage", "0
+                                    ")}} %
                                 </div>
                             </div>
                             <div class="circle-container">
@@ -100,7 +108,8 @@
                                 </div>
                                 <div class="label">
                                     <strong>Stale</strong> <br />
-                                    {{ developers.Stale_percentage }} %
+                                    {{ developers.get("Stale_percentage", "0
+                                    ")}} %
                                 </div>
                             </div>
                             <div class="circle-container">
@@ -111,22 +120,24 @@
                                     {{ developers.get("Unmaintained","?") }}
                                 </div>
                                 <div class="label">
-                                    <strong>Dormant</strong> <br />{{
-                                    developers.Unmaintained_percentage}} %
+                                    <strong>Dormant</strong> <br />
+                                    {{ developers.get("Unmaintained_percentage",
+                                    "0 ")}} %
                                 </div>
                             </div>
                         </div>
                     </div>
                     <br />
                     <div class="graph">
-                        <h2>Repos</h2>
+                        <h3>Repos</h3>
+                        <p>(<a href="/repos/">{{ repos.total }}</a>)</p>
                         <div class="circles">
                             <div class="circle-container">
                                 <div
                                     class="circle active"
                                     style="width: {{ repo_sizes.get('Active','40') }}px; height: {{ repo_sizes.get('Active','40') }}px;"
                                 >
-                                    {{ repos.get("Active","?") }}
+                                    {{ repos.get("Active","0 ") }}
                                 </div>
                                 <div class="label">
                                     <strong>Active</strong> <br />
@@ -138,7 +149,7 @@
                                     class="circle aging"
                                     style="width: {{ repo_sizes.get('Aging','40') }}px; height: {{ repo_sizes.get('Aging','40') }}px;"
                                 >
-                                    {{ repos.get("Aging","?") }}
+                                    {{ repos.get("Aging","0 ") }}
                                 </div>
                                 <div class="label">
                                     <strong>Aging</strong><br />
@@ -150,7 +161,7 @@
                                     class="circle stale"
                                     style="width: {{ repo_sizes.get('Stale','40') }}px; height: {{ repo_sizes.get('Stale','40') }}px;"
                                 >
-                                    {{ repos.get("Stale","?") }}
+                                    {{ repos.get("Stale","0 ") }}
                                 </div>
                                 <div class="label">
                                     <strong>Stale</strong><br />
@@ -162,7 +173,7 @@
                                     class="circle dormant"
                                     style="width: {{ repo_sizes.get('Unmaintained','40') }}px; height: {{ repo_sizes.get('Unmaintained','40') }}px;"
                                 >
-                                    {{ repos.get("Unmaintained","?") }}
+                                    {{ repos.get("Unmaintained","0 ") }}
                                 </div>
                                 <div class="label">
                                     <strong>Dormant</strong><br />

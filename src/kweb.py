@@ -4,6 +4,7 @@ from os.path import basename
 import sys
 import base64
 from flask import Flask, render_template, request, jsonify
+from jinja2 import TemplateNotFound
 from kospex_bitbucket import KospexBitbucket
 from kospex_query import KospexQuery
 import kospex_web as KospexWeb
@@ -11,43 +12,72 @@ import kospex_utils as KospexUtils
 
 app = Flask(__name__)
 
-@app.route('/')
-def index():
-    """ Serve up the summary home page """
-    data = KospexQuery().summary()
-    return render_template('index.html', **data)
+# @app.route('/')
+# def index():
+#     """ Serve up the summary home page """
+#     data = KospexQuery().summary()
+#     return render_template('index.html', **data)
 
-@app.route('/summary')
 @app.route('/summary/', defaults={'id': None})
 @app.route('/summary/<id>')
+@app.route('/', defaults={'id': None})
 def summary(id):
     """ Serve up the summary home page """
     params = KospexWeb.get_id_params(id)
     devs = KospexQuery().developers(**params)
 
     dev_stats = KospexUtils.count_key_occurrences(devs,"status")
-    print(dev_stats)
     dev_percentages = KospexUtils.convert_to_percentage(dev_stats)
+
+    total = sum(dev_stats.values())
+    dev_stats["total"] = total
+
     result = {}
-    total = 100
     for name, percentage in dev_percentages.items():
         if percentage:
             dev_stats[f"{name}_percentage"] = round(percentage)
-        result[name] = round(total * (percentage / 100)) + 40
+        result[name] = round(100 * (percentage / 100)) + 40
 
     repos = KospexQuery().repos(**params)
-
     repo_stats = KospexUtils.count_key_occurrences(repos,"status")
-    print(repo_stats)
+
     repo_sizes = {}
     repo_percentages = KospexUtils.convert_to_percentage(repo_stats)
+    # Do the total after percentages are calculated
+    total = sum(repo_stats.values())
+    repo_stats["total"] = total
+
     for name, percentage in repo_percentages.items():
         if percentage:
             repo_stats[f"{name}_percentage"] = round(percentage)
-        repo_sizes[name] = round(total * (percentage / 100)) + 40
+        repo_sizes[name] = round(100 * (percentage / 100)) + 40
 
     return render_template('summary.html', developers=dev_stats,
-        data_size=result, repos=repo_stats, repo_sizes=repo_sizes)
+        data_size=result, repos=repo_stats, repo_sizes=repo_sizes,id=params)
+
+@app.route('/help', defaults={'id': None})
+@app.route('/help/', defaults={'id': None})
+@app.route('/help/<id>')
+def help(id):
+    """ Serve up the help pages """
+    print(f"page: {id}")
+    page = "404"
+    if id:
+        # Check that the id is safe to use
+        valid_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
+        if set(id).issubset(valid_chars):
+            print("looks legit")
+            page = f"help/{id}"
+        else:
+            page = "404"
+    else:
+        page = "help/index"
+
+    try:
+        return render_template(f'{page}.html')
+    except TemplateNotFound:
+        return render_template('404.html'), 404
+
 
 @app.route('/developers/active/<repo_id>')
 def active_developers(repo_id):
@@ -133,14 +163,21 @@ def developers():
         data = KospexQuery().summary(days=days)
         return render_template('developers.html', authors=devs, data=data )
 
-@app.route('/landscape/')
-def landscape():
+
+@app.route('/landscape', defaults={'id': None})
+@app.route('/landscape/', defaults={'id': None})
+@app.route('/landscape/<id>')
+def landscape(id):
     """ Serve up the technology landscape metadata """
     kospex = KospexQuery()
-    repo_id = request.args.get('repo_id')
-    org_key = request.args.get('org_key')
+
+    params = KospexWeb.get_id_params(id)
+    repo_id = request.args.get('repo_id') or params.get("repo_id")
+    org_key = request.args.get('org_key') or params.get("org_key")
     data = kospex.tech_landscape(org_key=org_key,repo_id=repo_id)
+
     download = request.args.get('download')
+
     if download:
         # TODO - need to pass in the query params for orgs or repo
         return KospexWeb.download_csv(data)
@@ -336,9 +373,11 @@ def tech_change():
 
 @app.route('/metadata/')
 def metadata():
-    """ Metadata about the kospex DB. """
-    details = {}
-    return render_template('metadata.html')
+    """ Metadata about the kospex DB and repos. """
+    data = KospexQuery().summary()
+    return render_template('metadata.html', **data)
+
+
 
 @app.route('/bubble/<id>')
 def bubble(id):

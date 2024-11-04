@@ -56,7 +56,7 @@ class Kospex:
 
     def get_hash(self, **kwargs):
         """ Get a hash, based on search criteria.
-         Must pass in either a valid repo with -repo or a repo_id with -repo_id 
+         Must pass in either a valid repo with -repo or a repo_id with -repo_id
          Defaults to commits table and the older hash"""
 
         repo = kwargs.get('repo', None)
@@ -145,10 +145,17 @@ class Kospex:
         """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
         #def sync_commits(conn, git_dir, limit=None, from_date=None, to_date=None):
 
-        if not no_scc:
+        use_scc = True
+        if no_scc:
+            use_scc = False
+
+        #if not no_scc:
+        if use_scc:
             self.file_metadata(directory)
+
         self.set_repo_dir(directory)
 
+        # If we don't have a from date from the use, get the last commit date from DB
         if not from_date:
             latest_datetime = self.get_latest_commit_datetime(self.git.get_repo_id())
             if latest_datetime:
@@ -600,7 +607,7 @@ class Kospex:
                 table.add_row(parts)
 
         elif db:
-            
+
             # sql = '''SELECT DISTINCT(_repo_id) as repo, file_path, git_remote
             # FROM repos'''
 
@@ -638,7 +645,7 @@ class Kospex:
 
 
     def tech_landscape(self, **kwargs):
-        """ Display the tech landscape using file extensions from commits or output from 'scc'. 
+        """ Display the tech landscape using file extensions from commits or output from 'scc'.
         Options:
         -repo_id to limit to a specific repo_id
         -metadata to use the file metadata instead of the committed files
@@ -735,9 +742,25 @@ class Kospex:
     #    print(table)
     #    print(f"Total files: {str(num_files)}\n")
     #    self.chdir_original()
+    #
 
-    def file_metadata(self, repo_directory):
-        """ Get some basic metadata about the files in the repo using 'scc'"""
+    def simple_file_metadata(self, repo_directory,force=None):
+        """
+        Get some basic metadata about the files in the repo using panopticas
+        """
+        self.set_repo_dir(repo_directory)
+        git_hash = self.git.get_current_hash()
+        repo_id = self.git.get_repo_id()
+        files = self.git.get_repo_files()
+
+
+
+
+
+    def file_metadata(self, repo_directory,force=None):
+        """
+        Get some basic metadata about the files in the repo using 'scc'
+        """
         self.set_repo_dir(repo_directory)
         git_hash = self.git.get_current_hash()
         repo_id = self.git.get_repo_id()
@@ -747,53 +770,63 @@ class Kospex:
         WHERE hash = ? and _repo_id = ?"""
         row = self.kospex_db.execute(sql, [git_hash, repo_id]).fetchone()
 
-        if row:
+        data_rows = []
+
+        if row and not force:
             print(f"Already have metadata for {git_hash} and repo_id {str(repo_id)}")
         else:
+
             # scc wont' analyse everything, so we need to do a file find for items not analysed
             files = self.git.get_repo_files()
             # This will be a dict of file paths and their metadata
-
-            # Check we've got scc installed
-            installed = which('scc')
-            if not installed:
-                sys.exit("""scc is not installed.
-                         Please install scc from https://github.com/boyter/scc""")
-            
-            # Let's grab the file metadata using 'scc'
-            metadata = subprocess.run(["scc", "--by-file", "-f", "csv"],
-                                      stdout=subprocess.PIPE,
-                                      text=True, check=False)
-            data_rows = []
-            csv_reader = csv.DictReader(metadata.stdout.splitlines())
-            # TODO - revist parsing of scc output
-            # As of version 3.3.3, the output is:
-            # Language,Provider,Filename,Lines,Code,Comments,Blanks,Complexity,Bytes,ULOC
-            # A new ULOC parameter was added, which is not currently in our schema
-            meta_cols = [ "Language","Provider","Filename","Lines",
-                         "Code","Comments","Blanks","Complexity","Bytes" ]
-
-            for row in csv_reader:
-                row = {key: row[key] for key in meta_cols if key in row}
-                row['hash'] = git_hash
-
-                # TODO - this doesn't work, a newly cloned repo will have mtime of when it was cloned
-                #row['_mtime'] = os.path.getmtime(row['Filename'])
-                # Set this entry to the latest. Required for tech landscape queries
-                row['latest'] = True
-                data_rows.append(self.git.add_git_to_dict(row))
 
             # Reset "last" flags to false
             reset_last_sql = f"""UPDATE {KospexSchema.TBL_FILE_METADATA} SET LATEST = 0
             WHERE _repo_id = ?"""
             self.kospex_db.execute(reset_last_sql, [repo_id])
 
-            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).insert_all(data_rows)
+            #for item in files:
+            #    print(files[item])
+            print(len(files))
 
-            print("Added " + str(len(data_rows)) + " rows to " +
-                  KospexSchema.TBL_FILE_METADATA + " for repo_id " + str(self.git.get_repo_id()))
+            # Check we've got scc installed
+            installed = which('scc')
+            if not installed:
+                print("""WARNING: scc is not installed.
+                         Please install scc from https://github.com/boyter/scc""")
+            else:
+                # Let's grab the file metadata using 'scc'
+                metadata = subprocess.run(["scc", "--by-file", "-f", "csv"],
+                                        stdout=subprocess.PIPE,
+                                        text=True, check=False)
+
+                csv_reader = csv.DictReader(metadata.stdout.splitlines())
+                # TODO - revist parsing of scc output
+                # As of version 3.3.3, the output is:
+                # Language,Provider,Filename,Lines,Code,Comments,Blanks,Complexity,Bytes,ULOC
+                # A new ULOC parameter was added, which is not currently in our schema
+                meta_cols = [ "Language","Provider","Filename","Lines",
+                            "Code","Comments","Blanks","Complexity","Bytes" ]
+
+                for row in csv_reader:
+                    row = {key: row[key] for key in meta_cols if key in row}
+                    row['hash'] = git_hash
+
+                    # TODO - this doesn't work, a newly cloned repo will have mtime of when it was cloned
+                    #row['_mtime'] = os.path.getmtime(row['Filename'])
+                    # Set this entry to the latest. Required for tech landscape queries
+                    row['latest'] = True
+                    data_rows.append(self.git.add_git_to_dict(row))
+
+                self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(data_rows,
+                    pk=["Provider","hash","_repo_id"]
+                )
+
+                print("Added " + str(len(data_rows)) + " rows to " +
+                    KospexSchema.TBL_FILE_METADATA + " for repo_id " + str(self.git.get_repo_id()))
 
         self.chdir_original()
+        return data_rows
 
     def sync_metadata(self, data_directory):
         """ Find all git repos and sync the metadata to the kospex database """
@@ -824,8 +857,8 @@ class Kospex:
 
             sql = '''SELECT _repo_id, count(*) as commits, min(committer_when) as first_seen,
             count(DISTINCT(author_email)) as authors,
-            max(committer_when) as last_seen 
-            FROM commits 
+            max(committer_when) as last_seen
+            FROM commits
             WHERE _repo_id = ?
             GROUP BY 1
             ORDER BY 2
@@ -877,8 +910,8 @@ class Kospex:
         # TODO - make this git_hash aware, and query there the commits are <= git_hash commit time
         sql = '''SELECT file_path as Location, COUNT(*) as commits,
         COUNT(DISTINCT(author_email)) as authors, commits._repo_id
-        FROM commits, commit_files 
-        WHERE commits._repo_id = ? AND 
+        FROM commits, commit_files
+        WHERE commits._repo_id = ? AND
         commit_files._repo_id = ? AND
         file_path = ? AND
         commits._repo_id = commit_files._repo_id AND
@@ -999,4 +1032,3 @@ class Kospex:
         table = KospexUtils.get_keyvalue_table(config)
 
         return table
-
