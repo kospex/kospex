@@ -24,7 +24,6 @@ If you are ok to use the ~/code directory for cloned repos, then run:
 
 See section "Git code layout for running analysis" below for more details.
 
-
 ### Step 3: sync some data and play with some commands
 
 For an existing repo on disk:
@@ -38,7 +37,7 @@ The above command will clone into the KOSPEX_CODE/GIT_SERVER/ORG/REPO structure
 
 Some commands to try:
 
-> kospex developers -repo [GIT_REPO]
+> kospex developers
 >
 > kospex tech-landscape -metadata
 
