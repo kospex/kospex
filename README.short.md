@@ -5,7 +5,6 @@ It uses database structure from the excellent [Mergestat lite](https://github.co
 
 For details on changes, see  the [changelog](https://github.com/kospex/kospex/blob/main/CHANGELOG.md)
 
-
 ## Installation, setup and usage
 
 See the official [installation documentation](https://kospex.io/getting-started)
