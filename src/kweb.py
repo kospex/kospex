@@ -60,7 +60,6 @@ def summary(id):
 @app.route('/help/<id>')
 def help(id):
     """ Serve up the help pages """
-    print(f"page: {id}")
     page = "404"
     if id:
         # Check that the id is safe to use
@@ -686,7 +685,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         if sys.argv[1] == "-debug":
             print("\n#\nRunning in DEBUG mode.\n#\n\n")
-            app.run(debug=True)
+            print("WARNING: LISTENING ON 0.0.0.0\n")
+            app.run(host="0.0.0.0",debug=True)
         else:
             exit("Unknown option, try -debug.")
     else:
