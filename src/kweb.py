@@ -678,7 +678,7 @@ def kweb():
         else:
             exit("Unknown option, try -debug.")
     else:
-        print("\n#\nRunning in NON debug mode.\n#\n\n")
+        print("\n#\nRunning in NON debug, local mode.\n#\n\n")
         app.run()
 
 if __name__ == "__main__":
@@ -691,5 +691,5 @@ if __name__ == "__main__":
         else:
             exit("Unknown option, try -debug.")
     else:
-        print("\n#\nRunning in NON debug mode.\n#\n\n")
+        print("\n#\nRunning in NON debug, local mode.\n#\n\n")
         app.run()
