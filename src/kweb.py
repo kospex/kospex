@@ -670,11 +670,21 @@ def org_graph(focus,org_key):
 
 def kweb():
     """ Run the web server. """
+    all_interfaces = False
+    if "-all" in sys.argv:
+        all_interfaces = True
+        print("Found -all")
+
+
+
     if len(sys.argv) > 1:
-        if sys.argv[1] == "-debug":
+        if "-debug" in sys.argv:
             print("\n#\nRunning in DEBUG mode.\n#\n\n")
-            print("WARNING: LISTENING ON 0.0.0.0\n")
-            app.run(host="0.0.0.0",debug=True)
+            if all_interfaces:
+                print("WARNING: LISTENING ON 0.0.0.0\n")
+                app.run(host="0.0.0.0",debug=True)
+            else:
+                app.run(debug=True)
         else:
             exit("Unknown option, try -debug.")
     else:
@@ -683,13 +693,4 @@ def kweb():
 
 if __name__ == "__main__":
 
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "-debug":
-            print("\n#\nRunning in DEBUG mode.\n#\n\n")
-            print("WARNING: LISTENING ON 0.0.0.0\n")
-            app.run(host="0.0.0.0",debug=True)
-        else:
-            exit("Unknown option, try -debug.")
-    else:
-        print("\n#\nRunning in NON debug, local mode.\n#\n\n")
-        app.run()
+    kweb()
