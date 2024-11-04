@@ -673,7 +673,8 @@ def kweb():
     if len(sys.argv) > 1:
         if sys.argv[1] == "-debug":
             print("\n#\nRunning in DEBUG mode.\n#\n\n")
-            app.run(debug=True)
+            print("WARNING: LISTENING ON 0.0.0.0\n")
+            app.run(host="0.0.0.0",debug=True)
         else:
             exit("Unknown option, try -debug.")
     else:
