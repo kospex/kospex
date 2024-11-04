@@ -2,7 +2,7 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## [Unreleased]
+## 0.0.10 - 2024-11-04
 
 ### Added
   - a help section in the menu (available from /help/)
@@ -15,5 +15,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Changed
   - Fixed how percentages and circles were created in summary view
   - added no_scc options to some commands
+
+## [Unreleased]
+### Added
+### Changed
 
 ## VERSION - DATE

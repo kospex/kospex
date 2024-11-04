@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=70.1.0"]
+requires = ["setuptools>=71.1.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "kospex"
-version = "0.0.9"
+version = "0.0.10"
 description = "The kospex CLI tool."
 authors = [{ name = "Peter Freiberg", email = "peter.freiberg@gmail.com" }]
 
