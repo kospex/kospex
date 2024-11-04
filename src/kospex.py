@@ -18,6 +18,7 @@ KospexUtils.init()
 kospex = Kospex()
 log = logging.getLogger(__name__)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
+VERSION = "0.0.9" # This value should align with the pyproject.toml version for pip
 
 @click.group()
 def cli():
@@ -831,6 +832,11 @@ def orphans(days,window,server):
     print(table)
     print(f"\nOrphaned: {orphaned} | Working Knowledge: {working_knowledge} | Total: {len(repos)}")
     print(f"Orphaned: {orphaned/len(repos)*100:.2f}% | Working Knowledge: {working_knowledge/len(repos)*100:.2f}%\n")
+
+@cli.command("version")
+def version():
+    """Print the version of Kospex CLI."""
+    click.echo(f"Kospex CLI version {VERSION}")
 
 @cli.command("system-status")
 def status():
