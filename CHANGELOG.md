@@ -19,5 +19,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ## [Unreleased]
 ### Added
 ### Changed
+### Fixed
+ - Fixed commit slider so it works on bubble graph, removed reset button
+ - Fixed bubble graph redraw overlap issue when commit slider is reduced.
 
 ## VERSION - DATE
