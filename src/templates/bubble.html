@@ -289,6 +289,7 @@
 
             // Store the original data globally
             let originalData;
+            let nodePositions = new Map(); // Store initial positions of all nodes
 
             // Add event listeners for commit slider and buttons
             document
@@ -331,25 +332,62 @@
                 const width = document.getElementById("graph").offsetWidth;
                 const height = document.getElementById("graph").offsetHeight;
 
-                // Clear existing visualization
-                d3.select("#graph svg").remove();
+                // First time setup
+                if (nodePositions.size === 0) {
+                    // Calculate initial positions for ALL nodes
+                    const bubble = d3.pack().size([width, height]).padding(1.5);
 
-                const svg = d3
-                    .select("#graph")
-                    .append("svg")
-                    .attr("width", width)
-                    .attr("height", height);
+                    const initialRoot = d3
+                        .hierarchy({ children: originalData.nodes })
+                        .sum((d) => d.commits);
 
-                // Create a container group for zoomable content
-                const g = svg.append("g");
+                    const initialNodes = bubble(initialRoot)
+                        .descendants()
+                        .slice(1);
 
-                const bubble = d3.pack().size([width, height]).padding(1.5);
+                    // Store positions for all nodes
+                    initialNodes.forEach((node) => {
+                        nodePositions.set(node.data.id, {
+                            x: node.x,
+                            y: node.y,
+                            r: node.r,
+                        });
+                    });
+                }
 
-                const root = d3
-                    .hierarchy({ children: filteredNodes })
-                    .sum((d) => d.commits);
+                // If this is the first time running (no svg exists), create it
+                let svg = d3.select("#graph svg");
+                if (svg.empty()) {
+                    svg = d3
+                        .select("#graph")
+                        .append("svg")
+                        .attr("width", width)
+                        .attr("height", height);
 
-                const nodes = bubble(root).descendants().slice(1);
+                    svg.append("g").attr("class", "container");
+
+                    const zoom = d3
+                        .zoom()
+                        .scaleExtent([0.5, 5])
+                        .on("zoom", (event) => {
+                            svg.select(".container").attr(
+                                "transform",
+                                event.transform,
+                            );
+                        });
+
+                    svg.call(zoom);
+                }
+
+                const g = svg.select(".container");
+
+                // Map filtered nodes to their original positions
+                const nodesWithPositions = filteredNodes.map((node) => ({
+                    data: node,
+                    x: nodePositions.get(node.id).x,
+                    y: nodePositions.get(node.id).y,
+                    r: nodePositions.get(node.id).r,
+                }));
 
                 // Custom color scale
                 const color = d3
@@ -357,30 +395,44 @@
                     .domain([1, 2, 3, 4])
                     .range(["#4CAF50", "#FFF176", "#A1887F", "#E0E0E0"]);
 
-                const node = g
+                // Update existing nodes and add new ones
+                const nodeGroups = g
                     .selectAll(".node")
-                    .data(nodes)
+                    .data(nodesWithPositions, (d) => d.data.id);
+
+                // Remove nodes that don't match the filter
+                nodeGroups.exit().remove();
+
+                // Add new nodes
+                const newNodes = nodeGroups
                     .enter()
                     .append("g")
                     .attr("class", "node")
                     .attr("transform", (d) => `translate(${d.x},${d.y})`);
 
-                node.append("circle")
+                // Add circles to new nodes
+                newNodes
+                    .append("circle")
                     .attr("r", (d) => d.r)
                     .attr("class", "bubble")
                     .style("fill", (d) => color(d.data.status_group));
 
-                node.append("text")
+                // Add labels to new nodes
+                newNodes
+                    .append("text")
                     .attr("class", "bubble-label")
                     .attr("dy", ".3em")
-                    .text((d) => d.data.label.substring(0, d.r / 3));
+                    .text((d) =>
+                        d.data.label ? d.data.label.substring(0, d.r / 3) : "",
+                    );
 
-                node.append("title").text(
-                    (d) => `${d.data.id}\nCommits: ${d.data.commits}`,
-                );
+                // Add titles to new nodes
+                newNodes
+                    .append("title")
+                    .text((d) => `${d.data.id}\nCommits: ${d.data.commits}`);
 
-                // Add click event to show node info in sidebar
-                node.on("click", (event, d) => {
+                // Add click handlers to new nodes
+                newNodes.on("click", (event, d) => {
                     const nodeInfo = document.getElementById("nodeInfo");
                     const node_label = d.data.label || d.data.id;
                     const node_link =
@@ -394,17 +446,6 @@
                         <p><strong>Last Commit</strong></br> ${d.data.last_commit}</p>
                     `;
                 });
-
-                // Create zoom behavior
-                const zoom = d3.zoom().scaleExtent([0.5, 5]).on("zoom", zoomed);
-
-                // Apply zoom behavior to svg
-                svg.call(zoom);
-
-                // Zoom function
-                function zoomed(event) {
-                    g.attr("transform", event.transform);
-                }
             }
 
             // Add the following D3 code to create the bubble chart
