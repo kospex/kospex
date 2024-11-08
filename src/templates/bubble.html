@@ -188,7 +188,7 @@
                         <button class="slider-button" id="commitPlus">+</button>
                     </div>
                 </div>
-
+                <!-- --
                 <div class="slider-container">
                     <label for="repoSlider">Repository Filter:</label>
                     <input
@@ -207,7 +207,7 @@
                         <button class="slider-button" id="repoPlus">+</button>
                     </div>
                 </div>
-
+                -->
                 <hr />
                 <!-- Node Information</h3> -->
                 <div id="nodeInfo">
@@ -215,7 +215,7 @@
                 </div>
             </div>
             <div id="graph">
-                <button id="resetButton">Reset Positions</button>
+                <!-- <button id="resetButton">Reset Positions</button> -->
                 <div class="legend">
                     <div class="legend-item">
                         <div
@@ -285,12 +285,54 @@
                 }
             }
 
-            // Add the following D3 code to create the bubble chart
-            async function createBubbleChart() {
-                const data = await fetchGraphData();
+            // Commit slide functionality
 
+            // Store the original data globally
+            let originalData;
+
+            // Add event listeners for commit slider and buttons
+            document
+                .getElementById("commitSlider")
+                .addEventListener("input", handleCommitSliderChange);
+            document
+                .getElementById("commitMinus")
+                .addEventListener("click", () => adjustCommitSlider(-1));
+            document
+                .getElementById("commitPlus")
+                .addEventListener("click", () => adjustCommitSlider(1));
+
+            function adjustCommitSlider(change) {
+                const slider = document.getElementById("commitSlider");
+                const currentValue = parseInt(slider.value);
+                slider.value = currentValue + change;
+                handleCommitSliderChange({ target: slider });
+            }
+
+            function handleCommitSliderChange(event) {
+                const minCommits = parseInt(event.target.value);
+                document.getElementById("commitValue").textContent =
+                    `Minimum commits: ${minCommits}`;
+
+                // Filter nodes based on commit value
+                const filteredNodes = originalData.nodes.filter(
+                    (node) => node.commits >= minCommits,
+                );
+                updateVisualization(filteredNodes, minCommits);
+            }
+
+            function adjustCommitSlider(change) {
+                const slider = document.getElementById("commitSlider");
+                const currentValue = parseInt(slider.value);
+                slider.value = currentValue + change;
+                handleCommitSliderChange({ target: slider });
+            }
+
+            function updateVisualization(filteredNodes, minCommits) {
                 const width = document.getElementById("graph").offsetWidth;
                 const height = document.getElementById("graph").offsetHeight;
+
+                // Clear existing visualization
+                d3.select("#graph svg").remove();
 
                 const svg = d3
                     .select("#graph")
@@ -304,7 +346,7 @@
                 const bubble = d3.pack().size([width, height]).padding(1.5);
 
                 const root = d3
-                    .hierarchy({ children: data.nodes })
+                    .hierarchy({ children: filteredNodes })
                     .sum((d) => d.commits);
 
                 const nodes = bubble(root).descendants().slice(1);
@@ -340,12 +382,11 @@
                 // Add click event to show node info in sidebar
                 node.on("click", (event, d) => {
                     const nodeInfo = document.getElementById("nodeInfo");
-                    node_label = d.data.label || d.data.id;
-                    //<h4><a href="/developer/${d.id_b64}">${node_label}</a></h4>
-                    node_link = d.data.link || "/developer/" + d.data.id_b64;
-                    //<h4><a href="/developer/${d.data.id_b64}">${node_label}</a></h4>
+                    const node_label = d.data.label || d.data.id;
+                    const node_link =
+                        d.data.link || "/developer/" + d.data.id_b64;
                     nodeInfo.innerHTML = `
-                      <h4><a href="${node_link}">${node_label}</a></h4>
+                        <h4><a href="${node_link}">${node_label}</a></h4>
                         <p><strong>ID:</strong> ${d.data.id}</p>
                         <p><strong>Commits:</strong> ${d.data.commits}</p>
                         <p><strong>Group:</strong> ${d.data.group}</p>
@@ -353,11 +394,9 @@
                         <p><strong>Last Commit</strong></br> ${d.data.last_commit}</p>
                     `;
                 });
+
                 // Create zoom behavior
-                const zoom = d3
-                    .zoom()
-                    .scaleExtent([0.5, 5]) // Set min and max zoom scale
-                    .on("zoom", zoomed);
+                const zoom = d3.zoom().scaleExtent([0.5, 5]).on("zoom", zoomed);
 
                 // Apply zoom behavior to svg
                 svg.call(zoom);
@@ -368,22 +407,110 @@
                 }
             }
 
+            // Add the following D3 code to create the bubble chart
+            // async function createBubbleChart() {
+            //     const data = await fetchGraphData();
+
+            //     const width = document.getElementById("graph").offsetWidth;
+            //     const height = document.getElementById("graph").offsetHeight;
+
+            //     const svg = d3
+            //         .select("#graph")
+            //         .append("svg")
+            //         .attr("width", width)
+            //         .attr("height", height);
+
+            //     // Create a container group for zoomable content
+            //     const g = svg.append("g");
+
+            //     const bubble = d3.pack().size([width, height]).padding(1.5);
+
+            //     const root = d3
+            //         .hierarchy({ children: data.nodes })
+            //         .sum((d) => d.commits);
+
+            //     const nodes = bubble(root).descendants().slice(1);
+
+            //     // Custom color scale
+            //     const color = d3
+            //         .scaleOrdinal()
+            //         .domain([1, 2, 3, 4])
+            //         .range(["#4CAF50", "#FFF176", "#A1887F", "#E0E0E0"]);
+
+            //     const node = g
+            //         .selectAll(".node")
+            //         .data(nodes)
+            //         .enter()
+            //         .append("g")
+            //         .attr("class", "node")
+            //         .attr("transform", (d) => `translate(${d.x},${d.y})`);
+
+            //     node.append("circle")
+            //         .attr("r", (d) => d.r)
+            //         .attr("class", "bubble")
+            //         .style("fill", (d) => color(d.data.status_group));
+
+            //     node.append("text")
+            //         .attr("class", "bubble-label")
+            //         .attr("dy", ".3em")
+            //         .text((d) => d.data.label.substring(0, d.r / 3));
+
+            //     node.append("title").text(
+            //         (d) => `${d.data.id}\nCommits: ${d.data.commits}`,
+            //     );
+
+            //     // Add click event to show node info in sidebar
+            //     node.on("click", (event, d) => {
+            //         const nodeInfo = document.getElementById("nodeInfo");
+            //         node_label = d.data.label || d.data.id;
+            //         //<h4><a href="/developer/${d.id_b64}">${node_label}</a></h4>
+            //         node_link = d.data.link || "/developer/" + d.data.id_b64;
+            //         //<h4><a href="/developer/${d.data.id_b64}">${node_label}</a></h4>
+            //         nodeInfo.innerHTML = `
+            //           <h4><a href="${node_link}">${node_label}</a></h4>
+            //             <p><strong>ID:</strong> ${d.data.id}</p>
+            //             <p><strong>Commits:</strong> ${d.data.commits}</p>
+            //             <p><strong>Group:</strong> ${d.data.group}</p>
+            //             <p><strong>Status:</strong> ${d.data.status}</p>
+            //             <p><strong>Last Commit</strong></br> ${d.data.last_commit}</p>
+            //         `;
+            //     });
+            //     // Create zoom behavior
+            //     const zoom = d3
+            //         .zoom()
+            //         .scaleExtent([0.5, 5]) // Set min and max zoom scale
+            //         .on("zoom", zoomed);
+
+            //     // Apply zoom behavior to svg
+            //     svg.call(zoom);
+
+            //     // Zoom function
+            //     function zoomed(event) {
+            //         g.attr("transform", event.transform);
+            //     }
+            // }
+
             // Call the function to create the bubble chart
             createBubbleChart();
 
+            async function createBubbleChart() {
+                originalData = await fetchGraphData();
+                updateVisualization(originalData.nodes, 0); // Initial render with no filtering
+            }
+
             // Add these functions after createBubbleChart
 
-            function zoomIn() {
-                svg.transition().call(zoom.scaleBy, 1.5);
-            }
+            // function zoomIn() {
+            //     svg.transition().call(zoom.scaleBy, 1.5);
+            // }
 
-            function zoomOut() {
-                svg.transition().call(zoom.scaleBy, 0.75);
-            }
+            // function zoomOut() {
+            //     svg.transition().call(zoom.scaleBy, 0.75);
+            // }
 
-            function resetZoom() {
-                svg.transition().call(zoom.transform, d3.zoomIdentity);
-            }
+            // function resetZoom() {
+            //     svg.transition().call(zoom.transform, d3.zoomIdentity);
+            // }
 
             // Code for sidebar resizing
 
