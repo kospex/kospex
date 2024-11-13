@@ -144,9 +144,9 @@ class KospexDependencies:
 
     def is_npm_package(self,filename):
         """
-        Check if a filename looks like a package.json file, 
+        Check if a filename looks like a package.json file,
         including lock and other common variants.
-    
+
         Args:
         filename (str): The filename to check.
 
@@ -161,9 +161,9 @@ class KospexDependencies:
 
     def is_nuget_package(self,filename):
         """
-        Check if a filename looks like a .csproj file, 
+        Check if a filename looks like a .csproj file,
         including lock and other common variants.
-    
+
         Args:
         filename (str): The filename to check.
 
@@ -180,7 +180,7 @@ class KospexDependencies:
     def is_pip_requirements_file(self,filename):
         """
         Check if the given filename matches common patterns for Python pip requirements files.
-    
+
         Args:
         filename (str): The filename to check.
 
@@ -301,7 +301,7 @@ class KospexDependencies:
         #    details["days_ago"] = diff.days
         #details["published_at"] = deps_info.get("publishedAt")
         #details["default"] = deps_info.get("isDefault")
-        # TODO - need to parse the source repo to create proper links for NPM .. looks 
+        # TODO - need to parse the source repo to create proper links for NPM .. looks
         # a little dirty with actual Git urls and not https to Github
         #details["source_repo"] = self.get_source_repo_info(deps_info)
         #details["source_repo"] = KospexUtils.extract_git_url(self.get_source_repo_info(deps_info))
@@ -347,7 +347,7 @@ class KospexDependencies:
 
         details["published_at"] = deps_info.get("publishedAt")
         details["default"] = deps_info.get("isDefault")
-        # TODO - need to parse the source repo to create proper links for NPM .. looks 
+        # TODO - need to parse the source repo to create proper links for NPM .. looks
         # a little dirty with actual Git urls and not https to Github
         details["source_repo"] = KospexUtils.extract_git_url(self.get_source_repo_info(deps_info))
         details["advisories"] = self.get_advisories_count(deps_info)
@@ -366,9 +366,9 @@ class KospexDependencies:
         return details
 
     def npm_assess(self, filename, results_file=None, repo_info=None, dev_deps=None):
-        """ Using deps.dev to assess and provide a summary of a 
+        """ Using deps.dev to assess and provide a summary of a
             npm package.json compatible file """
-        
+
         params = locals()
         print(params)
 
@@ -385,12 +385,16 @@ class KospexDependencies:
         npm_file = open(filename)
         data = json.load(npm_file)
 
-        for item in data['dependencies']:
-            details = self.get_npm_dependency_dict(item,data)
-            #print(details)
-            results.append(details)
-            print(item)
-            table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
+
+
+        #for item in data.get('dependencies'):
+        if "dependencies" in data:
+            for item in data.get('dependencies'):
+                details = self.get_npm_dependency_dict(item,data)
+                #print(details)
+                results.append(details)
+                print(item)
+                table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
 
         if 'devDependencies' in data:
             for item in data['devDependencies']:
@@ -475,7 +479,7 @@ class KospexDependencies:
 
     def pypi_assess(self, filename,results_file=None,repo_info=None,
                     store=False, dependency_authors=None, print_table=False):
-        """ Using deps.dev to assess and provide a summary of a 
+        """ Using deps.dev to assess and provide a summary of a
             pip / PyPi requirements.txt compatible file """
 
         #today = datetime.datetime.now(datetime.timezone.utc)
@@ -553,7 +557,7 @@ class KospexDependencies:
                 #    parts = self.git.extract_git_url_parts(record["source_repo"])
                 #    if parts:
                 #        repo_id = self.git.repo_id_from_url_parts(parts)
-                        # TODO - Possibly need to query # of authors 
+                        # TODO - Possibly need to query # of authors
                         # before this version publish date
                 #        authors = self.kospex_query.authors_by_repo(repo_id)
                 #        if authors:
@@ -622,7 +626,7 @@ class KospexDependencies:
             result = [ {"package_name": pkg.attrib["Include"],
                     "package_version": pkg.attrib["Version"]} for pkg in package_references]
             #print(result)
-            
+
         except Exception as e:
             print(f"Error parsing {filename}: {e}")
             return False
@@ -790,7 +794,7 @@ class KospexDependencies:
         return details
 
     def gomod_assess(self, filename, results_file=None, repo_info=None):
-        """ Using deps.dev to assess and provide a summary of a 
+        """ Using deps.dev to assess and provide a summary of a
             go mod compatible file """
 
         table = self.get_cli_pretty_table()
