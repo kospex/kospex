@@ -22,5 +22,6 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Fixed
  - Fixed commit slider so it works on bubble graph, removed reset button
  - Fixed bubble graph redraw overlap issue when commit slider is reduced.
+ - Fixed npm parsing bug on absence of dependencies in a package.json
 
 ## VERSION - DATE
