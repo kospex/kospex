@@ -183,14 +183,23 @@ def landscape(id):
     else:
         return render_template('landscape.html', data=data, org_key=org_key)
 
-@app.route('/repos/')
-def repos():
+
+#@app.route('/repos', defaults={'id': None})
+@app.route('/repos/', defaults={'id': None})
+@app.route('/repos/<id>')
+def repos(id):
     """ display repo information. """
 
-    repo_id = request.args.get('repo_id')
+    params = KospexWeb.get_id_params(id)
+    repo_id = request.args.get('repo_id') or params.get("repo_id")
+    org_key = request.args.get('org_key') or params.get("org_key")
+    server = request.args.get('server') or params.get("server")
+
+    #repo_id = request.args.get('repo_id')
     kospex = KospexQuery()
-    org_key = request.args.get('org_key')
-    server = request.args.get('server')
+    #org_key = request.args.get('org_key')
+    #server = request.args.get('server')
+
     page = {}
     # TODO - validate params
     techs = None
