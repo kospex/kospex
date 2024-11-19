@@ -18,6 +18,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## [Unreleased]
 ### Added
+  - Added an <id> param to the /repos/ endpoint for easier linking
 ### Changed
 ### Fixed
  - Fixed commit slider so it works on bubble graph, removed reset button
