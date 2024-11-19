@@ -26,3 +26,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
  - Fixed npm parsing bug on absence of dependencies in a package.json
 
 ## VERSION - DATE
+
+### Added
+### Changed
+
+### Fixed
