@@ -10,10 +10,10 @@
 
 <div class="container mt-5">
 
-    <h1 class="mb-4">Repositories {% if page['git_owner'] %} for {{ page['git_owner']}} {% endif %} </h1>
-    {% if page['git_server'] %} <h3 class="mb-4">{{ page['git_server'] }}</h3> {% endif %}
+    <h1 class="mb-4">Repositories {% if page.get('git_owner') %} for {{ page.get('git_owner') }} {% endif %} </h1>
+    {% if page.get('git_server') %} <h3 class="mb-4">{{ page['git_server'] }}</h3> {% endif %}
 
-    {% if page['git_owner'] %}
+    {% if page.get('git_owner') %}
     <h4 class="mb-4"><a href="https://{{ page['git_server'] }}/{{ page['git_owner'] }}">https://{{ page['git_server'] }}/{{ page['git_owner'] }}</a></h4>
 
     Explore the <a href="/graph/{{ page['git_server'] }}~{{ page['git_owner'] }}">graph of developers and repositories.</a>

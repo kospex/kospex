@@ -331,7 +331,7 @@ def repo_with_tech(tech):
     else:
         repos_with_tech = kospex.repos_with_tech(tech)
 
-    return render_template(template,data=repos_with_tech)
+    return render_template(template,data=repos_with_tech,page = {})
 
 
 
