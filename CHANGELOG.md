@@ -2,6 +2,17 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.11 - 2024-11-25
+
+### Added
+  - Added an <id> param to the /repos/ endpoint for easier linking
+### Changed
+### Fixed
+ - Fixed commit slider so it works on bubble graph, removed reset button
+ - Fixed bubble graph redraw overlap issue when commit slider is reduced.
+ - Fixed npm parsing bug on absence of dependencies in a package.json
+ - Fixed bug where repos by tech page didn't display
+
 ## 0.0.10 - 2024-11-04
 
 ### Added
@@ -16,15 +27,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - Fixed how percentages and circles were created in summary view
   - added no_scc options to some commands
 
+
+
 ## [Unreleased]
+
 ### Added
-  - Added an <id> param to the /repos/ endpoint for easier linking
 ### Changed
+
 ### Fixed
- - Fixed commit slider so it works on bubble graph, removed reset button
- - Fixed bubble graph redraw overlap issue when commit slider is reduced.
- - Fixed npm parsing bug on absence of dependencies in a package.json
- - Fixed bug where repos by tech page didn't display
 
 ## VERSION - DATE
 

@@ -18,7 +18,7 @@ KospexUtils.init()
 kospex = Kospex()
 log = logging.getLogger(__name__)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
-VERSION = "0.0.10" # This value should align with the pyproject.toml version for pip
+VERSION = "0.0.11" # This value should align with the pyproject.toml version for pip
 
 @click.group()
 def cli():
