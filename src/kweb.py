@@ -432,56 +432,56 @@ def bubble(id,template):
     #return render_template('bubble.html',link_url=link_url)
     #return render_template('treemap.html',link_url=link_url)
 
+# This was a spike to break out the graph work and make it less clunky
+# @app.route('/graph-api/<id>')
+# def graph_api(id):
 
-@app.route('/graph-api/<id>')
-def graph_api(id):
+#     org_info = []
+#     data = {
+#             "nodes": [],
+#             "links": []
+#     }
+#     links = []
+#     nodes = []
 
-    org_info = []
-    data = {
-            "nodes": [],
-            "links": []
-    }
-    links = []
-    nodes = []
+#     if KospexUtils.parse_org_key(id):
+#         org_info = KospexQuery().get_graph_info(org_key=id)
 
-    if KospexUtils.parse_org_key(id):
-        org_info = KospexQuery().get_graph_info(org_key=id)
+#     elif KospexUtils.parse_repo_id(id):
+#         org_info = KospexQuery().get_graph_info(repo_id=id)
 
-    elif KospexUtils.parse_repo_id(id):
-        org_info = KospexQuery().get_graph_info(repo_id=id)
+#     elif KospexUtils.is_base64(id):
+#         email = KospexUtils.decode_base64(id)
+#         org_info = KospexQuery().get_graph_info(author_email=email,
+#             by_repo=True)
 
-    elif KospexUtils.is_base64(id):
-        email = KospexUtils.decode_base64(id)
-        org_info = KospexQuery().get_graph_info(author_email=email,
-            by_repo=True)
+#     elif focus:
 
-    elif focus:
+#         if focus == "repo":
+#             org_info = KospexQuery().get_graph_info(repo_id=repo_id)
+#         else:
+#             org_info = KospexQuery().get_graph_info(author_email=author_email,
+#                 by_repo=True)
+#             print("Unknown focus")
+#             print(org_info)
 
-        if focus == "repo":
-            org_info = KospexQuery().get_graph_info(repo_id=repo_id)
-        else:
-            org_info = KospexQuery().get_graph_info(author_email=author_email,
-                by_repo=True)
-            print("Unknown focus")
-            print(org_info)
+#         print(f"in focus, with focus: {focus}")
 
-        print(f"in focus, with focus: {focus}")
+#     elif repo_id:
+#         org_info = KospexQuery().get_repo_files_graph_info(repo_id=repo_id)
+#         #org_info = KospexQuery().get_graph_info(org_key=org_key)
 
-    elif repo_id:
-        org_info = KospexQuery().get_repo_files_graph_info(repo_id=repo_id)
-        #org_info = KospexQuery().get_graph_info(org_key=org_key)
+#     elif author_email:
+#         # This should be the b64 parameter that's decoded
+#         org_info = KospexQuery().get_graph_info(author_email=author_email)
 
-    elif author_email:
-        # This should be the b64 parameter that's decoded
-        org_info = KospexQuery().get_graph_info(author_email=author_email)
+#     elif git_server:
+#         org_info = KospexQuery().get_graph_info(git_server=git_server)
 
-    elif git_server:
-        org_info = KospexQuery().get_graph_info(git_server=git_server)
+#     data["nodes"] = nodes
+#     data["links"] = links
 
-    data["nodes"] = nodes
-    data["links"] = links
-
-    return data
+#     return data
 
 
 @app.route('/graph', defaults={'org_key': None})
