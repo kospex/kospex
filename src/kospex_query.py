@@ -1057,123 +1057,124 @@ class KospexQuery:
         kd.group_by("author","file_path")
         return kd.execute()
 
-    def create_nodes(self, raw_data):
-        """
-        Process the details from get_graph_info
-        return a data structure of
-        data = {
-            "nodes": [],
-            "links": []
-        }
-        suitable for forced directed and bubble graphs
-        """
+    # Commenting out, looks like this was a half attempt to refactor some of the graph API
+    # def create_nodes(self, raw_data):
+    #     """
+    #     Process the details from get_graph_info
+    #     return a data structure of
+    #     data = {
+    #         "nodes": [],
+    #         "links": []
+    #     }
+    #     suitable for forced directed and bubble graphs
+    #     """
 
-        dev_lookup = {}
-        repo_lookup = {}
-        file_lookup = {}
-        links = []
-        nodes = []
+    #     dev_lookup = {}
+    #     repo_lookup = {}
+    #     file_lookup = {}
+    #     links = []
+    #     nodes = []
 
-        for element in raw_data:
+    #     for element in raw_data:
 
-            last_commit = element.get("last_commit")
-            status = KospexUtils.development_status(KospexUtils.days_ago(last_commit))
+    #         last_commit = element.get("last_commit")
+    #         status = KospexUtils.development_status(KospexUtils.days_ago(last_commit))
 
-            group_numbers = {}
-            group_numbers['Active'] = 1
-            group_numbers['Aging'] = 2
-            group_numbers['Stale'] = 3
-            group_numbers['Unmaintained'] = 4
+    #         group_numbers = {}
+    #         group_numbers['Active'] = 1
+    #         group_numbers['Aging'] = 2
+    #         group_numbers['Stale'] = 3
+    #         group_numbers['Unmaintained'] = 4
 
-            group = 1
-            if org_key:
-                # we only have 1 group, and that's developers
-                group = 1
-                # in graph, group is used to link between
-            else:
-                group = group_numbers.get(status,4)
+    #         group = 1
+    #         if org_key:
+    #             # we only have 1 group, and that's developers
+    #             group = 1
+    #             # in graph, group is used to link between
+    #         else:
+    #             group = group_numbers.get(status,4)
 
-            b64_email = KospexUtils.encode_base64(element.get('author'))
+    #         b64_email = KospexUtils.encode_base64(element.get('author'))
 
-            #b64_bytes = base64.b64encode(element['author'].encode("utf-8"))
-            #b64_email = b64_bytes.decode('utf-8')
+    #         #b64_bytes = base64.b64encode(element['author'].encode("utf-8"))
+    #         #b64_email = b64_bytes.decode('utf-8')
 
-            print(b64_email)
+    #         print(b64_email)
 
-            if element['author'] not in dev_lookup:
-                dev_lookup[element['author']] = { "id": element['author'],
-                                                 "id_b64": b64_email,
-                                                 "group": group,
-                                                 "label": KospexUtils.extract_github_username(element['author']),
-                                                 "info": element['author'],
-                                                 "commits": element.get("commits"),
-                                                 "status_group": group_numbers.get(status,4),
-                                                 "status": status,
-                                                 "last_commit": last_commit,
-                                                 "repos": 1 }
-            else:
-                dev_lookup[element['author']]['repos'] += 1
+    #         if element['author'] not in dev_lookup:
+    #             dev_lookup[element['author']] = { "id": element['author'],
+    #                                              "id_b64": b64_email,
+    #                                              "group": group,
+    #                                              "label": KospexUtils.extract_github_username(element['author']),
+    #                                              "info": element['author'],
+    #                                              "commits": element.get("commits"),
+    #                                              "status_group": group_numbers.get(status,4),
+    #                                              "status": status,
+    #                                              "last_commit": last_commit,
+    #                                              "repos": 1 }
+    #         else:
+    #             dev_lookup[element['author']]['repos'] += 1
 
 
-            if repo_id and not focus:
-                # We're handling files not repos
-                file_path = element.get('file_path')
-                if element.get('file_path') not in file_lookup:
-                    file_lookup[element['file_path']] = { "id": element['file_path'],
-                                                    "group": 2,
-                                                    "label": basename(element['file_path']),
-                                                    "info": element['file_path'] }
+    #         if repo_id and not focus:
+    #             # We're handling files not repos
+    #             file_path = element.get('file_path')
+    #             if element.get('file_path') not in file_lookup:
+    #                 file_lookup[element['file_path']] = { "id": element['file_path'],
+    #                                                 "group": 2,
+    #                                                 "label": basename(element['file_path']),
+    #                                                 "info": element['file_path'] }
 
-            elif element['_repo_id'] not in repo_lookup:
-                repo_lookup[element['_repo_id']] = { "id": element['_repo_id'],
-                                                    "group": 2,
-                                                    "commits": element.get("commits",0),
-                                                    "status_group": group_numbers.get(status,4),
-                                                    "status": status,
-                                                    "last_commit": last_commit,
-                                                    "label": element['_git_repo'],
-                                                    "info": element['_repo_id'] }
+    #         elif element['_repo_id'] not in repo_lookup:
+    #             repo_lookup[element['_repo_id']] = { "id": element['_repo_id'],
+    #                                                 "group": 2,
+    #                                                 "commits": element.get("commits",0),
+    #                                                 "status_group": group_numbers.get(status,4),
+    #                                                 "status": status,
+    #                                                 "last_commit": last_commit,
+    #                                                 "label": element['_git_repo'],
+    #                                                 "info": element['_repo_id'] }
 
-            link_key = "_repo_id"
+    #         link_key = "_repo_id"
 
-            if repo_id:
-                link_key = "file_path"
+    #         if repo_id:
+    #             link_key = "file_path"
 
-            links.append({"source": element['author'],
-                          "target": element.get(link_key),
-                          "commits": element['commits']})
+    #         links.append({"source": element['author'],
+    #                       "target": element.get(link_key),
+    #                       "commits": element['commits']})
 
-        for element in dev_lookup:
-            nodes.append(dev_lookup[element])
+    #     for element in dev_lookup:
+    #         nodes.append(dev_lookup[element])
 
-        for element in repo_lookup:
-            nodes.append(repo_lookup[element])
+    #     for element in repo_lookup:
+    #         nodes.append(repo_lookup[element])
 
-        for element in file_lookup:
-            nodes.append(file_lookup[element])
+    #     for element in file_lookup:
+    #         nodes.append(file_lookup[element])
 
-        data = {
-                "nodes": [
-                    { "id": "Dev1", "group": 1, "info": "Developer 1 info" },
-                    { "id": "Dev2", "group": 1, "info": "Developer 2 info" },
-                    { "id": "Repo1", "group": 2, "info": "Repository 1 info" },
-                    { "id": "Repo2", "group": 2, "info": "Repository 2 info" },
-                    { "id": "Repo3", "group": 2, "info": "Repository 3 info" }
-                ],
-                "links": [
-                    { "source": "Dev1", "target": "Repo1", "commits": 50 },
-                    { "source": "Dev1", "target": "Repo2", "commits": 30 },
-                    { "source": "Dev2", "target": "Repo1", "commits": 20 },
-                    { "source": "Dev2", "target": "Repo3", "commits": 40 },
-                    { "source": "Dev3", "target": "Repo2", "commits": 60 },
-                    { "source": "Dev3", "target": "Repo3", "commits": 10 }
-                ]
-            }
+    #     data = {
+    #             "nodes": [
+    #                 { "id": "Dev1", "group": 1, "info": "Developer 1 info" },
+    #                 { "id": "Dev2", "group": 1, "info": "Developer 2 info" },
+    #                 { "id": "Repo1", "group": 2, "info": "Repository 1 info" },
+    #                 { "id": "Repo2", "group": 2, "info": "Repository 2 info" },
+    #                 { "id": "Repo3", "group": 2, "info": "Repository 3 info" }
+    #             ],
+    #             "links": [
+    #                 { "source": "Dev1", "target": "Repo1", "commits": 50 },
+    #                 { "source": "Dev1", "target": "Repo2", "commits": 30 },
+    #                 { "source": "Dev2", "target": "Repo1", "commits": 20 },
+    #                 { "source": "Dev2", "target": "Repo3", "commits": 40 },
+    #                 { "source": "Dev3", "target": "Repo2", "commits": 60 },
+    #                 { "source": "Dev3", "target": "Repo3", "commits": 10 }
+    #             ]
+    #         }
 
-        data["nodes"] = nodes
-        data["links"] = links
+    #     data["nodes"] = nodes
+    #     data["links"] = links
 
-        return data
+    #     return data
 
 class KospexData:
     """ Data wrangling DSL like functions for Kospex """
