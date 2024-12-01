@@ -2,6 +2,19 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.12 - 2024-12-01
+
+### Added
+  - added Treemap graph which can be a toggled graph from bubble charts
+
+### Changed
+  - None
+
+### Fixed
+  - graph APIs for bubble and treemap dont dislay repos when showing developers
+  - Fixed bug where landscape drilldown didn't work [Issue 15](https://github.com/kospex/kospex/issues/15)
+
+
 ## 0.0.11 - 2024-11-25
 
 ### Added
@@ -27,18 +40,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - Fixed how percentages and circles were created in summary view
   - added no_scc options to some commands
 
-
-
 ## [Unreleased]
 
 ### Added
-  - added Treemap graph which can be a toggled graph from bubble charts
 
 ### Changed
 
 ### Fixed
-  - graph APIs for bubble and treemap dont dislay repos when showing developers
-  - Fixed bug where landscape drilldown didn't work [Issue 15](https://github.com/kospex/kospex/issues/15)
 
 ## VERSION - DATE
 
