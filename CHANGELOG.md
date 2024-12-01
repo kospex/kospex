@@ -32,9 +32,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ## [Unreleased]
 
 ### Added
+  - added Treemap graph which can be a toggled graph from bubble charts
+
 ### Changed
 
 ### Fixed
+  - graph APIs for bubble and treemap dont dislay repos when showing developers
+  - Fixed bug where landscape drilldown didn't work [Issue 15](https://github.com/kospex/kospex/issues/15)
 
 ## VERSION - DATE
 

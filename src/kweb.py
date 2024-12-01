@@ -181,10 +181,10 @@ def landscape(id):
         # TODO - need to pass in the query params for orgs or repo
         return KospexWeb.download_csv(data)
     else:
-        return render_template('landscape.html', data=data, org_key=org_key)
+        return render_template('landscape.html', data=data, org_key=org_key, id=id)
 
 
-#@app.route('/repos', defaults={'id': None})
+@app.route('/repos', defaults={'id': None})
 @app.route('/repos/', defaults={'id': None})
 @app.route('/repos/<id>')
 def repos(id):
@@ -386,20 +386,23 @@ def metadata():
     return render_template('metadata.html', **data)
 
 
-
-@app.route('/bubble/<id>')
-def bubble(id):
+@app.route('/bubble/<id>', defaults={'template': "bubble"})
+@app.route('/treemap/<id>', defaults={'template': "treemap"})
+def bubble(id,template):
     """
-    Display a bubble chart of developers in a repo
+    Display a bubble or treemap chart of developers in a repo
     or the repos for an org_key
     or the repos for a given user
 
     Show the developers for a repo_id
     /bubble/<repo_id>
+
     Show the developers for an org_key
     /bubble/<org_key>
+
     Show the developers for a git_server
     /bubble/<git_server>
+
     Show repos for a developer with a base64 encoded email
     /bubble/EMAIL_B64
 
@@ -422,8 +425,13 @@ def bubble(id):
     #else:
     #    print("maybe a dev?")
     #    link_url = f"dev/{repo_id}"
+    html_template = f"{template}.html"
 
-    return render_template('bubble.html',link_url=link_url)
+    return render_template(html_template,link_url=link_url,
+        template=template,id=id)
+    #return render_template('bubble.html',link_url=link_url)
+    #return render_template('treemap.html',link_url=link_url)
+
 
 @app.route('/graph-api/<id>')
 def graph_api(id):
@@ -508,9 +516,14 @@ def org_graph(focus,org_key):
     """
     ### MVP
 
-    repo_id = request.args.get('repo_id')
+    params = KospexWeb.get_id_params(org_key)
+    repo_id = request.args.get('repo_id') or params.get("repo_id")
+    org_key = request.args.get('org_key') or params.get("org_key")
+    git_server = request.args.get('server') or params.get("server")
+
+    #repo_id = request.args.get('repo_id')
     author_email = None
-    git_server = None
+    #git_server = None
     # TODO we're hacking around if we're actualy passed a repo_id and not an org_key
 
     if org_key:
@@ -570,7 +583,8 @@ def org_graph(focus,org_key):
 
     else:
         author_email = request.args.get('author_email')
-        author_email = author_email.replace(" ","+")
+        if author_email:
+            author_email = author_email.replace(" ","+")
         org_info = KospexQuery().get_graph_info(author_email=author_email)
 
     dev_lookup = {}
@@ -606,6 +620,7 @@ def org_graph(focus,org_key):
             dev_lookup[element['author']] = { "id": element['author'],
                                              "id_b64": b64_email,
                                              "group": group,
+                                             "node_type": "developer",
                                              "label": KospexUtils.extract_github_username(element['author']),
                                              "info": element['author'],
                                              "commits": element.get("commits"),
@@ -629,6 +644,7 @@ def org_graph(focus,org_key):
         elif element['_repo_id'] not in repo_lookup:
             repo_lookup[element['_repo_id']] = { "id": element['_repo_id'],
                                                 "group": 2,
+                                                "node_type": "repo",
                                                 "commits": element.get("commits",0),
                                                 "status_group": group_numbers.get(status,4),
                                                 "status": status,
@@ -674,6 +690,8 @@ def org_graph(focus,org_key):
 
     data["nodes"] = nodes
     data["links"] = links
+
+    print(data["nodes"])
 
     return data
 

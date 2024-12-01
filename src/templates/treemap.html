@@ -159,6 +159,24 @@
                 visibility: visible;
                 opacity: 1;
             }
+
+            .node {
+                stroke: #fff;
+                stroke-width: 1px;
+                cursor: pointer;
+            }
+
+            .node:hover {
+                opacity: 0.8;
+            }
+
+            .node-label {
+                font: 11px sans-serif;
+                pointer-events: none;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
         </style>
     </head>
     <body>
@@ -167,8 +185,8 @@
         <!-- Sidebar and Graph -->
         <div class="content-wrapper">
             <div id="sidebar">
-                <h3>Bubble view</h3>
-                <a href="/treemap/{{id}}">View as treemap</a>
+                <h3>Treemap view</h3>
+                <a href="/bubble/{{id}}">View as bubble graph</a>
                 <br />
                 <hr />
                 <h3>Filters</h3>
@@ -334,34 +352,11 @@
                 handleCommitSliderChange({ target: slider });
             }
 
-            function updateVisualization(filteredNodes, minCommits) {
+            async function updateVisualization(filteredNodes, minCommits) {
                 const width = document.getElementById("graph").offsetWidth;
                 const height = document.getElementById("graph").offsetHeight;
 
                 // First time setup
-                if (nodePositions.size === 0) {
-                    // Calculate initial positions for ALL nodes
-                    const bubble = d3.pack().size([width, height]).padding(1.5);
-
-                    const initialRoot = d3
-                        .hierarchy({ children: originalData.nodes })
-                        .sum((d) => d.commits);
-
-                    const initialNodes = bubble(initialRoot)
-                        .descendants()
-                        .slice(1);
-
-                    // Store positions for all nodes
-                    initialNodes.forEach((node) => {
-                        nodePositions.set(node.data.id, {
-                            x: node.x,
-                            y: node.y,
-                            r: node.r,
-                        });
-                    });
-                }
-
-                // If this is the first time running (no svg exists), create it
                 let svg = d3.select("#graph svg");
                 if (svg.empty()) {
                     svg = d3
@@ -387,71 +382,97 @@
 
                 const g = svg.select(".container");
 
-                // Map filtered nodes to their original positions
-                const nodesWithPositions = filteredNodes.map((node) => ({
-                    data: node,
-                    x: nodePositions.get(node.id).x,
-                    y: nodePositions.get(node.id).y,
-                    r: nodePositions.get(node.id).r,
-                }));
+                // Create treemap layout
+                const treemap = d3
+                    .treemap()
+                    .size([width, height])
+                    .padding(1)
+                    .round(true);
 
-                // Custom color scale
+                // Create hierarchy from filtered nodes
+                const root = d3
+                    .hierarchy({
+                        children: filteredNodes,
+                    })
+                    .sum((d) => d.commits)
+                    .sort((a, b) => b.value - a.value);
+
+                // Generate treemap layout
+                treemap(root);
+
+                // Custom color scale (keep the same as before)
                 const color = d3
                     .scaleOrdinal()
                     .domain([1, 2, 3, 4])
                     .range(["#4CAF50", "#FFF176", "#A1887F", "#E0E0E0"]);
 
-                // Update existing nodes and add new ones
-                const nodeGroups = g
+                // Update nodes
+                const nodes = g
                     .selectAll(".node")
-                    .data(nodesWithPositions, (d) => d.data.id);
+                    .data(root.leaves(), (d) => d.data.id);
 
-                // Remove nodes that don't match the filter
-                nodeGroups.exit().remove();
+                // Remove old nodes
+                nodes.exit().remove();
 
                 // Add new nodes
-                const newNodes = nodeGroups
+                const newNodes = nodes
                     .enter()
                     .append("g")
                     .attr("class", "node")
-                    .attr("transform", (d) => `translate(${d.x},${d.y})`);
+                    .attr("transform", (d) => `translate(${d.x0},${d.y0})`);
 
-                // Add circles to new nodes
+                // Add rectangles
                 newNodes
-                    .append("circle")
-                    .attr("r", (d) => d.r)
-                    .attr("class", "bubble")
+                    .append("rect")
+                    .attr("width", (d) => d.x1 - d.x0)
+                    .attr("height", (d) => d.y1 - d.y0)
                     .style("fill", (d) => color(d.data.status_group));
 
-                // Add labels to new nodes
+                // Add labels
                 newNodes
                     .append("text")
-                    .attr("class", "bubble-label")
-                    .attr("dy", ".3em")
-                    .text((d) =>
-                        d.data.label ? d.data.label.substring(0, d.r / 3) : "",
-                    );
+                    .attr("class", "node-label")
+                    .attr("x", 3)
+                    .attr("y", 13)
+                    .text((d) => d.data.label || d.data.id)
+                    .each(function (d) {
+                        // Truncate text if it's too long
+                        const node = d3.select(this);
+                        let text = node.text();
+                        const width = d.x1 - d.x0;
+                        while (
+                            this.getComputedTextLength() > width - 6 &&
+                            text.length > 0
+                        ) {
+                            text = text.slice(0, -1);
+                            node.text(text + "...");
+                        }
+                    });
 
-                // Add titles to new nodes
-                newNodes
-                    .append("title")
-                    .text((d) => `${d.data.id}\nCommits: ${d.data.commits}`);
-
-                // Add click handlers to new nodes
+                // Add click handlers
                 newNodes.on("click", (event, d) => {
                     const nodeInfo = document.getElementById("nodeInfo");
                     const node_label = d.data.label || d.data.id;
                     const node_link =
                         d.data.link || "/developer/" + d.data.id_b64;
                     nodeInfo.innerHTML = `
-                        <h4><a href="${node_link}">${node_label}</a></h4>
-                        <p><strong>ID:</strong> ${d.data.id}</p>
-                        <p><strong>Commits:</strong> ${d.data.commits}</p>
-                        <p><strong>Group:</strong> ${d.data.group}</p>
-                        <p><strong>Status:</strong> ${d.data.status}</p>
-                        <p><strong>Last Commit</strong></br> ${d.data.last_commit}</p>
-                    `;
+                                <h4><a href="${node_link}">${node_label}</a></h4>
+                                <p><strong>ID:</strong> ${d.data.id}</p>
+                                <p><strong>Commits:</strong> ${d.data.commits}</p>
+                                <p><strong>Group:</strong> ${d.data.group}</p>
+                                <p><strong>Status:</strong> ${d.data.status}</p>
+                                <p><strong>Last Commit</strong></br> ${d.data.last_commit}</p>
+                            `;
                 });
+
+                // Update existing nodes
+                nodes
+                    .transition()
+                    .duration(750)
+                    .attr("transform", (d) => `translate(${d.x0},${d.y0})`)
+                    .select("rect")
+                    .attr("width", (d) => d.x1 - d.x0)
+                    .attr("height", (d) => d.y1 - d.y0);
             }
 
             // Add the following D3 code to create the bubble chart
@@ -539,6 +560,11 @@
 
             // Call the function to create the bubble chart
             createBubbleChart();
+
+            //async function createBubbleChart() {
+            //    originalData = await fetchGraphData();
+            //    updateVisualization(originalData.nodes, 0); // Initial render with no filtering
+            //}
 
             async function createBubbleChart() {
                 originalData = await fetchGraphData();
