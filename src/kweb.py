@@ -144,6 +144,8 @@ def developers():
         labels = []
         datapoints = []
 
+        github_handle = KospexUtils.extract_github_username(author_email)
+
         count = 0
         for tech in techs:
             labels.append(tech['_ext'])
@@ -154,7 +156,8 @@ def developers():
 
         return render_template('developer_view.html', repos=repo_list,
                                tech=techs, author_email=author_email,
-                               labels=labels, datapoints=datapoints)
+                               labels=labels, github_handle=github_handle,
+                               datapoints=datapoints)
 
     elif download:
         return KospexWeb.download_csv(devs)
@@ -384,6 +387,14 @@ def metadata():
     """ Metadata about the kospex DB and repos. """
     data = KospexQuery().summary()
     return render_template('metadata.html', **data)
+
+@app.route('/osi/', defaults={'id': None})
+@app.route('/osi/<id>')
+def osi(id):
+    """
+    Functions around an Open Source Inventory
+    """
+    return render_template('osi.html')
 
 
 @app.route('/bubble/<id>', defaults={'template': "bubble"})

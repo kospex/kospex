@@ -43,11 +43,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ## [Unreleased]
 
 ### Added
+  - Initial End Point for OSI (Open Source Inventory) queries
+  - Architecture Decision Record are in /docs/adr/
 
 ### Changed
 
 ### Fixed
-  - commented out the experimental graph-api which broke the workflow build, kweb kospex_uery
+  - commented out the experimental graph-api which broke the workflow build, kweb kospex_query
+  - Link to GitHub from the developer page when we know their GitHub handle
 
 ## VERSION - DATE
 

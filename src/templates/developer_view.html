@@ -20,6 +20,10 @@
     <h1>{{ author_email }}</h1>
     <br/>
     <a href="/graph?author_email={{author_email}}">Graph explore {{author_email}}</a>
+    {% if github_handle %}
+    <br/>
+    View <a href="https://github.com/{{github_handle}}">{{github_handle}}</a> on GitHub
+    {% endif %}
     <br/>
     <br/>
     <table class="table table-striped compact" id="myTable">
