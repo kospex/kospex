@@ -9,3 +9,5 @@ This area aims to document Architecture Decisions, inspired by
 
 - repo_id format
 - metadata (tech_type) for file metadata
+- dependecy data (for Open Source Inventory)
+- vulnerability and malware lookups (to assist with Open Source Inventory)
