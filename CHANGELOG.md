@@ -45,8 +45,11 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Added
   - Initial End Point for OSI (Open Source Inventory) queries
   - Architecture Decision Record are in /docs/adr/
+  - New kospex CLI metadata function using Panopticas
+
 
 ### Changed
+  - KospexGit now uses Panopticas for the get_repo_files function
 
 ### Fixed
   - commented out the experimental graph-api which broke the workflow build, kweb kospex_query
