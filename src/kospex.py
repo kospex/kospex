@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from shutil import which
 import click
+from prettytable import PrettyTable
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -386,9 +387,8 @@ def deps(repo, file, directory, out, dev):
                     file_path = r.get('file_path')
                     git_base = KospexUtils.find_git_base(file_path)
                     get_last_commit_info = KospexUtils.get_last_commit_info(git_base)
-                    #print(f"Git Base: {git_base}")
                     repo_status[repo] = get_last_commit_info.get('status')
-                    #print(get_last_commit_info)
+
                     if repo:
                         stats_dict[repo] = KospexUtils.add_status(stats_dict[repo], r.get('status'))
                         repo_activity_stats[repo_status[repo]] = KospexUtils.add_status(repo_activity_stats[repo_status[repo]], r.get('status'))
@@ -482,6 +482,19 @@ def deps(repo, file, directory, out, dev):
 
     else:
         print("Please specify either a '-repo', '-directory' or a '-file'.")
+
+@cli.command("sca")
+@click.option('-repo', type=GitRepo(), help="File path to git repo.")
+@click.option('-file', type=click.Path(exists=True), help="Package file to assess.")
+@click.option('-dev', is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL.")
+@click.option('-out', type=click.STRING, help="filename to write CSV results to.")
+@click.argument('param', required=False, type=click.STRING)
+def sca(repo, file, dev, out, param):
+    """
+    Run software composition analysis (SCA) tasks
+    """
+    print("\nEXPERIMENTAL FEATURE: SCA\n\n")
+    print(f"{param}")
 
 @cli.command("author-tech")
 @click.option('-author_email', type=click.STRING)
@@ -833,10 +846,35 @@ def orphans(days,window,server):
     print(f"\nOrphaned: {orphaned} | Working Knowledge: {working_knowledge} | Total: {len(repos)}")
     print(f"Orphaned: {orphaned/len(repos)*100:.2f}% | Working Knowledge: {working_knowledge/len(repos)*100:.2f}%\n")
 
+@cli.command("metadata")
+@click.option('-file_type', type=click.STRING, help="Only returns files of this file type.")
+@click.option('-repo_id', type=click.STRING, help="repo_id to query kospex DB for metadata.")
+@click.option('-sync', type=click.BOOL, help="Sync metadata to kospex DB.")
+def metadata(file_type,repo_id,sync):
+    """ Find file metadata and tags.
+    """
+    dir = os.getcwd()
+
+    if repo_id:
+        dir = None
+
+    if file_type and sync:
+        print("Can only sync on a directory, with no file_type specified.")
+        exit(1)
+
+    table = kospex.cli_file_metadata(repo_dir=dir, file_type=file_type,
+       repo_id=repo_id, sync=sync)
+
+    print(table)
+
+    if table:
+        print(f"Files: {len(table.rows)}")
+
 @cli.command("version")
 def version():
     """Print the version of Kospex CLI."""
     click.echo(f"Kospex CLI version {VERSION}")
+
 
 @cli.command("system-status")
 def status():

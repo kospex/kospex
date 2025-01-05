@@ -493,8 +493,8 @@ def get_last_commit_info(filename,remote=None):
 
         return {
             'file_path': filename,
-            'author_date': author_date,
-            'committer_date': committer_date,
+            'author_when': author_date,
+            'committer_when': committer_date,
             'days_ago': days_ago(author_date),
             'status': development_status(days_ago(author_date)),
             'repo': remote,
@@ -748,6 +748,7 @@ def get_git_stats(directory, last_days=None):
 
     # Count total number of commits
     total_commits = int(run_git_command(directory,['rev-list', '--count', 'HEAD']))
+
     # Calculate the total size of the directory and the .git directory
 
     # Get Git remote URL
@@ -961,6 +962,19 @@ def key_person_prettytable():
     table.align["active_commits"] = "r"
     table.align["% commits"] = "r"
     table.align["% active"] = "r"
+
+    return table
+
+def file_metadata_prettytable():
+    """ Return a prettytable object for the file metadata table.
+        file_path, Language, tags
+    """
+    table = PrettyTable()
+    headers = ["Filename", "Type", "Tags"]
+    table.field_names = headers
+    table.align["Filename"] = "l"
+    table.align["Type"] = "l"
+    table.align["Tags"] = "l"
 
     return table
 

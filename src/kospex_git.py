@@ -21,13 +21,14 @@ class KospexGit:
         self.org          = ""
         self.repo         = ""
         self.current_hash = ""
+        self.repo_files   = {} # Store information about files
         # REPO_ID is going to be a simplified version of the remote URL
         # E.g. github.com~owner~repo
         self.repo_id      = ""
         self.has_head     = False
 
     def is_git_repo(self, repo_dir):
-        """Simple diretory check to see if directory is a git repo"""
+        """Simple directory check to see if directory is a git repo"""
         git_path = f"{repo_dir}/.git/"
         return os.path.exists(git_path)
 
@@ -164,7 +165,6 @@ class KospexGit:
         org = parts["org"]
         return f"{parts['remote']}~{parts['org']}~{parts['repo']}"
 
-
     def set_remote_url(self, remote_url):
         """ Set the remote URL and extract the remote, org, repo, etc.
         We're going to use Remote URL formats as described in
@@ -250,35 +250,44 @@ class KospexGit:
         """ return the repo ID (e.g. github.com~owner~repo)"""
         return self.repo_id
 
-    def get_repo_files(self):
+    def get_repo_files(self,language=None):
         """ return a list of files in the repo, excluding .git """
         repo_files = {}
         repo_path = Path(self.repo_dir).resolve()
-        print(f"repo_path: {repo_path}")
-        # TODO .. use panopticas here to grab the files.
 
         p_files = Panopticas.identify_files(repo_path)
+
         for entry in p_files:
+
             data = {}
-            print(f"{entry} : {p_files[entry]}")
             self.add_git_to_dict(data)
             data['hash'] = self.current_hash
 
-        for root, dirs, files in os.walk(repo_path):
-            # Skip .git directory
-            if '.git' in dirs:
-                dirs.remove('.git')
+            data["Language"] = p_files[entry]
+            data['Location'] = entry
+            data['Filename'] = os.path.basename(entry)
 
-            for file in files:
-                #full_path = Path(root) / file
-                data = {}
-                data['Location'] = file
-                self.add_git_to_dict(data)
-                data['hash'] = self.current_hash
-                #repo_files.append(file)
-                repo_files[file] = data
+            tags = Panopticas.get_filename_metatypes(entry)
+            data['tech_type'] = tags
 
-        return repo_files
+            git_metadata = KospexUtils.get_last_commit_info(entry)
+            data['committer_when'] = git_metadata.get("committer_when")
+            data['status'] = git_metadata.get("status")
+
+            repo_files[entry] = data
+
+        self.repo_files = repo_files
+
+        if language:
+            language_files = {}
+            for item in repo_files:
+                if repo_files[item].get("Language") == language:
+                    language_files[item] = repo_files[item]
+
+            return language_files
+
+        else:
+            return repo_files
 
     def clone_repo(self, repo_url):
         """ Clone a repo to the kospex code directory """

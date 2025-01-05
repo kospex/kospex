@@ -12,9 +12,9 @@ kospex = Kospex()
 @click.group()
 def cli():
     """kreaper (Kospex Reaper) is a utility for destroying and deleting thigs in the kospex DB.
-    
+
     For documentation on how commands run `kreaper COMMAND --help`.
-    
+
     """
 @cli.command("repos")
 def repo_ids():
@@ -24,17 +24,35 @@ def repo_ids():
 
 @cli.command("delete-repo")
 @click.option('-repo_id', type=click.STRING)
+@click.option('-table', type=click.STRING, help="Only delete rows with repo_id elements from this table.")
 @click.option('-yes/-no', default=False)
-def delete_repo(repo_id,yes):
+def delete_repo(repo_id,table,yes):
     """ Delete a repo_id from all tables."""
-    if not yes:
-        print("Please specify -yes to confirm deletion.")
-        return
-    if repo_id:
+
+    # TODO - make this work!
+    print("Warning : This function doesn't work!")
+
+    if table:
+        if table in KospexSchema.KOSPEX_TABLES:
+            print(f"table {table} is a valid table name.")
+            if not yes:
+                print("Please specify -yes to confirm deletion.")
+                return
+        else:
+            print(f"table {table} is NOT a valid table name.")
+            print("Here's a list of valid tables:")
+            for table in KospexSchema.KOSPEX_TABLES:
+                print(table)
+
+    elif repo_id:
         #kospex.delete_repo(repo_id)
         print("Not implemented yet.")
         for table in KospexSchema.KOSPEX_TABLES:
             print(table)
+        if not yes:
+            print("Please specify -yes to confirm deletion.")
+            return
+
     else:
         print("Please specify a repo_id to delete.")
 

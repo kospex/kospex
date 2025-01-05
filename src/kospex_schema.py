@@ -77,7 +77,7 @@ SQL_CREATE_FILE_METADATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_FILE_METADATA}] 
     [Bytes] INTEGER,        -- Number of bytes in the file
     [hash] TEXT,            -- hash of the current commit of the repo
     [tech_type] TEXT,       -- type of technology (e.g. 'python', or 'maven').
-    [latest] INTEGER,       -- 1 if this is the latest version of the file, 0 otherwise
+    [latest] INTEGER,       -- 1 if this is the latest version of the file metadata, 0 otherwise
     [authors] INTEGER,      -- number of authors who've modified this file
     [commits] INTEGER,      -- number of commits that have been made to this file
     [_mtime] INTEGER,       -- last modified time of the file - TODO - may need to remove this
@@ -303,3 +303,27 @@ def drop_table(table):
         print(f"Dropped table '{table}', if it existed")
     else:
         print(f"Invalid table '{table}', was not in KOSPEX_TABLES")
+
+
+def array_to_db_tags(tags):
+    """
+    Take an array like ['pip', 'Python', 'dependencies']
+    and return a string like |pip|Python|dependencies|
+    """
+    if tags is None:
+        return None
+
+    return "|" + "|".join(tags) + "|"
+
+
+def db_tags_to_array(db_tags):
+    """
+    Take a tags string like |pip|Python|dependencies|
+    and return an array like ['pip', 'Python', 'dependencies']
+    """
+    if db_tags is None:
+        return None
+
+    grouped = db_tags.strip('|')
+    tags = grouped.split('|')
+    return tags

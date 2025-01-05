@@ -140,7 +140,7 @@ class KospexQuery:
             params.append(repo_id)
 
         summary_sql = f"""SELECT _repo_id, _git_server, _git_owner, _git_repo,
-        Provider, Filename, committer_when, Language
+        Provider, Filename, committer_when, Language, tech_type, hash, latest
         FROM file_metadata
         WHERE latest = 1 {where_clause}
         """

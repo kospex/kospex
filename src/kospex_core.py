@@ -14,6 +14,7 @@ import kospex_schema as KospexSchema
 #import kospex_query as KospexQuery
 from kospex_query import KospexQuery, KospexData
 #from kospex_mergestat import KospexMergeStat
+import panopticas
 
 class GitRepo(click.ParamType):
     """ Custom click param type for git repos """
@@ -624,7 +625,7 @@ class Kospex:
             #for row in self.kospex_db.query(sql,params):
                 parts = [row['file_path'], row['git_remote']]
                 if repo_id:
-                    parts.append(row['repo'])
+                    parts.append(row.get('_repo_id'))
                 table.add_row(parts)
 
         print(table)
@@ -744,17 +745,98 @@ class Kospex:
     #    self.chdir_original()
     #
 
-    def simple_file_metadata(self, repo_directory,force=None):
+    def cli_file_metadata(self, repo_dir=None, force=None, repo_id=None,
+        file_type=None,sync=None):
         """
-        Get some basic metadata about the files in the repo using panopticas
+        Get some basic metadata about the files in the repo using panopticas.
+        Should only have a repo_dir OR a repo_id, NOT both
         """
-        self.set_repo_dir(repo_directory)
-        git_hash = self.git.get_current_hash()
-        repo_id = self.git.get_repo_id()
-        files = self.git.get_repo_files()
+        git_hash = ""
+        files = []
+
+        if sync and repo_id:
+            raise ValueError("Can't sync metadata using a repo_id, only repo_dir")
+
+        if repo_dir:
+            self.set_repo_dir(repo_dir)
+            git_hash = self.git.get_current_hash()
+            repo_id = self.git.get_repo_id()
+            files = self.git.get_repo_files(language=file_type)
+
+        elif repo_id:
+            files = self.kospex_query.repo_files(repo_id=repo_id,tech=file_type)
+
+        else:
+            return None
+
+        table = KospexUtils.file_metadata_prettytable()
+
+        sync_rows = []
+
+        for file in files:
+            row = {}
+            meta = {}
+
+            if repo_dir:
+                meta = files[file]
+            else:
+                # Assuming we're a repo_id
+                meta = file
+
+            row['Filename'] = meta.get("Location", meta.get("Provider",""))
+            row['Type'] =  meta.get("Language","?")
+
+            tags = meta.get("tech_type", None)
+
+            if repo_dir:
+                if tags:
+                    row["tech_type"] = tags
+                    row['Tags'] = ", ".join(tags)
+            else:
+                # Assuming we're coming from the DB query
+                tags = KospexSchema.db_tags_to_array(meta.get('tech_type'))
+                if tags:
+                    row['Tags'] = ", ".join(tags)
+
+            table.add_row(KospexUtils.get_values_by_keys(row, table.field_names))
+
+            # Handle the format for sync data, only with repo_dir
+            # We hould have raised a ValueError at the top of the method
+            if sync:
+                #PRIMARY KEY(Provider,hash,_repo_id)
+                sync_data = {
+                    "hash": git_hash,
+                    "_repo_id": repo_id,
+                    "latest": 1
+                }
+                # Add the latest = 1, because that's what we queried
+                # Only really needed when we don't have any data
+                # and not metadata has been sync'ed
+
+                sync_data['Provider'] = row['Filename']
+                sync_data['Language'] = row["Type"]
+                sync_data['Filename'] = meta.get("Filename")
+                if tags:
+                    #sync_data['tech_type'] = "|" + "|".join(panopticas.get_filename_metatypes(file)) + "|"
+                    sync_data['tech_type'] = KospexSchema.array_to_db_tags(row['tech_type'])
+
+                sync_rows.append(sync_data)
 
 
+        if sync:
 
+            # Reset "last" flags to false
+            reset_last_sql = f"""UPDATE {KospexSchema.TBL_FILE_METADATA} SET LATEST = 0
+            WHERE _repo_id = ?"""
+            self.kospex_db.execute(reset_last_sql, [repo_id])
+
+            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(sync_rows,
+                pk=["Provider","hash","_repo_id"]
+            )
+
+        return table
+
+        #print(table)
 
 
     def file_metadata(self, repo_directory,force=None):
