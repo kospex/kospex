@@ -2,6 +2,22 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.13 - 2025-01-06
+
+### Added
+  - Initial End Point for OSI (Open Source Inventory) queries
+  - Architecture Decision Record are in /docs/adr/
+  - New kospex CLI metadata function using Panopticas
+  - [Use panopticas for base file detection](https://github.com/kospex/kospex/issues/11)
+
+### Changed
+  - KospexGit now uses Panopticas for the get_repo_files function
+
+### Fixed
+  - commented out the experimental graph-api which broke the workflow build, kweb kospex_query
+  - Link to GitHub from the developer page when we know their GitHub handle [16](https://github.com/kospex/kospex/issues/16)
+
+
 ## 0.0.12 - 2024-12-01
 
 ### Added
@@ -43,16 +59,10 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ## [Unreleased]
 
 ### Added
-  - Initial End Point for OSI (Open Source Inventory) queries
-  - Architecture Decision Record are in /docs/adr/
-  - New kospex CLI metadata function using Panopticas
 
 ### Changed
-  - KospexGit now uses Panopticas for the get_repo_files function
 
 ### Fixed
-  - commented out the experimental graph-api which broke the workflow build, kweb kospex_query
-  - Link to GitHub from the developer page when we know their GitHub handle
 
 ## VERSION - DATE
 
