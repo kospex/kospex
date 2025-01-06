@@ -63,6 +63,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Changed
 
 ### Fixed
+  - Bug fix when kospex metadata is run and not in a Git dir.
 
 ## VERSION - DATE
 
