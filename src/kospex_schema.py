@@ -337,7 +337,7 @@ def metadata_rows_from_repo_files(files):
 
     rows = []
 
-    keys_to_keep = ['Provider', 'Filename', 'Latest', 'Language', 'committer_when', 'tech_type',
+    keys_to_keep = ['Provider', 'Filename', 'hash', 'Latest', 'Language', 'committer_when', 'tech_type',
         '_git_server',
         '_git_owner',
         '_git_repo',
@@ -350,10 +350,11 @@ def metadata_rows_from_repo_files(files):
         inner_dict['tech_type'] = array_to_db_tags(inner_dict.get('tech_type'))
 
     for inner_dict in files.values():
-            filtered_dict = {}
-            for key in keys_to_keep:
-                if key in inner_dict:  # Only include the key if it exists
-                    filtered_dict[key] = inner_dict[key]
-            rows.append(filtered_dict)
+        filtered_dict = {}
+        for key in keys_to_keep:
+            if key in inner_dict:  # Only include the key if it exists
+                filtered_dict[key] = inner_dict[key]
+                rows.append(filtered_dict)
+        #print(filtered_dict)
 
     return rows

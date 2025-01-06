@@ -802,25 +802,26 @@ class Kospex:
 
             # Handle the format for sync data, only with repo_dir
             # We hould have raised a ValueError at the top of the method
-            if sync:
+            #if sync:
                 #PRIMARY KEY(Provider,hash,_repo_id)
-                sync_data = {
-                    "hash": git_hash,
-                    "_repo_id": repo_id,
-                    "latest": 1
-                }
+                # sync_data = {
+                #     "hash": git_hash,
+                #     "_repo_id": repo_id,
+                #     "latest": 1
+                # }
                 # Add the latest = 1, because that's what we queried
                 # Only really needed when we don't have any data
                 # and not metadata has been sync'ed
 
-                sync_data['Provider'] = row['Filename']
-                sync_data['Language'] = row["Type"]
-                sync_data['Filename'] = meta.get("Filename")
-                if tags:
-                    #sync_data['tech_type'] = "|" + "|".join(panopticas.get_filename_metatypes(file)) + "|"
-                    sync_data['tech_type'] = KospexSchema.array_to_db_tags(row['tech_type'])
+                # sync_data['Provider'] = row['Filename']
+                # sync_data['Language'] = row["Type"]
+                # sync_data['Filename'] = meta.get("Filename")
+                # if tags:
+                #     #sync_data['tech_type'] = "|" + "|".join(panopticas.get_filename_metatypes(file)) + "|"
+                #     sync_data['tech_type'] = KospexSchema.array_to_db_tags(row['tech_type'])
 
-                sync_rows.append(sync_data)
+                #sync_rows.append(sync_data)
+                #sync_rows = KospexSchema.metadata_rows_from_repo_files()
 
 
         if sync:
@@ -830,9 +831,12 @@ class Kospex:
             WHERE _repo_id = ?"""
             self.kospex_db.execute(reset_last_sql, [repo_id])
 
+            sync_rows = KospexSchema.metadata_rows_from_repo_files(files)
+
             self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(sync_rows,
                 pk=["Provider","hash","_repo_id"]
             )
+
 
         return table
 
