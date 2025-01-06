@@ -911,6 +911,7 @@ def status():
         print("git:\tNot installed")
 
     print("\n")
+
 #
 # Start of the main program
 #

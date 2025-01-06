@@ -327,3 +327,33 @@ def db_tags_to_array(db_tags):
     grouped = db_tags.strip('|')
     tags = grouped.split('|')
     return tags
+
+def metadata_rows_from_repo_files(files):
+    """
+    This function takes a dict (file_path) to dict (file details)
+    and returns a list of dicts suitable for an upsert
+    into the TBL_FILE_METADATA table
+    """
+
+    rows = []
+
+    keys_to_keep = ['Provider', 'Filename', 'Latest', 'Language', 'committer_when', 'tech_type',
+        '_git_server',
+        '_git_owner',
+        '_git_repo',
+        '_repo_id']
+
+    for inner_dict in files.values():
+        if 'Location' in inner_dict:
+            inner_dict['Provider'] = inner_dict.pop('Location')
+        inner_dict['Latest'] = 1
+        inner_dict['tech_type'] = array_to_db_tags(inner_dict.get('tech_type'))
+
+    for inner_dict in files.values():
+            filtered_dict = {}
+            for key in keys_to_keep:
+                if key in inner_dict:  # Only include the key if it exists
+                    filtered_dict[key] = inner_dict[key]
+            rows.append(filtered_dict)
+
+    return rows

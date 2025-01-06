@@ -862,16 +862,21 @@ class Kospex:
             files = self.git.get_repo_files()
             # This will be a dict of file paths and their metadata
 
-            # Reset "last" flags to false
+            # Reset "latest" flags to false
             reset_last_sql = f"""UPDATE {KospexSchema.TBL_FILE_METADATA} SET LATEST = 0
             WHERE _repo_id = ?"""
             self.kospex_db.execute(reset_last_sql, [repo_id])
 
-            #for item in files:
-            #    print(files[item])
-            print(len(files))
+            # Get the list of files with metadata ready for an upsert
+            # The following rename the "Location" Field to "Provider"
+            git_rows = KospexSchema.metadata_rows_from_repo_files(files)
+            # Also adds the Latest = 1
 
-            # Check we've got scc installed
+            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(git_rows,
+                                 pk=["Provider","hash","_repo_id"]
+                             )
+
+            # Check we've got scc installed, add additional metadata if we can
             installed = which('scc')
             if not installed:
                 print("""WARNING: scc is not installed.
@@ -897,7 +902,7 @@ class Kospex:
                     # TODO - this doesn't work, a newly cloned repo will have mtime of when it was cloned
                     #row['_mtime'] = os.path.getmtime(row['Filename'])
                     # Set this entry to the latest. Required for tech landscape queries
-                    row['latest'] = True
+                    row['latest'] = 1
                     data_rows.append(self.git.add_git_to_dict(row))
 
                 self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(data_rows,
