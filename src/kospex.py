@@ -857,6 +857,16 @@ def metadata(file_type,repo_id,sync):
 
     if repo_id:
         dir = None
+    else:
+        # Check we're in a repo
+        if not kospex.git.is_git_repo(dir):
+            print(f"\n{dir} is NOT a git repo")
+            dir_base = KospexUtils.find_git_base(dir)
+            if dir_base:
+                print(f"Did you mean {dir_base}??")
+            else:
+                print("Can't find a Git repo in any parent directories either.")
+            exit(1)
 
     if file_type and sync:
         print("Can only sync on a directory, with no file_type specified.")
