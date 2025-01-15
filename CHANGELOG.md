@@ -2,7 +2,7 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## [Unreleased]
+## 0.0.14 - 2025-01-15
 
 ### Added
   - a switch to orphans to allow a targe list of repos to assess
@@ -69,6 +69,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 
 ## VERSION - DATE
+
 
 ### Added
 ### Changed
