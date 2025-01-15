@@ -2,6 +2,16 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## [Unreleased]
+
+### Added
+  - a switch to orphans to allow a targe list of repos to assess
+### Changed
+  - KospexGit now has safer (handles "/" in org) repo_id generation when setting a repo_url
+
+### Fixed
+  - Bug fix when kospex metadata is run and not in a Git dir.
+
 ## 0.0.13 - 2025-01-06
 
 ### Added
@@ -56,14 +66,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - Fixed how percentages and circles were created in summary view
   - added no_scc options to some commands
 
-## [Unreleased]
 
-### Added
-
-### Changed
-
-### Fixed
-  - Bug fix when kospex metadata is run and not in a Git dir.
 
 ## VERSION - DATE
 

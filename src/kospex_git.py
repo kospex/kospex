@@ -206,7 +206,8 @@ class KospexGit:
             self.remote_type = "HTTPS"
 
         # Set the repo ID
-        self.repo_id = f"{self.remote}~{self.org}~{self.repo}"
+        #self.repo_id = f"{self.remote}~{self.org}~{self.repo}"
+        self.repo_id = self.generate_repo_id(self.remote,self.org,self.repo)
 
     def set_repo(self, repo_dir):
         """ Extract the git metadata (remote, hash) from the repo directory """

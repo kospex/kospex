@@ -52,6 +52,8 @@ Most likely, you'll cd to a repo and then run the following command
 
 Orphans occur when a repo no longer has someone working in the organisation or team who's active.
 
+*"Experimental feature - Work in Progress."*
+
 All you need to do is run the following command
 
 > kospex orphans
@@ -63,10 +65,17 @@ This will display a table with the following columns
  - Orphaned
  - % Here
 
+If you want to check for the orphan status of only a subset of repos, you can use the -target-list arguments
+
+> kospex orphans -target-list FILE_OF_CLONE_URLS
+
+The format of this file is a git clone URLs, one per line.
+
 *Parameters*
 
 '-days', type=int, default=90, help='Committed in X days is considered active.(default 90)'
 '-window', type=int, default=365, help='Days to consider for orphaned repos. (default 365)'
+'-target-list', type=click.Path(exists=True), help="A file containing repos to check."
 
 
 ## list-repos

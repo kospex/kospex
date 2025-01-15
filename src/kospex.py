@@ -19,7 +19,7 @@ KospexUtils.init()
 kospex = Kospex()
 log = logging.getLogger(__name__)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
-VERSION = "0.0.13" # This value should align with the pyproject.toml version for pip
+VERSION = "0.0.14" # This value should align with the pyproject.toml version for pip
 
 @click.group()
 def cli():
@@ -779,7 +779,9 @@ def groups(name,add,remove,delete,show,file,value,email,repo):
 @click.option('-days', type=int, default=90, help='Committed in X days is considered active.(default 90)')
 @click.option('-window', type=int, default=365, help='Days to consider for orphaned repos. (default 365)')
 @click.option('-server', type=click.STRING, help="Git server to query.")
-def orphans(days,window,server):
+@click.option('-target-list', type=click.Path(exists=True),
+    help="A file containing repos to check.")
+def orphans(days,window,server,target_list):
     """
     Find orphaned repos.
 
@@ -795,8 +797,25 @@ def orphans(days,window,server):
     active_devs = kospex.active_developers(**params)
     active_set = set(map(lambda item: item['author'], active_devs))
 
-    # Find all the repos in the database
-    repos = kospex.kospex_query.repos(server=server)
+    # repos will contain an array of dicts, we need the _repo_id
+    repos = []
+
+    if target_list:
+        # Process the file
+        with open(target_list, 'r') as file:
+                    for line in file:
+                        # Skip empty lines
+                        kospex.git.set_remote_url(line)
+                        repo_id = kospex.git.repo_id
+                        if repo_id:
+                            # Create dict with _repo_id key and add to repos array
+                            repo_dict = {"_repo_id": repo_id}
+                            repos.append(repo_dict)
+    else:
+        # Find all the repos in the database
+        repos = kospex.kospex_query.repos(server=server)
+
+    print(repos)
 
     now_utc = datetime.now(timezone.utc)
     from_date = now_utc - timedelta(days=window)

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kospex"
-version = "0.0.13"
+version = "0.0.14"
 description = "The kospex CLI tool."
 authors = [{ name = "Peter Freiberg", email = "peter.freiberg@gmail.com" }]
 
@@ -20,7 +20,7 @@ dependencies = [
     "PyYAML",
 ]
 
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { file = "LICENSE" }
 readme = "README.short.md"
 keywords = ["analytics", "git", "code analytics", "predictive maintenance"]
@@ -35,6 +35,7 @@ kospex = "kospex:cli"
 krunner = "krunner:cli"
 kreaper = "kreaper:cli"
 kweb = "kweb:kweb"
+kwatch = "kwatch:cli"
 
 [project.urls]
 Homepage = "https://kospex.io"
