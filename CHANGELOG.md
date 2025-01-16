@@ -12,6 +12,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Fixed
   - Bug fix when kospex metadata is run and not in a Git dir.
 
+## [Unreleased]
+
+### Added
+  - a static parse_ssh_git_url method
+
+### Changed
+  - Improved tests for Git URLs
+
+### Fixed
+  - Parsing of ssh urls like git@github.com:kospex/panopticas.git
+
 ## 0.0.13 - 2025-01-06
 
 ### Added
@@ -70,8 +81,6 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## VERSION - DATE
 
-
 ### Added
 ### Changed
-
 ### Fixed

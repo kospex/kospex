@@ -16,22 +16,26 @@ def test_parse_git_remote():
 def test_repo_id():
     """ Test repo_id generation """
 
-    sample = "https://github.com/kospex/kospex"
     kg = KospexGit()
+
+    sample = "https://github.com/kospex/kospex"
     kg.set_remote_url(sample)
     assert "github.com~kospex~kospex" == kg.repo_id
-    print(kg.repo_id)
 
     kg.set_remote_url("git@github.com:kospex/panopticas.git")
     assert "github.com~kospex~panopticas" == kg.repo_id
-    print(kg.repo_id)
 
     kg.set_remote_url("https://gitlab.com/gitlab-org/cloud-connector/gitlab-cloud-connector.git")
-    print(kg.repo_id)
+    assert "gitlab.com~gitlab-org~~cloud-connector~gitlab-cloud-connector" == kg.repo_id
 
-    #kospex_id = KospexUtils.git_url_to_repo_id("https://github.com/kospex/kospex")
-    #print(kospex_id)
-    #assert kospex_id == "github.com~kospex~kospex"
+    # Bitbucket examples
+    # HTTPS
+    kg.set_remote_url("https://bitbucket.org/gildas_cherruel/bb.git")
+    assert "bitbucket.org~gildas_cherruel~bb" == kg.repo_id
+    # SSH
+    # git@bitbucket.org:gildas_cherruel/bb.git
+    kg.set_remote_url("git@bitbucket.org:gildas_cherruel/bb.git")
+    assert "bitbucket.org~gildas_cherruel~bb" == kg.repo_id
 
     gitlab_repo_id = KospexGit.generate_repo_id("gitlab.com","gitlab/bob","the_repo")
     assert gitlab_repo_id == "gitlab.com~gitlab~~bob~the_repo"

@@ -33,9 +33,21 @@ class KospexGit:
         return os.path.exists(git_path)
 
     @staticmethod
+    def parse_ssh_git_url(url):
+        pattern = r'git@(?P<remote>[^:]+):(?P<org>[\w-]+(?:/[\w-]+)*)/(?P<repo>[\w-]+)(?:\.git)?'
+        match = re.match(pattern, url)
+
+        if match:
+            details = match.groupdict()
+            details["remote_type"] = "ssh"
+            return details
+        else:
+            return None
+
+    @staticmethod
     def parse_git_remote(url):
         """
-        Extracts the domain name, organization, and repository name from a given URL.
+        Extracts the domain name, organisation/user/team, and repository name from a given URL.
 
         Args:
         url (str): The URL to extract information from.
@@ -59,13 +71,18 @@ class KospexGit:
 
         gitlab_match = re.match(gitlab_pattern, url)
 
+        ssh_git = KospexGit.parse_ssh_git_url(url)
+
         slashes_count = url.count("/")
         # Looks like github URLS have 4 slashes,
         # gitlab URLs have more than 4 slashes (more like 5 or 6 for subprojects),
         # Google/Go URLs have 3 slashes
-        # TODO - check SSH URLs
 
-        if slashes_count > 4 and gitlab_match:
+        # Check SSH URLs first
+        if ssh_git:
+            return ssh_git
+
+        elif slashes_count > 4 and gitlab_match:
             return {
                 "remote": gitlab_match.group("hostname"),
                 "org": gitlab_match.group("directories").removeprefix("/"),
@@ -166,7 +183,8 @@ class KospexGit:
         return f"{parts['remote']}~{parts['org']}~{parts['repo']}"
 
     def set_remote_url(self, remote_url):
-        """ Set the remote URL and extract the remote, org, repo, etc.
+        """
+        Set the remote URL and extract the remote, org, repo, etc.
         We're going to use Remote URL formats as described in
         https://docs.github.com/en/get-started/getting-started-with-git/about-remote-repositories
         Example expected URLs are:
@@ -177,11 +195,11 @@ class KospexGit:
 
         parts = None
         if remote_url:
-            parts = self.extract_git_url_parts(self.remote_url)
+            parts = self.parse_git_remote(self.remote_url)
+
         else:
             # TODO - add logging
             # This situation should not really happen
-            print("No remote URL provided")
             return None
 
         if parts:
@@ -189,13 +207,8 @@ class KospexGit:
             self.org = parts["org"]
             self.repo = parts["repo"]
             self.remote_type = parts["remote_type"]
-        elif "@" in self.remote_url :
-            # TODO - better data validation checking
-            ssh_parts = self.remote_url.split("/")
-            self.repo = ssh_parts[1].removesuffix(".git")
-            self.org = ssh_parts[0].split(":")[1]
-            self.remote_type = "SSH"
         else:
+            print("WARNING: Failed specific parsing of remote URL")
             # Assuming it's a HTTP/S remote
             # TODO - better data validation checking
             # TODO - we have the better function above, this code may be redundant

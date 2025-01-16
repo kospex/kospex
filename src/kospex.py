@@ -6,7 +6,6 @@ import logging
 from datetime import datetime, timezone, timedelta
 from shutil import which
 import click
-from prettytable import PrettyTable
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -903,7 +902,6 @@ def metadata(file_type,repo_id,sync):
 def version():
     """Print the version of Kospex CLI."""
     click.echo(f"Kospex CLI version {VERSION}")
-
 
 @cli.command("system-status")
 def status():
