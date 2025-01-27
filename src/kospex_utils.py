@@ -7,6 +7,7 @@ import base64
 import csv
 from datetime import datetime, timezone, timedelta
 from dateutil import parser
+from collections import Counter, OrderedDict
 from prettytable import PrettyTable
 from dotenv import load_dotenv
 
@@ -24,6 +25,17 @@ KOSPEX_CONFIG_ITEMS = [
     "KOSPEX_DB",
     "KOSPEX_CONFIG"
 ]
+
+DEFAULT_STATUS_THRESHOLDS = OrderedDict({
+    "Single day": 1,
+    "< 3 months": 90,
+    "< 6 months": 180,
+    "< 1 year": 365,
+    "< 2 years": 730,
+    #"5+ years": 1825
+})
+
+DEFAULT_MAX_STATUS = "2+ Years"
 
 def is_git(directory):
     """Simple directory check to see if it's a git repo"""
@@ -1268,3 +1280,72 @@ def encode_base64(data):
         return encoded
     except:
         return None
+
+
+
+def get_status(days: int, thresholds: OrderedDict = None) -> str:
+    """
+    Determine status based on the number of days and configured thresholds.
+
+    Args:
+        days: Integer representing number of days
+        thresholds: OrderedDict with status labels as keys and day thresholds as values
+
+    Returns:
+        String representing the status
+    """
+    if thresholds is None:
+        # thresholds = OrderedDict({
+        #     "Single day": 1,
+        #     "< 3 months": 90,
+        #     "< 6 months": 180,
+        #     "< 1 year": 365,
+        #     "< 2 years": 730,
+        #     "5+ years": 1825
+        # })
+        thresholds = DEFAULT_STATUS_THRESHOLDS
+
+    # Handle case where days is less than the first threshold
+    if days <= list(thresholds.values())[0]:
+        return list(thresholds.keys())[0]
+
+    # Iterate through thresholds to find the correct status
+    prev_threshold = 0
+    for status, threshold in thresholds.items():
+        if prev_threshold < days <= threshold:
+            return status
+        prev_threshold = threshold
+
+    # If days is greater than all thresholds, return the last status
+    #return list(thresholds.keys())[-1]
+    return "2+ Years"
+
+def get_status_distribution(data):
+    """
+    Take a list of Dicts, and calculate the percentages based on the
+    DEFAULT_STATUS_THRESHOLDS categories
+    Return an Order list of thresholds like
+    "Single day" : 45.2
+    """
+
+    tenure_status = [entry['tenure_status'] for entry in data]
+
+    # Count occurrences of each status
+    status_counts = Counter(tenure_status)
+    total_count = len(tenure_status)
+
+    # Calculate percentages
+    distribution = OrderedDict()
+    all_thresholds = DEFAULT_STATUS_THRESHOLDS
+
+    # TODO - See what our max threshold should be if any
+    all_thresholds[DEFAULT_MAX_STATUS] = 20000
+
+    for threshold in all_thresholds:
+        count = status_counts[threshold]
+        if count:
+            distribution[threshold] = round((count / total_count) * 100, 2)
+        else:
+            distribution[threshold] = 0
+
+    return distribution
