@@ -14,11 +14,6 @@ class KospexQuery:
         KospexUtils.init()
         self.kospex_db = kospex_db or Database(KospexUtils.get_kospex_db_path())
 
-        #if kospex_db:
-        #    self.kospex_db = kospex_db
-        #else:
-        #    self.kospex_db = Database(KospexUtils.get_kospex_db_path())
-
     def summary(self, days=None, repo_id=None):
         """
         Provide a summary of the known repositories.
@@ -151,6 +146,52 @@ class KospexQuery:
 
         return data
 
+    def get_dependency_files(self,id=None):
+        """
+        Get the dependency for the given scope.
+        """
+
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_FILE_METADATA)
+        kd.where("latest", "=", 1)
+        if id:
+            if repo_id := id.get("repo_id"):
+                kd.where("_repo_id","=",repo_id)
+            elif org_key := id.get("org_key"):
+                kd.where_org_key(org_key)
+            elif server := id.get("server"):
+                kd.where("_git_server","=",server)
+            else:
+                print(f"ERROR: can't identify {id}")
+
+        kd.where("tech_type", "LIKE", "%|dependencies|%")
+
+        results = kd.execute()
+
+        return results
+
+    def get_dependencies(self,id=None):
+        """
+        Get the individual dependencies for the given scope.
+        """
+
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_DEPENDENCY_DATA)
+        #kd.where("latest", "=", 1)
+
+        if id:
+            if repo_id := id.get("repo_id"):
+                kd.where("_repo_id","=",repo_id)
+            elif org_key := id.get("org_key"):
+                kd.where_org_key(org_key)
+            elif server := id.get("server"):
+                kd.where("_git_server","=",server)
+            else:
+                print(f"ERROR: can't identify {id}")
+
+        results = kd.execute()
+
+        return results
 
     def repos_by_author(self, author_email):
         """ Find repos for the given author_email."""
@@ -306,7 +347,7 @@ class KospexQuery:
 
         return repos
 
-    def developers(self, org_key=None,repo_id=None,server=None):
+    def developers(self, org_key=None,repo_id=None,server=None,days=None):
         """
         Return a list of developers (based on author_email) with meta data
             author_email AS author
@@ -326,6 +367,10 @@ class KospexQuery:
         # TODO - Think if we want to sanity check
         # There should only be one of repo_id, org_key or server used
 
+        if days:
+            from_date = KospexUtils.days_ago_iso_date(days)
+            kd.where("committer_when", ">", from_date)
+
         if repo_id:
             kd.where("_repo_id", "=", repo_id)
 
@@ -336,6 +381,7 @@ class KospexQuery:
             kd.where("_git_server", "=", server)
 
         results =  kd.execute()
+
         for i in results:
             i["status"] = KospexUtils.development_status(i['last_commit'])
             i['tenure'] = KospexUtils.days_between_datetimes(i['first_commit'],
@@ -356,6 +402,45 @@ class KospexQuery:
             devs.add(row['author_email'])
 
         return set(devs)
+
+    def get_activity_stats(self,params=None):
+        """
+        Return stats about all, server, org or repos
+            first_commit,
+            last_commit,
+            days_active,
+            years_active,
+            authors (distinct author_email),
+            committers (distinct committer_email),
+            commits
+
+        """
+        print()
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.select_as("count(*)",'commits')
+        kd.select_as("MIN(committer_when)", "first_commit")
+        kd.select_as("MAX(committer_when)", "last_commit")
+        kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
+        kd.select_raw("COUNT(DISTINCT(author_email)) as authors")
+
+        if params:
+            kd.set_params_by_id(params)
+
+        kresults = kd.execute()
+
+        # Process the day calculations
+
+        data = {}
+
+        if kresults:
+            data = kresults[0]
+            data['days_active'] = KospexUtils.days_between_datetimes(
+                data['first_commit'], data['last_commit'],min_one=True)
+            data['years_active'] = round(data['days_active'] / 365,2)
+
+        return data
+
 
     def authors(self, days=None, org_key=None):
         """ Provide a summary of authors in the known repositories."""
@@ -454,6 +539,7 @@ class KospexQuery:
         kd.from_table(KospexSchema.TBL_COMMITS)
         kd.select_as("DISTINCT(_repo_id)","repo")
         kd.select_as("MAX(committer_when)", "last_commit")
+        kd.select_as("MIN(committer_when)", "first_commit")
         kd.group_by("_repo_id")
 
         if repo_id:
@@ -481,6 +567,8 @@ class KospexQuery:
 
         for i in results:
             i['status'] = KospexUtils.development_status(i['last_commit'])
+            i['days_active'] = KospexUtils.days_between_datetimes(
+                i['first_commit'], i['last_commit'],min_one=True)
             ages[i['status']] += 1
 
         return ages
@@ -514,9 +602,6 @@ class KospexQuery:
                 where = True
                 where_clause = "WHERE _git_server = ? AND _git_owner = ?"
 
-            print(where_clause)
-            print(parts)
-
             #where_clause += "AND _git_server = ? AND _git_owner = ?"
 
         sql = f"""
@@ -544,8 +629,6 @@ class KospexQuery:
             'stale': 0,
             'unmaintained': 0
         }
-
-        print(sql)
 
         data = self.kospex_db.query(sql, params)
         for row in data:
@@ -608,7 +691,7 @@ class KospexQuery:
         data = self.kospex_db.query(sql, params)
         for row in data:
             metadata[row['Location']] = row
-        print(metadata)
+
         return metadata
 
     def hotspots(self, repo_id):
@@ -996,15 +1079,13 @@ class KospexQuery:
         If by_repo is True, group by repo and NOT the author
         """
         params = locals()
-        print(f"params: {params}")
+
         org = None
         server = None
 
         if org_key:
             org = org_key.split('~')[1]
             server = org_key.split('~')[0]
-
-        print(f"author_email = {author_email}")
 
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
@@ -1220,6 +1301,11 @@ class KospexData:
 
         self.where_clause.append(f"{column} {operator} ?")
         self.params.append(value)
+
+    def where_dependency(self):
+        """ HACK to add the tech_type  """
+        #self.where_clause.append("tech_type LIKE '%dependency%'")
+        self.where_clause.append("tech_type LIKE '%|dependencies|%'")
 
     def where_org_key(self,org_key):
         """ Use parse the org_key and set the required where fields
@@ -1439,6 +1525,23 @@ class KospexData:
             return False
 
         return True
+
+    def set_params_by_id(self,id_params):
+        """
+        Set common where clauses from params hash:
+        repo_id
+        org_key
+        server
+        """
+
+        if repo_id := id_params.get("repo_id"):
+            self.where("_repo_id","=",repo_id)
+        elif org_key := id_params.get("org_key"):
+            self.where_org_key(org_key)
+        elif server := id_params.get("server"):
+            self.where("_git_server","=",server)
+        else:
+            print(f"ERROR: can't identify {id}")
 
     def group_name_where_subselect(self, group_name):
         """ Add a subselect where clause to the query """
