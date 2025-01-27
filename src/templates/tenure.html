@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+    {% set title = "Tenure" %} {% include '_bootstrap_html_head.html'%}
+    <body>
+        {% include 'header.html' %}
+
+        <!-- Main content area -->
+        <div class="container mt-5">
+            <h1 class="mb-4">Developer Tenure</h1>
+            <br />
+
+            <h2 class="mb-4">Basic Statistics</h2>
+            <p>
+                The have been {{ data.get("developers","Unknown")}} developers
+                who've committed {{ data.get("commits", "Unknown") }} times to
+                {{ data.get("repos", "Unknown") }} repos over {{
+                data.get("days_active","Unknown") }} days ({{
+                data.get("years_active","Unknown") }} years)
+            </p>
+            <table class="table" id="dependency_status_table">
+                <thead>
+                    <tr>
+                        <th>Mean</th>
+                        <th>Mode</th>
+                        <th>Median</th>
+                        <th>Std. Dev.</th>
+                        <th>Max tenure (days)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{{ data.get("mean")}}</td>
+                        <td>{{ data.get("mode")}}</td>
+                        <td>{{ data.get("median")}}</td>
+                        <td>{{ data.get("std_dev")}}</td>
+                        <td>{{ data.get("max")}}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2 class="mb-4">Tenure Distribution</h2>
+
+            <table class="table" id="dependency_status_table">
+                <thead>
+                    <tr>
+                        <th>-</th>
+                        {% for my_item in distribution %}
+                        <th>{{ my_item }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr>
+                        <th>All time ({{data.get("developers")}})</th>
+                        {% for my_item in distribution %}
+                        <td>{{ distribution.get(my_item,"0") }} %</td>
+                        {% endfor %}
+                    </tr>
+
+                    <tr>
+                        <th>Active ({{data.get("active_devs")}})</th>
+                        {% for my_item in active_distribution %}
+                        <td>{{ active_distribution.get(my_item,"0") }} %</td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+            "All time" is any developer who's contributed to the repo, where as
+            active developers are those who've committed in the last 90 days
+            (default) but shows their "tenure" or how long they have been
+            active.
+        </div>
+
+        {% include '_footer_scripts.html' %}
+    </body>
+</html>

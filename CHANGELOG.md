@@ -16,12 +16,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
   - a static parse_ssh_git_url method
+  - MVP sca method to eventually replace kospex deps with kospex sca
+  - an Initial End Point for dependencies queries
+  - kreaper can now remove all rows with repo_id from a table
 
 ### Changed
   - Improved tests for Git URLs
+  - Removed references to pygit2 (mostly commented out) as no longer used
 
 ### Fixed
   - Parsing of ssh urls like git@github.com:kospex/panopticas.git
+  - parsing of git URLs with trailing slash which failed e.g. https://github.com/kospex/kospex/
 
 ## 0.0.13 - 2025-01-06
 

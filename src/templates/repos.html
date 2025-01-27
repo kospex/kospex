@@ -28,6 +28,7 @@
                 <th># Commits</th>
                 <th>Last Seen (days)</th>
                 <th>Active Devs</th>
+                <th>Days Active</th>
             </tr>
         </thead>
         <tbody>
@@ -39,6 +40,7 @@
                 <td class="dt-body-right">{{ row['commits'] }}</td>
                 <td class="dt-body-right">{{ row['days_ago'] }}</td>
                 <td class="dt-body-right"><a href="/developers/active/{{ row['_repo_id'] }}">{{ row['active_devs'] }}</a></td>
+                <td class="dt-body-right">{{ row['days_active'] }}</td>
             </tr>
             {% endfor %}
         </tbody>

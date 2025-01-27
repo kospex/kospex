@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Bootstrap Web App</title>
+        <link
+            href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+            rel="stylesheet"
+        />
+    </head>
+    <body>
+        {% include 'header.html' %}
+
+        <!-- Main content area -->
+
+        <div class="container mt-5">
+            <h1 class="mb-4">Dependencies</h1>
+            <table class="table table-striped compact" id="myTable">
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Type</th>
+                        <th>Name</th>
+                        <th>Version</th>
+                        <th>Versions behind</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data %}
+                    <tr>
+                        <td>{{ row['file_path'] }}</td>
+                        <td>{{ row['package_type'] }}</td>
+                        <td>{{ row['package_name'] }}</td>
+                        <td class="dt-body-right">
+                            {{ row['package_version'] }}
+                        </td>
+                        <td class="dt-body-right">
+                            {{ row['versions_behind'] }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% include '_footer_scripts.html' %} {% include
+        '_datatable_scripts.html' %}
+
+        <script>
+            $(document).ready(function () {
+                $("#myTable").DataTable({
+                    order: [[1, "desc"]],
+                });
+            });
+        </script>
+    </body>
+</html>

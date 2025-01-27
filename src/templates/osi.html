@@ -8,12 +8,68 @@
         <!-- Main content area -->
         <div class="container mt-5">
             <h1 class="mb-4">Open source Inventory</h1>
-            First, some basics.
+            Be able to see the components and dependencies across your
+            landscape.
             <br />
-            <h2 class="mb-4">Component or library search</h2>
-            <form></form>
+            <br />
+            <br/>
+
+            <h2 class="mb-4">Dependency File Status</h2>
+            <table class="table" id="dependency_status_table">
+                <thead>
+                    <tr>
+                        <th> Active </th>
+                        <th> Aging </th>
+                        <th> Stale </th>
+                        <th> Unmaintained</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td> {{ status.get('Active') }} </a></td>
+                        <td> {{ status.get('Aging') }} </a></td>
+                        <td> {{ status.get('Stale') }} </a></td>
+                        <td> {{ status.get('Unmaintained') }} </a></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2 class="mb-4">Dependency files</h2>
+            {{ file_number }} dependency files found. <br />
+            <br />
+            <table class="table table-striped compact" id="myTable">
+                <thead>
+                    <tr>
+                        <th>Repo</th>
+                        <th>File</th>
+                        <th>Last Commit</th>
+                        <th>Status</th>
+                        <th>Days ago</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data %}
+                    <tr>
+                        <td><a href="/dependencies/{{ row['_repo_id'] }}">{{ row['_git_repo'] }}</a></td>
+                        <td>{{ row['Provider'] }}</td>
+                        <td>{{ row['committer_when'] }}</td>
+                        <td>{{ row.get('status',"-") }}</td>
+                        <td>{{ row.get('days_ago',"-") }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
 
-        {% include '_footer_scripts.html' %}
+        {% include '_footer_scripts.html' %} {% include
+        '_datatable_scripts.html' %}
+
+        <script>
+            $(document).ready(function () {
+                $("#myTable").DataTable({
+                    order: [[4, "asc"]],
+                });
+            });
+        </script>
     </body>
 </html>

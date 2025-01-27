@@ -3,6 +3,8 @@
 from os.path import basename
 import sys
 import base64
+from statistics import mean, median, mode, stdev, quantiles
+from collections import Counter, OrderedDict
 from flask import Flask, render_template, request, jsonify
 from jinja2 import TemplateNotFound
 from kospex_bitbucket import KospexBitbucket
@@ -125,6 +127,49 @@ def dev(id):
                            tech=techs, author_email=author_email,
                            labels=labels, datapoints=datapoints)
 
+@app.route('/tenure/', defaults={'id': None})
+@app.route('/tenure/<id>')
+def tenure(id):
+    """
+    View developer tenure in for all, a server, org or a repo
+    """
+
+    # TODO - CHECK THIS FOR SECURITY
+    params = KospexWeb.get_id_params(id)
+    developers = KospexQuery().developers(**params)
+    active_devs = []
+
+    for entry in developers:
+                entry['tenure_status'] = KospexUtils.get_status(entry['tenure'])
+
+    for dev in developers:
+        if "Active" == dev.get("status"):
+            active_devs.append(dev)
+
+    data = {}
+    data['developers'] = len(developers)
+    data['active_devs'] = len(active_devs)
+    days_values = [entry['tenure'] for entry in developers]
+
+    commit_stats = KospexQuery().get_activity_stats(params)
+    print(commit_stats)
+    data['days_active'] = commit_stats.get('days_active')
+    data['years_active'] = commit_stats.get('years_active')
+    data['repos'] = commit_stats.get('repos')
+    data['commits'] = commit_stats.get('commits')
+
+    data['max'] = round(max(days_values))
+    data['mean'] = round(mean(days_values), 2)
+    data['mode'] = round(mode(days_values), 2)
+    data['median'] = round(median(days_values), 2)
+    data['std_dev'] = round(stdev(days_values), 2)
+
+    distribution = KospexUtils.get_status_distribution(developers)
+    active_d = KospexUtils.get_status_distribution(active_devs)
+
+    return render_template('tenure.html',data=data,
+        distribution=distribution, developers=developers, active_distribution=active_d)
+
 
 @app.route('/developers/')
 def developers():
@@ -194,14 +239,12 @@ def repos(id):
     """ display repo information. """
 
     params = KospexWeb.get_id_params(id)
+    print(params)
     repo_id = request.args.get('repo_id') or params.get("repo_id")
     org_key = request.args.get('org_key') or params.get("org_key")
     server = request.args.get('server') or params.get("server")
 
-    #repo_id = request.args.get('repo_id')
     kospex = KospexQuery()
-    #org_key = request.args.get('org_key')
-    #server = request.args.get('server')
 
     page = {}
     # TODO - validate params
@@ -336,8 +379,6 @@ def repo_with_tech(tech):
 
     return render_template(template,data=repos_with_tech,page = {})
 
-
-
 @app.route('/commits/')
 def commits():
     """ display Git commits information. """
@@ -394,7 +435,31 @@ def osi(id):
     """
     Functions around an Open Source Inventory
     """
-    return render_template('osi.html')
+    params = KospexWeb.get_id_params(id)
+    deps = KospexQuery().get_dependency_files(id=params)
+    for file in deps:
+        file["days_ago"] = KospexUtils.days_ago(file.get("committer_when"))
+        file["status"] = KospexUtils.development_status(file.get("days_ago"))
+    file_number = len(deps)
+    status = KospexUtils.repo_stats(deps,"committer_when")
+    print(status)
+
+    return render_template('osi.html',data=deps, file_number=file_number, status=status)
+
+@app.route('/dependencies/', defaults={'id': None})
+@app.route('/dependencies/<id>')
+def dependencies(id):
+    """
+    Display SCA information
+    """
+    params = KospexWeb.get_id_params(id)
+
+    data = KospexQuery().get_dependencies(id=params)
+    print(data)
+
+    return render_template('dependencies.html',data=data)
+
+
 
 
 @app.route('/bubble/<id>', defaults={'template': "bubble"})
@@ -440,6 +505,7 @@ def bubble(id,template):
 
     return render_template(html_template,link_url=link_url,
         template=template,id=id)
+
     #return render_template('bubble.html',link_url=link_url)
     #return render_template('treemap.html',link_url=link_url)
 
@@ -576,8 +642,6 @@ def org_graph(focus,org_key):
             org_info = KospexQuery().get_graph_info(author_email=author_email,
                 by_repo=True)
             print("Unknown focus")
-            print(org_info)
-
 
         print(f"in focus, with focus: {focus}")
 
@@ -701,8 +765,6 @@ def org_graph(focus,org_key):
 
     data["nodes"] = nodes
     data["links"] = links
-
-    print(data["nodes"])
 
     return data
 
