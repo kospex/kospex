@@ -19,6 +19,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - MVP sca method to eventually replace kospex deps with kospex sca
   - an Initial End Point for dependencies queries
   - kreaper can now remove all rows with repo_id from a table
+  - tenure functions and pages to show how long developers have worked
 
 ### Changed
   - Improved tests for Git URLs
