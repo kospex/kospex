@@ -24,8 +24,9 @@ class KospexDependencies:
         self.kospex_db = kospex_db
         self.kospex_query = kospex_query
         self.git = KospexGit()
-        #KospexUtils.init()
         #self.kospex_db = Database(KospexUtils.get_kospex_db_path())
+        # The following will be the results from the list of dependencies from the assess command
+        self.dependencies = []
 
     def deps_dev(self,package_type,package_name,version):
         """ Query the Deps.dev API for a package and version"""
@@ -195,45 +196,97 @@ class KospexDependencies:
     def assess(self, filename, **kwargs):
         """ Using deps.dev to assess and provide a summary of the package manager file.
         Args:
-        filename (str): The filename to assess."""
+        filename (str): The filename to assess.
+        dev_deps : If we want to include dev dependencies
+        """
         results_file = kwargs.get('results_file',None)
         repo_info = kwargs.get('repo_info',None)
         print_table = kwargs.get('print_table',False)
         dev_deps = kwargs.get('dev_deps',False)
+        save = kwargs.get('save',False)
 
-        #file_path = os.path.abspath(file)
-        #kospex.set_repo_dir(KospexUtils.find_git_base(file))
-        #repo_info = self.kospex.git.add_git_to_dict({})
-        #repo_info['hash'] = kospex.git.get_current_hash()
-        #repo_info['file_path'] = file
+        git_details = {}
+        package_type = "Unknown"
+
+        abs_file_path = os.path.abspath(filename)
+        base_dir = os.path.dirname(abs_file_path)
+        git_base = KospexUtils.find_git_base(base_dir)
+
+        if git_base:
+            self.git.set_repo(git_base)
+            git_details = self.git.add_git_to_dict(git_details)
+            git_details['hash'] = self.git.get_current_hash()
+            file_path = os.path.relpath(abs_file_path, git_base)
+            git_details['file_path'] = file_path
+        else:
+            # Probably not in a Git directory, but we can still do SCA
+            file_path = filename
 
         basefile = os.path.basename(filename)
 
+        # print(f"base: {basefile}")
+        # print(f"a: {abs_file_path}\nbd: {base_dir}\ngit_base: {git_base}\n")
+        # print(f"rel_path: {file_path}")
+
         # return array of package records
+        #
         results = []
 
         if basefile == "go.mod":
             print(f"Found Go mod package file: {basefile}")
+            package_type = "Go module"
             results = self.gomod_assess(filename,results_file=results_file,repo_info=repo_info)
 
         elif self.is_npm_package(filename):
             print(f"Found npm package file: {basefile}")
+            package_type = "npm"
             results = self.npm_assess(filename,results_file=results_file,
                             repo_info=repo_info,dev_deps=dev_deps)
 
         elif self.is_nuget_package(filename):
             print(f"Found nuget package file: {basefile}")
+            package_type = "nuget"
             self.nuget_assess(filename,results_file=results_file,repo_info=repo_info)
 
         elif self.is_pip_requirements_file(basefile):
             print(f"Found pip requirements file: {basefile}")
+            package_type = "pypi"
             results = self.pypi_assess(filename,results_file=results_file,
                              repo_info=repo_info, print_table=print_table)
 
         else:
             print(f"Unknown or unsupported package manager file found {basefile}")
 
-        return results
+
+        if save and git_details:
+            print("Should be saving now!")
+            # TODO - see if there is better way of excluding this key
+            for r in results:
+                r.pop("days_ago",None)
+                r.pop("authors",None)
+                r.update(git_details)
+                r["package_type"] = package_type
+                r["latest"] = 1
+
+            self.kospex_db.table(KospexSchema.TBL_DEPENDENCY_DATA).upsert_all(
+                 results,pk=['_repo_id', 'hash', "file_path",
+                             "package_type","package_name","package_version"])
+
+            # print("Stored results to DB (should have)")
+
+        self.dependencies = results
+
+        return self.dependencies
+
+    def save_dependencies(self,git_details=None):
+        """
+        Save the dependencies to the kospex database.
+
+        For the _repo_id and file_path, set latest to 0
+
+        """
+
+        # Set the latest to 0 based on the criteria above
 
 
     def get_values_array(self, input_dict, keys, default_value):
