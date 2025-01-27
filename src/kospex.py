@@ -483,17 +483,28 @@ def deps(repo, file, directory, out, dev):
         print("Please specify either a '-repo', '-directory' or a '-file'.")
 
 @cli.command("sca")
-@click.option('-repo', type=GitRepo(), help="File path to git repo.")
-@click.option('-file', type=click.Path(exists=True), help="Package file to assess.")
-@click.option('-dev', is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL.")
+@click.option('-repo', type=GitRepo(), help="NOT IMPLEMENTED - File path to git repo.")
+@click.option('-dev', is_flag=True, default=True, help="Include dev/test dependencies. EXPERIMENTAL.")
+@click.option('-save', is_flag=True, default=True, help="Save results to kospex DB.")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")
-@click.argument('param', required=False, type=click.STRING)
-def sca(repo, file, dev, out, param):
+@click.argument('file_path', required=False, type=click.Path(exists=True))
+def sca(repo, dev, save, out, file_path):
     """
     Run software composition analysis (SCA) tasks
     """
-    print("\nEXPERIMENTAL FEATURE: SCA\n\n")
-    print(f"{param}")
+    print("\nEXPERIMENTAL FEATURE: SCA\n")
+    params = locals()
+    params['print_table'] = True
+
+    if repo:
+        print("NOT implemented")
+        exit(1)
+
+    if file_path:
+         results = kospex.dependencies.assess(file_path,**params)
+    else:
+        print("Either -repo REPO or file_path is required.\n")
+
 
 @cli.command("author-tech")
 @click.option('-author_email', type=click.STRING)
