@@ -29,8 +29,8 @@ def repo_ids():
 def delete_repo(repo_id,table,yes):
     """ Delete a repo_id from all tables."""
 
-    # TODO - make this work!
-    print("Warning : This function doesn't work!")
+    # TODO - Implement for all tables!
+    print("Warning : This function only implements table!")
 
     if table:
         if table in KospexSchema.KOSPEX_TABLES:
@@ -38,6 +38,13 @@ def delete_repo(repo_id,table,yes):
             if not yes:
                 print("Please specify -yes to confirm deletion.")
                 return
+            else:
+                print()
+                print(f"About to delete repo_id {repo_id}")
+                print(f"from table {table}")
+                results = kospex.delete_repo_id_from_table(table,repo_id)
+                print(f"{results} rows deleted.\n")
+
         else:
             print(f"table {table} is NOT a valid table name.")
             print("Here's a list of valid tables:")
@@ -49,6 +56,7 @@ def delete_repo(repo_id,table,yes):
         print("Not implemented yet.")
         for table in KospexSchema.KOSPEX_TABLES:
             print(table)
+
         if not yes:
             print("Please specify -yes to confirm deletion.")
             return
