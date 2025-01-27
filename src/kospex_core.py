@@ -13,6 +13,7 @@ import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
 #import kospex_query as KospexQuery
 from kospex_query import KospexQuery, KospexData
+from kospex_dependencies import KospexDependencies
 #from kospex_mergestat import KospexMergeStat
 import panopticas
 
@@ -39,6 +40,7 @@ class Kospex:
         self.kospex_db = KospexSchema.connect_or_create_kospex_db()
         #self.mergestat = KospexMergeStat()
         self.kospex_query = KospexQuery(kospex_db=self.kospex_db)
+        self.dependencies = KospexDependencies(kospex_db=self.kospex_db, kospex_query=self.kospex_query)
 
     def set_repo_dir(self, directory):
         """ Set the repo directory """
@@ -800,6 +802,8 @@ class Kospex:
 
             table.add_row(KospexUtils.get_values_by_keys(row, table.field_names))
 
+            print(row)
+
             # Handle the format for sync data, only with repo_dir
             # We hould have raised a ValueError at the top of the method
             #if sync:
@@ -1123,3 +1127,17 @@ class Kospex:
         table = KospexUtils.get_keyvalue_table(config)
 
         return table
+
+    def delete_repo_id_from_table(self,table,repo_id):
+        """
+        Remove all rows in a table for the given repo_id
+        """
+        if table not in KospexSchema.KOSPEX_TABLES:
+            raise ValueError(f"table: {table} is not a Kospex table")
+
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.delete()
+        kd.from_table(table)
+        kd.where("_repo_id","=",repo_id)
+        print(kd.generate_sql())
+        return kd.execute()
