@@ -2,7 +2,6 @@
 import os
 import re
 from pathlib import Path
-#import pygit2
 import kospex_utils as KospexUtils
 import panopticas as Panopticas
 
@@ -11,8 +10,6 @@ class KospexGit:
     def __init__(self):
 
         # Git variables
-        # We are specifically using pygit2 to get metadata about the remotes, org, repo, etc.
-        self.pygit2 = None
         self.repo_dir = ""
         # remote should be either HTTP, HTTPS or SSH
         self.remote_type  = ""
@@ -224,12 +221,10 @@ class KospexGit:
 
     def set_repo(self, repo_dir):
         """ Extract the git metadata (remote, hash) from the repo directory """
-        #self.pygit2 = pygit2.Repository(repo_dir)
         self.repo_dir = repo_dir # Expecting this as a full path
 
         # Get the current hash
         try:
-            #self.current_hash = self.pygit2[self.pygit2.head.target].hex
             self.current_hash = KospexUtils.get_git_hash(repo_dir)
             self.has_head = True
         except Exception:
@@ -237,7 +232,6 @@ class KospexGit:
             self.current_hash = "NO_HEAD"
         # If we don't have a head, it's probably a new repo without any commits
         # The following getting of origin remote still works on a new repo with no commits
-        #self.set_remote_url(self.pygit2.remotes["origin"].url)
         self.set_remote_url(KospexUtils.get_git_remote_url(repo_dir))
 
 
@@ -305,15 +299,18 @@ class KospexGit:
 
     def clone_repo(self, repo_url):
         """ Clone a repo to the kospex code directory """
-        #pygit2.clone_repository(repo_url, repo_dir)
-        #KospexUtils.clone_git_repo(repo_url, repo_dir)
         repo_dir = os.getenv("KOSPEX_CODE")
         if not os.path.isdir(repo_dir):
             exit("KOSPEX_CODE directory not found: " + repo_dir)
 
         current_dir = os.getcwd()
-
         os.chdir(repo_dir)
+
+        # Need to strip a trailing slash if it's there
+        # https://github.com/kospex/kospex/
+        repo_url  = repo_url.rstrip('/')
+        # the trailing slash messes with the parsing
+
         parts = self.extract_git_url_parts(repo_url)
         remote_org_dir = None
         print(parts)
