@@ -825,8 +825,6 @@ def orphans(days,window,server,target_list):
         # Find all the repos in the database
         repos = kospex.kospex_query.repos(server=server)
 
-    print(repos)
-
     now_utc = datetime.now(timezone.utc)
     from_date = now_utc - timedelta(days=window)
 
@@ -837,15 +835,13 @@ def orphans(days,window,server,target_list):
     # Loop through every repo
     for r in repos:
         # find all the authors in the last 'window' days
-        print(f'\n{r["_repo_id"]}')
         row = []
         row.append(r["_repo_id"])
-
+        print(f"repo_id: {r['_repo_id']}")
         commits = kospex.kospex_query.commits(
             repo_id=r["_repo_id"],
             after=from_date.strftime("%Y-%m-%dT%H:%M:%S%z"))
 
-        #print(f"Commits: {len(commits)}")
         committers = set([c['committer_email'] for c in commits])
         row.append(len(committers))
 
@@ -869,6 +865,7 @@ def orphans(days,window,server,target_list):
             working_knowledge += 1
 
         table.add_row(row)
+        print()
 
     print()
     print(table)
