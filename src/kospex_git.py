@@ -265,6 +265,8 @@ class KospexGit:
 
         p_files = Panopticas.identify_files(repo_path)
 
+        unmanaged = 0
+
         for entry in p_files:
 
             data = {}
@@ -282,7 +284,10 @@ class KospexGit:
             data['committer_when'] = git_metadata.get("committer_when")
             data['status'] = git_metadata.get("status")
 
-            repo_files[entry] = data
+            if git_metadata.get("unmanaged"):
+                unmanaged += 1
+            else:
+                repo_files[entry] = data
 
         self.repo_files = repo_files
 

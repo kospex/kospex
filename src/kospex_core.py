@@ -911,7 +911,13 @@ class Kospex:
                     #row['_mtime'] = os.path.getmtime(row['Filename'])
                     # Set this entry to the latest. Required for tech landscape queries
                     row['latest'] = 1
-                    data_rows.append(self.git.add_git_to_dict(row))
+
+                    # We only want to add files which are managed by Git
+                    file_path = row.get("Provider")
+                    if files.get(file_path):
+                        data_rows.append(self.git.add_git_to_dict(row))
+                    else:
+                        print(f"file_path/Provider : {file_path}, not managed by Git")
 
                 self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(data_rows,
                     pk=["Provider","hash","_repo_id"]

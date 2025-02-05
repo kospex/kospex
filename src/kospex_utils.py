@@ -485,7 +485,9 @@ def get_last_commit_info(filename,remote=None):
     try:
         # Get the last commit for the file
         os.chdir(file_dir)
-        last_cmd = f"git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict -- {basefile}"
+        basefile_quoted = shlex.quote(basefile)
+
+        last_cmd = f"git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict -- {basefile_quoted}"
         if is_dir:
             last_cmd = "git log -1 --pretty=format:'%H|%ad|%cd' --date=iso-strict"
 
@@ -493,13 +495,25 @@ def get_last_commit_info(filename,remote=None):
             shlex.split(last_cmd),
             encoding='utf-8'
         )
-        # Split the output to get commit hash, author date, and committer date
-        commit_hash, author_date, committer_date = commit_info.strip().split('|', 2)
 
         remote = get_git_remote_url(file_dir)
         if remote:
             # remove the .git extension if present
             remote = remote.removesuffix('.git')
+
+        # Check we actually have a git result
+        if not commit_info:
+            default['repo'] = remote
+            # Set a flag for unmanaged
+            default['unmanaged'] = True
+            # TODO - fix to debug logging
+            print(f"{filename} does not appear to be managed by git.")
+            return default
+
+        # If we're here, we must have gotten a git result
+
+        # Split the output to get commit hash, author date, and committer date
+        commit_hash, author_date, committer_date = commit_info.strip().split('|', 2)
 
         os.chdir(original_dir)
 
@@ -518,6 +532,7 @@ def get_last_commit_info(filename,remote=None):
     except Exception as e:
         print(f"An unexpected error occurred: {e} for {filename}, potentially not managed by git.")
         default['error'] = "Potentially not managed by git"
+        default['unmanaged'] = True
     finally:
         os.chdir(original_dir)
 

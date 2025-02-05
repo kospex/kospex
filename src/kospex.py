@@ -846,6 +846,7 @@ def orphans(days,window,server,target_list):
         row.append(len(committers))
 
         intersection_count = len(committers.intersection(active_set))
+
         row.append(intersection_count)
 
         print(f"Present: {intersection_count}, Total: {len(committers)} in 12 months.")
@@ -872,12 +873,15 @@ def orphans(days,window,server,target_list):
     print(f"\nOrphaned: {orphaned} | Working Knowledge: {working_knowledge} | Total: {len(repos)}")
     print(f"Orphaned: {orphaned/len(repos)*100:.2f}% | Working Knowledge: {working_knowledge/len(repos)*100:.2f}%\n")
 
+    print()
+
 @cli.command("metadata")
 @click.option('-file_type', type=click.STRING, help="Only returns files of this file type.")
 @click.option('-repo_id', type=click.STRING, help="repo_id to query kospex DB for metadata.")
 @click.option('-sync', type=click.BOOL, help="Sync metadata to kospex DB.")
 def metadata(file_type,repo_id,sync):
-    """ Find file metadata and tags.
+    """
+    Find file metadata and tags.
     """
     dir = os.getcwd()
 
