@@ -28,6 +28,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Fixed
   - Parsing of ssh urls like git@github.com:kospex/panopticas.git
   - parsing of git URLs with trailing slash which failed e.g. https://github.com/kospex/kospex/
+  - kreaper can now delete a repo_id out of all tables
+  - Shell escaped filenames to handle spaces in Git commands
+  - Improved SCC testing so that only Git managed files are added to Metadata table
 
 ## 0.0.13 - 2025-01-06
 

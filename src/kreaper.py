@@ -52,14 +52,18 @@ def delete_repo(repo_id,table,yes):
                 print(table)
 
     elif repo_id:
-        #kospex.delete_repo(repo_id)
-        print("Not implemented yet.")
-        for table in KospexSchema.KOSPEX_TABLES:
-            print(table)
 
         if not yes:
             print("Please specify -yes to confirm deletion.")
             return
+
+        for table in KospexSchema.REPO_TABLES:
+            print(table)
+            results = kospex.delete_repo_id_from_table(table,repo_id)
+            print(f"{results} rows deleted.\n")
+
+
+
 
     else:
         print("Please specify a repo_id to delete.")
