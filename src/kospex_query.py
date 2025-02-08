@@ -227,8 +227,6 @@ class KospexQuery:
                 repo_id=r["_repo_id"],
                 after=from_date.strftime("%Y-%m-%dT%H:%M:%S%z"))
 
-            print(f"after: {from_date.strftime("%Y-%m-%dT%H:%M:%S%z")}")
-
             #commits = self.commits(
             #    repo_id=r["_repo_id"] )
 
