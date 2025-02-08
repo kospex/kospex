@@ -2,7 +2,6 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## [unreleased]
 ## 0.0.15 - 2025-02-08
 
 ### Added
@@ -25,6 +24,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - Improved SCC testing so that only Git managed files are added to Metadata table
 
 ## [Unreleased]
+
+## VERSION - DATE
+
+### Added
+### Changed
+### Fixed
 
 ## 0.0.14 - 2025-01-15
 
