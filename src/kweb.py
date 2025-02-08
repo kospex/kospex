@@ -231,6 +231,19 @@ def landscape(id):
     else:
         return render_template('landscape.html', data=data, org_key=org_key, id=id)
 
+@app.route('/files/repo/', defaults={'repo_id': None})
+@app.route('/files/repo/<repo_id>')
+def repo_files(repo_id):
+    """
+    Show file metadata for a repo_id.
+    """
+    #data = KospexQuery().summary(days=90,repo_id=repo_id)
+    #results = KospexQuery().active_devs_by_repo(repo_id)
+    #print(results)
+    data = None
+    if repo_id:
+        data = KospexQuery().repo_files(repo_id=repo_id)
+    return render_template('files.html',data=data)
 
 @app.route('/repos', defaults={'id': None})
 @app.route('/repos/', defaults={'id': None})
@@ -460,7 +473,17 @@ def dependencies(id):
     return render_template('dependencies.html',data=data)
 
 
+@app.route('/orphans/', defaults={'id': None})
+@app.route('/orphans/<id>')
+def orphans(id):
+    """
+    Display orphan information
+    """
+    params = KospexWeb.get_id_params(id)
 
+    data = KospexQuery().get_orphans(id=params)
+
+    return render_template('orphans.html',data=data)
 
 @app.route('/bubble/<id>', defaults={'template': "bubble"})
 @app.route('/treemap/<id>', defaults={'template': "treemap"})

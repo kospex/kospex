@@ -24,6 +24,11 @@ KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_M
                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE,
                 TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META, TBL_GROUPS ]
 
+# The following is tables with a repo_id
+REPO_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
+                TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS, TBL_GROUPS ]
+
+
 # Table data structure inspired by Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
 SQL_CREATE_COMMITS = f'''CREATE TABLE IF NOT EXISTS [{TBL_COMMITS}] (

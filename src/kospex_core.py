@@ -11,7 +11,6 @@ from prettytable import PrettyTable, from_db_cursor
 from kospex_git import KospexGit, MissingGitDirectory
 import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
-#import kospex_query as KospexQuery
 from kospex_query import KospexQuery, KospexData
 from kospex_dependencies import KospexDependencies
 #from kospex_mergestat import KospexMergeStat

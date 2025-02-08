@@ -24,6 +24,7 @@
                         <th>Name</th>
                         <th>Version</th>
                         <th>Versions behind</th>
+                        <th>Released</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -38,6 +39,7 @@
                         <td class="dt-body-right">
                             {{ row['versions_behind'] }}
                         </td>
+                        <td class="dt-body-right">{{ row['published_at'] }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

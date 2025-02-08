@@ -11,7 +11,7 @@
 
             <h2 class="mb-4">Basic Statistics</h2>
             <p>
-                The have been {{ data.get("developers","Unknown")}} developers
+                There have been {{ data.get("developers","Unknown")}} developers
                 who've committed {{ data.get("commits", "Unknown") }} times to
                 {{ data.get("repos", "Unknown") }} repos over {{
                 data.get("days_active","Unknown") }} days ({{
@@ -37,6 +37,11 @@
                     </tr>
                 </tbody>
             </table>
+            All of the entries above represents "days" of tenure. Often a tenure
+            of 1 day is a single contribution to a repo, such as a bug fix in an
+            open source project.
+            <br />
+            <br />
 
             <h2 class="mb-4">Tenure Distribution</h2>
 
@@ -59,7 +64,7 @@
                     </tr>
 
                     <tr>
-                        <th>Active ({{data.get("active_devs")}})</th>
+                        <th>Active developers ({{data.get("active_devs")}})</th>
                         {% for my_item in active_distribution %}
                         <td>{{ active_distribution.get(my_item,"0") }} %</td>
                         {% endfor %}

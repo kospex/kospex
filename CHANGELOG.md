@@ -2,23 +2,15 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.14 - 2025-01-15
-
-### Added
-  - a switch to orphans to allow a targe list of repos to assess
-### Changed
-  - KospexGit now has safer (handles "/" in org) repo_id generation when setting a repo_url
-
-### Fixed
-  - Bug fix when kospex metadata is run and not in a Git dir.
-
-## [Unreleased]
+## [unreleased]
+## 0.0.15 - 2025-02-08
 
 ### Added
   - a static parse_ssh_git_url method
   - MVP sca method to eventually replace kospex deps with kospex sca
   - an Initial End Point for dependencies queries
   - kreaper can now remove all rows with repo_id from a table
+  - initial [orphans feature(https://github.com/kospex/kospex/issues/20)
   - tenure functions and pages to show how long developers have worked
 
 ### Changed
@@ -31,6 +23,19 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - kreaper can now delete a repo_id out of all tables
   - Shell escaped filenames to handle spaces in Git commands
   - Improved SCC testing so that only Git managed files are added to Metadata table
+
+## [Unreleased]
+
+## 0.0.14 - 2025-01-15
+
+### Added
+  - a switch to orphans to allow a targe list of repos to assess
+### Changed
+  - KospexGit now has safer (handles "/" in org) repo_id generation when setting a repo_url
+
+### Fixed
+  - Bug fix when kospex metadata is run and not in a Git dir.
+
 
 ## 0.0.13 - 2025-01-06
 

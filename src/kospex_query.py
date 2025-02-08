@@ -1,6 +1,7 @@
 """ Use case queries for the kospex DB"""
 import time
 import re
+from datetime import datetime, timezone, timedelta
 from sqlite_utils import Database
 import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
@@ -193,6 +194,77 @@ class KospexQuery:
 
         return results
 
+    def get_orphans(self,id=None):
+        """
+        Get the orphaned repos for the given scope.
+        """
+
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_DEPENDENCY_DATA)
+        kd.set_params_by_id(id)
+
+        active_devs = self.developers(days=90)
+        active_set = set(map(lambda item: item['author'], active_devs))
+
+        print(active_set)
+
+        repos = self.repos2(id=id)
+
+        window = 365
+        now_utc = datetime.now(timezone.utc)
+        from_date = now_utc - timedelta(days=window)
+
+        results = []
+
+        # Loop through every repo
+        for r in repos:
+            # find all the authors in the last 'window' days
+            row = {}
+            row["_repo_id"] = r["_repo_id"]
+            row["_git_repo"] = r["_git_repo"]
+
+            commits = self.commits(
+                repo_id=r["_repo_id"],
+                after=from_date.strftime("%Y-%m-%dT%H:%M:%S%z"))
+
+            print(f"after: {from_date.strftime("%Y-%m-%dT%H:%M:%S%z")}")
+
+            #commits = self.commits(
+            #    repo_id=r["_repo_id"] )
+
+            committers = set([c['author_email'] for c in commits])
+            row["committers"] = len(committers)
+            print("\n")
+            print(f"committers: {committers}\n\n")
+
+            intersection_count = len(committers.intersection(active_set))
+            row["intersection"] = intersection_count
+
+            print(f"Present: {intersection_count}, Total: {len(committers)} in 12 months.")
+
+            # if all the authors are not in the active_devs_emails list
+            # then print the repo status of orphaned
+
+            if intersection_count == 0:
+                print("Orphaned")
+                row["orphaned"] = True
+                row["percentage"] = 0
+                #orphaned += 1
+            else:
+                print("Working knowledge exists")
+                row["orphaned"] = False
+                row["percentage"] = f"{intersection_count/len(committers)*100:.2f}"
+                #row.append(f"{intersection_count/len(committers)*100:.2f}%")
+                #working_knowledge += 1
+
+            results.append(row)
+            #table.add_row(row)
+            #print()
+
+        #results = kd.execute()
+
+        return results
+
     def repos_by_author(self, author_email):
         """ Find repos for the given author_email."""
 
@@ -210,7 +282,37 @@ class KospexQuery:
 
         return data
 
-    def repos(self,org_key=None,server=None,repo_id=None):
+    def repos2(self,id=None):
+        """
+        Provide a summary of the known repositories.
+        """
+
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.set_params_by_id(id)
+
+        kd.select_as("count(*)", "commits")
+        kd.select_as("MIN(committer_when)", "first_commit")
+        kd.select_as("MAX(committer_when)", "last_commit")
+
+        # TODO = Fix this COUNT DISTINCT so it works as a "select_as"
+        kd.select_raw("COUNT(DISTINCT(author_email)) as authors")
+        kd.select_raw("COUNT(DISTINCT(committer_email)) as committers")
+
+        kd.select_git_details()
+
+        kd.group_by("_repo_id")
+        kd.order_by("_repo_id")
+
+        results = kd.execute()
+
+        for row in results:
+            row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
+            row['status'] = KospexUtils.development_status(row['last_commit'])
+
+        return results
+
+    def repos(self,org_key=None,server=None,repo_id=None,id=None):
         """ Provide a summary of the known repositories."""
         params = []
         where = ""
@@ -1404,6 +1506,16 @@ class KospexData:
             self.select_columns.append(f"{column_query} AS {alias}")
         else:
             raise ValueError(f"Invalid column query: '{column_query}' and alias: '{alias}'")
+
+    def select_git_details(self):
+        """
+        Select all the git metadata _repo_id, _git_server, _git_owner, _git_repo
+        """
+        self.select("_repo_id")
+        self.select("_git_server")
+        self.select("_git_owner")
+        self.select("_git_repo")
+
 
     def has_parentheses(self, string):
         """

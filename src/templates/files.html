@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+    {% set title = "Files" %} {% include '_bootstrap_html_head.html'%}
+    <body>
+        {% include 'header.html' %}
+
+        <!-- Main content area -->
+        <div class="container mt-5">
+            <h1 class="mb-4">Repo files</h1>
+            Find repos where there are no developers with knowledge working.
+            <br />
+            <br />
+
+            <h2 class="mb-4">Orphan status</h2>
+            X orphaned repos found. <br />
+            <br />
+
+            <table class="table table-striped compact" id="myTable">
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Orphaned</th>
+                        <th>Active developers</th>
+                        <th>Total Developers</th>
+                        <th>% dev here.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data %}
+                    <tr>
+                        <td>
+                            <a href="/repo/{{ row['Provider'] }}"
+                                >{{ row['Provider'] }}</a
+                            >
+                        </td>
+                        <td>{{ row.get('orphaned') }}</td>
+                        <td>{{ row.get('intersection') }}</td>
+                        <td>{{ row.get('committers') }}</td>
+                        <td class="dt-body-right">
+                            {{ row.get('percentage') }}%
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% include '_footer_scripts.html' %} {% include
+        '_datatable_scripts.html' %}
+
+        <script>
+            $(document).ready(function () {
+                $("#myTable").DataTable({
+                    order: [[4, "asc"]],
+                });
+            });
+        </script>
+    </body>
+</html>
