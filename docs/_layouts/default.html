@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>
+            {% if page.title %}{{ page.title }}{% else %}{{ site.title }}{%
+            endif %}
+        </title>
+
+        {% if site.github.is_project_page %}
+        <meta
+            name="description"
+            content="{{ site.description | default: site.github.project_tagline }}"
+        />
+        {% endif %}
+
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ '/assets/css/style.css' | relative_url }}"
+        />
+        {% include head-custom.html %}
+    </head>
+    <body>
+        <!-- Header & Navigation -->
+        <header>
+            <div class="container">
+                <nav class="navbar">
+                    <div class="logo">Kospex</div>
+                    <ul class="nav-menu">
+                        <li><a href="#home">Home</a></li>
+                        <li><a href="#features">Features</a></li>
+                        <li><a href="#articles">Articles</a></li>
+                        <li><a href="#use-cases">Use Cases</a></li>
+                        <li>
+                            <a href="https://docs.kospex.io">Documentation</a>
+                        </li>
+                        <li><a href="/contact-us.html">Contact</a></li>
+                        <div class="social-links">
+                            <a href="https://github.com/kospex/" target="_blank"
+                                ><i class="fab fa-github"></i
+                            ></a>
+                            <a href="https://x.com/kospex" target="_blank"
+                                ><i class="fa-brands fa-x-twitter"></i
+                            ></a>
+                        </div>
+                    </ul>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div id="main_content_wrap" class="outer">
+            <section id="main_content" class="inner">{{ content }}</section>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <div class="container">
+                <div class="footer-container">
+                    <div class="footer-about">
+                        <div class="footer-logo">Kospex</div>
+                        <p>
+                            Empowering development teams with actionable
+                            insights from their git repositories.
+                        </p>
+                        <div class="footer-social">
+                            <a href="https://github.com/kospex/" target="_blank"
+                                ><i class="fab fa-github"></i
+                            ></a>
+                            <a href="https://x.com/kospex" target="_blank"
+                                ><i class="fa-brands fa-x-twitter"></i
+                            ></a>
+                        </div>
+                    </div>
+                    <div class="footer-links">
+                        <h4>Quick Links</h4>
+                        <ul>
+                            <li><a href="#home">Home</a></li>
+                            <li><a href="#features">Features</a></li>
+                            <li><a href="#use-cases">Use Cases</a></li>
+                            <li><a href="#pricing">Pricing</a></li>
+                            <li><a href="/contact-us.html">Contact</a></li>
+                        </ul>
+                    </div>
+                    <div class="footer-links">
+                        <h4>Resources</h4>
+                        <ul>
+                            <li><a href="#">Documentation</a></li>
+                            <li><a href="#">Articles</a></li>
+                            <li>
+                                <a
+                                    href="https://github.com/kospex/"
+                                    target="_blank"
+                                    >GitHub</a
+                                >
+                            </li>
+                            <li><a href="#">Privacy Policy</a></li>
+                            <li><a href="#">Terms of Service</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="copyright">
+                    <p>&copy; 2025 Kospex Pty Ltd. All rights reserved.</p>
+                </div>
+            </div>
+        </footer>
+
+        <script>
+            // Smooth scrolling for navigation links
+            document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+                anchor.addEventListener("click", function (e) {
+                    e.preventDefault();
+                    document
+                        .querySelector(this.getAttribute("href"))
+                        .scrollIntoView({
+                            behavior: "smooth",
+                        });
+                });
+            });
+
+            // Header scroll effect
+            window.addEventListener("scroll", function () {
+                const header = document.querySelector("header");
+                header.classList.toggle("scrolled", window.scrollY > 50);
+            });
+        </script>
+    </body>
+</html>
