@@ -588,6 +588,7 @@ tr:nth-child(even) {
 #main_content {
     padding-top: 100px; /* Adjust based on your header height */
     margin-bottom: 50px; /* Add some space before footer */
+    padding: var(--section-padding);
 }
 
 /* List styling */
