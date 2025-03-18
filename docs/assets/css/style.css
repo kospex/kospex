@@ -655,3 +655,31 @@ tr:nth-child(even) {
 #main_content a:hover {
     text-decoration: underline;
 }
+
+/* Add spacing above h1 elements in main content */
+#main_content h1 {
+    margin-top: 0.8em; /* Adds space above the h2 */
+    margin-bottom: 0.5em; /* Ensures consistent spacing below as well */
+    color: var(--primary-color); /* Match your site's color scheme */
+    font-size: 2.1em; /* Appropriate sizing for h2 */
+}
+
+/* Add spacing above h2 elements in main content */
+#main_content h2 {
+    margin-top: 1em; /* Adds space above the h2 */
+    margin-bottom: 0.8em; /* Ensures consistent spacing below as well */
+    color: var(--primary-color); /* Match your site's color scheme */
+    font-size: 1.8em; /* Appropriate sizing for h2 */
+}
+
+/* Blockquote styling with light background */
+#main_content blockquote {
+    background-color: #f8f9fa; /* Light background color */
+    border-left: 4px solid var(--accent-color); /* Accent-colored left border */
+    margin: 1.5em 0; /* Vertical spacing */
+    padding: 1em 1.5em; /* Internal padding */
+    border-radius: 4px; /* Slightly rounded corners */
+    font-style: italic; /* Italic text for quotes */
+    color: #505050; /* Slightly muted text color */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); /* Subtle shadow */
+}
