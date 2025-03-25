@@ -6,7 +6,8 @@ This area aims to document Architecture Decisions, inspired by
 [joel Parker Henderson's repo about it](https://github.com/joelparkerhenderson/architecture-decision-record)
 
 ## Documented ADRs
-- 2025-03 [SQLite db schema updates]()
+- 2025-03 [SQLite db schema updates](adr/schema-updates)
+
 ## Proposed ADRs
 
 - repo_id format
