@@ -1,33 +1,34 @@
 # kospex
 
-Kospex is a CLI which aims to _"look at the guts of your code"_ to help gain insights into your developers and technology landscape.
-It uses database structure from the excellent [Mergestat lite](https://github.com/mergestat/mergestat-lite) to model data from git repositories. 
+Kospex is a CLI which aims to _"look at the guts of your code"_ to help gain insights into your developers, opensource maintenacne and technology landscape.
+
+It uses database structure from the excellent [Mergestat lite](https://github.com/mergestat/mergestat-lite) to model data from git repositories.
 
 ## Step 1: Installation, setup and usage
 
-kospex is currently a python module with commands. It works by analysing cloned repositories on the filesystem. 
+kospex is currently a python module with commands. It works by analysing cloned repositories on the filesystem.
 
-**Optional but strongely recommended** - use a python virtual env. 
+**Optional but strongely recommended** - use a python virtual env.
 
 Installing using pip:
 
 > pip install kospex
 
-For complexity and file type analysis, kospex uses the scc binary. 
+For complexity and file type analysis, kospex uses the scc binary.
 It is optional, but enables much better file type guessing and provide complexity metrics.
 Follow the instructions for installing [scc](https://github.com/boyter/scc)
 
 ### Step 2: Initial kospex setup
 
-kospex uses a git repositoriy layout for cloning repos to disk. 
+kospex uses a git repositoriy layout for cloning repos to disk.
 
 The following structure is used \
 /BASE/GIT_SERVER/ORG/REPO
 
-If you are ok to use the ~/code directory for cloned repos, then run: 
+If you are ok to use the ~/code directory for cloned repos, then run:
 > kospex init --default
 
-See section "Git code layout for running analysis" below for more details. 
+See section "Git code layout for running analysis" below for more details.
 
 
 ### Step 3: sync some data and play with some commands
@@ -50,7 +51,7 @@ Some commands to try:
 
 ## Git code layout for running analysis
 
-One option, if you're inspecting code on your own laptop (or virtual machine), is to use use your home directory. 
+One option, if you're inspecting code on your own laptop (or virtual machine), is to use use your home directory.
 
 ~/kospex/ \
 We'll place config files and the kospex DB (Sqlite3) in here for sync'ed data \
@@ -62,7 +63,7 @@ For example, in your ~/code it might look like: \
 github.com/kospex/kospex \
 github.com/mergestat/mergestat-lite
 
-This way we have a nice deterministic way of separating different orgs, potentially different instances (e.g. you have an on premise bitbucket and use GitHub.com) as well. 
+This way we have a nice deterministic way of separating different orgs, potentially different instances (e.g. you have an on premise bitbucket and use GitHub.com) as well.
 
 ## Key Use Cases and features
 
@@ -78,7 +79,7 @@ This way we have a nice deterministic way of separating different orgs, potentia
 
 > kospex sync PATH/TO/GIT_REPO
 
-_Most functions require the data to be synced._ 
+_Most functions require the data to be synced._
 
 ### Show recent developers who've committed in X days
 
@@ -116,15 +117,15 @@ List the tech stack in the given repo_id (sync'ed data in the kospex DB)
 
 - Build out automated functional and regressions testing (Currently manual)
 - Build the ability to identify key person or offboarding risk
-- Improve use case documentation 
+- Improve use case documentation
 - Provide a mechanism to better map author_emails to users
 
 ## Data extractions and assumptions
 
-Most tables have a column, _repo_id, in the format of GIT_SERVER&tilde;OWNER&tilde;REPO  
+Most tables have a column, _repo_id, in the format of GIT_SERVER&tilde;OWNER&tilde;REPO
 So for the repository https://github.com/kospex/kospex the _repo_id would be _github.com&tilde;kospex&tilde;kospex_
 
-Most queries use author_email from git to mean a "developer". 
+Most queries use author_email from git to mean a "developer".
 
 ## How do I develop and improve kospex?
 
@@ -139,5 +140,3 @@ We're aiming to [k]now your c[o]de by in[spe]cting the haruspe[x].
 From Wikipedia, _The Latin terms haruspex and haruspicina are from an archaic word, hīra = "entrails, intestines"_
 
 So we're going to help look at the "guts of your code" to gain an understanding of the applications, technology landscape (sprawl?) and developers.
-
-
