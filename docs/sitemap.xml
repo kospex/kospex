@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset
+      xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+            http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+
+<url>
+  <loc>https://docs.kospex.io/</loc>
+  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
+  <priority>1.00</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/getting-started</loc>
+  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
+  <priority>0.80</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/commands</loc>
+  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
+  <priority>0.80</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/useful-git-commands</loc>
+  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
+  <priority>0.80</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/use-cases</loc>
+  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
+  <priority>0.80</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/articles/orphaned-repos</loc>
+  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
+  <priority>0.80</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/articles/vulnerabilities-testing-indicator</loc>
+  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
+  <priority>0.80</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/kospex</loc>
+  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/kgit</loc>
+  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/krunner</loc>
+  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+
+
+</urlset>
