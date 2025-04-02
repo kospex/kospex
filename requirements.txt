@@ -22,7 +22,6 @@ jaraco.context==5.3.0
 jaraco.functools==4.0.1
 Jinja2==3.1.6
 keyring==25.2.1
--e git+https://github.com/kospex/kospex.git@d936c6a8eeb19e978b07f724750d14d3272c78fe#egg=kospex
 magika==0.5.1
 markdown-it-py==3.0.0
 MarkupSafe==2.1.5
@@ -33,7 +32,6 @@ nh3==0.2.18
 numpy==1.26.4
 onnxruntime==1.20.1
 packaging==24.1
--e git+https://github.com/kospex/panopticas.git@c7f37f8195f6f9471bb24279d304f4f16a0e81ac#egg=panopticas
 pathspec==0.12.1
 pkginfo==1.10.0
 pluggy==1.5.0
