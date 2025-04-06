@@ -1146,3 +1146,39 @@ class Kospex:
         kd.where("_repo_id","=",repo_id)
         print(kd.generate_sql())
         return kd.execute()
+
+    def apply_alter_table_commands(self, alter_commands):
+        """
+        Applies a list of ALTER TABLE commands to a SQLite database using sqlite-utils.
+
+        :param db_path: Path to the SQLite database file
+        :param alter_commands: List of SQL commands (strings) to execute
+        :return: A list of dictionaries. Each dictionary has:
+                 {
+                   'command': <the SQL string>,
+                   'error': <error message> or None
+                 }
+        """
+        db = self.kospex_db
+        results = []
+        print(alter_commands)
+
+        for command in alter_commands:
+            try:
+                print(command)
+
+                # Execute the ALTER TABLE command
+                db.execute(command)
+                # If execution succeeded, no error
+                results.append({
+                    'command': command,
+                    'error': None
+                })
+            except Exception as e:
+                # If there's an error, store it along with the command
+                results.append({
+                    'command': command,
+                    'error': str(e)
+                })
+
+        return results

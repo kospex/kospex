@@ -15,6 +15,14 @@ class KospexQuery:
         KospexUtils.init()
         self.kospex_db = kospex_db or Database(KospexUtils.get_kospex_db_path())
 
+    def get_kospex_db_version(self):
+        """
+        Return the KOSPEX_DB_VERSION stored in the KOSPEX_CONFIG table
+        """
+        version_sql = f"SELECT value FROM {KospexSchema.TBL_KOSPEX_CONFIG} where key = ? AND latest = 1"
+        data = next(self.kospex_db.query(version_sql, [KospexSchema.KOSPEX_DB_VERSION_KEY]), None)
+        return data
+
     def summary(self, days=None, repo_id=None):
         """
         Provide a summary of the known repositories.
@@ -832,7 +840,7 @@ class KospexQuery:
 
         return results
 
-    def url_request(self, url, cache=3600, timeout=10):
+    def url_request(self, url, cache=3600, timeout=10, headers=None):
         """ Make a request to a URL, and use the cached version is less than [cache] seconds"""
         # Set default cache to 1 hour (60mins * 60secs)
 

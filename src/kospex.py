@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from shutil import which
 import click
+import requests
 from kospex_core import Kospex, GitRepo
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -486,22 +487,47 @@ def deps(repo, file, directory, out, dev):
 @click.option('-repo', type=GitRepo(), help="NOT IMPLEMENTED - File path to git repo.")
 @click.option('-dev', is_flag=True, default=True, help="Include dev/test dependencies. EXPERIMENTAL.")
 @click.option('-save', is_flag=True, default=True, help="Save results to kospex DB.")
+@click.option('-malware', is_flag=True, default=False, help="Check for malware in dependencies.")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")
 @click.argument('file_path', required=False, type=click.Path(exists=True))
-def sca(repo, dev, save, out, file_path):
+def sca(repo, dev, save, malware, out, file_path):
     """
-    Run software composition analysis (SCA) tasks
+    Run a lightweight software composition analysis (SCA) task
+    optionally run the maliciouspackages.com analysis of the dependencies
+    -malware to enable malware analysis using the maliciouspackages.com API
+    Your API_MAT needs to be set in the environment variable API_MAT
     """
-    print("\nEXPERIMENTAL FEATURE: SCA\n")
     params = locals()
-    params['print_table'] = True
+    api_mat = os.environ.get('API_MAT')
 
     if repo:
         print("NOT implemented")
         exit(1)
 
     if file_path:
-         results = kospex.dependencies.assess(file_path,**params)
+        # Handle a dependency file (e.g. package.json, requirements.txt) and check dependencies
+        results = kospex.dependencies.assess(file_path,**params)
+
+        if malware:
+            print("Checking packages for malware on maliciouspackages.com")
+            if not api_mat:
+                 print("API_MAT environment variable not set. Please set it to your maliciouspackages.com API key.")
+                 exit(1)
+
+            for result in results:
+                package_type = result.get('package_type')
+                package_name = result.get('package_name')
+
+                if package_type and package_name:
+                    print(f"Checking {package_type} package: {package_name}")
+                    is_malware = kospex.dependencies.check_malware(package_type, package_name,api_mat)
+                    result['malware'] = is_malware
+                else:
+                    print(f"Skipping package with missing type '{package_type}' or name '{package_name}'")
+
+        kospex.dependencies.print_dependencies_table(results,malware=True)
+
+
     else:
         print("Either -repo REPO or file_path is required.\n")
 
@@ -915,6 +941,104 @@ def version():
     """Print the version of Kospex CLI."""
     click.echo(f"Kospex CLI version {VERSION}")
 
+@cli.command("upgrade-db")
+@click.option('-apply', is_flag=True, default=False, help="Confirm and apply upgrades kospex DB schema.")
+def upgrade_db(apply):
+    """
+    Perform an upgrade and apply DB changes for new versions.
+    Run without options, it inspects the database and current kospex schema and detects changes
+    -apply will execute the alter table commands and update the db.
+    """
+    click.echo(f"Kospex CLI version {VERSION}")
+    # WARN about backups first
+    print("\nWARNING: backup your database before performing ANY upgrade.\nJust in case ...\n")
+    # Check versions
+    # run the db diff
+    # apply db diff
+    # output status
+    data = kospex.kospex_query.get_kospex_db_version()
+    version = 0
+    invalid_version = False
+    if data:
+        try:
+            version = int(data)
+        except (ValueError, TypeError):
+            # Set to 0, meaning we're in an unknown state, but we'll try an upgrade
+            invalid_version = True
+            print(f"INVALID kospex db version '{data}'.\nSetting to 0 for need of an upgrade")
+        print(f"kospex db version: {version}")
+    else:
+        print("We don't have a kospex db version, either deleted, or an older database version")
+        print("Setting to 0 for need of an upgrade")
+
+    if version < KospexSchema.KOSPEX_DB_VERSION:
+        versions_behind = KospexSchema.KOSPEX_DB_VERSION - version
+        print(f"database is {versions_behind} versions behind.")
+
+    print()
+
+    alter_db_changes = []
+
+    rows = kospex.kospex_db.query("SELECT sql, tbl_name FROM sqlite_master where type = 'table'", [])
+
+    for r in rows:
+        tbl_name = r.get("tbl_name")
+        sql = r.get("sql")
+        print(f"tbl_name: {tbl_name}")
+        #print(KospexUtils.parse_sql_create_columns(sql))
+        if current_create := KospexSchema.DB_CREATE_STATEMENTS.get(tbl_name):
+            alter_commands = KospexSchema.generate_alter_table(sql,current_create,tbl_name)
+            if alter_commands:
+                print(f"Alter commands for table {tbl_name}")
+                print(alter_commands)
+                if alter_commands:
+                    alter_db_changes.extend(alter_commands)
+                    print("Adding to list of changes")
+            else:
+                print(f"No changes for table {tbl_name}")
+
+        else:
+            print("WARNING: table '{tbl_name}' is NOT a kospex databse table")
+
+        print()
+
+    print(f"Changes required: {len(alter_db_changes)}")
+    for change in alter_db_changes:
+        print(change)
+
+    if apply:
+        # Make the changes
+        print("Starting alter tables")
+        if len(alter_db_changes) > 0:
+            results = kospex.apply_alter_table_commands(alter_db_changes)
+            errors = 0
+            for item in results:
+                if item.get("error"):
+                    print(f"error: {item.get('error')} - message: {item.get('error')}")
+                    errors += 1
+            if errors > 0:
+               print("WARNING: Errors in applying the alter table")
+            else:
+                print("Changes applied.")
+
+            # else:
+            #     kospex.kospex_db.execute(
+            #         f"UPDATE {KospexSchema.TBL_KOSPEX_CONFIG} SET value = '{str(KospexSchema.KOSPEX_DB_VERSION)} '
+            #         WHERE key = '{KospexSchema.KOSPEX_DB_VERSION_KEY}', str(KOSPEX_DB_VERSION), 'INTEGER']
+            #     )
+        else:
+                print("Nothing to apply.")
+
+        # update db version
+    elif len(alter_db_changes) > 0:
+        print("\nThe above is the dry run of the changes, to apply them:")
+        print("> kospex upgrade-db -apply\n")
+        print("\nWARNING: BACKUP YOUR DATABASE FIRST!\n")
+    else:
+        print("No changes required, up to date.")
+
+
+
 @cli.command("system-status")
 def status():
     """
@@ -934,6 +1058,7 @@ def status():
     print()
 
     print("Database table version status\n")
+
 
     print("Installed tool status")
     print("---------------------")

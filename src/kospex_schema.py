@@ -14,20 +14,29 @@ TBL_DEPENDENCY_DATA = "dependency_data"
 TBL_URL_CACHE = "url_cache"
 TBL_KRUNNER = "krunner"
 TBL_OBSERVATIONS = "observations"
-TBL_MAILMAP = "mailmaps"
 TBL_REPOS = "repos"
 # Experimental tables
 TBL_KOSPEX_META = "kospex_meta"
 TBL_GROUPS = "kospex_groups"
+TBL_KOSPEX_CONFIG = "kospex_config"
+# Not yet implemented
+TBL_MAILMAP = "mailmaps"
 
 KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
-                TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE,
-                TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META, TBL_GROUPS ]
+                TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE, TBL_KRUNNER,
+                TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META, TBL_GROUPS, TBL_KOSPEX_CONFIG ]
 
-# The following is tables with a repo_id
+# The following are tables with a repo_id
 REPO_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS, TBL_GROUPS ]
 
+# Mapping of table name to create statement is below the create statement definitions in:
+# DB_CREATE_STATEMENTS
+
+# KOSPEX_DB_VERSION will be updated every time we updated the schema
+KOSPEX_DB_VERSION=1
+KOSPEX_DB_VERSION_KEY = "KOSPEX_DB_VERSION_KEY"
+# Version 1, we're drawing a line in the sand as of 2025-02-16
 
 # Table data structure inspired by Mergestat sync 'git-commits'
 # https://github.com/mergestat/syncs/blob/main/syncs/git-commits/schema.sql
@@ -226,6 +235,7 @@ SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
     )'''
 
 # TODO - This table has not been set up properly or created yet
+# Unsure if we still need this ... 2025-02-16
 SQL_CREATE_KOSPEX_META = f'''CREATE TABLE  IF NOT EXISTS [{TBL_KOSPEX_META}] (
     [format] TEXT,           -- format type e.g. JSON, JSONL, CSV, LINE
     [latest] INTEGER,        -- 1 if this is the latest version of the metadata, 0 otherwise
@@ -234,8 +244,20 @@ SQL_CREATE_KOSPEX_META = f'''CREATE TABLE  IF NOT EXISTS [{TBL_KOSPEX_META}] (
     [_git_owner] TEXT,
     [_git_repo] TEXT,
     [_repo_id] TEXT,
-    PRIMARY KEY(_repo_id,hash,file_path,observation_key)
+    PRIMARY KEY(_repo_id,hash,file_path)
     )'''
+
+#SQL_CREATE_KOSPEX_CONFIG = f'''CREATE TABLE IF NOT EXISTS [{TBL_KOSPEX_CONFIG}] (
+SQL_CREATE_KOSPEX_CONFIG = f'''CREATE TABLE IF NOT EXISTS [{TBL_KOSPEX_CONFIG}] (
+    [format] TEXT,           -- format type e.g. JSON, JSONL, CSV, TEXT, INTEGER, YAML
+    [key] TEXT,              -- config item key, similar to a key in a dict
+    [value] TEXT,            -- config item value, similar to a value in a dict, format specified in 'format'
+    [latest] INTEGER,        -- 1 if this is the latest version of the metadata, 0 otherwise
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
+    [updated_at] DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(key,latest)
+    )'''
+
 
 # Used for querying based on groups
 SQL_CREATE_GROUPS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_GROUPS}] (
@@ -262,6 +284,22 @@ SQL_CREATE_MAILMAP = f'''CREATE TABLE  IF NOT EXISTS [{TBL_MAILMAP}] (
     [_repo_id] TEXT,       -- normalised _repo_id from git_url (optional)
     PRIMARY KEY(_repo_id,email,committer_email)
     )'''
+
+DB_CREATE_STATEMENTS = {
+    TBL_COMMITS: SQL_CREATE_COMMITS,
+    TBL_COMMIT_FILES: SQL_CREATE_COMMIT_FILES,
+    TBL_COMMIT_METADATA: SQL_CREATE_COMMIT_METADATA,
+    TBL_FILE_METADATA: SQL_CREATE_FILE_METADATA,
+    TBL_REPO_HOTSPOTS: SQL_CREATE_REPO_HOTSPOTS,
+    TBL_DEPENDENCY_DATA: SQL_CREATE_DEPENDENCY_DATA,
+    TBL_URL_CACHE: SQL_CREATE_URL_CACHE,
+    TBL_KRUNNER: SQL_CREATE_KRUNNER,
+    TBL_OBSERVATIONS: SQL_CREATE_OBSERVATIONS,
+    TBL_REPOS: SQL_CREATE_REPOS,
+    TBL_KOSPEX_META: SQL_CREATE_KOSPEX_META,
+    TBL_GROUPS: SQL_CREATE_GROUPS,
+    TBL_KOSPEX_CONFIG: SQL_CREATE_KOSPEX_CONFIG
+}
 
 # Functions for SQLite stuff
 
@@ -295,8 +333,16 @@ def connect_or_create_kospex_db():
     kospex_db.execute(SQL_CREATE_OBSERVATIONS)
     kospex_db.execute(SQL_CREATE_REPOS)
     kospex_db.execute(SQL_CREATE_GROUPS)
+    kospex_db.execute(SQL_CREATE_KOSPEX_CONFIG)
 
     # TODO - look at moving all table creates to "create if not exits"
+
+    if new_db:
+        # Set the database version
+        kospex_db.execute(
+            f"INSERT INTO {TBL_KOSPEX_CONFIG} (key, value, format, latest) VALUES (?, ?, ?, ?)",
+            [KOSPEX_DB_VERSION_KEY, str(KOSPEX_DB_VERSION), 'INTEGER', 1]
+        )
 
     return kospex_db
 
@@ -363,3 +409,153 @@ def metadata_rows_from_repo_files(files):
         #print(filtered_dict)
 
     return rows
+
+    # Claude.ai helped out with this one below
+    # Seems to work, and generates an alter table per column added
+    # TODO .. make sure all the old table columns are in the new table as sanity checking
+
+def generate_alter_table(old_create_sql, new_create_sql,tbl_name):
+
+    def extract_columns(create_sql):
+        start = create_sql.find('(') + 1
+        end = create_sql.rindex(')')
+        columns_section = create_sql[start:end]
+
+        # Split into lines and process each line
+        columns = []
+        for line in columns_section.split('\n'):
+            line = line.strip()
+            if not line or line.startswith('PRIMARY KEY'):
+                continue
+
+            # Remove any inline comments
+            if '--' in line:
+                line = line.split('--')[0].strip()
+
+            # Remove trailing comma if present
+            if line.endswith(','):
+                line = line[:-1].strip()
+
+            # Skip empty lines after processing
+            if not line:
+                continue
+
+            # Get column name from square brackets
+            if '[' in line:
+                col_name = line[line.find('[')+1:line.find(']')]
+                columns.append((col_name, line))
+
+        # TODO - Add as debug log
+        #print(f"Processed columns: {columns}")
+        return columns
+
+    old_cols = extract_columns(old_create_sql)
+    new_cols = extract_columns(new_create_sql)
+
+    old_names = [name for name, _ in old_cols]
+    new_names = [name for name, _ in new_cols]
+
+    # TODO - Add as debug log
+    #print(f"\nOld column names: {old_names}")
+    #print(f"New column names: {new_names}")
+
+    added_cols = [(name, def_) for name, def_ in new_cols if name not in old_names]
+
+    # TODO - Add as debug log
+    #print(f"Added columns: {added_cols}")
+
+    alter_commands = []
+    for _, col_def in added_cols:
+        alter_commands.append(f"ALTER TABLE [{tbl_name}] ADD COLUMN {col_def}\n")
+
+    return alter_commands
+
+def validate_square_brackets2(create_sql):
+    # Get the columns section
+    start = create_sql.find('(') + 1
+    end = create_sql.rindex(')')
+    columns_section = create_sql[start:end]
+
+    # Check each line
+    invalid_columns = []
+
+    for line in columns_section.split('\n'):
+        line = line.strip()
+        # Skip empty lines, comments, or PRIMARY KEY
+        if not line or line.startswith('--') or line.startswith('PRIMARY KEY'):
+            continue
+
+        # Remove comments
+        if '--' in line:
+            line = line.split('--')[0].strip()
+
+        # Split line by commas to handle multiple columns on one line
+        # but be careful not to split on commas inside parentheses (for types like VARCHAR(255))
+        columns_in_line = []
+        current_column = ""
+        paren_level = 0
+
+        for char in line:
+            if char == '(':
+                paren_level += 1
+                current_column += char
+            elif char == ')':
+                paren_level -= 1
+                current_column += char
+            elif char == ',' and paren_level == 0:
+                # End of a column definition
+                if current_column.strip():
+                    columns_in_line.append(current_column.strip())
+                current_column = ""
+            else:
+                current_column += char
+
+        # Add the last column if there is one
+        if current_column.strip():
+            columns_in_line.append(current_column.strip())
+
+        # Check each column declaration
+        for col_decl in columns_in_line:
+            # Check if the column declaration starts with a square bracket
+            if not col_decl.strip().startswith('['):
+                invalid_columns.append(col_decl.strip())
+
+    if invalid_columns:
+        print("The following column declarations are missing square brackets:")
+        for col in invalid_columns:
+            print(f"  {col}")
+        return False
+    return True
+
+def validate_square_brackets(create_sql):
+    # Get the columns section
+    start = create_sql.find('(') + 1
+    end = create_sql.rindex(')')
+    columns_section = create_sql[start:end]
+
+    # Check each line
+    invalid_lines = []
+    for line in columns_section.split('\n'):
+        line = line.strip()
+        # Skip empty lines, comments, or PRIMARY KEY
+        if not line or line.startswith('--') or line.startswith('PRIMARY KEY'):
+            continue
+        # Remove comments and trailing comma
+        if '--' in line:
+            line = line.split('--')[0].strip()
+        if line.endswith(','):
+            line = line[:-1].strip()
+        # Skip if empty after cleaning
+        if not line:
+            continue
+
+        # Check if the line starts with a square bracket
+        if not line.startswith('['):
+            invalid_lines.append(line)
+
+    if invalid_lines:
+        print("The following lines are missing square brackets:")
+        for line in invalid_lines:
+            print(f"  {line}")
+        return False
+    return True
