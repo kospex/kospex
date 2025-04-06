@@ -6,6 +6,7 @@ import re
 import json
 import csv
 import urllib
+import time
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 from typing import List, Dict
@@ -57,12 +58,13 @@ class KospexDependencies:
         data = None
 
         if self.kospex_query and cache:
-            content = self.kospex_query.url_request(url)
-            data = json.loads(content)
+            if content := self.kospex_query.url_request(url):
+                data = json.loads(content)
         else:
             req = requests.get(url, timeout=timeout)
             if req.status_code == 200:
                 data = req.json()
+
         return data
 
 
@@ -123,14 +125,13 @@ class KospexDependencies:
 
     def get_table_field_names(self):
         """ Return the field names for the CSV table """
-        return ["package_name", "package_version", "days_ago",
-                "published_at", "advisories", "default", "versions_behind", "source_repo", "authors"]
+        return ["package_name", "package_version", "versions_behind", "days_ago",
+                "published_at", "default", "advisories", "malware",  "source_repo", "authors"]
 
     def get_cli_pretty_table(self):
         """ Return a pretty table for the CLI """
         table = PrettyTable()
-        #table.field_names = ["package", "version", "days_ago",
-        #                "published_at", "source_repo", "advisories", "default"]
+
         table.field_names = self.get_table_field_names()
         table.align["package_name"] = "l"
         table.align["package_version"] = "r"
@@ -138,9 +139,11 @@ class KospexDependencies:
         table.align["published_at"] = "l"
         table.align["source_repo"] = "l"
         table.align["advisories"] = "r"
+        table.align["malware"] = "r"
         table.align["default"] = "r"
         table.align["versions_behind"] = "r"
         table.align["authors"] = "r"
+
         return table
 
     def is_npm_package(self,filename):
@@ -169,7 +172,7 @@ class KospexDependencies:
         filename (str): The filename to check.
 
         Returns:
-        bool: True if it looks like a .csproj variant, packages.config, etcFalse otherwise.
+        bool: True if it looks like a .csproj variant, packages.config, etc False otherwise.
         """
         # Regular expression to match package.json and its variants
         basefile = os.path.basename(filename)
@@ -260,6 +263,8 @@ class KospexDependencies:
 
         if save and git_details:
             print("Should be saving now!")
+            import pprint
+            pprint.PrettyPrinter(indent=4).pprint(results)
             # TODO - see if there is better way of excluding this key
             for r in results:
                 r.pop("days_ago",None)
@@ -473,8 +478,8 @@ class KospexDependencies:
 
         data = None
         if self.kospex_query:
-            content = self.kospex_query.url_request(url)
-            data = json.loads(content)
+            if content := self.kospex_query.url_request(url):
+                data = json.loads(content)
         else:
             req = requests.get(url, timeout=10)
             if req.status_code == 200:
@@ -568,13 +573,13 @@ class KospexDependencies:
                     repo_path = self.extract_repo_path(url) if url else None
                     if url:
                         if repo_path:
-                            row['package'] = repo_path
+                            row['package_name'] = repo_path
                         else:
-                            row['package'] = repo_path
+                            row['package_name'] = repo_path
                     else:
-                        row['package'] = line.strip()
+                        row['package_name'] = line.strip()
 
-                    row["version"] = "Unknown"
+                    row["package_version"] = "Unknown"
                     row["days_ago"] = "Unknown"
                     row["published_at"] = "Unknown"
                     row["source_repo"] = url
@@ -646,6 +651,16 @@ class KospexDependencies:
             print(table)
 
         return records
+
+    def print_dependencies_table(self, records,malware=None):
+        table = self.get_cli_pretty_table()
+        table_rows = []
+
+        for dep in records:
+            table_rows.append(self.get_values_array(dep, self.get_table_field_names(), '-'))
+
+        table.add_rows(table_rows)
+        print(table)
 
     def get_repo_authors(self, repo_url):
         """ Return the number of unique authors for a given repo that's been sync'ed """
@@ -798,7 +813,7 @@ class KospexDependencies:
 
         data = self.get_url_json(url)
         versions = data.get('versions', [])
-        # We will need to sort the list, since th   e API returns the versions in a weird order
+        # We will need to sort the list, since the API returns the versions in a weird order
         #print(json.dumps(versions, indent=2))
         #print(len(versions))
 
@@ -938,3 +953,28 @@ class KospexDependencies:
 
         # Return the results array
         return results
+
+    def check_malware(self, package_type,package_name, api_key):
+        # Beta implementation of malicious packages API
+        url = f"https://api.maliciouspackages.com/package/{package_type}/{package_name}"
+        is_malware = False
+        headers = {
+                    "X-API-Key": api_key
+                }
+        try:
+            time.sleep(1)
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                malware_result = response.json()
+                is_malware = malware_result.get("malware", False)
+                #result['malware'] = malware_result.get("malware", False)
+            else:
+                print(f"Error checking {package_name}: HTTP {response.status_code}")
+                #result['malware'] = {"error": f"HTTP {response.status_code}"}
+        except Exception as e:
+            print(f"Exception when checking {package_name}: {str(e)}")
+                #result['malware'] = {"error": str(e)}
+        # else:
+        #     print(f"Skipping package with missing type or name: {package_type} and {package_name}")
+
+        return is_malware
