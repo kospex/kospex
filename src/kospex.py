@@ -19,7 +19,7 @@ KospexUtils.init()
 kospex = Kospex()
 log = logging.getLogger(__name__)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
-VERSION = "0.0.15" # This value should align with the pyproject.toml version for pip
+VERSION = "0.0.16" # This value should align with the pyproject.toml version for pip
 
 @click.group()
 def cli():
@@ -956,16 +956,19 @@ def upgrade_db(apply):
     # run the db diff
     # apply db diff
     # output status
+
+
+
     data = kospex.kospex_query.get_kospex_db_version()
     version = 0
-    invalid_version = False
-    if data:
-        try:
-            version = int(data)
-        except (ValueError, TypeError):
-            # Set to 0, meaning we're in an unknown state, but we'll try an upgrade
-            invalid_version = True
-            print(f"INVALID kospex db version '{data}'.\nSetting to 0 for need of an upgrade")
+    if data is not None:
+        # try:
+        #     version = int(data)
+        # except (ValueError, TypeError):
+        #     # Set to 0, meaning we're in an unknown state, but we'll try an upgrade
+        #     invalid_version = True
+        version = data
+        #print(f"INVALID kospex db version '{data}'.\nSetting to 0 for need of an upgrade")
         print(f"kospex db version: {version}")
     else:
         print("We don't have a kospex db version, either deleted, or an older database version")
@@ -1016,20 +1019,25 @@ def upgrade_db(apply):
                 if item.get("error"):
                     print(f"error: {item.get('error')} - message: {item.get('error')}")
                     errors += 1
+            
             if errors > 0:
                print("WARNING: Errors in applying the alter table")
             else:
-                print("Changes applied.")
+                # update db version
+                rec = {
+                    "key": KospexSchema.KOSPEX_DB_VERSION_KEY,
+                    "value": str(KospexSchema.KOSPEX_DB_VERSION),
+                    "format": "INTEGER",
+                    "latest": 1
+                }
+                kospex.kospex_db.table(KospexSchema.TBL_KOSPEX_CONFIG).upsert(rec, pk=["key", "latest"])
 
-            # else:
-            #     kospex.kospex_db.execute(
-            #         f"UPDATE {KospexSchema.TBL_KOSPEX_CONFIG} SET value = '{str(KospexSchema.KOSPEX_DB_VERSION)} '
-            #         WHERE key = '{KospexSchema.KOSPEX_DB_VERSION_KEY}', str(KOSPEX_DB_VERSION), 'INTEGER']
-            #     )
+                print("Changes applied.")
+       
         else:
                 print("Nothing to apply.")
 
-        # update db version
+
     elif len(alter_db_changes) > 0:
         print("\nThe above is the dry run of the changes, to apply them:")
         print("> kospex upgrade-db -apply\n")

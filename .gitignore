@@ -9,8 +9,7 @@ __pycache__/
 # Unknown (but think it's deepcode or Snyk)
 .dccache
 
-# handle the github pages config
-docs/.bundle/*
+
 # Distribution / packaging
 .Python
 build/
@@ -46,6 +45,8 @@ pip-delete-this-directory.txt
 docs/_site/
 docs/Gemfile
 docs/Gemfile.lock
+# handle the github pages config
+docs/.bundle/*
 
 # Unit test / coverage reports
 htmlcov/

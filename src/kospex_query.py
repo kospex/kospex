@@ -21,7 +21,14 @@ class KospexQuery:
         """
         version_sql = f"SELECT value FROM {KospexSchema.TBL_KOSPEX_CONFIG} where key = ? AND latest = 1"
         data = next(self.kospex_db.query(version_sql, [KospexSchema.KOSPEX_DB_VERSION_KEY]), None)
-        return data
+        version = None
+        if data:
+            try:
+                version = int(data['value'])
+            except (ValueError, TypeError):
+                version = 0
+
+        return version
 
     def summary(self, days=None, repo_id=None):
         """

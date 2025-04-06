@@ -2,6 +2,28 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## [Unreleased]
+
+## 0.0.16 - 2025-04-06
+
+### Added
+  - Added integration in [malicious package API in SCA](https://github.com/kospex/kospex/issues/25)
+  - Added MVP [db migrations feature](https://github.com/kospex/kospex/issues/23)
+### Changed
+  - kospex sca now has a cut down version of kospex deps, plus a malware flag for malicious packages
+  - tests/run-kdocker.sh now mounts a data directory for output, and the tests folder for scripts to run
+### Fixed
+  - Removed some commented out dead and test code
+
+
+## [Unreleased]
+
+## VERSION - DATE
+
+### Added
+### Changed
+### Fixed
+
 ## 0.0.15 - 2025-02-08
 
 ### Added
@@ -9,7 +31,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - MVP sca method to eventually replace kospex deps with kospex sca
   - an Initial End Point for dependencies queries
   - kreaper can now remove all rows with repo_id from a table
-  - initial [orphans feature(https://github.com/kospex/kospex/issues/20)
+  - initial [orphans feature](https://github.com/kospex/kospex/issues/20)
   - tenure functions and pages to show how long developers have worked
 
 ### Changed
@@ -23,13 +45,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - Shell escaped filenames to handle spaces in Git commands
   - Improved SCC testing so that only Git managed files are added to Metadata table
 
-## [Unreleased]
 
-## VERSION - DATE
-
-### Added
-### Changed
-### Fixed
 
 ## 0.0.14 - 2025-01-15
 
