@@ -9,6 +9,8 @@ __pycache__/
 # Unknown (but think it's deepcode or Snyk)
 .dccache
 
+# handle the github pages config
+docs/.bundle/*
 # Distribution / packaging
 .Python
 build/
