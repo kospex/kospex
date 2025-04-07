@@ -2,8 +2,6 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## [Unreleased]
-
 ## 0.0.16 - 2025-04-06
 
 ### Added
@@ -12,6 +10,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Changed
   - kospex sca now has a cut down version of kospex deps, plus a malware flag for malicious packages
   - tests/run-kdocker.sh now mounts a data directory for output, and the tests folder for scripts to run
+  - 
 ### Fixed
   - Removed some commented out dead and test code
 
