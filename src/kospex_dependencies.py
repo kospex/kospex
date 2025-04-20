@@ -383,6 +383,7 @@ class KospexDependencies:
         details = {}
         details['package_name'] = package_name
         details['package_version'] = package_version
+        details['package_type'] = package_type
 
         today = datetime.datetime.now(datetime.timezone.utc)
         # TODO - Handle bad package names

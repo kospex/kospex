@@ -2,18 +2,15 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.16 - 2025-04-06
+## 0.0.17 - 2025-04-20
 
 ### Added
-  - Added integration in [malicious package API in SCA](https://github.com/kospex/kospex/issues/25)
-  - Added MVP [db migrations feature](https://github.com/kospex/kospex/issues/23)
 ### Changed
-  - kospex sca now has a cut down version of kospex deps, plus a malware flag for malicious packages
-  - tests/run-kdocker.sh now mounts a data directory for output, and the tests folder for scripts to run
-  - 
+  - kospex --version now uses the version number in kospex_core.pyg
+  - kgit --version now uses the version number in kospex_core.py
+  - [Implemented PyGithub to remove some bespoke code](https://github.com/kospex/kospex/issues/28)
+  - Initial work on [SSH clone issue](https://github.com/kospex/kospex/issues/7) However, still a WIP
 ### Fixed
-  - Removed some commented out dead and test code
-
 
 ## [Unreleased]
 
@@ -22,6 +19,21 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Added
 ### Changed
 ### Fixed
+
+## 0.0.16 - 2025-04-06
+
+### Added
+  - Added integration in [malicious package API in SCA](https://github.com/kospex/kospex/issues/25)
+  - Added MVP [db migrations feature](https://github.com/kospex/kospex/issues/23)
+### Changed
+  - kospex sca now has a cut down version of kospex deps, plus a malware flag for malicious packages
+  - tests/run-kdocker.sh now mounts a data directory for output, and the tests folder for scripts to run
+  -
+### Fixed
+  - Removed some commented out dead and test code
+
+
+
 
 ## 0.0.15 - 2025-02-08
 

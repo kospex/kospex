@@ -18,6 +18,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.1.0
 pytz==2025.2
 PyYAML==6.0.2
+PyGithub==2.6.1
 requests==2.32.3
 six==1.17.0
 sqlite-fts4==1.0.3

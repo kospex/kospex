@@ -19,9 +19,10 @@ KospexUtils.init()
 kospex = Kospex()
 log = logging.getLogger(__name__)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
-VERSION = "0.0.16" # This value should align with the pyproject.toml version for pip
+#VERSION = "0.0.16" # This value should align with the pyproject.toml version for pip
 
 @click.group()
+@click.version_option(version=Kospex.VERSION)
 def cli():
     """Kospex is a tool for assessing code and git repositories.
 
@@ -936,11 +937,6 @@ def metadata(file_type,repo_id,sync):
     if table:
         print(f"Files: {len(table.rows)}")
 
-@cli.command("version")
-def version():
-    """Print the version of Kospex CLI."""
-    click.echo(f"Kospex CLI version {VERSION}")
-
 @cli.command("upgrade-db")
 @click.option('-apply', is_flag=True, default=False, help="Confirm and apply upgrades kospex DB schema.")
 def upgrade_db(apply):
@@ -956,8 +952,6 @@ def upgrade_db(apply):
     # run the db diff
     # apply db diff
     # output status
-
-
 
     data = kospex.kospex_query.get_kospex_db_version()
     version = 0
@@ -1019,7 +1013,7 @@ def upgrade_db(apply):
                 if item.get("error"):
                     print(f"error: {item.get('error')} - message: {item.get('error')}")
                     errors += 1
-            
+
             if errors > 0:
                print("WARNING: Errors in applying the alter table")
             else:
@@ -1033,7 +1027,7 @@ def upgrade_db(apply):
                 kospex.kospex_db.table(KospexSchema.TBL_KOSPEX_CONFIG).upsert(rec, pk=["key", "latest"])
 
                 print("Changes applied.")
-       
+
         else:
                 print("Nothing to apply.")
 

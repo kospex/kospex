@@ -2,6 +2,7 @@
 import os
 import re
 from pathlib import Path
+from prettytable import PrettyTable
 import kospex_utils as KospexUtils
 import panopticas as Panopticas
 
@@ -40,6 +41,26 @@ class KospexGit:
             return details
         else:
             return None
+
+    @staticmethod
+    def get_repos_pretty_table(repos = None):
+        """
+        Get a default repos pretty table
+        If a list of repos is provided, it will be used to populate the table.
+        """
+        table = PrettyTable()
+        table.field_names = ["name", "type","fork", "visibility", "owner", "clone_url", "updated_at", "status"]
+        table.align["name"] = "l"
+        table.align["clone_url"] = "l"
+        table.align["status"] = "l"
+
+        if repos:
+            for repo in repos:
+                table.add_row([repo.get(field, None) for field in table.field_names])
+
+                #table.add_row([repo.name, repo.fork, repo.private, repo.owner.login, repo.clone_url, repo.pushed_at, repo.status])
+
+        return table
 
     @staticmethod
     def parse_git_remote(url):
