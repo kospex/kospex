@@ -5,12 +5,16 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ## 0.0.17 - 2025-04-20
 
 ### Added
+  - Implemented a pretty_table in the kospex_git class
 ### Changed
   - kospex --version now uses the version number in kospex_core.pyg
   - kgit --version now uses the version number in kospex_core.py
   - [Implemented PyGithub to remove some bespoke code](https://github.com/kospex/kospex/issues/28)
   - Initial work on [SSH clone issue](https://github.com/kospex/kospex/issues/7) However, still a WIP
 ### Fixed
+  - Cleanup the requirements.txt from some experimental uses
+  - Removed commented code in Git changes
+  - removed some unnecessary switches in kgit github
 
 ## [Unreleased]
 

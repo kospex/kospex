@@ -141,16 +141,13 @@ def pull(sync):
         print(f"{current} does not appear to be in a git repo")
 
 @cli.command("github")
-@click.option('-org', type=click.STRING)
-@click.option('-user',  type=click.STRING)
 @click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")
-#@click.option('-list-repos', is_flag=True, type=click.STRING)
 @click.option('-sync', is_flag=True)
 @click.option('-test-auth', is_flag=True, default=False, help="Test GITHUB_AUTH_TOKEN can authenticate.")
 @click.option('-out-repo-list', type=click.Path(), help="File to write clone URLs to.")
 @click.option('-ssh-clone-url',is_flag=True, help="Write SSH clone urls to file instead of HTTPS")
 @click.argument('owner', type=click.STRING, required=False)
-def github(org, user, no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
+def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
     """
     Interact with the GitHub API.
 
@@ -159,7 +156,6 @@ def github(org, user, no_auth, sync, test_auth, out_repo_list, ssh_clone_url, ow
     This is a Personal Access Token (PAT) with the necessary permissions.
 
     """
-
     gh = KospexGithub()
     repos = []
 
@@ -180,81 +176,23 @@ def github(org, user, no_auth, sync, test_auth, out_repo_list, ssh_clone_url, ow
 
         exit(0)
 
-    # if not org and not user:
-    #     print("You must specify either an organization or a user.")
-    #     exit(1)
-
     if no_auth:
         print("Proceeding without authentication.")
     else:
         gh.get_env_credentials()
 
-    #owner = org or user
     account_type = gh.get_account_type(owner)
     kospex = Kospex()
-
-    # if not account_type:
-    #     print(f"Could not find account type for {owner}.")
-    #     print(f"Most likely {owner} does not exist or has a typo.")
-    #     exit(1)
-
-    # if org:
-    #     repos = gh.get_org_repos(org)
-    # elif user:
-    #     repos = gh.get_user_repos(user)
-    # else:
-    #     print("You must specify either an organization or a user.")
-
-    repos = gh.get_repos(owner,no_auth=no_auth)
-    #details = []
-
     print(f"\nFinding repos for: {owner} ({account_type})\n")
+    repos = gh.get_repos(owner,no_auth=no_auth)
 
     if repos:
         for repo in repos:
-            # record = {}
-            # record['name'] = repo.get('name')
-            # record['fork'] = repo.get('fork')
-            # record['updated_at'] = repo.get('updated_at')
-            # record['pushed_at'] = repo.get('pushed_at')
-            # #if record.get("fork"):
-            # #    full_repo = gh.get_repo(owner=")
-            # #    record['parent'] = repo.get('parent').get('full_name')
-
-            # record['private'] = repo.get('private')
-
-            # if ssh_clone_url:
-            #     # If the boolean is set set the ssh_url instead
-            #     record['clone_url'] = repo.get('ssh_url')
-            # else:
-            #     record['clone_url'] = repo.get('clone_url')
-            # print(f"Found repo: {repo['name']}")
-            # details.append(record)
-
             if sync:
                 clone_url = repo.get('clone_url')
                 repo_path = kgit.clone_repo(clone_url)
                 print(f"Syncing repo: {clone_url} in directorty {repo_path}")
                 kospex.sync_repo(repo_path)
-
-    # table = PrettyTable()
-    # table.field_names = ["Name", "fork", "private", "owner", "clone_url", "pushed_at", "status"]
-    # table.align["Name"] = "l"
-    # table.align["clone_url"] = "l"
-    # table.align["status"] = "l"
-
-
-    # for detail in details:
-    #     #print(detail)
-    #     days_ago = KospexUtils.days_ago(detail.get("pushed_at"))
-    #     status = "Unknown"
-    #     if days_ago:
-    #         status = KospexUtils.development_status(days_ago)
-    #     table.add_row([detail.get("name"), detail.get("fork"),
-    #                    detail.get("private"), owner, detail.get("clone_url"),
-    #                    detail.get("pushed_at"), status])
-
-    #print(table)
 
     table = kgit.get_repos_pretty_table(repos=repos)
     print(table)
