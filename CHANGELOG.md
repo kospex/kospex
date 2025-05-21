@@ -21,7 +21,10 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ## VERSION - DATE
 
 ### Added
+
 ### Changed
+- Removed broken hotspots link from repo view
+
 ### Fixed
 
 ## 0.0.16 - 2025-04-06
@@ -35,9 +38,6 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   -
 ### Fixed
   - Removed some commented out dead and test code
-
-
-
 
 ## 0.0.15 - 2025-02-08
 
