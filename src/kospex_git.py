@@ -56,9 +56,10 @@ class KospexGit:
 
         if repos:
             for repo in repos:
+                if updated_at := repo.get("updated_at"):
+                    days_ago = KospexUtils.days_ago(str(updated_at))
+                    repo["status"] = KospexUtils.development_status(days_ago)
                 table.add_row([repo.get(field, None) for field in table.field_names])
-
-                #table.add_row([repo.name, repo.fork, repo.private, repo.owner.login, repo.clone_url, repo.pushed_at, repo.status])
 
         return table
 
