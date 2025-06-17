@@ -142,7 +142,7 @@ def pull(sync):
 
 @cli.command("github")
 @click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")
-@click.option('-sync', is_flag=True)
+@click.option('-sync', is_flag=True, help="Clone and sync all repos to the database.")
 @click.option('-test-auth', is_flag=True, default=False, help="Test GITHUB_AUTH_TOKEN can authenticate.")
 @click.option('-out-repo-list', type=click.Path(), help="File to write clone URLs to.")
 @click.option('-ssh-clone-url',is_flag=True, help="Write SSH clone urls to file instead of HTTPS")
@@ -175,6 +175,12 @@ def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
             exit(1)
 
         exit(0)
+    else:
+        # Need to check if we have an owner
+        if not owner:
+            print("You must specify an owner.")
+            print("Example: kgit github [orgname] or [username]")
+            exit(1)
 
     if no_auth:
         print("Proceeding without authentication.")
@@ -182,7 +188,6 @@ def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
         gh.get_env_credentials()
 
     account_type = gh.get_account_type(owner)
-    kospex = Kospex()
     print(f"\nFinding repos for: {owner} ({account_type})\n")
     repos = gh.get_repos(owner,no_auth=no_auth)
 
