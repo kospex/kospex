@@ -180,9 +180,8 @@ def days_ago(dt_str: str) -> float:
     if dt_str:
         dt_str = dt_str.replace("Z","+00:00")
     else:
-
         return 0.0
-    #print(dt_str)
+
     dt = None
     try:
         dt = datetime.fromisoformat(dt_str)
@@ -192,7 +191,7 @@ def days_ago(dt_str: str) -> float:
         if "T" in dt_str:
             dt_str = dt_str.split("T")[0]
             dt = datetime.fromisoformat(dt_str).astimezone(timezone.utc)
-        #return None
+        return None
 
     # Current datetime in UTC
     now = datetime.now(timezone.utc)
