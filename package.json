@@ -1,0 +1,39 @@
+{
+  "name": "kospex-static-assets",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static assets for Kospex Python package",
+  "scripts": {
+    "build": "node build-static.js && npm run build-css",
+    "build-css": "tailwindcss -i ./src/static/css/input.css -o ./src/static/css/tailwind.css --minify",
+    "build-css-watch": "tailwindcss -i ./src/static/css/input.css -o ./src/static/css/tailwind.css --watch",
+    "copy-deps": "node build-static.js",
+    "dev": "npm run build-css-watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  },
+  "dependencies": {
+    "d3": "^7.8.5",
+    "chart.js": "^4.4.0",
+    "datatables.net": "^1.13.6",
+    "datatables.net-dt": "^1.13.6",
+    "jquery": "^3.7.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kospex/kospex.git"
+  },
+  "keywords": [
+    "static-assets",
+    "tailwind",
+    "d3",
+    "chartjs",
+    "datatables"
+  ],
+  "author": "Kospex Team",
+  "license": "MIT"
+}
