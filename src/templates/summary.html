@@ -1,183 +1,280 @@
 <!doctype html>
 <html lang="en">
-    {% set title = "Summary" %} {% include '_bootstrap_html_head.html' %}
-    <style>
-        .graph {
-            width: 60%;
-            margin: 10px auto;
-            padding: 10px;
-            //border: 1px solid #ccc;
-            border-radius: 10px;
-        }
-        h2 {
-            text-align: left;
-        }
-        .circles {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 10px;
-            align-items: center; /* Vertically center the circles */
-        }
-        .circle-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-end; /* Align circles to the bottom */
-            height: 180px; /* Set a fixed height for all containers */
-            width: 180px; /* Set a fixed width for all containers */
-        }
-        .circle {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            border-radius: 50%;
-            font-weight: bold;
-            color: black;
-            margin-bottom: 10px;
-        }
-        .label {
-            font-size: 14px;
-            text-align: center;
-        }
-        .active {
-            background-color: #4caf50;
-        }
-        .aging {
-            background-color: #ffc107;
-        }
-        .stale {
-            background-color: #ff9800;
-        }
-        .dormant {
-            background-color: #e0e0e0;
-            //background-color: #f44336;
-        }
-    </style>
-    <body>
-        {% include 'header.html' %}
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Kospex Web - Summary</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+    </head>
+
+    <body class="bg-white">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a
+                        class="text-white text-lg font-medium hover:text-gray-300"
+                        href="/"
+                        >K. web</a
+                    >
+                    <div class="flex space-x-8">
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/repos/"
+                            >Repos</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/orgs/"
+                            >Orgs</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/developers/"
+                            >Developers</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/landscape/"
+                            >Landscape</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/metadata/"
+                            >Metadata</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/help/"
+                            >Help</a
+                        >
+                    </div>
+                </div>
+            </div>
+        </nav>
 
         <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            {% import '_id_header_macro.html' as header %}
 
-        <div class="container">
-            <div class="row">
-                <div class="col">
-                    {% import '_id_header_macro.html' as header %}
-                    <!-- Start the summary circle graphs -->
-                    <div class="graph">
-                        {{ header.id_headings(id) if id }}
-                        <h3>Developers</h3>
-                        {% set dev_url = "/developers/"%}
-                        <p>
-                            (<a href="/developers/">{{ developers.total }}</a>)
-                        </p>
-                        <div class="circles">
-                            <div class="circle-container">
+            <!-- Developers Summary -->
+            <div class="bg-white rounded-lg mb-8">
+                <div class="p-6">
+                    {{ header.id_headings(id) if id }}
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">
+                        Developers
+                    </h2>
+                    <p class="text-gray-700 mb-6">
+                        Total:
+                        <a
+                            href="/developers/"
+                            class="text-blue-600 hover:text-blue-800 underline font-semibold"
+                            >{{ developers.total }}</a
+                        >
+                    </p>
+
+                    <!-- Developer Status Circles -->
+                    <div class="flex justify-center items-end gap-8 lg:gap-12">
+                        <div class="flex flex-col items-center w-32">
+                            <div
+                                class="flex flex-col items-center justify-end mb-3"
+                                style="height: 180px"
+                            >
                                 {% set active_pixels =
                                 data_size.get('Active','40') %}
                                 <div
-                                    class="circle active"
+                                    class="rounded-full bg-green-500 flex items-center justify-center text-black font-bold text-lg"
                                     style="width: {{ active_pixels }}px; height: {{ active_pixels }}px;"
                                 >
-                                    {{ developers.get("Active","0 ") }}
-                                </div>
-                                <div class="label">
-                                    <strong>Active</strong> <br />
-                                    {{ developers.get("Active_percentage", "0
-                                    ")}} %
+                                    {{ developers.get("Active","0") }}
                                 </div>
                             </div>
-                            <div class="circle-container">
+                            <div class="text-center">
+                                <div class="font-semibold text-gray-900">
+                                    Active
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    {{ developers.get("Active_percentage", "0")
+                                    }}%
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col items-center w-32">
+                            <div
+                                class="flex flex-col items-center justify-end mb-3"
+                                style="height: 180px"
+                            >
                                 <div
-                                    class="circle aging"
+                                    class="rounded-full bg-yellow-400 flex items-center justify-center text-black font-bold text-lg"
                                     style="width: {{ data_size.get('Aging','40') }}px; height: {{ data_size.get('Aging','40') }}px;"
                                 >
-                                    {{ developers.get("Aging","?") }}
-                                </div>
-                                <div class="label">
-                                    <strong>Aging</strong> <br />
-                                    {{ developers.get("Aging_percentage", "0
-                                    ")}} %
+                                    {{ developers.get("Aging","0") }}
                                 </div>
                             </div>
-                            <div class="circle-container">
+                            <div class="text-center">
+                                <div class="font-semibold text-gray-900">
+                                    Aging
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    {{ developers.get("Aging_percentage", "0")
+                                    }}%
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col items-center w-32">
+                            <div
+                                class="flex flex-col items-center justify-end mb-3"
+                                style="height: 180px"
+                            >
                                 <div
-                                    class="circle stale"
+                                    class="rounded-full bg-orange-400 flex items-center justify-center text-black font-bold text-lg"
                                     style="width: {{ data_size.get('Stale','40') }}px; height: {{ data_size.get('Stale','40') }}px;"
                                 >
-                                    {{ developers.get("Stale","?") }}
-                                </div>
-                                <div class="label">
-                                    <strong>Stale</strong> <br />
-                                    {{ developers.get("Stale_percentage", "0
-                                    ")}} %
+                                    {{ developers.get("Stale","0") }}
                                 </div>
                             </div>
-                            <div class="circle-container">
+                            <div class="text-center">
+                                <div class="font-semibold text-gray-900">
+                                    Stale
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    {{ developers.get("Stale_percentage", "0")
+                                    }}%
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col items-center w-32">
+                            <div
+                                class="flex flex-col items-center justify-end mb-3"
+                                style="height: 180px"
+                            >
                                 <div
-                                    class="circle dormant"
+                                    class="rounded-full bg-gray-300 flex items-center justify-center text-black font-bold text-lg"
                                     style="width: {{ data_size.get('Unmaintained','40') }}px; height: {{ data_size.get('Unmaintained','40') }}px;"
                                 >
-                                    {{ developers.get("Unmaintained","?") }}
+                                    {{ developers.get("Unmaintained","0") }}
                                 </div>
-                                <div class="label">
-                                    <strong>Dormant</strong> <br />
+                            </div>
+                            <div class="text-center">
+                                <div class="font-semibold text-gray-900">
+                                    Dormant
+                                </div>
+                                <div class="text-sm text-gray-600">
                                     {{ developers.get("Unmaintained_percentage",
-                                    "0 ")}} %
+                                    "0") }}%
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <br />
-                    <div class="graph">
-                        <h3>Repos</h3>
-                        <p>(<a href="/repos/">{{ repos.total }}</a>)</p>
-                        <div class="circles">
-                            <div class="circle-container">
+                <//div>
+            </div>
+
+            <!-- Repos Summary -->
+            <div class="bg-white rounded-lg">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">
+                        Repositories
+                    </h2>
+                    <p class="text-gray-700 mb-6">
+                        Total:
+                        <a
+                            href="/repos/"
+                            class="text-blue-600 hover:text-blue-800 underline font-semibold"
+                            >{{ repos.total }}</a
+                        >
+                    </p>
+
+                    <!-- Repo Status Circles -->
+                    <div class="flex justify-center items-end gap-8 lg:gap-12">
+                        <div class="flex flex-col items-center w-32">
+                            <div
+                                class="flex flex-col items-center justify-end mb-3"
+                                style="height: 180px"
+                            >
                                 <div
-                                    class="circle active"
+                                    class="rounded-full bg-green-500 flex items-center justify-center text-black font-bold text-lg"
                                     style="width: {{ repo_sizes.get('Active','40') }}px; height: {{ repo_sizes.get('Active','40') }}px;"
                                 >
-                                    {{ repos.get("Active","0 ") }}
-                                </div>
-                                <div class="label">
-                                    <strong>Active</strong> <br />
-                                    {{ repos.Active_percentage}} %
+                                    {{ repos.get("Active","0") }}
                                 </div>
                             </div>
-                            <div class="circle-container">
+                            <div class="text-center">
+                                <div class="font-semibold text-gray-900">
+                                    Active
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    {{ repos.get("Active_percentage","0") }}%
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col items-center w-32">
+                            <div
+                                class="flex flex-col items-center justify-end mb-3"
+                                style="height: 180px"
+                            >
                                 <div
-                                    class="circle aging"
+                                    class="rounded-full bg-yellow-400 flex items-center justify-center text-black font-bold text-lg"
                                     style="width: {{ repo_sizes.get('Aging','40') }}px; height: {{ repo_sizes.get('Aging','40') }}px;"
                                 >
-                                    {{ repos.get("Aging","0 ") }}
-                                </div>
-                                <div class="label">
-                                    <strong>Aging</strong><br />
-                                    {{ repos.Aging_percentage}} %
+                                    {{ repos.get("Aging","0") }}
                                 </div>
                             </div>
-                            <div class="circle-container">
+                            <div class="text-center">
+                                <div class="font-semibold text-gray-900">
+                                    Aging
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    {{ repos.get("Aging_percentage","0") }}%
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col items-center w-32">
+                            <div
+                                class="flex flex-col items-center justify-end mb-3"
+                                style="height: 180px"
+                            >
                                 <div
-                                    class="circle stale"
+                                    class="rounded-full bg-orange-400 flex items-center justify-center text-black font-bold text-lg"
                                     style="width: {{ repo_sizes.get('Stale','40') }}px; height: {{ repo_sizes.get('Stale','40') }}px;"
                                 >
-                                    {{ repos.get("Stale","0 ") }}
-                                </div>
-                                <div class="label">
-                                    <strong>Stale</strong><br />
-                                    {{ repos.Stale_percentage}} %
+                                    {{ repos.get("Stale","0") }}
                                 </div>
                             </div>
-                            <div class="circle-container">
+                            <div class="text-center">
+                                <div class="font-semibold text-gray-900">
+                                    Stale
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    {{ repos.get("Stale_percentage","0") }}%
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col items-center w-32">
+                            <div
+                                class="flex flex-col items-center justify-end mb-3"
+                                style="height: 180px"
+                            >
                                 <div
-                                    class="circle dormant"
+                                    class="rounded-full bg-gray-300 flex items-center justify-center text-black font-bold text-lg"
                                     style="width: {{ repo_sizes.get('Unmaintained','40') }}px; height: {{ repo_sizes.get('Unmaintained','40') }}px;"
                                 >
-                                    {{ repos.get("Unmaintained","0 ") }}
+                                    {{ repos.get("Unmaintained","0") }}
                                 </div>
-                                <div class="label">
-                                    <strong>Dormant</strong><br />
-                                    {{ repos.Unmaintained_percentage}} %
+                            </div>
+                            <div class="text-center">
+                                <div class="font-semibold text-gray-900">
+                                    Dormant
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    {{ repos.get("Unmaintained_percentage","0")
+                                    }}%
                                 </div>
                             </div>
                         </div>

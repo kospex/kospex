@@ -4,100 +4,97 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Kospex Web</title>
-        <!-- Link to Bootstrap CSS -->
-        <link
-            href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
-            rel="stylesheet"
-        />
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
     </head>
 
-    <body>
-        {% include 'header.html' %}
+    <body class="bg-white">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
+                    <div class="flex space-x-8">
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
 
         <!-- Main content area -->
-        <div class="container mt-5">
+        <div class="container mx-auto px-4 mt-12">
             <!-- Row 1 / 3 -->
-
-            <div class="row">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <!-- # of Repos -->
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h4># of Repos</h4>
-                            <h2>{{ repos }}</h2>
-                            <a href="/repos/">View More</a>
-                        </div>
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2"># of Repos</h4>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ repos }}</h2>
+                        <a href="/repos/" class="text-blue-600 hover:text-blue-800 underline">View More</a>
                     </div>
                 </div>
 
                 <!-- # of Commits -->
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h4># of Commits</h4>
-                            <h2>{{ commits }}</h2>
-                            <a href="/commits/">View More</a>
-                        </div>
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2"># of Commits</h4>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ commits }}</h2>
+                        <a href="/commits/" class="text-blue-600 hover:text-blue-800 underline">View More</a>
                     </div>
                 </div>
             </div>
 
             <!-- Row 2 / 3 -->
-
-            <div class="row mt-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 <!-- # of Orgs -->
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h4># of Orgs</h4>
-                            <h2>{{ orgs }}</h2>
-                            <a href="/orgs/">View More</a>
-                        </div>
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2"># of Orgs</h4>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ orgs }}</h2>
+                        <a href="/orgs/" class="text-blue-600 hover:text-blue-800 underline">View More</a>
                     </div>
                 </div>
 
                 <!-- # of Authors -->
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h4># of Authors</h4>
-                            <h2>{{ authors }}</h2>
-                            <a href="/developers/">View More</a>
-                        </div>
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2"># of Authors</h4>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ authors }}</h2>
+                        <a href="/developers/" class="text-blue-600 hover:text-blue-800 underline">View More</a>
                     </div>
                 </div>
             </div>
 
             <!-- Row 3 / 3 -->
-
-            <div class="row mt-4">
-                <!-- # of Commits -->
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h4># of Git servers</h4>
-                            <h2>{{ servers }}</h2>
-                            <a href="/servers/">View More</a>
-                        </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                <!-- # of Git servers -->
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2"># of Git servers</h4>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ servers }}</h2>
+                        <a href="/servers/" class="text-blue-600 hover:text-blue-800 underline">View More</a>
                     </div>
                 </div>
 
                 <!-- # of Committers -->
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <h4># of Committers</h4>
-                            <h2>{{ committers }}</h2>
-                            <a href="/developers/">View More</a>
-                        </div>
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2"># of Committers</h4>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ committers }}</h2>
+                        <a href="/developers/" class="text-blue-600 hover:text-blue-800 underline">View More</a>
                     </div>
                 </div>
             </div>
 
-            <div class="container">
+            <div class="container mx-auto mt-6">
                 <br />
                 Did you want to view
-                <a href="/meta/author-domains"> Author email domains?</a>
+                <a href="/meta/author-domains" class="text-blue-600 hover:text-blue-800 underline"> Author email domains?</a>
             </div>
             <!-- End of Main content area -->
         </div>

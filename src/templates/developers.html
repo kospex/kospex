@@ -1,93 +1,131 @@
 <!DOCTYPE html>
 <html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Kospex Web - Developers</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <style>
+            /* Custom styles for DataTables with Tailwind */
+            .dataTables_wrapper .dataTables_length select,
+            .dataTables_wrapper .dataTables_filter input {
+                @apply border border-gray-300 rounded px-3 py-2 text-sm;
+            }
+            .dataTables_wrapper .dataTables_length,
+            .dataTables_wrapper .dataTables_filter,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                @apply text-sm text-gray-700;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+                @apply bg-blue-600 text-white border-blue-600;
+            }
+        </style>
+    </head>
+    <body class="bg-white">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
+                    <div class="flex space-x-8">
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard</title>
-    <!-- Link to Bootstrap CSS -->
-    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-</head>
+        <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            <!-- Statistics Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <!-- # of Authors -->
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2"># of Authors</h4>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ data['authors'] }}</h2>
+                        <a href="/developers/" class="text-blue-600 hover:text-blue-800 underline">View More</a>
+                    </div>
+                </div>
 
-<body>
+                <!-- # of Committers -->
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2"># of Committers</h4>
+                        <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ data['committers'] }}</h2>
+                        <a href="/developers/" class="text-blue-600 hover:text-blue-800 underline">View More</a>
+                    </div>
+                </div>
+            </div>
 
-{% include 'header.html' %}
+            <!-- Action Links -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-6">
+                <div class="p-4">
+                    <div class="flex flex-wrap gap-4 text-sm">
+                        <a href="/developers/?download=true" class="text-blue-600 hover:text-blue-800 underline">Download</a>
+                        <span class="text-gray-500">|</span>
+                        <a href="/developers/?days=90" class="text-blue-600 hover:text-blue-800 underline">Show active developers (last 90 days)</a>
+                    </div>
+                </div>
+            </div>
 
-<!-- Main content area -->
-<div class="container mt-5">
-    
-    <div class="row mt-4">
-        <!-- # of Authors -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-body text-center">
-                    <h4># of Authors</h4>
-                    <h2>{{ data['authors'] }}</h2>
-                    <a href="/developers/">View More</a>
+            <!-- Developers Table -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Developers</h1>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="myTable">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Commits</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Repos</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen (days)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for dev in authors %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <a href="/developers/?author_email={{ dev['author_email'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ dev['author_email'] }}</a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                        <a href="/commits/?author_email={{ dev['author_email'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ dev['commits'] }}</a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ dev['repos'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ dev['last_seen'] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- # of Committers -->
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-body text-center">
-                    <h4># of Committers</h4>
-                    <h2>{{ data['committers'] }}</h2>
-                    <a href="/developers/">View More</a>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div>
-        <br/><a href="/developers/?download=true">Download</a>, 
-        Show <a href="/developers/?days=90">active developers (last 90 days)</a><br/>
-    </div>
+        {% include '_footer_scripts.html' %}
+        {% include '_datatable_scripts.html' %}
 
-</div>
-
-
-
-<div class="container mt-5">
-
-
-    <table class="table table-striped compact sortable" id="myTable">
-        <thead>
-            <tr>
-                <th>Author</th>
-                <th class="dt-body-right"># Commits</th>
-                <th class="dt-body-right"># repos</th>
-                <th class="dt-body-right">Last seen (days)</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for dev in authors %}
-            <tr>
-                <td><a href="/developers/?author_email={{ dev['author_email'] }}">{{ dev['author_email'] }}</a></td>
-                <td class="dt-body-right"><a href="/commits/?author_email={{ dev['author_email'] }}">{{ dev['commits'] }}</a></td>
-                <td class="dt-body-right">{{ dev['repos'] }}</td>
-                <td class="dt-body-right">{{ dev['last_seen'] }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-
-<br/>
-
-{% include '_footer_scripts.html' %}
-{% include '_datatable_scripts.html' %}
-
-
-<script>
-    $(document).ready( function () {
-        $('#myTable').DataTable({
-            order: [[3, 'asc']]
-        });
-    } );
-    
-</script>
-
-</body>
+        <script>
+            $(document).ready(function () {
+                $("#myTable").DataTable({
+                    order: [[3, "asc"]],
+                    responsive: true,
+                    pageLength: 25,
+                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
+                });
+            });
+        </script>
+    </body>
 </html>

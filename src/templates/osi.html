@@ -1,64 +1,314 @@
 <!doctype html>
 <html lang="en">
-    {% set title = "Open Source Inventory" %} {% include
-    '_bootstrap_html_head.html'%}
-    <body>
-        {% include 'header.html' %}
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Open Source Inventory - Kospex Web</title>
+        <!-- Tailwind CSS -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <style>
+            /* Custom styles for DataTables with Tailwind */
+            .dataTables_wrapper .dataTables_length select,
+            .dataTables_wrapper .dataTables_filter input {
+                @apply border border-gray-300 rounded px-3 py-2 text-sm;
+            }
+            .dataTables_wrapper .dataTables_length,
+            .dataTables_wrapper .dataTables_filter,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                @apply text-sm text-gray-700;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+                @apply bg-blue-600 text-white border-blue-600;
+            }
+        </style>
+    </head>
+    <body class="bg-white">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a
+                        class="text-white text-lg font-medium hover:text-gray-300"
+                        href="/"
+                        >K. web</a
+                    >
+                    <div class="flex space-x-8">
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/repos/"
+                            >Repos</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/orgs/"
+                            >Orgs</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/developers/"
+                            >Developers</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/landscape/"
+                            >Landscape</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/metadata/"
+                            >Metadata</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/help/"
+                            >Help</a
+                        >
+                    </div>
+                </div>
+            </div>
+        </nav>
 
         <!-- Main content area -->
-        <div class="container mt-5">
-            <h1 class="mb-4">Open source Inventory</h1>
-            Be able to see the components and dependencies across your
-            landscape.
-            <br />
-            <br />
-            <br/>
+        <div class="container mx-auto px-4 mt-12">
+            <!-- Page Header -->
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-4">
+                        Open Source Inventory
+                    </h1>
+                    <p class="text-gray-700">
+                        See the dependencies and opensource across your
+                        landscape.
+                    </p>
+                </div>
+            </div>
 
-            <h2 class="mb-4">Dependency File Status</h2>
-            <table class="table" id="dependency_status_table">
-                <thead>
-                    <tr>
-                        <th> Active </th>
-                        <th> Aging </th>
-                        <th> Stale </th>
-                        <th> Unmaintained</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td> {{ status.get('Active') }} </a></td>
-                        <td> {{ status.get('Aging') }} </a></td>
-                        <td> {{ status.get('Stale') }} </a></td>
-                        <td> {{ status.get('Unmaintained') }} </a></td>
-                    </tr>
-                </tbody>
-            </table>
+            <!-- Dependency File Status -->
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Dependency File Status
+                    </h2>
 
-            <h2 class="mb-4">Dependency files</h2>
-            {{ file_number }} dependency files found. <br />
-            <br />
-            <table class="table table-striped compact" id="myTable">
-                <thead>
-                    <tr>
-                        <th>Repo</th>
-                        <th>File</th>
-                        <th>Last Commit</th>
-                        <th>Status</th>
-                        <th>Days ago</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in data %}
-                    <tr>
-                        <td><a href="/dependencies/{{ row['_repo_id'] }}">{{ row['_git_repo'] }}</a></td>
-                        <td>{{ row['Provider'] }}</td>
-                        <td>{{ row['committer_when'] }}</td>
-                        <td>{{ row.get('status',"-") }}</td>
-                        <td>{{ row.get('days_ago',"-") }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                    <div class="overflow-x-auto">
+                        <table
+                            class="min-w-full divide-y divide-gray-200"
+                            id="dependency_status_table"
+                        >
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Active
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Aging
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Stale
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Unmaintained
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50">
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ status.get('Active') }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ status.get('Aging') }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ status.get('Stale') }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ status.get('Unmaintained') }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dependency Files Overview -->
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                        Dependency Files
+                    </h2>
+                    <p class="text-gray-700 text-lg">
+                        {{ file_number }} dependency files found.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Dependency File Summary -->
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Dependency File Summary
+                    </h2>
+
+                    <div class="overflow-x-auto">
+                        <table
+                            class="min-w-full divide-y divide-gray-200"
+                            id="dep_summary"
+                        >
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        File
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        # Files
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        # Repos
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in dep_files %}
+                                <tr class="hover:bg-gray-50">
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                    >
+                                        {{ row.get('Filename',"-") }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row.get('number', "-") }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row.get('repos',"-") }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Individual Files -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Individual Files
+                    </h2>
+
+                    <div class="overflow-x-auto">
+                        <table
+                            class="min-w-full divide-y divide-gray-200"
+                            id="myTable"
+                        >
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Repo
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        File
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Last Commit
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Status
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Days Ago
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in data %}
+                                <tr class="hover:bg-gray-50">
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm"
+                                    >
+                                        <a
+                                            href="/dependencies/{{ row['_repo_id'] }}"
+                                            class="text-blue-600 hover:text-blue-800 underline"
+                                            >{{ row['_git_repo'] }}</a
+                                        >
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                    >
+                                        {{ row['Provider'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                    >
+                                        {{ row['committer_when'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                    >
+                                        {{ row.get('status',"-") }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row.get('days_ago',"-") }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
 
         {% include '_footer_scripts.html' %} {% include
@@ -68,6 +318,23 @@
             $(document).ready(function () {
                 $("#myTable").DataTable({
                     order: [[4, "asc"]],
+                    responsive: true,
+                    pageLength: 10,
+                    lengthMenu: [
+                        [10, 25, 50, 100, -1],
+                        [10, 25, 50, 100, "All"],
+                    ],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
+                });
+                $("#dep_summary").DataTable({
+                    order: [[2, "desc"]],
+                    responsive: true,
+                    pageLength: 10,
+                    lengthMenu: [
+                        [10, 25, 50, 100, -1],
+                        [10, 25, 50, 100, "All"],
+                    ],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
                 });
             });
         </script>

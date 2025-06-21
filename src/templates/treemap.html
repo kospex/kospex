@@ -1,28 +1,18 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Details graph</title>
-        <script src="https://d3js.org/d3.v7.min.js"></script>
-        <!-- Add Bootstrap CSS -->
-        <link
-            href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
-            rel="stylesheet"
-        />
+        <title>Developer Contributions Treemap - Kospex Web</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <!-- D3.js -->
+        <script src="/static/js/d3.min.js"></script>
         <style>
-            body {
-                font-family: Arial, sans-serif;
-                margin: 0;
-                padding: 0;
-                display: flex;
-                flex-direction: column;
-                height: 100vh;
-            }
-
+            /* Custom styles for the treemap chart and interactive elements */
             .content-wrapper {
                 display: flex;
-                flex: 1;
+                height: calc(100vh - 64px); /* Account for header height */
                 overflow: hidden;
             }
 
@@ -30,14 +20,9 @@
                 width: 250px;
                 min-width: 100px;
                 max-width: 50%;
-                background-color: #f0f0f0;
-                padding: 20px;
-                box-sizing: border-box;
-                overflow-y: auto;
-                display: flex;
-                flex-direction: column;
                 resize: horizontal;
                 position: relative;
+                overflow-y: auto;
             }
 
             #sidebar::after {
@@ -47,123 +32,22 @@
                 right: 0;
                 bottom: 0;
                 width: 5px;
-                background: #ccc;
+                background: #cbd5e1;
                 cursor: ew-resize;
             }
 
             #graph {
                 flex-grow: 1;
                 position: relative;
-            }
-            #resetButton {
-                position: absolute;
-                top: 10px;
-                right: 10px;
-                padding: 10px;
-                background-color: #f0f0f0;
-                border: 1px solid #999;
-                border-radius: 5px;
-                cursor: pointer;
-            }
-            .slider-container {
-                display: flex;
-                flex-direction: column;
-                margin-bottom: 20px;
-            }
-            .button-container {
-                display: flex;
-                justify-content: center;
-                margin-top: 10px;
-            }
-            .slider-button {
-                width: 30px;
-                height: 30px;
-                font-size: 18px;
-                margin: 0 5px;
-                cursor: pointer;
-            }
-            .slider {
-                width: 100%;
-                margin: 10px 0;
-            }
-            .sliderValue {
-                text-align: center;
-                margin-bottom: 5px;
-            }
-            hr {
-                width: 100%;
-                border: none;
-                border-top: 1px solid #ccc;
-                margin: 15px 0;
+                min-width: 0;
             }
 
-            .bubble {
-                cursor: pointer;
-            }
-            .bubble:hover {
-                stroke: #000;
-                stroke-width: 1.5px;
-            }
-            .bubble-label {
-                font: 10px sans-serif;
-                text-anchor: middle;
-                pointer-events: none;
-            }
-
-            .legend {
-                position: absolute;
-                bottom: 20px;
-                left: 3%;
-                display: flex;
-                align-items: center;
-                background-color: rgba(255, 255, 255, 0.8);
-                padding: 10px;
-                border-radius: 5px;
-            }
-
-            .legend-item {
-                display: flex;
-                align-items: center;
-                margin-right: 20px;
-            }
-
-            .legend-color {
-                width: 20px;
-                height: 20px;
-                margin-right: 5px;
-                border-radius: 50%;
-            }
-            .tooltip-text {
-                position: relative;
-                cursor: help;
-            }
-
-            .tooltip-text .tooltiptext {
-                visibility: hidden;
-                width: 200px;
-                background-color: black;
-                color: #fff;
-                text-align: center;
-                border-radius: 6px;
-                padding: 5px;
-                position: absolute;
-                z-index: 1;
-                bottom: 125%;
-                left: 50%;
-                margin-left: -100px;
-                opacity: 0;
-                transition: opacity 0.3s;
-            }
-
-            .tooltip-text:hover .tooltiptext {
-                visibility: visible;
-                opacity: 1;
-            }
-
+            /* Treemap node styles */
             .node {
                 stroke: #fff;
                 stroke-width: 1px;
                 cursor: pointer;
+                transition: opacity 0.2s ease;
             }
 
             .node:hover {
@@ -176,129 +60,286 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
+                fill: #1f2937;
+                font-weight: 500;
+            }
+
+            /* Legend styles */
+            .legend {
+                position: absolute;
+                bottom: 20px;
+                left: 3%;
+                display: flex;
+                align-items: center;
+                background-color: rgba(255, 255, 255, 0.9);
+                padding: 12px;
+                border-radius: 8px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            }
+
+            .legend-item {
+                display: flex;
+                align-items: center;
+                margin-right: 20px;
+            }
+
+            .legend-color {
+                width: 20px;
+                height: 20px;
+                margin-right: 8px;
+                border-radius: 50%;
+            }
+
+            /* Tooltip styles */
+            .tooltip-text {
+                position: relative;
+                cursor: help;
+            }
+
+            .tooltip-text .tooltiptext {
+                visibility: hidden;
+                width: 200px;
+                background-color: #1f2937;
+                color: #f3f4f6;
+                text-align: center;
+                border-radius: 6px;
+                padding: 8px;
+                position: absolute;
+                z-index: 1000;
+                bottom: 125%;
+                left: 50%;
+                margin-left: -100px;
+                opacity: 0;
+                transition: opacity 0.3s;
+                font-size: 12px;
+            }
+
+            .tooltip-text:hover .tooltiptext {
+                visibility: visible;
+                opacity: 1;
+            }
+
+            /* Controls positioning */
+            #controls {
+                position: absolute;
+                top: 20px;
+                right: 20px;
+                z-index: 100;
+            }
+
+            /* Dark mode styles */
+            body.dark-mode {
+                background-color: #0f172a;
+                color: #e2e8f0;
+            }
+
+            body.dark-mode #sidebar {
+                background-color: #1e293b;
+                color: #e2e8f0;
+            }
+
+            body.dark-mode #nodeInfo {
+                background-color: #334155;
+                color: #e2e8f0;
+            }
+
+            body.dark-mode .legend {
+                background-color: rgba(30, 41, 59, 0.9);
+                color: #e2e8f0;
+            }
+
+            body.dark-mode nav {
+                background-color: #0f172a !important;
+            }
+
+            body.dark-mode a,
+            body.dark-mode h3,
+            body.dark-mode h4 {
+                color: #f1f5f9 !important;
+            }
+
+            body.dark-mode #nodeInfo p,
+            body.dark-mode #nodeInfo strong {
+                color: #e2e8f0;
+            }
+
+            body.dark-mode .slider {
+                background: #475569;
+            }
+
+            body.dark-mode .slider::-webkit-slider-thumb {
+                background: #60a5fa;
+            }
+
+            body.dark-mode .slider::-moz-range-thumb {
+                background: #60a5fa;
+            }
+
+            body.dark-mode .node-label {
+                fill: #e2e8f0;
+            }
+
+            /* Custom slider styles */
+            .slider {
+                -webkit-appearance: none;
+                height: 6px;
+                border-radius: 3px;
+                background: #d1d5db;
+                outline: none;
+                transition: background 0.3s;
+            }
+
+            .slider::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                background: #3b82f6;
+                cursor: pointer;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            }
+
+            .slider::-moz-range-thumb {
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                background: #3b82f6;
+                cursor: pointer;
+                border: none;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             }
         </style>
     </head>
-    <body>
-        <!-- Bootstrap header -->
-        {% include 'header.html' %}
-        <!-- Sidebar and Graph -->
-        <div class="content-wrapper">
-            <div id="sidebar">
-                <h3>Treemap view</h3>
-                <a href="/bubble/{{id}}">View as bubble graph</a>
-                <br />
-                <hr />
-                <h3>Filters</h3>
-                <div class="slider-container">
-                    <label for="commitSlider">Commit Filter</label>
-                    <input
-                        type="range"
-                        id="commitSlider"
-                        class="slider"
-                        min="0"
-                        max="100"
-                        value="0"
-                    />
-                    <span id="commitValue" class="sliderValue"
-                        >Minimum commits: 0</span
-                    >
-                    <div class="button-container">
-                        <button class="slider-button" id="commitMinus">
-                            -
-                        </button>
-                        <button class="slider-button" id="commitPlus">+</button>
+    <body class="bg-gray-50">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
+                    <div class="flex space-x-8">
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
                     </div>
-                </div>
-                <!-- --
-                <div class="slider-container">
-                    <label for="repoSlider">Repository Filter:</label>
-                    <input
-                        type="range"
-                        id="repoSlider"
-                        class="slider"
-                        min="0"
-                        max="10"
-                        value="0"
-                    />
-                    <span id="repoValue" class="sliderValue"
-                        >Minimum repos: 0</span
-                    >
-                    <div class="button-container">
-                        <button class="slider-button" id="repoMinus">-</button>
-                        <button class="slider-button" id="repoPlus">+</button>
-                    </div>
-                </div>
-                -->
-                <hr />
-                <!-- Node Information</h3> -->
-                <div id="nodeInfo">
-                    <p>Click on a node to see its information.</p>
                 </div>
             </div>
-            <div id="graph">
-                <!-- <button id="resetButton">Reset Positions</button> -->
+        </nav>
+
+        <!-- Main content wrapper -->
+        <div class="content-wrapper">
+            <!-- Sidebar -->
+            <div id="sidebar" class="bg-white border-r border-gray-200 p-6 flex flex-col">
+                <div class="mb-6">
+                    <h3 class="text-xl font-bold text-gray-900 mb-3">Treemap View</h3>
+                    <a href="/bubble/{{id}}" class="text-blue-600 hover:text-blue-800 underline">View as bubble graph</a>
+                </div>
+
+                <hr class="my-6 border-gray-200" />
+
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Filters</h3>
+                    
+                    <!-- Commit Filter -->
+                    <div class="mb-6">
+                        <label for="commitSlider" class="block text-sm font-medium text-gray-700 mb-2">Commit Filter</label>
+                        <input
+                            type="range"
+                            id="commitSlider"
+                            class="slider w-full mb-2"
+                            min="0"
+                            max="100"
+                            value="0"
+                        />
+                        <div id="commitValue" class="text-center text-sm text-gray-600 mb-3">Minimum commits: 0</div>
+                        <div class="flex justify-center gap-2">
+                            <button id="commitMinus" class="w-8 h-8 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center text-gray-700 font-semibold transition-colors">-</button>
+                            <button id="commitPlus" class="w-8 h-8 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center text-gray-700 font-semibold transition-colors">+</button>
+                        </div>
+                    </div>
+
+                    <!-- Time Filter -->
+                    <div class="mb-6">
+                        <label for="timeSlider" class="block text-sm font-medium text-gray-700 mb-2">Time Filter</label>
+                        <input
+                            type="range"
+                            id="timeSlider"
+                            class="slider w-full mb-2"
+                            min="0"
+                            max="5"
+                            value="0"
+                            step="1"
+                        />
+                        <div id="timeValue" class="text-center text-sm text-gray-600 mb-3">All Time</div>
+                        <div class="flex justify-center gap-2">
+                            <button id="timeMinus" class="w-8 h-8 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center text-gray-700 font-semibold transition-colors">-</button>
+                            <button id="timePlus" class="w-8 h-8 bg-gray-200 hover:bg-gray-300 rounded-full flex items-center justify-center text-gray-700 font-semibold transition-colors">+</button>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="my-6 border-gray-200" />
+
+                <!-- Node Information -->
+                <div class="flex-1">
+                    <div id="nodeInfo" class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <p class="text-gray-600 text-sm">Click on a node to see its information.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Graph Area -->
+            <div id="graph" class="bg-white relative flex-1">
+                <!-- Legend -->
                 <div class="legend">
                     <div class="legend-item">
-                        <div
-                            class="legend-color"
-                            style="background-color: #4caf50"
-                        ></div>
-                        <span class="tooltip-text"
-                            >Active
-                            <span class="tooltiptext"
-                                >Committed within last 90 days</span
-                            >
+                        <div class="legend-color" style="background-color: #4caf50"></div>
+                        <span class="tooltip-text text-sm">
+                            Active
+                            <span class="tooltiptext">Committed within last 90 days</span>
                         </span>
                     </div>
                     <div class="legend-item">
-                        <div
-                            class="legend-color"
-                            style="background-color: #fff176"
-                        ></div>
-                        <span class="tooltip-text"
-                            >Aging
-                            <span class="tooltiptext"
-                                >Committed within the last 90 an 180 days
-                            </span>
+                        <div class="legend-color" style="background-color: #fff176"></div>
+                        <span class="tooltip-text text-sm">
+                            Aging
+                            <span class="tooltiptext">Committed within the last 90 and 180 days</span>
                         </span>
                     </div>
                     <div class="legend-item">
-                        <div
-                            class="legend-color"
-                            style="background-color: #a1887f"
-                        ></div>
-                        <span class="tooltip-text"
-                            >Stale
-                            <span class="tooltiptext"
-                                >Committed within last year, but older than 6
-                                months
-                            </span>
+                        <div class="legend-color" style="background-color: #a1887f"></div>
+                        <span class="tooltip-text text-sm">
+                            Stale
+                            <span class="tooltiptext">Committed within last year, but older than 6 months</span>
                         </span>
                     </div>
                     <div class="legend-item">
-                        <div
-                            class="legend-color"
-                            style="background-color: #e0e0e0"
-                        ></div>
-                        <span class="tooltip-text"
-                            >Dormant
-                            <span class="tooltiptext"
-                                >No commits for over a year</span
-                            >
+                        <div class="legend-color" style="background-color: #e0e0e0"></div>
+                        <span class="tooltip-text text-sm">
+                            Dormant
+                            <span class="tooltiptext">No commits for over a year</span>
                         </span>
                     </div>
+                </div>
+
+                <!-- Controls -->
+                <div id="controls">
+                    <button id="toggleMode" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg border border-gray-300 transition-colors text-sm font-medium">
+                        Dark Mode
+                    </button>
                 </div>
             </div>
         </div>
+
         <script>
             async function fetchGraphData() {
                 try {
                     const response = await fetch("/org-graph/{{link_url}}");
                     if (!response.ok) {
-                        throw new Error(
-                            `HTTP error! status: ${response.status}`,
-                        );
+                        throw new Error(`HTTP error! status: ${response.status}`);
                     }
                     const data = await response.json();
                     return data;
@@ -307,22 +348,60 @@
                 }
             }
 
-            // Commit slide functionality
-
             // Store the original data globally
             let originalData;
-            let nodePositions = new Map(); // Store initial positions of all nodes
 
             // Add event listeners for commit slider and buttons
-            document
-                .getElementById("commitSlider")
-                .addEventListener("input", handleCommitSliderChange);
-            document
-                .getElementById("commitMinus")
-                .addEventListener("click", () => adjustCommitSlider(-1));
-            document
-                .getElementById("commitPlus")
-                .addEventListener("click", () => adjustCommitSlider(1));
+            document.getElementById("commitSlider").addEventListener("input", handleCommitSliderChange);
+            document.getElementById("commitMinus").addEventListener("click", () => adjustCommitSlider(-1));
+            document.getElementById("commitPlus").addEventListener("click", () => adjustCommitSlider(1));
+            document.getElementById("timeSlider").addEventListener("input", handleTimeSliderChange);
+            document.getElementById("timeMinus").addEventListener("click", () => adjustTimeSlider(-1));
+            document.getElementById("timePlus").addEventListener("click", () => adjustTimeSlider(1));
+
+            function getTimeFilterDate(sliderValue) {
+                const now = new Date();
+                switch (parseInt(sliderValue)) {
+                    case 5:
+                        return new Date(now.setMonth(now.getMonth() - 1));
+                    case 4:
+                        return new Date(now.setMonth(now.getMonth() - 3));
+                    case 3:
+                        return new Date(now.setMonth(now.getMonth() - 6));
+                    case 2:
+                        return new Date(now.setFullYear(now.getFullYear() - 1));
+                    case 1:
+                        return new Date(now.setFullYear(now.getFullYear() - 2));
+                    default:
+                        return new Date(0); // Beginning of time for 'all'
+                }
+            }
+
+            function getTimeFilterLabel(sliderValue) {
+                switch (parseInt(sliderValue)) {
+                    case 5: return "Last Month";
+                    case 4: return "Last 3 Months";
+                    case 3: return "Last 6 Months";
+                    case 2: return "Last Year";
+                    case 1: return "Last 2 Years";
+                    default: return "All Time";
+                }
+            }
+
+            function handleTimeSliderChange(event) {
+                const minCommits = parseInt(document.getElementById("commitSlider").value);
+                const timeValue = event.target.value;
+                document.getElementById("timeValue").textContent = getTimeFilterLabel(timeValue);
+                updateVisualizationWithFilters(minCommits, timeValue);
+            }
+
+            function adjustTimeSlider(change) {
+                const slider = document.getElementById("timeSlider");
+                const currentValue = parseInt(slider.value);
+                const newValue = Math.max(0, Math.min(5, currentValue + change));
+                slider.value = newValue;
+                handleTimeSliderChange({ target: slider });
+            }
 
             function adjustCommitSlider(change) {
                 const slider = document.getElementById("commitSlider");
@@ -333,23 +412,25 @@
 
             function handleCommitSliderChange(event) {
                 const minCommits = parseInt(event.target.value);
-                document.getElementById("commitValue").textContent =
-                    `Minimum commits: ${minCommits}`;
-
-                // Filter nodes based on commit value AND group
-                const filteredNodes = originalData.nodes.filter(
-                    (node) =>
-                        node.commits >= minCommits &&
-                        node.node_type == "developer",
-                );
-                updateVisualization(filteredNodes, minCommits);
+                const timeValue = document.getElementById("timeSlider").value;
+                document.getElementById("commitValue").textContent = `Minimum commits: ${minCommits}`;
+                updateVisualizationWithFilters(minCommits, timeValue);
             }
 
-            function adjustCommitSlider(change) {
-                const slider = document.getElementById("commitSlider");
-                const currentValue = parseInt(slider.value);
-                slider.value = currentValue + change;
-                handleCommitSliderChange({ target: slider });
+            function updateVisualizationWithFilters(minCommits, timeValue) {
+                const filterDate = getTimeFilterDate(timeValue);
+                
+                // Filter nodes based on commit value, group, and time
+                const filteredNodes = originalData.nodes.filter((node) => {
+                    if (node.node_type !== "developer") return false;
+                    if (node.commits < minCommits) return false;
+                    
+                    // Check if the node has any commits after the filter date
+                    const lastCommitDate = new Date(node.last_commit);
+                    return lastCommitDate >= filterDate;
+                });
+
+                updateVisualization(filteredNodes, minCommits);
             }
 
             async function updateVisualization(filteredNodes, minCommits) {
@@ -371,10 +452,7 @@
                         .zoom()
                         .scaleExtent([0.5, 5])
                         .on("zoom", (event) => {
-                            svg.select(".container").attr(
-                                "transform",
-                                event.transform,
-                            );
+                            svg.select(".container").attr("transform", event.transform);
                         });
 
                     svg.call(zoom);
@@ -400,7 +478,7 @@
                 // Generate treemap layout
                 treemap(root);
 
-                // Custom color scale (keep the same as before)
+                // Custom color scale
                 const color = d3
                     .scaleOrdinal()
                     .domain([1, 2, 3, 4])
@@ -426,7 +504,10 @@
                     .append("rect")
                     .attr("width", (d) => d.x1 - d.x0)
                     .attr("height", (d) => d.y1 - d.y0)
-                    .style("fill", (d) => color(d.data.status_group));
+                    .style("fill", (d) => color(d.data.status_group))
+                    .style("stroke", "#fff")
+                    .style("stroke-width", "1px")
+                    .style("cursor", "pointer");
 
                 // Add labels
                 newNodes
@@ -453,19 +534,22 @@
                 newNodes.on("click", (event, d) => {
                     const nodeInfo = document.getElementById("nodeInfo");
                     const node_label = d.data.label || d.data.id;
-                    const node_link =
-                        d.data.link || "/developer/" + d.data.id_b64;
+                    const node_link = d.data.link || "/developer/" + d.data.id_b64;
                     nodeInfo.innerHTML = `
-                                <h4><a href="${node_link}">${node_label}</a></h4>
-                                <p><strong>ID:</strong> ${d.data.id}</p>
-                                <p><strong>Commits:</strong> ${d.data.commits}</p>
-                                <p><strong>Group:</strong> ${d.data.group}</p>
-                                <p><strong>Status:</strong> ${d.data.status}</p>
-                                <p><strong>Last Commit</strong></br> ${d.data.last_commit}</p>
-                            `;
+                        <h4 class="text-lg font-semibold text-gray-900 mb-3">
+                            <a href="${node_link}" class="text-blue-600 hover:text-blue-800 underline">${node_label}</a>
+                        </h4>
+                        <div class="space-y-2 text-sm">
+                            <p><strong class="text-gray-700">ID:</strong> <span class="text-gray-600">${d.data.id}</span></p>
+                            <p><strong class="text-gray-700">Commits:</strong> <span class="text-gray-600">${d.data.commits}</span></p>
+                            <p><strong class="text-gray-700">Group:</strong> <span class="text-gray-600">${d.data.group}</span></p>
+                            <p><strong class="text-gray-700">Status:</strong> <span class="text-gray-600">${d.data.status}</span></p>
+                            <p><strong class="text-gray-700">Last Commit:</strong><br/><span class="text-gray-600">${d.data.last_commit}</span></p>
+                        </div>
+                    `;
                 });
 
-                // Update existing nodes
+                // Update existing nodes with transition
                 nodes
                     .transition()
                     .duration(750)
@@ -475,126 +559,24 @@
                     .attr("height", (d) => d.y1 - d.y0);
             }
 
-            // Add the following D3 code to create the bubble chart
-            // async function createBubbleChart() {
-            //     const data = await fetchGraphData();
-
-            //     const width = document.getElementById("graph").offsetWidth;
-            //     const height = document.getElementById("graph").offsetHeight;
-
-            //     const svg = d3
-            //         .select("#graph")
-            //         .append("svg")
-            //         .attr("width", width)
-            //         .attr("height", height);
-
-            //     // Create a container group for zoomable content
-            //     const g = svg.append("g");
-
-            //     const bubble = d3.pack().size([width, height]).padding(1.5);
-
-            //     const root = d3
-            //         .hierarchy({ children: data.nodes })
-            //         .sum((d) => d.commits);
-
-            //     const nodes = bubble(root).descendants().slice(1);
-
-            //     // Custom color scale
-            //     const color = d3
-            //         .scaleOrdinal()
-            //         .domain([1, 2, 3, 4])
-            //         .range(["#4CAF50", "#FFF176", "#A1887F", "#E0E0E0"]);
-
-            //     const node = g
-            //         .selectAll(".node")
-            //         .data(nodes)
-            //         .enter()
-            //         .append("g")
-            //         .attr("class", "node")
-            //         .attr("transform", (d) => `translate(${d.x},${d.y})`);
-
-            //     node.append("circle")
-            //         .attr("r", (d) => d.r)
-            //         .attr("class", "bubble")
-            //         .style("fill", (d) => color(d.data.status_group));
-
-            //     node.append("text")
-            //         .attr("class", "bubble-label")
-            //         .attr("dy", ".3em")
-            //         .text((d) => d.data.label.substring(0, d.r / 3));
-
-            //     node.append("title").text(
-            //         (d) => `${d.data.id}\nCommits: ${d.data.commits}`,
-            //     );
-
-            //     // Add click event to show node info in sidebar
-            //     node.on("click", (event, d) => {
-            //         const nodeInfo = document.getElementById("nodeInfo");
-            //         node_label = d.data.label || d.data.id;
-            //         //<h4><a href="/developer/${d.id_b64}">${node_label}</a></h4>
-            //         node_link = d.data.link || "/developer/" + d.data.id_b64;
-            //         //<h4><a href="/developer/${d.data.id_b64}">${node_label}</a></h4>
-            //         nodeInfo.innerHTML = `
-            //           <h4><a href="${node_link}">${node_label}</a></h4>
-            //             <p><strong>ID:</strong> ${d.data.id}</p>
-            //             <p><strong>Commits:</strong> ${d.data.commits}</p>
-            //             <p><strong>Group:</strong> ${d.data.group}</p>
-            //             <p><strong>Status:</strong> ${d.data.status}</p>
-            //             <p><strong>Last Commit</strong></br> ${d.data.last_commit}</p>
-            //         `;
-            //     });
-            //     // Create zoom behavior
-            //     const zoom = d3
-            //         .zoom()
-            //         .scaleExtent([0.5, 5]) // Set min and max zoom scale
-            //         .on("zoom", zoomed);
-
-            //     // Apply zoom behavior to svg
-            //     svg.call(zoom);
-
-            //     // Zoom function
-            //     function zoomed(event) {
-            //         g.attr("transform", event.transform);
-            //     }
-            // }
-
-            // Call the function to create the bubble chart
-            createBubbleChart();
-
-            //async function createBubbleChart() {
-            //    originalData = await fetchGraphData();
-            //    updateVisualization(originalData.nodes, 0); // Initial render with no filtering
-            //}
-
-            async function createBubbleChart() {
+            async function createTreemap() {
                 originalData = await fetchGraphData();
-                // Filter for only group 1 nodes on initial render
+                // Filter for only developer nodes on initial render
                 const initialNodes = originalData.nodes.filter(
-                    (node) => node.node_type == "developer",
+                    (node) => node.node_type == "developer"
                 );
                 updateVisualization(initialNodes, 0); // Initial render with no commit filtering
             }
 
-            // Add these functions after createBubbleChart
-
-            // function zoomIn() {
-            //     svg.transition().call(zoom.scaleBy, 1.5);
-            // }
-
-            // function zoomOut() {
-            //     svg.transition().call(zoom.scaleBy, 0.75);
-            // }
-
-            // function resetZoom() {
-            //     svg.transition().call(zoom.transform, d3.zoomIdentity);
-            // }
+            // Call the function to create the treemap
+            createTreemap();
 
             // Code for sidebar resizing
-
             const sidebar = document.getElementById("sidebar");
             const graph = document.getElementById("graph");
             let isResizing = false;
             let lastDownX = 0;
+
             sidebar.addEventListener("mousedown", (e) => {
                 if (e.offsetX > sidebar.offsetWidth - 10) {
                     isResizing = true;
@@ -626,16 +608,80 @@
                 const sidebarWidth = sidebar.offsetWidth;
                 graph.style.width = `${window.innerWidth - sidebarWidth}px`;
             });
-            // End of code for sidebar resizing
-        </script>
-        <script>
-            $(document).ready(function () {
-                $('[data-toggle="tooltip"]').tooltip();
+
+            // Dark mode toggle functionality
+            const toggleButton = document.getElementById("toggleMode");
+            const body = document.body;
+            let isDarkMode = false;
+
+            toggleButton.addEventListener("click", () => {
+                isDarkMode = !isDarkMode;
+
+                // Toggle body class
+                body.classList.toggle("dark-mode");
+
+                // Update button text and styles
+                if (isDarkMode) {
+                    toggleButton.textContent = "Light Mode";
+                    toggleButton.className = "px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded-lg border border-gray-600 transition-colors text-sm font-medium";
+                } else {
+                    toggleButton.textContent = "Dark Mode";
+                    toggleButton.className = "px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg border border-gray-300 transition-colors text-sm font-medium";
+                }
+
+                // Update SVG background color
+                const svg = d3.select("#graph svg");
+                if (isDarkMode) {
+                    svg.style("background-color", "#0f172a");
+
+                    // Update node labels for dark mode
+                    d3.selectAll(".node-label")
+                        .style("fill", "#e2e8f0")
+                        .style("font-weight", "600");
+
+                    // Update dormant rectangles to darker gray
+                    d3.selectAll("rect")
+                        .filter(function () {
+                            return d3.select(this).style("fill") === "rgb(224, 224, 224)";
+                        })
+                        .style("fill", "#64748b");
+
+                    // Update dormant color in legend
+                    d3.select(".legend-item:last-child .legend-color").style("background-color", "#64748b");
+                } else {
+                    svg.style("background-color", "white");
+
+                    // Reset node labels for light mode
+                    d3.selectAll(".node-label")
+                        .style("fill", "#1f2937")
+                        .style("font-weight", "500");
+
+                    // Reset dormant rectangles to original color
+                    d3.selectAll("rect")
+                        .filter(function () {
+                            return d3.select(this).style("fill") === "rgb(100, 116, 139)";
+                        })
+                        .style("fill", "#e0e0e0");
+
+                    // Reset dormant color in legend
+                    d3.select(".legend-item:last-child .legend-color").style("background-color", "#e0e0e0");
+                }
+
+                // Update legend background and text
+                const legend = d3.select(".legend");
+                if (isDarkMode) {
+                    legend
+                        .style("background-color", "rgba(30, 41, 59, 0.9)")
+                        .style("color", "#e2e8f0");
+                } else {
+                    legend
+                        .style("background-color", "rgba(255, 255, 255, 0.9)")
+                        .style("color", "black");
+                }
             });
+
+            // Set initial SVG background color
+            d3.select("#graph svg").style("background-color", "white");
         </script>
-        <!-- Add Bootstrap JS and its dependencies -->
-        <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     </body>
 </html>

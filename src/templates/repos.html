@@ -1,154 +1,242 @@
 <!DOCTYPE html>
 <html lang="en">
-{% set title = "Repos" %}
-{% include '_bootstrap_html_head.html' %}
-<body>
-
-{% include 'header.html' %}
-
-<!-- Main content area -->
-
-<div class="container mt-5">
-
-    <h1 class="mb-4">Repositories {% if page.get('git_owner') %} for {{ page.get('git_owner') }} {% endif %} </h1>
-    {% if page.get('git_server') %} <h3 class="mb-4">{{ page['git_server'] }}</h3> {% endif %}
-
-    {% if page.get('git_owner') %}
-    <h4 class="mb-4"><a href="https://{{ page['git_server'] }}/{{ page['git_owner'] }}">https://{{ page['git_server'] }}/{{ page['git_owner'] }}</a></h4>
-
-    Explore the <a href="/graph/{{ page['git_server'] }}~{{ page['git_owner'] }}">graph of developers and repositories.</a>
-    <br> <br>
-    {% endif %}
-    <table class="table table-striped sortable compact" id="myTable">
-        <thead>
-            <tr>
-                <th>Repo ID</th>
-                <th># Authors</th>
-                <th># Committers</th>
-                <th># Commits</th>
-                <th>Last Seen (days)</th>
-                <th>Active Devs</th>
-                <th>Days Active</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in data %}
-            <tr>
-                <td><a href="/repo/{{ row['_repo_id'] }}">{{ row['_git_repo'] }}</a></td>
-                <td class="dt-body-right">{{ row['authors'] }}</td>
-                <td class="dt-body-right">{{ row['committers'] }}</td>
-                <td class="dt-body-right">{{ row['commits'] }}</td>
-                <td class="dt-body-right">{{ row['days_ago'] }}</td>
-                <td class="dt-body-right"><a href="/developers/active/{{ row['_repo_id'] }}">{{ row['active_devs'] }}</a></td>
-                <td class="dt-body-right">{{ row['days_active'] }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    {% if ranges %}
-    <br/>
-    <h1 class="mb-4">Repo Maintenance Status</h1>
-    <table class="table" id="status_table">
-        <thead>
-            <tr>
-                <th> Active </th>
-                <th> Aging </th>
-                <th> Stale </th>
-                <th> Unmaintained </th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td> {{ ranges.get('Active') }} </a></td>
-                <td> {{ ranges.get('Aging') }} </a></td>
-                <td> {{ ranges.get('Stale') }} </a></td>
-                <td> {{ ranges.get('Unmaintained') }} </a></td>
-            </tr>
-        </tbody>
-    </table>
-    {% endif %}
-
-    {% if developer_status %}
-    <br/>
-    <h2 class="mb-4">Developer Status</h2>
-    <table class="table" id="developer_status_table">
-        <thead>
-            <tr>
-                <th> Active </th>
-                <th> Aging </th>
-                <th> Stale </th>
-                <th> Dormant</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td> {{ developer_status.get('Active') }} </a></td>
-                <td> {{ developer_status.get('Aging') }} </a></td>
-                <td> {{ developer_status.get('Stale') }} </a></td>
-                <td> {{ developer_status.get('Unmaintained') }} </a></td>
-            </tr>
-        </tbody>
-    </table>
-    {% endif %}
-
-
-
-</div>
-
-{% include '_footer_scripts.html' %}
-{% include '_datatable_scripts.html' %}
-
-<script>
-    $(document).ready( function () {
-        $('#myTable').DataTable({
-            order: [[4, 'asc']]
-        });
-    } );
-</script>
-
-{% if techs %}
-<div class="container mt-5">
-    <h1 class="mb-4">Observed Technologies</h1>
-    <canvas id="barChart"></canvas>
-</div>
-
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-    const ctx = document.getElementById('barChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: {{ techs|map(attribute='Language')|list|tojson }},
-            datasets: [{
-                label: '# of Occurrences',
-                data: {{ techs|map(attribute='count')|list|tojson }},
-                backgroundColor: [
-                    'rgba(255, 99, 132, 0.2)',
-                    'rgba(54, 162, 235, 0.2)',
-                    'rgba(255, 206, 86, 0.2)',
-                    // ... add more colors if you have more categories
-                ],
-                borderColor: [
-                    'rgba(255, 99, 132, 1)',
-                    'rgba(54, 162, 235, 1)',
-                    'rgba(255, 206, 86, 1)',
-                    // ... add more border colors if you have more categories
-                ],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Kospex Web - Repositories</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <style>
+            /* Custom styles for DataTables with Tailwind */
+            .dataTables_wrapper .dataTables_length select,
+            .dataTables_wrapper .dataTables_filter input {
+                @apply border border-gray-300 rounded px-3 py-2 text-sm;
             }
-        }
-    });
-</script>
-{% endif %}
+            .dataTables_wrapper .dataTables_length,
+            .dataTables_wrapper .dataTables_filter,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                @apply text-sm text-gray-700;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+                @apply bg-blue-600 text-white border-blue-600;
+            }
+        </style>
+    </head>
+    <body class="bg-white">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
+                    <div class="flex space-x-8">
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
 
-</body>
+        <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Repositories {% if page.get('git_owner') %} for {{ page.get('git_owner') }} {% endif %}</h1>
+                    {% if page.get('git_server') %} 
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4">{{ page['git_server'] }}</h3> 
+                    {% endif %}
+
+                    {% if page.get('git_owner') %}
+                    <div class="mb-6">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2">
+                            <a href="https://{{ page['git_server'] }}/{{ page['git_owner'] }}" class="text-blue-600 hover:text-blue-800 underline">
+                                https://{{ page['git_server'] }}/{{ page['git_owner'] }}
+                            </a>
+                        </h4>
+                        <p class="text-gray-700">
+                            Explore the <a href="/graph/{{ page['git_server'] }}~{{ page['git_owner'] }}" class="text-blue-600 hover:text-blue-800 underline">graph of developers and repositories.</a>
+                        </p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="myTable">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repo ID</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Authors</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Committers</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Commits</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen (days)</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Active Devs</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Days Active</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in data %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <a href="/repo/{{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['_git_repo'] }}</a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['authors'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['committers'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['commits'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['days_ago'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                        <a href="/developers/active/{{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['active_devs'] }}</a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['days_active'] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            {% if ranges %}
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Repo Maintenance Status</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="status_table">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Aging</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stale</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Unmaintained</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges.get('Active') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges.get('Aging') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges.get('Stale') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges.get('Unmaintained') }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if developer_status %}
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Developer Status</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="developer_status_table">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Aging</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stale</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Dormant</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Active') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Aging') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Stale') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Unmaintained') }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if techs %}
+        <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+            <div class="p-6">
+                <h2 class="text-2xl font-bold text-gray-900 mb-6">Observed Technologies</h2>
+                <canvas id="barChart"></canvas>
+            </div>
+        </div>
+        {% endif %}
+
+        {% include '_footer_scripts.html' %}
+        {% include '_datatable_scripts.html' %}
+
+        <script>
+            $(document).ready(function () {
+                $("#myTable").DataTable({
+                    order: [[4, "asc"]],
+                    responsive: true,
+                    pageLength: 25,
+                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
+                });
+            });
+        </script>
+
+        {% if techs %}
+        <!-- Chart.js -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            const ctx = document.getElementById('barChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: {{ techs|map(attribute='Language')|list|tojson }},
+                    datasets: [{
+                        label: '# of Occurrences',
+                        data: {{ techs|map(attribute='count')|list|tojson }},
+                        backgroundColor: [
+                            'rgba(99, 102, 241, 0.5)',
+                            'rgba(34, 197, 94, 0.5)',
+                            'rgba(251, 191, 36, 0.5)',
+                            'rgba(239, 68, 68, 0.5)',
+                            'rgba(168, 85, 247, 0.5)',
+                            'rgba(14, 165, 233, 0.5)',
+                        ],
+                        borderColor: [
+                            'rgba(99, 102, 241, 1)',
+                            'rgba(34, 197, 94, 1)',
+                            'rgba(251, 191, 36, 1)',
+                            'rgba(239, 68, 68, 1)',
+                            'rgba(168, 85, 247, 1)',
+                            'rgba(14, 165, 233, 1)',
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(156, 163, 175, 0.3)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
+        {% endif %}
+
+    </body>
 </html>
