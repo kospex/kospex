@@ -21,6 +21,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ## VERSION - DATE
 
 ### Added
+- [Create local static css and js files and package management](https://github.com/kospex/kospex/issues/31)
 
 ### Changed
 - Removed broken hotspots link from repo view
