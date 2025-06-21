@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Repository View - Kospex Web</title>
         <!-- Tailwind CSS -->
-        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <link rel="stylesheet" href="/static/css/tailwind.css" />
         <style>
             /* Custom styles for DataTables with Tailwind */
             .dataTables_wrapper .dataTables_length select,
@@ -31,14 +31,42 @@
         <nav class="bg-gray-800 text-white">
             <div class="container mx-auto px-4">
                 <div class="flex items-center justify-between h-16">
-                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
+                    <a
+                        class="text-white text-lg font-medium hover:text-gray-300"
+                        href="/"
+                        >K. web</a
+                    >
                     <div class="flex space-x-8">
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/repos/"
+                            >Repos</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/orgs/"
+                            >Orgs</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/developers/"
+                            >Developers</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/landscape/"
+                            >Landscape</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/metadata/"
+                            >Metadata</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/help/"
+                            >Help</a
+                        >
                     </div>
                 </div>
             </div>
@@ -47,32 +75,77 @@
         <!-- Main content area -->
         <div class="container mx-auto px-4 mt-12">
             <!-- Repository Header -->
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
                 <div class="p-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-6">{{ repo_id }}</h1>
-                    
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">Commit Summary</h2>
-                    
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">
+                        {{ repo_id }}
+                    </h1>
+
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                        Commit Summary
+                    </h2>
+
                     <p class="mb-6">
-                        <a href="/commits/?repo_id={{ repo_id }}" class="text-blue-600 hover:text-blue-800 underline">View commits for {{ repo_id }}</a>
+                        <a
+                            href="/commits/?repo_id={{ repo_id }}"
+                            class="text-blue-600 hover:text-blue-800 underline"
+                            >View commits for {{ repo_id }}</a
+                        >
                     </p>
-                    
+
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200" id="commits_table">
+                        <table
+                            class="min-w-full divide-y divide-gray-200"
+                            id="commits_table"
+                        >
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Aging</th>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stale</th>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Unmaintained</th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Active
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Aging
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Stale
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Unmaintained
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges['active'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges['aging'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges['stale'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges['unmaintained'] }}</td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ ranges['active'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ ranges['aging'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ ranges['stale'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ ranges['unmaintained'] }}
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
@@ -81,43 +154,98 @@
             </div>
 
             <!-- Quick Links -->
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
                 <div class="p-4">
                     <div class="flex flex-wrap gap-4 text-sm">
                         <span class="text-gray-700">View repo:</span>
-                        <a href="/landscape/?repo_id={{ repo_id }}" class="text-blue-600 hover:text-blue-800 underline">Tech Landscape</a>
+                        <a
+                            href="/landscape/?repo_id={{ repo_id }}"
+                            class="text-blue-600 hover:text-blue-800 underline"
+                            >Tech Landscape</a
+                        >
                         <span class="text-gray-500">|</span>
-                        <a href="/graph?repo_id={{ repo_id }}" class="text-blue-600 hover:text-blue-800 underline">Explore the graph</a>
+                        <a
+                            href="/graph?repo_id={{ repo_id }}"
+                            class="text-blue-600 hover:text-blue-800 underline"
+                            >Explore the graph</a
+                        >
                         <span class="text-gray-500">|</span>
-                        <a href="/bubble/{{ repo_id }}" class="text-blue-600 hover:text-blue-800 underline">View developer contributions</a>
+                        <a
+                            href="/bubble/{{ repo_id }}"
+                            class="text-blue-600 hover:text-blue-800 underline"
+                            >View developer contributions</a
+                        >
+                        <span class="text-gray-500">|</span>
+                        <a
+                            href="/collab/{{ repo_id }}"
+                            class="text-blue-600 hover:text-blue-800 underline"
+                            >Author / Committer collaborators</a
+                        >
                     </div>
                 </div>
             </div>
 
             <!-- Author Summary -->
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Author Summary</h2>
-                    
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Author Summary
+                    </h2>
+
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200" id="author_table">
+                        <table
+                            class="min-w-full divide-y divide-gray-200"
+                            id="author_table"
+                        >
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Commits</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen</th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Author
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        # Commits
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Last Seen
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for row in summary %}
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <a href="/developers/?author_email={{ row['author_email'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['author_email'] }}</a>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm"
+                                    >
+                                        <a
+                                            href="/developers/?author_email={{ row['author_email'] }}"
+                                            class="text-blue-600 hover:text-blue-800 underline"
+                                            >{{ row['author_email'] }}</a
+                                        >
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
-                                        <a href="/commits/{{repo_id}}?author_email={{ row['author_email'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['commits'] }}</a>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-right"
+                                    >
+                                        <a
+                                            href="/commits/{{repo_id}}?author_email={{ row['author_email'] }}"
+                                            class="text-blue-600 hover:text-blue-800 underline"
+                                            >{{ row['commits'] }}</a
+                                        >
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['days_ago'] }}</td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row['days_ago'] }}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -128,72 +256,140 @@
 
             <!-- Developer Status -->
             {% if developer_status %}
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Developer Status</h2>
-                    
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Developer Status
+                    </h2>
+
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200" id="developer_status_table">
+                        <table
+                            class="min-w-full divide-y divide-gray-200"
+                            id="developer_status_table"
+                        >
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Aging</th>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stale</th>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Unmaintained</th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Active
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Aging
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Stale
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Unmaintained
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Active') }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Aging') }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Stale') }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Unmaintained') }}</td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ developer_status.get('Active') }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ developer_status.get('Aging') }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ developer_status.get('Stale') }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center"
+                                    >
+                                        {{ developer_status.get('Unmaintained')
+                                        }}
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
-            {% endif %}
-
-            {% import '_radar_macro.html' as radar %}
+            {% endif %} {% import '_radar_macro.html' as radar %}
 
             <!-- Technology Landscape -->
             {% if landscape %}
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Technology Landscape</h2>
-                    
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Technology Landscape
+                    </h2>
+
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200" id="tech_table">
+                        <table
+                            class="min-w-full divide-y divide-gray-200"
+                            id="tech_table"
+                        >
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Technology</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Files</th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Technology
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        # Files
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for row in landscape %}
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <a href="/tech/{{ row['Language'] }}?repo_id={{ repo_id }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['Language'] }}</a>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm"
+                                    >
+                                        <a
+                                            href="/tech/{{ row['Language'] }}?repo_id={{ repo_id }}"
+                                            class="text-blue-600 hover:text-blue-800 underline"
+                                            >{{ row['Language'] }}</a
+                                        >
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['count'] }}</td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row['count'] }}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
-                    
+
                     <div class="mt-6">
-                        {{ radar.render_radar("radarChart2", labels, datapoints ) }}
+                        {{ radar.render_radar("radarChart2", labels, datapoints
+                        ) }}
                     </div>
                 </div>
             </div>
             {% else %}
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
                 <div class="p-6 text-center">
-                    <p class="text-lg font-semibold text-gray-900">No Technology Landscape found for repo</p>
+                    <p class="text-lg font-semibold text-gray-900">
+                        No Technology Landscape found for repo
+                    </p>
                 </div>
             </div>
             {% endif %}
@@ -201,21 +397,39 @@
             <!-- Author Email Domains -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Author Email Domains</h2>
-                    
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Author Email Domains
+                    </h2>
+
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author Domain</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Author Domain
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        #
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for domain in email_domains %}
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ domain['domain'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ domain['addresses'] }}</td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                    >
+                                        {{ domain['domain'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ domain['addresses'] }}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -225,8 +439,8 @@
             </div>
         </div>
 
-        {% include '_footer_scripts.html' %}
-        {% include '_datatable_scripts.html' %}
+        {% include '_footer_scripts.html' %} {% include
+        '_datatable_scripts.html' %}
 
         <script>
             $(document).ready(function () {
@@ -234,14 +448,20 @@
                     order: [[1, "desc"]],
                     responsive: true,
                     pageLength: 25,
-                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    lengthMenu: [
+                        [10, 25, 50, 100, -1],
+                        [10, 25, 50, 100, "All"],
+                    ],
                     dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
                 });
                 $("#tech_table").DataTable({
                     order: [[1, "desc"]],
                     responsive: true,
                     pageLength: 25,
-                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    lengthMenu: [
+                        [10, 25, 50, 100, -1],
+                        [10, 25, 50, 100, "All"],
+                    ],
                     dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
                 });
             });
