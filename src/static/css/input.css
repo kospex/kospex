@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom component styles for Kospex */
+@layer components {
+  /* DataTables styling for Tailwind integration */
+  .dataTables_wrapper .dataTables_length select,
+  .dataTables_wrapper .dataTables_filter input {
+    @apply border border-gray-300 rounded px-3 py-2 text-sm;
+  }
+  
+  .dataTables_wrapper .dataTables_length,
+  .dataTables_wrapper .dataTables_filter,
+  .dataTables_wrapper .dataTables_info,
+  .dataTables_wrapper .dataTables_paginate {
+    @apply text-sm text-gray-700;
+  }
+  
+  .dataTables_wrapper .dataTables_paginate .paginate_button {
+    @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+  }
+  
+  .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    @apply bg-blue-600 text-white border-blue-600;
+  }
+
+  /* Custom slider styles for D3 charts */
+  .slider {
+    @apply appearance-none h-1.5 rounded-sm bg-gray-300 outline-none transition-colors;
+  }
+
+  .slider::-webkit-slider-thumb {
+    @apply appearance-none w-5 h-5 rounded-full bg-blue-600 cursor-pointer shadow-md;
+  }
+
+  .slider::-moz-range-thumb {
+    @apply w-5 h-5 rounded-full bg-blue-600 cursor-pointer border-none shadow-md;
+  }
+
+  /* Tooltip styles for charts */
+  .tooltip-text {
+    @apply relative cursor-help;
+  }
+
+  .tooltip-text .tooltiptext {
+    @apply invisible absolute z-50 w-48 bg-gray-800 text-white text-center rounded-md py-2 px-3 opacity-0 transition-opacity duration-300 text-xs;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -96px; /* Half of width (192px / 2) */
+  }
+
+  .tooltip-text:hover .tooltiptext {
+    @apply visible opacity-100;
+  }
+
+  /* Chart legend styles */
+  .legend {
+    @apply absolute flex items-center bg-white bg-opacity-90 p-3 rounded-lg shadow-md;
+    bottom: 20px;
+    left: 3%;
+  }
+
+  .legend-item {
+    @apply flex items-center mr-5;
+  }
+
+  .legend-color {
+    @apply w-5 h-5 mr-2 rounded-full;
+  }
+
+  /* Dark mode overrides */
+  .dark-mode .legend {
+    @apply bg-gray-800 bg-opacity-90 text-gray-200;
+  }
+
+  .dark-mode .tooltip-text .tooltiptext {
+    @apply bg-gray-700;
+  }
+
+  /* Navigation enhancements */
+  .nav-link {
+    @apply text-gray-300 hover:text-white transition-colors duration-200;
+  }
+
+  .nav-brand {
+    @apply text-white text-lg font-medium hover:text-gray-300 transition-colors duration-200;
+  }
+}
+
+/* Custom utilities */
+@layer utilities {
+  /* Chart-specific utilities */
+  .chart-container {
+    @apply relative w-full h-full min-w-0;
+  }
+
+  .sidebar-resizable {
+    @apply relative overflow-y-auto;
+    resize: horizontal;
+    min-width: 100px;
+    max-width: 50%;
+  }
+
+  .sidebar-resizable::after {
+    content: "";
+    @apply absolute top-0 right-0 bottom-0 w-1 bg-gray-300 cursor-ew-resize;
+  }
+
+  /* Status indicators */
+  .status-active {
+    @apply text-green-600 font-semibold;
+  }
+
+  .status-aging {
+    @apply text-yellow-600 font-semibold;
+  }
+
+  .status-stale {
+    @apply text-orange-600 font-semibold;
+  }
+
+  .status-dormant {
+    @apply text-gray-500 font-semibold;
+  }
+}

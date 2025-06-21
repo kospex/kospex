@@ -150,6 +150,16 @@ venv.bak/
 # mkdocs documentation
 /site
 
+# Node.js dependencies (for web asset management)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Keep built static assets for Python package distribution
+# src/static/css/tailwind.css  # Include in repo
+# src/static/js/*.js           # Include in repo
+
 # mypy
 .mypy_cache/
 .dmypy.json

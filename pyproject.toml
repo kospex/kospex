@@ -20,6 +20,7 @@ dependencies = [
     "requests",
     "PyGithub==2.6.1",
     "PyYAML",
+    "mkdocs",
 ]
 
 requires-python = ">=3.11"
@@ -29,7 +30,12 @@ classifiers = ["Programming Language :: Python :: 3"]
 
 
 [tool.setuptools.package-data]
-templates = ["*.html"]
+"*" = [
+    "templates/*.html",
+    "templates/**/*.html",
+    "static/css/*.css",
+    "static/js/*.js"
+]
 
 [project.scripts]
 kgit = "kgit:cli"
