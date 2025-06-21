@@ -159,6 +159,65 @@
                 visibility: visible;
                 opacity: 1;
             }
+            /* Controls styling for dark / light */
+            #controls {
+                position: absolute;
+                top: 60px;
+                right: 20px;
+                z-index: 100;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            #toggleMode {
+                margin-top: 10px;
+                padding: 10px;
+                background-color: #f0f0f0;
+                border: 1px solid #999;
+                border-radius: 5px;
+                cursor: pointer;
+                width: 120px;
+            }
+
+            /* Dark mode styles */
+            body.dark-mode {
+                background-color: #121212;
+                color: #e0e0e0;
+            }
+
+            body.dark-mode #sidebar {
+                background-color: #222;
+                color: #e0e0e0;
+            }
+
+            body.dark-mode #nodeInfo {
+                background-color: #333;
+                color: #e0e0e0;
+                box-shadow: 0 2px 4px rgba(255, 255, 255, 0.1);
+            }
+
+            body.dark-mode #toggleMode {
+                background-color: #333;
+                color: #e0e0e0;
+                border-color: #555;
+            }
+
+            body.dark-mode .legend {
+                background-color: rgba(40, 40, 40, 0.8);
+                color: #e0e0e0;
+            }
+
+            body.dark-mode a,
+            body.dark-mode h3,
+            body.dark-mode h4 {
+                color: color: #f0f0f0 !important; /* Lighter gray instead of #d0d0d0 */
+            }
+
+            body.dark-mode #nodeInfo p,
+            body.dark-mode #nodeInfo strong {
+                color: #e0e0e0;
+            }
         </style>
     </head>
     <body>
@@ -192,26 +251,24 @@
                         <button class="slider-button" id="commitPlus">+</button>
                     </div>
                 </div>
-                <!-- --
+
                 <div class="slider-container">
-                    <label for="repoSlider">Repository Filter:</label>
+                    <label for="timeSlider">Time Filter</label>
                     <input
                         type="range"
-                        id="repoSlider"
+                        id="timeSlider"
                         class="slider"
                         min="0"
-                        max="10"
+                        max="5"
                         value="0"
+                        step="1"
                     />
-                    <span id="repoValue" class="sliderValue"
-                        >Minimum repos: 0</span
-                    >
+                    <span id="timeValue" class="sliderValue">All Time</span>
                     <div class="button-container">
-                        <button class="slider-button" id="repoMinus">-</button>
-                        <button class="slider-button" id="repoPlus">+</button>
+                        <button class="slider-button" id="timeMinus">-</button>
+                        <button class="slider-button" id="timePlus">+</button>
                     </div>
                 </div>
-                -->
                 <hr />
                 <!-- Node Information</h3> -->
                 <div id="nodeInfo">
@@ -272,6 +329,9 @@
                     </div>
                 </div>
             </div>
+            <div id="controls">
+                <button id="toggleMode">Dark Mode</button>
+            </div>
         </div>
         <script>
             async function fetchGraphData() {
@@ -305,25 +365,87 @@
             document
                 .getElementById("commitPlus")
                 .addEventListener("click", () => adjustCommitSlider(1));
+            document
+                .getElementById("timeSlider")
+                .addEventListener("input", handleTimeSliderChange);
+            document
+                .getElementById("timeMinus")
+                .addEventListener("click", () => adjustTimeSlider(-1));
+            document
+                .getElementById("timePlus")
+                .addEventListener("click", () => adjustTimeSlider(1));
 
-            function adjustCommitSlider(change) {
-                const slider = document.getElementById("commitSlider");
+            function getTimeFilterDate(sliderValue) {
+                const now = new Date();
+                switch (parseInt(sliderValue)) {
+                    case 5:
+                        return new Date(now.setMonth(now.getMonth() - 1));
+                    case 4:
+                        return new Date(now.setMonth(now.getMonth() - 3));
+                    case 3:
+                        return new Date(now.setMonth(now.getMonth() - 6));
+                    case 2:
+                        return new Date(now.setFullYear(now.getFullYear() - 1));
+                    case 1:
+                        return new Date(now.setFullYear(now.getFullYear() - 2));
+                    default:
+                        return new Date(0); // Beginning of time for 'all'
+                }
+            }
+
+            function getTimeFilterLabel(sliderValue) {
+                switch (parseInt(sliderValue)) {
+                    case 5:
+                        return "Last Month";
+                    case 4:
+                        return "Last 3 Months";
+                    case 3:
+                        return "Last 6 Months";
+                    case 2:
+                        return "Last Year";
+                    case 1:
+                        return "Last 2 Years";
+                    default:
+                        return "All Time";
+                }
+            }
+
+            function handleTimeSliderChange(event) {
+                const minCommits = parseInt(document.getElementById("commitSlider").value);
+                const timeValue = event.target.value;
+                document.getElementById("timeValue").textContent = getTimeFilterLabel(timeValue);
+                updateVisualizationWithFilters(minCommits, timeValue);
+            }
+
+            function adjustTimeSlider(change) {
+                const slider = document.getElementById("timeSlider");
                 const currentValue = parseInt(slider.value);
-                slider.value = currentValue + change;
-                handleCommitSliderChange({ target: slider });
+                const newValue = Math.max(0, Math.min(5, currentValue + change));
+                slider.value = newValue;
+                handleTimeSliderChange({ target: slider });
             }
 
             function handleCommitSliderChange(event) {
                 const minCommits = parseInt(event.target.value);
+                const timeValue = document.getElementById("timeSlider").value;
                 document.getElementById("commitValue").textContent =
                     `Minimum commits: ${minCommits}`;
+                updateVisualizationWithFilters(minCommits, timeValue);
+            }
 
-                // Filter nodes based on commit value AND group
-                const filteredNodes = originalData.nodes.filter(
-                    (node) =>
-                        node.commits >= minCommits &&
-                        node.node_type == "developer",
-                );
+            function updateVisualizationWithFilters(minCommits, timeValue) {
+                const filterDate = getTimeFilterDate(timeValue);
+                
+                // Filter nodes based on commit value, group, and time
+                const filteredNodes = originalData.nodes.filter((node) => {
+                    if (node.node_type !== "developer") return false;
+                    if (node.commits < minCommits) return false;
+                    
+                    // Check if the node has any commits after the filter date
+                    const lastCommitDate = new Date(node.last_commit);
+                    return lastCommitDate >= filterDate;
+                });
+
                 updateVisualization(filteredNodes, minCommits);
             }
 
@@ -601,6 +723,88 @@
                 graph.style.width = `${window.innerWidth - sidebarWidth}px`;
             });
             // End of code for sidebar resizing
+            //
+            // Dark mode toggle functionality
+            const toggleButton = document.getElementById("toggleMode");
+            const body = document.body;
+            let isDarkMode = false;
+
+            toggleButton.addEventListener("click", () => {
+                isDarkMode = !isDarkMode;
+
+                // Toggle body class
+                body.classList.toggle("dark-mode");
+
+                // Update button text
+                toggleButton.textContent = isDarkMode
+                    ? "Light Mode"
+                    : "Dark Mode";
+
+                // Update SVG background color
+                const svg = d3.select("#graph svg");
+                if (isDarkMode) {
+                    svg.style("background-color", "#121212");
+
+                    // Update labels to dark gray for better contrast
+                    d3.selectAll(".bubble-label")
+                        .style("fill", "#333333")
+                        .style("font-weight", "600");
+
+                    // Update dormant bubbles to darker gray
+                    d3.selectAll(".bubble")
+                        .filter(function () {
+                            return (
+                                d3.select(this).style("fill") ===
+                                "rgb(224, 224, 224)"
+                            );
+                        })
+                        .style("fill", "#8a8a8a");
+
+                    // Update dormant color in legend
+                    d3.select(".legend-item:last-child .legend-color").style(
+                        "background-color",
+                        "#8a8a8a",
+                    );
+                } else {
+                    svg.style("background-color", "white");
+
+                    // Reset labels to black
+                    d3.selectAll(".bubble-label")
+                        .style("fill", "black")
+                        .style("font-weight", "normal");
+
+                    // Reset dormant bubbles to original color
+                    d3.selectAll(".bubble")
+                        .filter(function () {
+                            return (
+                                d3.select(this).style("fill") ===
+                                "rgb(138, 138, 138)"
+                            );
+                        })
+                        .style("fill", "#e0e0e0");
+
+                    // Reset dormant color in legend
+                    d3.select(".legend-item:last-child .legend-color").style(
+                        "background-color",
+                        "#e0e0e0",
+                    );
+                }
+
+                // Update legend background and text
+                const legend = d3.select(".legend");
+                if (isDarkMode) {
+                    legend
+                        .style("background-color", "rgba(40, 40, 40, 0.8)")
+                        .style("color", "#e0e0e0");
+                } else {
+                    legend
+                        .style("background-color", "rgba(255, 255, 255, 0.8)")
+                        .style("color", "black");
+                }
+            });
+
+            // Set initial SVG background color
+            d3.select("#graph svg").style("background-color", "white");
         </script>
         <script>
             $(document).ready(function () {
