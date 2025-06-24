@@ -9,7 +9,7 @@ import urllib
 import time
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
-from typing import List, Dict
+from typing import List, Dict, Optional
 import dateutil.parser
 import requests
 from prettytable import PrettyTable
@@ -28,6 +28,22 @@ class KospexDependencies:
         #self.kospex_db = Database(KospexUtils.get_kospex_db_path())
         # The following will be the results from the list of dependencies from the assess command
         self.dependencies = []
+
+    def extract_purl(self, purl):
+        # Extract the purl from the given URL
+        # Example: purl = "pkg:pypi/requests@2.31.0"
+        # Extract the package type, name, and version from the purl
+        # Return a dictionary with the extracted information
+        package_only = purl.split(":")[1]
+        package_type = package_only.split("/")[0]
+        full_package = package_only.split("/")[1]
+        package_name = full_package.split("@")[0]
+        version = full_package.split("@")[1]
+        return {
+            "ecosystem": package_type,
+            "package_name": package_name,
+            "package_version": version
+        }
 
     def deps_dev(self,package_type,package_name,version):
         """ Query the Deps.dev API for a package and version"""
@@ -53,6 +69,32 @@ class KospexDependencies:
 
         return data
 
+    def deps_dev_package(self,package_type,package_name):
+        """
+        Query the deps.dev API for a package and get all version history
+        """
+        base_url = "https://api.deps.dev/v3alpha/systems"
+        encoded_name = urllib.parse.quote(package_name, safe='')
+        url = f"{base_url}/{package_type}/packages/{encoded_name}"
+        # links -> which has a SOURCE_REPO label should be the git
+
+        data = None
+
+        if self.kospex_query:
+            content = self.kospex_query.url_request(url)
+            if content:
+                data = json.loads(content)
+        else:
+            req = requests.get(url, timeout=10)
+            if req.status_code == 200:
+                data = req.json()
+            else:
+                print(f"Error: {req.status_code} {req.text}")
+
+        return data
+
+
+
     def get_url_json(self, url, timeout=10, cache=True):
         """ Get the contents of a URL, use the query cache if we can """
         data = None
@@ -68,7 +110,7 @@ class KospexDependencies:
         return data
 
 
-    def get_pypi_package_info(self,package):
+    def get_pypi_package_info(self,package,version: Optional[str] = None):
         """ Get the latest version of a package from PyPI """
         url = f"https://pypi.org/pypi/{package}/json"
 
@@ -115,7 +157,7 @@ class KospexDependencies:
     def is_valid_pypi_package_declaration(self,s):
         """
         Returns True if the string s follows the pattern <package_name>==<version_number>,
-        for packges declared in a requirements.txt (or similar named) file.
+        for packages declared in a requirements.txt (or similar named) file.
         :param s: A string representing the package and version.
         :return: True if the pattern matches, False otherwise.
         """
@@ -260,9 +302,12 @@ class KospexDependencies:
         else:
             print(f"Unknown or unsupported package manager file found {basefile}")
 
+        if results:
+            for dep in results:
+                if publishedAt := dep.get('published_at', None):
+                    dep["days_ago"] = KospexUtils.days_ago(publishedAt)
 
         if save and git_details:
-            print("Should be saving now!")
             import pprint
             pprint.PrettyPrinter(indent=4).pprint(results)
             # TODO - see if there is better way of excluding this key
@@ -388,7 +433,8 @@ class KospexDependencies:
         today = datetime.datetime.now(datetime.timezone.utc)
         # TODO - Handle bad package names
         # TODO - Handle 404 errors (most likely due to bad package name)
-        deps_info = self.deps_dev(package_type,package_name,package_version)
+        if package_version:
+            deps_info = self.deps_dev(package_type,package_name,package_version)
 
         # If we don't get any info back, we'll just return an empty dictionary
         if not deps_info:
@@ -412,8 +458,9 @@ class KospexDependencies:
         details["advisories"] = self.get_advisories_count(deps_info)
 
         # Get the versions behind info
-        days_info = self.get_versions_behind(package_type,package_name,package_version)
-        details['versions_behind'] = days_info.get("versions_behind","Unknown")
+        if package_version:
+            days_info = self.get_versions_behind(package_type,package_name,package_version)
+            details['versions_behind'] = days_info.get("versions_behind","Unknown")
 
         # TODO - this is a hacky way of duplicating the keys needed
         #details['package_name'] = package_name
@@ -714,14 +761,14 @@ class KospexDependencies:
         """ Find all dependency files (package managers) in a directory and its subdirectories."""
         # Map of filename to its package manager
         package_files = {
-            'requirements.*\.txt$': 'PyPi',
+            'requirements.*.txt$': 'PyPi',
             'Pipfile': 'PyPi (Pipenv)',
             'Pipfile.lock': 'PyPi (Pipenv)',
             'setup.py': 'PyPi',
             'pyproject.toml': 'PyPi (Poetry/Flit/etc.)',
             'Gemfile': 'RubyGems',
             'Gemfile.lock': 'RubyGems',
-            'package.*\.json': 'npm',
+            'package.*.json': 'npm',
             'yarn.lock': 'Yarn',
             'composer.json': 'Composer',
             'composer.lock': 'Composer',
@@ -979,3 +1026,70 @@ class KospexDependencies:
         #     print(f"Skipping package with missing type or name: {package_type} and {package_name}")
 
         return is_malware
+
+    def package_dependencies(self, package: str, version: str, ecosystem: str):
+        """
+        Lookup the package dependencies on deps.dev
+
+        Args:
+            package: Package name to lookup.
+            version: Package version to lookup.
+            ecosystem: Package ecosystem to lookup.
+        """
+        package = package
+        version = version
+        ecosystem = ecosystem
+        #GET /v3/systems/{versionKey.system}/packages/{versionKey.name}/versions/{versionKey.version}:dependencies
+        base_url = "https://api.deps.dev/v3/systems"
+        encoded_name = urllib.parse.quote(package, safe='')
+        url = f"{base_url}/{ecosystem}/packages/{encoded_name}/versions/{version}:dependencies"
+        #https://api.deps.dev/v3alpha/systems/pypi/packages/requests/versions/2.31.0
+        # links -> which has a SOURCE_REPO label should be the git
+
+        print(url)
+
+        data = self.get_url_json(url)
+        # req = requests.get(url, timeout=10)
+        # if req.status_code == 200:
+        #     data = req.json()
+        # # Need to handle HTTP error codes
+
+        if data is None:
+            return None
+
+        nodes = data.get("nodes")
+        for node in nodes:
+
+            node["id"] = self.versionKey_id(node["versionKey"])
+
+            system = node["versionKey"].get("system").lower()
+
+            name = node["versionKey"].get("name").lower()
+            node["name"] = name
+
+            version = node["versionKey"].get("version").lower()
+            node["version"] = version
+
+            dep = self.deps_dev(system, name, version)
+            node["publishedAt"] = dep.get("publishedAt")
+
+            advisories = dep.get("advisoryKeys")
+            num_advisories = len(advisories) if advisories else 0
+            node["advisories"] = num_advisories
+
+            versions = self.get_versions_behind(system, name, version)
+            if versions:
+                node["versions_behind"] = versions.get("versions_behind")
+
+
+        return data
+
+    def versionKey_id(self,versionKey):
+        """
+        Convert a deps.dev version key to a string
+        """
+        system = versionKey.get("system").lower()
+        name = versionKey.get("name").lower()
+        version = versionKey.get("version").lower()
+
+        return ":".join([system, name, version])
