@@ -2,23 +2,23 @@
 """ This is the local development web server to view the Kospex database. """
 from os.path import basename
 import sys
+import json
 import base64
+import pprint
 from statistics import mean, median, mode, stdev, quantiles
 from collections import Counter, OrderedDict
 from flask import Flask, render_template, request, jsonify
 from jinja2 import TemplateNotFound
-from kospex_bitbucket import KospexBitbucket
 from kospex_query import KospexQuery
 import kospex_web as KospexWeb
 import kospex_utils as KospexUtils
+from kospex_core import Kospex, GitRepo
+from kweb_help_service import HelpService
 
 app = Flask(__name__)
 
-# @app.route('/')
-# def index():
-#     """ Serve up the summary home page """
-#     data = KospexQuery().summary()
-#     return render_template('index.html', **data)
+# Initialize services
+help_service = HelpService()
 
 @app.route('/summary/', defaults={'id': None})
 @app.route('/summary/<id>')
@@ -61,23 +61,8 @@ def summary(id):
 @app.route('/help/', defaults={'id': None})
 @app.route('/help/<id>')
 def help(id):
-    """ Serve up the help pages """
-    page = "404"
-    if id:
-        # Check that the id is safe to use
-        valid_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
-        if set(id).issubset(valid_chars):
-            print("looks legit")
-            page = f"help/{id}"
-        else:
-            page = "404"
-    else:
-        page = "help/index"
-
-    try:
-        return render_template(f'{page}.html')
-    except TemplateNotFound:
-        return render_template('404.html'), 404
+    """Serve up the help pages"""
+    return help_service.render_help_page(id)
 
 
 @app.route('/developers/active/<repo_id>')
@@ -295,11 +280,8 @@ def repos(id):
 @app.route('/servers/')
 def servers():
     """ display Git server information. """
-
     kquery = KospexQuery()
     data = kquery.server_summary()
-    print(data)
-
     return render_template('servers.html',data=data)
 
 @app.route('/observations/')
@@ -325,17 +307,17 @@ def observations():
     else:
         return render_template('observations.html',data=kquery.observations_summary())
 
-@app.route('/orgs/')
-def orgs():
+@app.route('/orgs', defaults={'server': None})
+@app.route('/orgs/', defaults={'server': None})
+@app.route('/orgs/<server>')
+def orgs(server):
     """ display repo information. """
-
     org = request.args.get('org')
+    params = KospexWeb.get_id_params(server)
 
     kospex = KospexQuery()
-
     git_orgs = kospex.orgs()
     active_devs = kospex.active_devs(org=True)
-    print(active_developers)
 
     for row in git_orgs:
         row['active_devs'] = active_devs.get(row['org_key'],0)
@@ -416,6 +398,15 @@ def author_domains():
     email_domains = kospex.email_domains()
     return render_template('meta-author-domains.html',email_domains=email_domains)
 
+@app.route('/collab/<repo_id>')
+def collab(repo_id):
+    """ display repo information. """
+    kquery = KospexQuery()
+
+    collabs = kquery.get_collabs(repo_id=repo_id)
+
+    return render_template('collab.html', collabs=collabs)
+
 # Error Handling Routes
 
 @app.errorhandler(404)
@@ -455,9 +446,13 @@ def osi(id):
         file["status"] = KospexUtils.development_status(file.get("days_ago"))
     file_number = len(deps)
     status = KospexUtils.repo_stats(deps,"committer_when")
+    filenames = KospexUtils.filenames_by_repo_id(deps)
+    #pprint.PrettyPrinter(indent=4).pprint(filenames)
     print(status)
 
-    return render_template('osi.html',data=deps, file_number=file_number, status=status)
+    return render_template('osi.html',data=deps,
+        file_number=file_number,
+        dep_files=filenames,status=status)
 
 @app.route('/dependencies/', defaults={'id': None})
 @app.route('/dependencies/<id>')
@@ -603,7 +598,7 @@ def graph(org_key):
     elif author_email:
         org_key = f"?author_email={author_email}"
 
-    return render_template('graph.html',org_key=org_key)
+    return render_template('graph2.html',org_key=org_key)
 
 @app.route('/org-graph', defaults={'org_key': None, "focus": None})
 @app.route('/org-graph/', defaults={'org_key': None, "focus": None})
@@ -791,14 +786,144 @@ def org_graph(focus,org_key):
 
     return data
 
+@app.route('/supply-chain/')
+def supply_chain():
+    """
+    Display a bubble chart of package dependencies with their security status.
+    Color coding:
+    - Green: No advisories/malware and 0-2 versions behind
+    - Yellow: No advisories/malware and 2-6 versions behind
+    - Orange: Has advisories or older than 12 months
+    - Red: Has malware or older than 2 years
+    """
+    package = request.args.get('package')
+    data = None
+    if package:
+        system, package_name, package_version = package.split(":")
+        if all([system, package_name, package_version]):
+            # Process package data here
+            kospex = Kospex()
+            data = kospex.dependencies.package_dependencies(package=package_name,
+                version=package_version, ecosystem=system)
+    # Sample data - replace with actual data from your database
+    #
+    print(json.dumps(data,indent=3))
+
+    if data is None:
+        print("No data found")
+        data = {
+            "nodes": [
+                {
+                    "id": "package1",
+                    "name": "Package 1",
+                    "version": "1.0.0",
+                    "publish_date": "2023-01-01",
+                    "versions_behind": 0,
+                    "advisories": 0,
+                    "malware": False,
+                    "size": 20
+                },
+                {
+                    "id": "package2",
+                    "name": "Package 2",
+                    "version": "2.1.0",
+                    "publish_date": "2023-06-01",
+                    "versions_behind": 3,
+                    "advisories": 0,
+                    "malware": False,
+                    "size": 15
+                },
+                {
+                    "id": "package3",
+                    "name": "Package 3",
+                    "version": "0.5.0",
+                    "publish_date": "2022-01-01",
+                    "versions_behind": 5,
+                    "advisories": 2,
+                    "malware": False,
+                    "size": 25
+                },
+                {
+                    "id": "package4",
+                    "name": "Package 4",
+                    "version": "3.0.0",
+                    "publish_date": "2021-01-01",
+                    "versions_behind": 8,
+                    "advisories": 0,
+                    "malware": True,
+                    "size": 30
+                }
+            ],
+            "links": []
+        }
+
+    return render_template('supply_chain.html', data=data)
+
+@app.route('/package-check/')
+def package_check():
+    """Display the package check page with drag and drop interface."""
+    return render_template('package_check.html')
+
+@app.route('/package-check/upload', methods=['POST'])
+def package_check_upload():
+    """Handle file upload and analyze dependencies."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['file']
+    print("file contents:")
+    print(file)
+
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    # Save the uploaded file temporarily
+    import tempfile
+    import os
+    temp_dir = tempfile.mkdtemp()
+    temp_path = os.path.join(temp_dir, file.filename)
+    file.save(temp_path)
+
+    try:
+        # Analyze the file using KospexDependencies
+        kospex = Kospex()
+        results = kospex.dependencies.assess(temp_path)
+        # Sort results by status
+        pprint.PrettyPrinter(indent=4).pprint(results)
+
+        # Clean up the temporary file
+        os.remove(temp_path)
+        os.rmdir(temp_dir)
+
+        # Add status based on advisories and versions behind
+        for item in results:
+            if item.get('advisories', 0) > 0:
+                item['status'] = 'Vulnerable'
+            elif item.get('versions_behind', 0) > 6:
+                item['status'] = 'Outdated'
+            elif item.get('versions_behind', 0) > 2:
+                item['status'] = 'Behind'
+            else:
+                item['status'] = 'Current'
+
+
+
+        return jsonify(results)
+
+    except Exception as e:
+        # Clean up in case of error
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        if os.path.exists(temp_dir):
+            os.rmdir(temp_dir)
+        return jsonify({'error': str(e)}), 500
+
 def kweb():
     """ Run the web server. """
     all_interfaces = False
     if "-all" in sys.argv:
         all_interfaces = True
         print("Found -all")
-
-
 
     if len(sys.argv) > 1:
         if "-debug" in sys.argv:
