@@ -1,80 +1,134 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-    {% set title = "Tenure" %} {% include '_bootstrap_html_head.html'%}
-    <body>
-        {% include 'header.html' %}
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Developer Tenure - Kospex Web</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+    </head>
+    <body class="bg-white">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
+                    <div class="flex space-x-8">
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
 
         <!-- Main content area -->
-        <div class="container mt-5">
-            <h1 class="mb-4">Developer Tenure</h1>
-            <br />
+        <div class="container mx-auto px-4 mt-12">
+            <!-- Page Header -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-4">Developer Tenure</h1>
+                    <p class="text-gray-600">Analysis of how long developers have been active in the codebase.</p>
+                </div>
+            </div>
 
-            <h2 class="mb-4">Basic Statistics</h2>
-            <p>
-                There have been {{ data.get("developers","Unknown")}} developers
-                who've committed {{ data.get("commits", "Unknown") }} times to
-                {{ data.get("repos", "Unknown") }} repos over {{
-                data.get("days_active","Unknown") }} days ({{
-                data.get("years_active","Unknown") }} years)
-            </p>
-            <table class="table" id="dependency_status_table">
-                <thead>
-                    <tr>
-                        <th>Mean</th>
-                        <th>Mode</th>
-                        <th>Median</th>
-                        <th>Std. Dev.</th>
-                        <th>Max tenure (days)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>{{ data.get("mean")}}</td>
-                        <td>{{ data.get("mode")}}</td>
-                        <td>{{ data.get("median")}}</td>
-                        <td>{{ data.get("std_dev")}}</td>
-                        <td>{{ data.get("max")}}</td>
-                    </tr>
-                </tbody>
-            </table>
-            All of the entries above represents "days" of tenure. Often a tenure
-            of 1 day is a single contribution to a repo, such as a bug fix in an
-            open source project.
-            <br />
-            <br />
+            <!-- Basic Statistics -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Basic Statistics</h2>
+                    
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                        <p class="text-gray-700 leading-relaxed">
+                            There have been <strong class="text-blue-600">{{ data.get("developers","Unknown") }}</strong> developers
+                            who've committed <strong class="text-blue-600">{{ data.get("commits", "Unknown") }}</strong> times to
+                            <strong class="text-blue-600">{{ data.get("repos", "Unknown") }}</strong> repos over 
+                            <strong class="text-blue-600">{{ data.get("days_active","Unknown") }}</strong> days 
+                            (<strong class="text-blue-600">{{ data.get("years_active","Unknown") }}</strong> years)
+                        </p>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Mean</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Median</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Std. Dev.</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Max Tenure (days)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ data.get("mean") }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ data.get("mode") }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ data.get("median") }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ data.get("std_dev") }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ data.get("max") }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
 
-            <h2 class="mb-4">Tenure Distribution</h2>
+                    <div class="mt-4 p-4 bg-gray-50 rounded-lg">
+                        <p class="text-sm text-gray-600">
+                            <strong>Note:</strong> All values above represent "days" of tenure. Often a tenure of 1 day indicates a single contribution to a repository, such as a bug fix in an open source project.
+                        </p>
+                    </div>
+                </div>
+            </div>
 
-            <table class="table" id="dependency_status_table">
-                <thead>
-                    <tr>
-                        <th>-</th>
-                        {% for my_item in distribution %}
-                        <th>{{ my_item }}</th>
-                        {% endfor %}
-                    </tr>
-                </thead>
+            <!-- Tenure Distribution -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Tenure Distribution</h2>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Developer Group</th>
+                                    {% for my_item in distribution %}
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">{{ my_item }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        All time
+                                        <span class="text-gray-500 font-normal">({{ data.get("developers") }})</span>
+                                    </td>
+                                    {% for my_item in distribution %}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ distribution.get(my_item,"0") }}%</td>
+                                    {% endfor %}
+                                </tr>
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        Active developers
+                                        <span class="text-gray-500 font-normal">({{ data.get("active_devs") }})</span>
+                                    </td>
+                                    {% for my_item in active_distribution %}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ active_distribution.get(my_item,"0") }}%</td>
+                                    {% endfor %}
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
 
-                <tbody>
-                    <tr>
-                        <th>All time ({{data.get("developers")}})</th>
-                        {% for my_item in distribution %}
-                        <td>{{ distribution.get(my_item,"0") }} %</td>
-                        {% endfor %}
-                    </tr>
-
-                    <tr>
-                        <th>Active developers ({{data.get("active_devs")}})</th>
-                        {% for my_item in active_distribution %}
-                        <td>{{ active_distribution.get(my_item,"0") }} %</td>
-                        {% endfor %}
-                    </tr>
-                </tbody>
-            </table>
-            "All time" is any developer who's contributed to the repo, where as
-            active developers are those who've committed in the last 90 days
-            (default) but shows their "tenure" or how long they have been
-            active.
+                    <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p class="text-sm text-gray-700">
+                            <strong class="text-blue-800">Explanation:</strong> 
+                            "All time" includes any developer who has ever contributed to the repository, 
+                            while "Active developers" are those who have committed within the last 90 days (default). 
+                            The tenure shown represents how long they have been active in the codebase.
+                        </p>
+                    </div>
+                </div>
+            </div>
         </div>
 
         {% include '_footer_scripts.html' %}
