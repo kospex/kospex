@@ -151,7 +151,7 @@ class KospexQuery:
             params.append(repo_id)
 
         summary_sql = f"""SELECT _repo_id, _git_server, _git_owner, _git_repo,
-        Provider, Filename, committer_when, Language, tech_type, hash, latest
+        Provider, Filename, committer_when, Language, tech_type, hash, Lines, latest
         FROM file_metadata
         WHERE latest = 1 {where_clause}
         """
@@ -518,6 +518,25 @@ class KospexQuery:
 
         return set(devs)
 
+    def get_collabs(self,repo_id=None):
+        """
+        Get the author committer states dependencies for the given repo_id.
+        """
+
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        #kd.select_raw("DISTINCT(author_email) as author_email")
+        #kd.select_raw("DISTINCT(committer_email) as committer_email")
+        kd.select("author_email")
+        kd.select("committer_email")
+        kd.select_as("count(*)",'commits')
+        kd.where("_repo_id","=",repo_id)
+        kd.group_by("author_email")
+        kd.group_by("committer_email")
+        results = kd.execute()
+
+        return results
+
     def get_activity_stats(self,params=None):
         """
         Return stats about all, server, org or repos
@@ -798,14 +817,14 @@ class KospexQuery:
         params = []
         params.append(repo_id)
 
-        sql = """SELECT Location, filename, Lines, Complexity, Language
+        sql = """SELECT Provider, filename, Lines, Complexity, Language
         FROM file_metadata
         WHERE _repo_id = ? AND latest = 1
         """
         metadata = {}
         data = self.kospex_db.query(sql, params)
         for row in data:
-            metadata[row['Location']] = row
+            metadata[row['Provider']] = row
 
         return metadata
 
