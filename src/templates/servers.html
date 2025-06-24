@@ -1,53 +1,140 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Bootstrap Web App</title>
-        <link
-            href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
-            rel="stylesheet"
-        />
+        <title>Git Servers - Kospex Web</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <style>
+            /* Custom styles for DataTables with Tailwind */
+            .dataTables_wrapper .dataTables_length select,
+            .dataTables_wrapper .dataTables_filter input {
+                @apply border border-gray-300 rounded px-3 py-2 text-sm;
+            }
+            .dataTables_wrapper .dataTables_length,
+            .dataTables_wrapper .dataTables_filter,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                @apply text-sm text-gray-700;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+                @apply bg-blue-600 text-white border-blue-600;
+            }
+        </style>
     </head>
-    <body>
-        {% include 'header.html' %}
+    <body class="bg-white">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
+                    <div class="flex space-x-8">
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
 
         <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            <!-- Page Header -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-4">Git Servers</h1>
+                    <p class="text-gray-600">Overview of Git servers and their repository statistics.</p>
+                </div>
+            </div>
 
-        <div class="container mt-5">
-            <h1 class="mb-4">Servers</h1>
+            <!-- Summary Cards -->
+            <div class="flex flex-row gap-6 mb-8">
+                <!-- Total Servers -->
+                <div class="flex-1 bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2">Total Servers</h4>
+                        <h2 class="text-3xl font-bold text-gray-900">{{ data|length if data else 0 }}</h2>
+                    </div>
+                </div>
 
-            <table class="table table-striped sortable compact" id="myTable">
-                <thead>
-                    <tr>
-                        <th>Server</th>
-                        <th># Repos</th>
-                        <th># developers</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in data %}
-                    <tr>
-                        <td class="dt-body-left">{{ row['_git_server'] }}</td>
-                        <td class="dt-body-right">
-                            <a href="/repos/?server={{ row['_git_server']}}"
-                                >{{ row['repos'] }}</a
-                            >
-                        </td>
-                        <td class="dt-body-right">{{ row['developers'] }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                <!-- Total Repositories -->
+                <div class="flex-1 bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2">Total Repositories</h4>
+                        <h2 class="text-3xl font-bold text-gray-900">
+                            {% set total_repos = data | sum(attribute='repos') if data else 0 %}
+                            {{ total_repos }}
+                        </h2>
+                    </div>
+                </div>
+
+                <!-- Total Developers -->
+                <div class="flex-1 bg-white border border-gray-200 rounded-lg shadow-sm">
+                    <div class="p-6 text-center">
+                        <h4 class="text-lg font-medium text-gray-900 mb-2">Total Developers</h4>
+                        <h2 class="text-3xl font-bold text-gray-900">
+                            {% set total_devs = data | sum(attribute='developers') if data else 0 %}
+                            {{ total_devs }}
+                        </h2>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Servers Table -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Server Details</h2>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="myTable">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Server</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Repositories</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Developers</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in data %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        {{ row['_git_server'] }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                                        <a href="/repos/?server={{ row['_git_server'] }}" class="text-blue-600 hover:text-blue-800 underline font-medium">
+                                            {{ row['repos'] }}
+                                        </a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
+                                        {{ row['developers'] }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        {% include '_footer_scripts.html' %} {% include
-        '_datatable_scripts.html' %}
+        {% include '_footer_scripts.html' %}
+        {% include '_datatable_scripts.html' %}
 
         <script>
             $(document).ready(function () {
                 $("#myTable").DataTable({
                     order: [[1, "desc"]],
+                    responsive: true,
+                    pageLength: 25,
+                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
                 });
             });
         </script>

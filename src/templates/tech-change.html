@@ -1,78 +1,218 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Technology Change Analysis - Kospex Web</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css" />
+    </head>
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tech Change</title>
-    <!-- Link to Bootstrap CSS -->
-    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    
-</head>
+    <body class="bg-white">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a
+                        class="text-white text-lg font-medium hover:text-gray-300"
+                        href="/"
+                        >K. web</a
+                    >
+                    <div class="flex space-x-8">
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/repos/"
+                            >Repos</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/orgs/"
+                            >Orgs</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/developers/"
+                            >Developers</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/landscape/"
+                            >Landscape</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/metadata/"
+                            >Metadata</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/help/"
+                            >Help</a
+                        >
+                    </div>
+                </div>
+            </div>
+        </nav>
 
-<body>
+        <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            <!-- Page Header -->
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-4">
+                        Technology Change Analysis
+                    </h1>
+                    <p class="text-gray-600">
+                        Radar chart showing technology usage comparison between
+                        current and previous periods.
+                    </p>
+                </div>
+            </div>
 
-{% include 'header.html' %}
+            <!-- Chart Section -->
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Technology Usage Comparison
+                    </h2>
 
-<!-- Main content area -->
-<div class="container mt-5">
-    <h1 class="mb-4">Tech Change</h1>
-    <canvas id="radarChart"></canvas>
-</div>
+                    <div class="flex justify-center">
+                        <div class="w-full max-w-md">
+                            <canvas
+                                id="radarChart"
+                                class="w-full h-auto"
+                                style="max-height: 500px"
+                            ></canvas>
+                        </div>
+                    </div>
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-    const ctx = document.getElementById('radarChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'radar',
-        data: {
-            labels: {{ labels|list|tojson }},
-            datasets: [{
-                label: 'Current',
-                data: [65, 59, 90, 81,17],
-                fill: true,
-                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                borderColor: 'rgb(255, 99, 132)',
-                pointBackgroundColor: 'rgb(255, 99, 132)',
-                pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: 'rgb(255, 99, 132)'
-                }, {
-                label: 'Previous',
-                data: [28, 48, 40, 19,29],
-                fill: true,
-                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                borderColor: 'rgb(54, 162, 235)',
-                pointBackgroundColor: 'rgb(54, 162, 235)',
-                pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: 'rgb(54, 162, 235)'
-            }]
-        },
-        options: {
-            scales: {
-                y: {
-                    beginAtZero: true
+                    <!-- Legend -->
+                    <div class="mt-6 flex justify-center space-x-8">
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 bg-red-400 rounded mr-2"></div>
+                            <span class="text-sm text-gray-700"
+                                >Current Period</span
+                            >
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 bg-blue-400 rounded mr-2"></div>
+                            <span class="text-sm text-gray-700"
+                                >Previous Period</span
+                            >
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Information -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                        Related Analysis
+                    </h3>
+                    <div
+                        class="bg-blue-50 border border-blue-200 rounded-lg p-4"
+                    >
+                        <div class="flex items-start">
+                            <div class="flex-shrink-0">
+                                <svg
+                                    class="h-5 w-5 text-blue-400"
+                                    fill="currentColor"
+                                    viewBox="0 0 20 20"
+                                >
+                                    <path
+                                        fill-rule="evenodd"
+                                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                        clip-rule="evenodd"
+                                    ></path>
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-blue-700">
+                                    For additional insights into your
+                                    development ecosystem, you may want to view
+                                    <a
+                                        href="/meta/author-domains"
+                                        class="font-medium underline hover:text-blue-800"
+                                        >Author email domains</a
+                                    >
+                                    to understand contributor organization
+                                    patterns.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %}
+        <script src="/static/js/chart.min.js"></script>
+        <script>
+            const ctx = document.getElementById('radarChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: {{ labels|list|tojson }},
+                    datasets: [{
+                        label: 'Current',
+                        data: [65, 59, 90, 81, 17],
+                        fill: true,
+                        backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                        borderColor: 'rgb(239, 68, 68)',
+                        pointBackgroundColor: 'rgb(239, 68, 68)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgb(239, 68, 68)'
+                    }, {
+                        label: 'Previous',
+                        data: [28, 48, 40, 19, 29],
+                        fill: true,
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                        borderColor: 'rgb(59, 130, 246)',
+                        pointBackgroundColor: 'rgb(59, 130, 246)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgb(59, 130, 246)'
+                    }]
                 },
-                r: {
-                    pointLabels: {
-                    font: {
-                        size: 20
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            pointLabels: {
+                                font: {
+                                    size: 14
+                                },
+                                color: '#374151'
+                            },
+                            grid: {
+                                color: '#e5e7eb'
+                            },
+                            angleLines: {
+                                color: '#e5e7eb'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: {
+                                    size: 14
+                                },
+                                color: '#374151'
+                            }
+                        }
                     }
                 }
-            }
-        }
-    }
-    });
-</script>
-
-<div class="container">
-    <br/>
-    Did you want to view <a href="/meta/author-domains"> Author email domains?</a>
-</div>
-
-{% include '_footer_scripts.html' %}
-
-</body>
+            });
+        </script>
+    </body>
 </html>
