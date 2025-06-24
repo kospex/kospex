@@ -21,12 +21,14 @@ kospex/
 ├── src/
 │   ├── static/
 │   │   ├── css/
-│   │   │   ├── input.css     # Tailwind source file
-│   │   │   └── tailwind.css  # Built CSS (checked into git)
+│   │   │   ├── input.css        # Tailwind source file
+│   │   │   ├── tailwind.css     # Built CSS (checked into git)
+│   │   │   └── datatables.min.css # DataTables CSS (checked into git)
 │   │   └── js/
-│   │       ├── d3.min.js     # Built JS files (checked into git)
+│   │       ├── d3.min.js        # Built JS files (checked into git)
 │   │       ├── chart.min.js
-│   │       └── datatables.min.js
+│   │       ├── datatables.min.js
+│   │       └── jquery.min.js
 │   └── templates/
 │       └── *.html            # HTML templates using static assets
 └── pyproject.toml           # Updated to include static assets
@@ -40,7 +42,8 @@ kospex/
 ### JavaScript Libraries
 - **D3.js**: Data visualization library for bubble charts and treemaps
 - **Chart.js**: Chart library for various chart types
-- **DataTables**: jQuery plugin for enhanced HTML tables
+- **DataTables**: jQuery plugin for enhanced HTML tables (includes CSS for sorting arrows and styling)
+- **jQuery**: Required dependency for DataTables functionality
 
 ## Setup Instructions
 
@@ -112,17 +115,32 @@ Before creating a release or committing changes:
 
 ### Updating JavaScript Libraries
 
-1. **Update package.json** with new versions
-2. **Run npm update**:
+To update DataTables, jQuery, D3.js, Chart.js or other dependencies:
+
+1. **Update specific library**:
    ```bash
+   # Update DataTables (both JS and CSS)
+   npm update datatables.net datatables.net-dt
+   
+   # Update jQuery
+   npm update jquery
+   
+   # Update all dependencies
    npm update
    ```
-3. **Rebuild assets**:
+
+2. **Rebuild assets**:
    ```bash
+   npm run copy-deps  # Copy JS/CSS from node_modules
+   npm run build-css  # Rebuild Tailwind CSS
+   # Or run both:
    npm run build
    ```
-4. **Test the application** to ensure compatibility
-5. **Commit changes**
+
+3. **Test the application** to ensure compatibility
+4. **Commit changes** including updated package-lock.json and static assets
+
+**Note**: DataTables includes both JavaScript and CSS files. The build process automatically copies both the functionality (`datatables.min.js`) and styling (`datatables.min.css`) which includes sorting arrows and table styling.
 
 ### Adding New JavaScript Libraries
 
@@ -137,7 +155,14 @@ Before creating a release or committing changes:
      // existing deps...
      {
        from: 'node_modules/library-name/dist/library.min.js',
-       to: 'src/static/js/library.min.js'
+       to: 'src/static/js/library.min.js',
+       name: 'Library Name'
+     },
+     // For libraries with CSS:
+     {
+       from: 'node_modules/library-name/dist/library.min.css', 
+       to: 'src/static/css/library.min.css',
+       name: 'Library CSS'
      }
    ];
    ```
@@ -149,6 +174,9 @@ Before creating a release or committing changes:
 
 4. **Update templates** to use the new library:
    ```html
+   <!-- For CSS libraries -->
+   <link rel="stylesheet" href="/static/css/library.min.css"/>
+   <!-- For JavaScript libraries -->
    <script src="/static/js/library.min.js"></script>
    ```
 
@@ -209,8 +237,9 @@ npm outdated
 ## File Distribution
 
 The following files are included in the Python package distribution:
-- `src/static/css/tailwind.css` - Built CSS file
-- `src/static/js/*.js` - All JavaScript libraries
+- `src/static/css/tailwind.css` - Built Tailwind CSS file
+- `src/static/css/datatables.min.css` - DataTables CSS (sorting arrows, styling)
+- `src/static/js/*.js` - All JavaScript libraries (jQuery, DataTables, D3.js, Chart.js)
 - `src/templates/*.html` - HTML templates
 
 The following files are development-only (not distributed):
@@ -219,3 +248,16 @@ The following files are development-only (not distributed):
 - `build-static.js` - Build script
 - `src/static/css/input.css` - Tailwind source
 - `node_modules/` - Node.js dependencies folder
+
+## DataTables Integration
+
+DataTables requires both JavaScript and CSS files:
+- **JavaScript**: `/static/js/datatables.min.js` - Table functionality
+- **CSS**: `/static/css/datatables.min.css` - Sorting arrows, hover effects, pagination styling
+- **Dependency**: `/static/js/jquery.min.js` - Required by DataTables
+
+Templates include DataTables via:
+```html
+{% include '_footer_scripts.html' %}      <!-- Includes jQuery -->
+{% include '_datatable_scripts.html' %}   <!-- Includes DataTables CSS + JS -->
+```

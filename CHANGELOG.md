@@ -20,8 +20,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## VERSION - DATE
 
+## Major Changes (non breaking)
+
+This version did a refactor to using [TailwindCSS](https://tailwindcss.com/) and
+now manages the CSS and JS files programatically.
+[Documentation for TailwindCSS web and JS assets](/web-assets.md)
+
 ### Added
 - [Create local static css and js files and package management](https://github.com/kospex/kospex/issues/31)
+- [Implemented Author Collaborator view](https://github.com/kospex/kospex/issues/32)
+- Exposed the collaborator feature (/collab/) via the /repo/ page to show author / committer summary
+- Exposed the tenure feature (/tenure/) via the /repo/ page to show stats on current commits and authors
 
 ### Changed
 - Removed broken hotspots link from repo view
