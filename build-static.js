@@ -24,6 +24,11 @@ const deps = [
     from: 'node_modules/jquery/dist/jquery.min.js',
     to: 'src/static/js/jquery.min.js',
     name: 'jQuery'
+  },
+  {
+    from: 'node_modules/datatables.net-dt/css/jquery.dataTables.min.css',
+    to: 'src/static/css/datatables.min.css',
+    name: 'DataTables CSS'
   }
 ];
 
