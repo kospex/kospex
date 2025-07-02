@@ -22,8 +22,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Major Changes (non breaking)
 
-This version did a refactor to using [TailwindCSS](https://tailwindcss.com/) and
-now manages the CSS and JS files programatically.
+This version did a refactor from Bootstrap 4 to [TailwindCSS](https://tailwindcss.com/) and
+now manages the CSS and JS files programatically and stores local versions
 [Documentation for TailwindCSS web and JS assets](/web-assets.md)
 
 ### Added
