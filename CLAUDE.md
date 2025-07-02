@@ -26,10 +26,10 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 ### Additional Tools
 - **kgit.py** - Git operations wrapper with kospex directory structure
 - **krunner.py** - Batch processing and automation
-- **kreaper.py** - Data harvesting and collection
+- **kreaper.py** - Data deletion
 - **kwatch.py** - File system monitoring
 - **ksyncer.py** - Synchronization utilities
-- **kospex_agent.py** - AI agent for automated analysis
+- **kospex_agent.py** - Agent (stub) to sync repos in the background and generate summaries
 
 ## Key Dependencies
 
@@ -110,9 +110,9 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - Use Python 3.11+ features
 - Follow existing patterns in codebase
 - Use Click for CLI commands with proper help text
-- Database operations through kospex_core abstractions
+- Database operations through kospex_core and kospex_query abstractions 
 - Web templates use Jinja2 with TailwindCSS classes
-- JavaScript uses vanilla JS with jQuery for DOM manipulation
+- JavaScript uses JS with jQuery for DOM manipulation
 
 ### Testing
 - Tests located in `/tests/` directory
@@ -131,7 +131,7 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 ### Environment Variables
 - `KOSPEX_CODE` - Base directory for git repositories (default: ~/code)
 - `KOSPEX_HOME` - Config directory (default: ~/kospex)
-- `GITHUB_TOKEN` - GitHub API token for enhanced rate limits
+- `GITHUB_TOKEN` - GitHub API token for enhanced rate limits and private repo queries
 
 ### Key Files
 - `pyproject.toml` - Python project configuration and dependencies
@@ -152,7 +152,7 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - Most tables include `repo_id` in format `GIT_SERVER~OWNER~REPO`
 - Author identification primarily uses `author_email` from git
 - Time-based queries often filter by commit date ranges
-- Technology landscape aggregates by file extensions and scc metadata
+- Technology landscape aggregates by file extensions and scc metadata, also uses panopticas
 
 ## FastAPI Migration
 
