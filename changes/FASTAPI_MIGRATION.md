@@ -19,6 +19,29 @@ This document outlines the migration from Flask (`kweb.py`) to FastAPI (`kweb2.p
 | Servers | `@app.route('/servers/')` | `@app.get("/servers/")` | ✅ Complete |
 | Metadata | `@app.route('/metadata/')` | `@app.get("/metadata/")` | ✅ Complete |
 | Orphans | `@app.route('/orphans/<id>')` | `@app.get("/orphans/{id}")` | ✅ Complete |
+| Bubble/Treemap | `@app.route('/bubble/<id>')` | `@app.get("/bubble/{id}")` | ✅ Complete |
+| OSI (Open Source Inventory) | `@app.route('/osi/<id>')` | `@app.get("/osi/{id}")` | ✅ Complete |
+| Collaboration | `@app.route('/collab/<repo_id>')` | `@app.get("/collab/{repo_id}")` | ✅ Complete |
+| Organizations | `@app.route('/orgs/<server>')` | `@app.get("/orgs/{server}")` | ✅ Complete |
+| Repositories | `@app.route('/repos/<id>')` | `@app.get("/repos/{id}")` | ✅ Complete |
+| Repository View | `@app.route('/repo/<repo_id>')` | `@app.get("/repo/{repo_id}")` | ✅ Complete |
+| Technology Landscape | `@app.route('/landscape/<id>')` | `@app.get("/landscape/{id}")` | ✅ Complete |
+| Developers | `@app.route('/developers/')` | `@app.get("/developers/")` | ✅ Complete |
+| Graph Views | `@app.route('/graph/<org_key>')` | `@app.get("/graph/{org_key}")` | ✅ Complete |
+| Graph Data API | `@app.route('/org-graph/<focus>/<org_key>')` | `@app.get("/org-graph/{focus}/{org_key}")` | ✅ Complete |
+| Developer Tenure | `@app.route('/tenure/<id>')` | `@app.get("/tenure/{id}")` | ✅ Complete |
+| Author Domains | `@app.route('/meta/author-domains')` | `@app.get("/meta/author-domains")` | ✅ Complete |
+| Tech Change Radar | `@app.route('/tech-change/')` | `@app.get("/tech-change/")` | ✅ Complete |
+| Technology Filter | `@app.route('/tech/<tech>')` | `@app.get("/tech/{tech}")` | ✅ Complete |
+| Individual Developer | `@app.route('/developer/<id>')` | `@app.get("/developer/{id}")` | ✅ Complete |
+| Observations | `@app.route('/observations/')` | `@app.get("/observations/")` | ✅ Complete |
+| Commits | `@app.route('/commits/')` | `@app.get("/commits/")` | ✅ Complete |
+| Dependencies | `@app.route('/dependencies/<id>')` | `@app.get("/dependencies/{id}")` | ✅ Complete |
+| Package Check | `@app.route('/package-check/')` | `@app.get("/package-check/")` | ✅ Complete |
+| Package Upload | `@app.route('/package-check/upload')` | `@app.post("/package-check/upload")` | ✅ Complete |
+| Hotspots | `@app.route('/hotspots/<repo_id>')` | `@app.get("/hotspots/{repo_id}")` | ✅ Complete |
+| Repository Files | `@app.route('/files/repo/<repo_id>')` | `@app.get("/files/repo/{repo_id}")` | ✅ Complete |
+| Supply Chain | `@app.route('/supply-chain/')` | `@app.get("/supply-chain/")` | ✅ Complete |
 | Health Check | N/A | `@app.get("/health")` | ✅ New Feature |
 
 ## Key Differences
@@ -142,18 +165,27 @@ The 404 page uses the same Tailwind CSS styling and navigation as the rest of th
 4. **Modern Async**: Native async/await support
 5. **Better Validation**: Automatic request/response validation
 
-## Next Steps
+## Migration Complete! 🎉
 
-To complete the migration, the following Flask endpoints need to be converted:
+**All Flask endpoints have been successfully migrated to FastAPI!**
 
-1. All remaining routes from `kweb.py`
-2. Developer detail pages
-3. Repository listings
-4. Organization views
-5. Technology landscape
-6. Dependencies and security features
-7. Graph visualizations
-8. File upload/download handling
+**Migration Progress: 33/33 endpoints complete (100%)**
+
+**All Flask endpoints have been successfully migrated to FastAPI!**
+
+The migration from Flask (`kweb.py`) to FastAPI (`kweb2.py`) is now **100% complete**. All 33 endpoints have been migrated with full feature parity and improved:
+
+- **Type Safety**: FastAPI's automatic type validation
+- **Performance**: Async support and better request handling  
+- **Documentation**: Auto-generated OpenAPI/Swagger docs at `/docs`
+- **Error Handling**: Structured exception handling with proper HTTP status codes
+- **Logging**: Comprehensive request and error logging
+- **Security**: Better input validation and error responses
+
+## Ready for Production
+
+The FastAPI version (`kweb2.py`) now includes all functionality from the original Flask version plus additional features like health checks and enhanced error handling.
+
 
 ## Testing
 
@@ -161,6 +193,33 @@ To complete the migration, the following Flask endpoints need to be converted:
 2. **Static Assets**: CSS, JS, and images served correctly
 3. **Database Integration**: KospexQuery integration maintained
 4. **Helper Services**: HelpService and other utilities preserved
+
+## Refactoring and Service Layer
+
+### Graph Service Refactoring
+
+The complex `org_graph` method has been refactored into a reusable service:
+
+**New Service**: `/src/kweb_graph_service.py`
+- **GraphService Class**: Handles all graph data generation logic
+- **Separation of Concerns**: Graph logic separated from web routing
+- **Reusability**: Same service used in both Flask and FastAPI
+- **Testability**: Service can be unit tested independently
+
+**Benefits**:
+- Cleaner route handlers (reduced from 140+ lines to 3 lines)
+- Consistent graph generation across both web frameworks
+- Easier maintenance and debugging
+- Better code organization
+
+**Usage**:
+```python
+# Flask
+return graph_service.get_graph_data(focus, org_key, request.args)
+
+# FastAPI  
+return graph_service.get_graph_data(focus, org_key, dict(request.query_params))
+```
 
 ## Configuration
 
@@ -170,6 +229,7 @@ The FastAPI app includes:
 - **Jinja2 Templates**: Same template directory as Flask version
 - **Error Handling**: Structured exception handling
 - **Logging**: Request and error logging
+- **Service Layer**: Shared business logic between Flask and FastAPI
 
 ## Production Considerations
 
