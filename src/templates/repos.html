@@ -27,22 +27,7 @@
         </style>
     </head>
     <body class="bg-white">
-        <!-- Header with solid black background -->
-        <nav class="bg-gray-800 text-white">
-            <div class="container mx-auto px-4">
-                <div class="flex items-center justify-between h-16">
-                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
-                    <div class="flex space-x-8">
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
-                    </div>
-                </div>
-            </div>
-        </nav>
+        {% include '_header.html' %}
 
         <!-- Main content area -->
         <div class="container mx-auto px-4 mt-12">
@@ -156,9 +141,8 @@
                 </div>
             </div>
             {% endif %}
-        </div>
 
-        {% if techs %}
+{% if techs %}
         <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
             <div class="p-6">
                 <h2 class="text-2xl font-bold text-gray-900 mb-6">Observed Technologies</h2>
@@ -237,6 +221,9 @@
             });
         </script>
         {% endif %}
+        </div>
+
+        
 
     </body>
 </html>
