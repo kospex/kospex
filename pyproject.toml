@@ -40,6 +40,7 @@ classifiers = ["Programming Language :: Python :: 3"]
 [project.scripts]
 kgit = "kgit:cli"
 kospex = "kospex:cli"
+kospex-agent = "kospex_agent:cli"
 krunner = "krunner:cli"
 kreaper = "kreaper:cli"
 kweb = "kweb:kweb"
