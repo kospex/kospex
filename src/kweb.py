@@ -3,7 +3,7 @@
 from os.path import basename
 import sys
 import json
-import base64
+
 import pprint
 from statistics import mean, median, mode, stdev, quantiles
 from collections import Counter, OrderedDict
@@ -14,11 +14,13 @@ import kospex_web as KospexWeb
 import kospex_utils as KospexUtils
 from kospex_core import Kospex, GitRepo
 from kweb_help_service import HelpService
+from kweb_graph_service import GraphService
 
 app = Flask(__name__)
 
 # Initialize services
 help_service = HelpService()
+graph_service = GraphService()
 
 @app.route('/summary/', defaults={'id': None})
 @app.route('/summary/<id>')
@@ -416,11 +418,6 @@ def page_not_found(e):
 
 # Experimental and Development Routes
 
-@app.route('/bootstrap/')
-def bootstrap():
-    """ bootstrap 5 dev playground. """
-    return render_template('bootstrap5.html')
-
 @app.route('/tech-change/')
 def tech_change():
     """ Radars for tech change. """
@@ -504,7 +501,6 @@ def bubble(id,template):
     /bubble/repo/<org_key>
 
     """
-
     link_url = ""
 
     if KospexUtils.parse_repo_id(id):
@@ -514,70 +510,10 @@ def bubble(id,template):
     else:
         link_url = f"{id}"
 
-    #if "~" in repo_id:
-    #    link_url = f"repo/{repo_id}"
-    #else:
-    #    print("maybe a dev?")
-    #    link_url = f"dev/{repo_id}"
     html_template = f"{template}.html"
 
     return render_template(html_template,link_url=link_url,
         template=template,id=id)
-
-    #return render_template('bubble.html',link_url=link_url)
-    #return render_template('treemap.html',link_url=link_url)
-
-# This was a spike to break out the graph work and make it less clunky
-# @app.route('/graph-api/<id>')
-# def graph_api(id):
-
-#     org_info = []
-#     data = {
-#             "nodes": [],
-#             "links": []
-#     }
-#     links = []
-#     nodes = []
-
-#     if KospexUtils.parse_org_key(id):
-#         org_info = KospexQuery().get_graph_info(org_key=id)
-
-#     elif KospexUtils.parse_repo_id(id):
-#         org_info = KospexQuery().get_graph_info(repo_id=id)
-
-#     elif KospexUtils.is_base64(id):
-#         email = KospexUtils.decode_base64(id)
-#         org_info = KospexQuery().get_graph_info(author_email=email,
-#             by_repo=True)
-
-#     elif focus:
-
-#         if focus == "repo":
-#             org_info = KospexQuery().get_graph_info(repo_id=repo_id)
-#         else:
-#             org_info = KospexQuery().get_graph_info(author_email=author_email,
-#                 by_repo=True)
-#             print("Unknown focus")
-#             print(org_info)
-
-#         print(f"in focus, with focus: {focus}")
-
-#     elif repo_id:
-#         org_info = KospexQuery().get_repo_files_graph_info(repo_id=repo_id)
-#         #org_info = KospexQuery().get_graph_info(org_key=org_key)
-
-#     elif author_email:
-#         # This should be the b64 parameter that's decoded
-#         org_info = KospexQuery().get_graph_info(author_email=author_email)
-
-#     elif git_server:
-#         org_info = KospexQuery().get_graph_info(git_server=git_server)
-
-#     data["nodes"] = nodes
-#     data["links"] = links
-
-#     return data
-
 
 @app.route('/graph', defaults={'org_key': None})
 @app.route('/graph/', defaults={'org_key': None})
@@ -604,187 +540,9 @@ def graph(org_key):
 @app.route('/org-graph/', defaults={'org_key': None, "focus": None})
 @app.route('/org-graph/<org_key>',defaults={"focus": None})
 @app.route('/org-graph/<focus>/<org_key>')
-def org_graph(focus,org_key):
-    """
-    Return JSON data for the force directed graph.
-
-    """
-    ### MVP
-
-    params = KospexWeb.get_id_params(org_key)
-    repo_id = request.args.get('repo_id') or params.get("repo_id")
-    org_key = request.args.get('org_key') or params.get("org_key")
-    git_server = request.args.get('server') or params.get("server")
-
-    #repo_id = request.args.get('repo_id')
-    author_email = None
-    #git_server = None
-    # TODO we're hacking around if we're actualy passed a repo_id and not an org_key
-
-    if org_key:
-        repo_parts = KospexUtils.parse_repo_id(org_key)
-        if repo_parts:
-            repo_id = org_key
-            org_key = None
-        elif KospexUtils.parse_org_key(org_key):
-            print(f"looks like {org_key} is an org_key")
-
-        elif KospexUtils.is_base64(org_key):
-            # Doesn't look like an org_key
-            # Possibly an author email
-            base64_bytes = org_key.encode('ascii')
-            message_bytes = base64.b64decode(base64_bytes)
-            decoded = message_bytes.decode('ascii')
-            # Rough check to see if it's an email
-            if "@" in decoded:
-                org_key = None
-                author_email = decoded
-        else:
-            # Possibly just a git server
-            git_server = org_key
-            org_key = None
-
-
-    print(f"org_key: {org_key}\nrepo_id: {repo_id}\nfocus: {focus}")
-
-    org_info = []
-
-    if org_key:
-        org_info = KospexQuery().get_graph_info(org_key=org_key)
-
-    elif focus:
-
-        if focus == "repo":
-            org_info = KospexQuery().get_graph_info(repo_id=repo_id)
-        else:
-            org_info = KospexQuery().get_graph_info(author_email=author_email,
-                by_repo=True)
-            print("Unknown focus")
-
-        print(f"in focus, with focus: {focus}")
-
-    elif repo_id:
-        org_info = KospexQuery().get_repo_files_graph_info(repo_id=repo_id)
-        #org_info = KospexQuery().get_graph_info(org_key=org_key)
-
-    elif author_email:
-        # This should be the b64 parameter that's decoded
-        org_info = KospexQuery().get_graph_info(author_email=author_email)
-
-    elif git_server:
-        org_info = KospexQuery().get_graph_info(git_server=git_server)
-
-    else:
-        author_email = request.args.get('author_email')
-        if author_email:
-            author_email = author_email.replace(" ","+")
-        org_info = KospexQuery().get_graph_info(author_email=author_email)
-
-    dev_lookup = {}
-    repo_lookup = {}
-    file_lookup = {}
-    links = []
-    nodes = []
-
-    #print(org_info)
-
-    for element in org_info:
-
-        last_commit = element.get("last_commit")
-        status = KospexUtils.development_status(KospexUtils.days_ago(last_commit))
-
-        group_numbers = {}
-        group_numbers['Active'] = 1
-        group_numbers['Aging'] = 2
-        group_numbers['Stale'] = 3
-        group_numbers['Unmaintained'] = 4
-
-        group = 1
-        if org_key:
-            # we only have 1 group, and that's developers
-            group = 1
-            # in graph, group is used to link between
-        else:
-            group = group_numbers.get(status,4)
-
-        b64_email = KospexUtils.encode_base64(element.get('author'))
-
-        if element['author'] not in dev_lookup:
-            dev_lookup[element['author']] = { "id": element['author'],
-                                             "id_b64": b64_email,
-                                             "group": group,
-                                             "node_type": "developer",
-                                             "label": KospexUtils.extract_github_username(element['author']),
-                                             "info": element['author'],
-                                             "commits": element.get("commits"),
-                                             "status_group": group_numbers.get(status,4),
-                                             "status": status,
-                                             "last_commit": last_commit,
-                                             "repos": 1 }
-        else:
-            dev_lookup[element['author']]['repos'] += 1
-
-
-        if repo_id and not focus:
-            # We're handling files not repos
-            file_path = element.get('file_path')
-            if element.get('file_path') not in file_lookup:
-                file_lookup[element['file_path']] = { "id": element['file_path'],
-                                                "group": 2,
-                                                "label": basename(element['file_path']),
-                                                "info": element['file_path'] }
-
-        elif element['_repo_id'] not in repo_lookup:
-            repo_lookup[element['_repo_id']] = { "id": element['_repo_id'],
-                                                "group": 2,
-                                                "node_type": "repo",
-                                                "commits": element.get("commits",0),
-                                                "status_group": group_numbers.get(status,4),
-                                                "status": status,
-                                                "link": f"/repo/{element.get('_repo_id')}",
-                                                "last_commit": last_commit,
-                                                "label": element['_git_repo'],
-                                                "info": element['_repo_id'] }
-
-        link_key = "_repo_id"
-        if repo_id:
-            link_key = "file_path"
-
-        links.append({"source": element['author'],
-                      "target": element.get(link_key),
-                      "commits": element['commits']})
-
-    for element in dev_lookup:
-        nodes.append(dev_lookup[element])
-
-    for element in repo_lookup:
-        nodes.append(repo_lookup[element])
-
-    for element in file_lookup:
-        nodes.append(file_lookup[element])
-
-    data = {
-            "nodes": [
-                { "id": "Dev1", "group": 1, "info": "Developer 1 info" },
-                { "id": "Dev2", "group": 1, "info": "Developer 2 info" },
-                { "id": "Repo1", "group": 2, "info": "Repository 1 info" },
-                { "id": "Repo2", "group": 2, "info": "Repository 2 info" },
-                { "id": "Repo3", "group": 2, "info": "Repository 3 info" }
-            ],
-            "links": [
-                { "source": "Dev1", "target": "Repo1", "commits": 50 },
-                { "source": "Dev1", "target": "Repo2", "commits": 30 },
-                { "source": "Dev2", "target": "Repo1", "commits": 20 },
-                { "source": "Dev2", "target": "Repo3", "commits": 40 },
-                { "source": "Dev3", "target": "Repo2", "commits": 60 },
-                { "source": "Dev3", "target": "Repo3", "commits": 10 }
-            ]
-        }
-
-    data["nodes"] = nodes
-    data["links"] = links
-
-    return data
+def org_graph(focus, org_key):
+    """Return JSON data for the force directed graph."""
+    return graph_service.get_graph_data(focus, org_key, request.args)
 
 @app.route('/supply-chain/')
 def supply_chain():
@@ -930,14 +688,14 @@ def kweb():
             print("\n#\nRunning in DEBUG mode.\n#\n\n")
             if all_interfaces:
                 print("WARNING: LISTENING ON 0.0.0.0\n")
-                app.run(host="0.0.0.0",debug=True)
+                app.run(host="0.0.0.0", debug=True, threaded=False)
             else:
-                app.run(debug=True)
+                app.run(debug=True, threaded=False)
         else:
             exit("Unknown option, try -debug.")
     else:
         print("\n#\nRunning in NON debug, local mode.\n#\n\n")
-        app.run()
+        app.run(threaded=False)
 
 if __name__ == "__main__":
 

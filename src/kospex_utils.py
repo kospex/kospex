@@ -427,6 +427,8 @@ def parse_repo_id(repo_id):
     # TODO - Make this work with Gitlab URLs which have slashes
     # required for web requests
 
+    if not repo_id:
+        return None
     parts = repo_id.split('~')
     if len(parts) != 3:
         return None
@@ -1363,3 +1365,47 @@ def get_status_distribution(data):
             distribution[threshold] = 0
 
     return distribution
+
+def filenames_by_repo_id(json_data):
+    """
+    Analyzes a JSON array and returns filename statistics.
+
+    Args:
+        json_data (list): List of dictionaries containing file information
+
+    Returns:
+        list: List of tuples containing (filename, occurrence_count, unique_repo_count)
+    """
+    filename_stats = {}
+
+    for item in json_data:
+        filename = item.get('Filename')
+        repo_id = item.get('_repo_id')
+
+        if filename is None:
+            continue
+
+        if filename not in filename_stats:
+            filename_stats[filename] = {
+                'count': 0,
+                'repo_ids': set()
+            }
+
+        filename_stats[filename]['count'] += 1
+
+        if repo_id is not None:
+            filename_stats[filename]['repo_ids'].add(repo_id)
+
+    # Convert to list of tuples
+    result = []
+    for filename, stats in filename_stats.items():
+        result.append({
+                    'Filename': filename,
+                    'number': stats['count'],
+                    'repos': len(stats['repo_ids'])
+                })
+
+    # Sort by filename for consistent output
+    result.sort(key=lambda x: x['Filename'])
+
+    return result
