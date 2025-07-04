@@ -200,25 +200,63 @@
                 border: none;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             }
+
+            /* Modal styles */
+            .modal {
+                display: none;
+                position: fixed;
+                z-index: 1000;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+            }
+
+            .modal-content {
+                background-color: #fefefe;
+                margin: 15% auto;
+                padding: 20px;
+                border: none;
+                border-radius: 8px;
+                width: 400px;
+                max-width: 90%;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            }
+
+            .modal-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 15px;
+            }
+
+            .modal-title {
+                font-size: 18px;
+                font-weight: 600;
+                color: #dc2626;
+            }
+
+            .close {
+                color: #6b7280;
+                font-size: 28px;
+                font-weight: bold;
+                cursor: pointer;
+                line-height: 1;
+            }
+
+            .close:hover {
+                color: #374151;
+            }
+
+            .modal-body {
+                color: #374151;
+                line-height: 1.5;
+            }
         </style>
     </head>
     <body class="bg-gray-50">
-        <!-- Header with solid black background -->
-        <nav class="bg-gray-800 text-white">
-            <div class="container mx-auto px-4">
-                <div class="flex items-center justify-between h-16">
-                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
-                    <div class="flex space-x-8">
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
-                    </div>
-                </div>
-            </div>
-        </nav>
+        {% include '_header.html' %}
 
         <!-- Main content wrapper -->
         <div class="content-wrapper">
@@ -325,7 +363,30 @@
             </div>
         </div>
 
+        <!-- Error Modal -->
+        <div id="errorModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="modal-title">Error Loading Data</span>
+                    <span class="close">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <p>Could not load data. Please check your connection and try again.</p>
+                </div>
+            </div>
+        </div>
+
         <script>
+            function showErrorModal() {
+                const modal = document.getElementById('errorModal');
+                modal.style.display = 'block';
+            }
+
+            function hideErrorModal() {
+                const modal = document.getElementById('errorModal');
+                modal.style.display = 'none';
+            }
+
             async function fetchGraphData() {
                 try {
                     const response = await fetch("/org-graph/{{link_url}}");
@@ -336,6 +397,8 @@
                     return data;
                 } catch (error) {
                     console.error("Could not fetch graph data:", error);
+                    showErrorModal();
+                    return null;
                 }
             }
 
@@ -547,6 +610,9 @@
 
             async function createBubbleChart() {
                 originalData = await fetchGraphData();
+                if (!originalData) {
+                    return; // Error modal already shown
+                }
                 // Filter for only group 1 nodes on initial render
                 const initialNodes = originalData.nodes.filter(
                     (node) => node.node_type == "developer",
@@ -556,6 +622,15 @@
 
             // Call the function to create the bubble chart
             createBubbleChart();
+
+            // Modal event listeners
+            document.querySelector('.close').addEventListener('click', hideErrorModal);
+            window.addEventListener('click', function(event) {
+                const modal = document.getElementById('errorModal');
+                if (event.target === modal) {
+                    hideErrorModal();
+                }
+            });
 
             // Code for sidebar resizing
             const sidebar = document.getElementById("sidebar");
