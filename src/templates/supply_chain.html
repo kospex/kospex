@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Supply Chain Dependencies - Kospex Web</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <script src="/static/js/d3.min.js"></script>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+            }
+
+            .content-wrapper {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+                position: relative;
+            }
+
+            #sidebar {
+                width: 250px;
+                min-width: 100px;
+                max-width: 50%;
+                background-color: #f0f0f0;
+                padding: 20px;
+                box-sizing: border-box;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                resize: horizontal;
+                position: relative;
+            }
+
+            #graph {
+                flex-grow: 1;
+                position: relative;
+                overflow: hidden; /* Prevent content from overflowing */
+            }
+
+            #controls {
+                position: absolute;
+                top: 60px; /* Position below header */
+                right: 20px;
+                z-index: 100;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            #resetButton {
+                padding: 10px;
+                background-color: #f0f0f0;
+                border: 1px solid #999;
+                border-radius: 5px;
+                cursor: pointer;
+                width: 120px;
+            }
+
+            #zoomControls {
+                display: flex;
+                flex-direction: column;
+                background-color: #f0f0f0;
+                border: 1px solid #999;
+                border-radius: 5px;
+                overflow: hidden;
+            }
+
+            #zoomControls button {
+                cursor: pointer;
+                width: 120px;
+                height: 30px;
+                font-size: 16px;
+                line-height: 1;
+                border: none;
+                background-color: #f0f0f0;
+                border-bottom: 1px solid #ccc;
+            }
+
+            #zoomControls button:last-child {
+                border-bottom: none;
+            }
+
+            #zoomControls button:hover {
+                background-color: #e0e0e0;
+            }
+
+            .bubble {
+                cursor: pointer;
+            }
+
+            .bubble:hover {
+                stroke: #000;
+                stroke-width: 1.5px;
+            }
+
+            .bubble-label {
+                font: 10px sans-serif;
+                text-anchor: middle;
+                pointer-events: none;
+            }
+
+            .legend {
+                position: absolute;
+                bottom: 20px;
+                left: 3%;
+                display: flex;
+                align-items: center;
+                background-color: rgba(255, 255, 255, 0.8);
+                padding: 10px;
+                border-radius: 5px;
+                z-index: 100; /* Ensure legend stays on top */
+            }
+
+            .legend-item {
+                display: flex;
+                align-items: center;
+                margin-right: 20px;
+            }
+
+            .legend-color {
+                width: 20px;
+                height: 20px;
+                margin-right: 5px;
+                border-radius: 50%;
+            }
+
+            #nodeInfo {
+                margin-top: 20px;
+                padding: 10px;
+                background-color: white;
+                border-radius: 5px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+
+            .package-info {
+                display: none;
+            }
+
+            .package-info.active {
+                display: block;
+            }
+
+            .package-info h4 {
+                margin-top: 0;
+                color: #333;
+            }
+
+            .package-info p {
+                margin: 5px 0;
+                font-size: 14px;
+            }
+
+            .package-info .status {
+                padding: 5px 10px;
+                border-radius: 3px;
+                font-weight: bold;
+                margin-top: 10px;
+                display: inline-block;
+            }
+
+            .package-info .status.green {
+                background-color: #4caf50;
+                color: white;
+            }
+
+            .package-info .status.yellow {
+                background-color: #fff176;
+                color: #333;
+            }
+
+            .package-info .status.orange {
+                background-color: #ff9800;
+                color: white;
+            }
+
+            .package-info .status.red {
+                background-color: #f44336;
+                color: white;
+            }
+
+            /* Dark / Light mode styles */
+            body.dark-mode {
+                background-color: #121212;
+                color: #e0e0e0;
+            }
+
+            body.dark-mode #sidebar {
+                background-color: #222;
+                color: #e0e0e0;
+            }
+
+            body.dark-mode #nodeInfo {
+                background-color: #333;
+                color: #e0e0e0;
+                box-shadow: 0 2px 4px rgba(255, 255, 255, 0.1);
+            }
+
+            body.dark-mode #controls button,
+            body.dark-mode #zoomControls {
+                background-color: #333;
+                color: #e0e0e0;
+                border-color: #555;
+            }
+
+            body.dark-mode #zoomControls button {
+                background-color: #333;
+                color: #e0e0e0;
+                border-color: #555;
+            }
+
+            body.dark-mode #zoomControls button:hover {
+                background-color: #444;
+            }
+
+            body.dark-mode .legend {
+                background-color: rgba(40, 40, 40, 0.8);
+                color: #e0e0e0;
+            }
+
+            body.dark-mode .package-info h4 {
+                color: #e0e0e0; /* Light color for dark background */
+            }
+
+            body.dark-mode .package-info p {
+                color: #e0e0e0;
+            }
+
+            body.dark-mode #nodeInfo * {
+                color: #e0e0e0;
+            }
+
+            body.dark-mode .package-info .status {
+                /* Adjust as needed for good contrast with status backgrounds */
+                color: inherit; /* This will keep the existing color for each status type */
+            }
+
+            #toggleMode {
+                margin-top: 10px;
+                padding: 10px;
+                background-color: #f0f0f0;
+                border: 1px solid #999;
+                border-radius: 5px;
+                cursor: pointer;
+                width: 120px;
+            }
+        </style>
+    </head>
+    <body>
+        {% include '_header.html' %}
+        <!-- Sidebar and Graph -->
+        <div class="content-wrapper">
+            <div id="sidebar">
+                <h3>Dependency Information</h3>
+                <div id="nodeInfo">
+                    <p>Click on a node to see its information.</p>
+                </div>
+            </div>
+            <div id="graph"></div>
+            <div id="controls">
+                <button id="resetButton">Reset View</button>
+                <div id="zoomControls">
+                    <button id="zoomIn">Zoom In (+)</button>
+                    <button id="zoomOut">Zoom Out (-)</button>
+                </div>
+                <button id="toggleMode">Dark Mode</button>
+            </div>
+        </div>
+
+        <script>
+            const data = {{ data|tojson|safe }}
+
+            // Function to format date as YYYY-MM-DD
+            function formatDate(dateString) {
+                if (!dateString) return "Unknown";
+                try {
+                    const date = new Date(dateString);
+                    // Check if date is valid
+                    if (isNaN(date.getTime())) return dateString;
+
+                    return date.toISOString().split('T')[0]; // Returns YYYY-MM-DD
+                } catch(e) {
+                    // If there's any parsing error, return the original string
+                    return dateString;
+                }
+            }
+
+            // Calculate size scale based on versions_behind
+            const minSize = 15;
+            const maxSize = 40;
+            const sizeScale = d3.scaleLinear()
+                .domain([0, d3.max(data.nodes, d => d.versions_behind)])
+                .range([minSize, maxSize]);
+
+            // Add size to each node based on versions_behind
+            data.nodes.forEach(node => {
+                node.size = sizeScale(node.versions_behind);
+            });
+
+            // Set up the SVG
+            const width = window.innerWidth - 250;
+            const height = window.innerHeight;
+
+            // Create the SVG with zoom capability
+            const svg = d3.select("#graph")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            // Add a group for zoom transformation
+            const g = svg.append("g");
+
+            // Create zoom behavior
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 5]) // Limit zoom scale from 0.1x to 5x
+                .on("zoom", (event) => {
+                    g.attr("transform", event.transform);
+                });
+
+            // Apply zoom behavior to SVG
+            svg.call(zoom);
+
+            // Color scale based on status
+            const color = d3.scaleOrdinal()
+                .domain(["green", "yellow", "orange", "red"])
+                .range(["#4CAF50", "#FFF176", "#FF9800", "#F44336"]);
+
+            // Create the simulation
+            const simulation = d3.forceSimulation(data.nodes)
+                .force("charge", d3.forceManyBody().strength(-20))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collision", d3.forceCollide().radius(d => d.size +5));
+
+            // Add nodes
+            const node = g.selectAll(".node")
+                .data(data.nodes)
+                .enter()
+                .append("g")
+                .attr("class", "node")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended))
+                .on("click", function(event, d) {
+                    // Update sidebar information
+                    const nodeInfo = d3.select("#nodeInfo");
+                    
+                    // Create the package parameter for the dependency link
+                    const packageParam = `${d.ecosystem || 'npm'}:${d.name}:${d.version}`;
+                    const dependencyUrl = `/supply-chain/?package=${encodeURIComponent(packageParam)}`;
+                    
+                    nodeInfo.html(`
+                        <div class="package-info active">
+                            <h4>${d.name}</h4>
+                            <p><strong>Version:</strong> ${d.version} 
+                            </p>
+                            <p>
+                               <a href="${dependencyUrl}" 
+                                  style="color: #007bff; text-decoration: none; font-size: 12px; margin-left: 8px;"
+                                  onmouseover="this.style.textDecoration='underline'"
+                                  onmouseout="this.style.textDecoration='none'">
+                                  view dependencies
+                               </a>
+                            </p>                            
+                            <p><strong>Published:</strong> ${formatDate(d.publishedAt)}</p>
+                            <p><strong>Versions behind:</strong> ${d.versions_behind}</p>
+                            <p><strong>Advisories:</strong> ${d.advisories}</p>
+                            <p><strong>Malware detected:</strong> ${d.malware ? "Yes" : "No"}</p>
+                            <div class="status ${getStatusClass(d)}">${getStatusText(d)}</div>
+                        </div>
+                    `);
+                });
+
+            // Add circles
+            node.append("circle")
+                .attr("class", "bubble")
+                .attr("r", d => d.size)
+                .style("fill", d => {
+                    if (d.malware) return color("red");
+                    if (d.advisories > 0) return color("orange");
+                    const monthsBehind = d.versions_behind;
+                    if (monthsBehind <= 2) return color("green");
+                    if (monthsBehind <= 6) return color("yellow");
+                    return color("orange");
+                });
+
+            // Add labels
+            node.append("text")
+                .attr("class", "bubble-label")
+                .attr("dy", ".3em")
+                .text(d => d.name);
+
+            // Add tooltips
+            node.append("title")
+                .text(d => `${d.name} v${d.version}\nPublished: ${formatDate(d.publishedAt)}\nVersions behind: ${d.versions_behind}\nAdvisories: ${d.advisories}\nMalware: ${d.malware}`);
+
+            // Update positions on each tick
+            simulation.on("tick", () => {
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+            });
+
+            // Drag functions
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                // Keep nodes in fixed position after drag
+                // Comment out the next two lines if you want nodes to go back to simulation after dragging
+                // d.fx = null;
+                // d.fy = null;
+            }
+
+            // Reset button functionality
+            document.getElementById("resetButton").addEventListener("click", () => {
+                // Reset zoom
+                svg.transition().duration(750).call(
+                    zoom.transform,
+                    d3.zoomIdentity
+                );
+
+                // Reset node positions
+                simulation.alpha(1).restart();
+                data.nodes.forEach(d => {
+                    d.fx = null;
+                    d.fy = null;
+                });
+            });
+
+            // Zoom button functionality
+            document.getElementById("zoomIn").addEventListener("click", () => {
+                svg.transition().duration(300).call(
+                    zoom.scaleBy,
+                    1.3
+                );
+            });
+
+            document.getElementById("zoomOut").addEventListener("click", () => {
+                svg.transition().duration(300).call(
+                    zoom.scaleBy,
+                    0.7
+                );
+            });
+
+            // Add legend
+            const legend = d3.select("#graph")
+                .append("div")
+                .attr("class", "legend");
+
+            const legendItems = [
+                { color: "green", text: "Up to date (0-2 versions behind)" },
+                { color: "yellow", text: "Slightly outdated (2-6 versions behind)" },
+                { color: "orange", text: "Outdated or has advisories" },
+                { color: "red", text: "Has malware or very outdated" }
+            ];
+
+            legendItems.forEach(item => {
+                const legendItem = legend.append("div")
+                    .attr("class", "legend-item");
+
+                legendItem.append("div")
+                    .attr("class", "legend-color")
+                    .style("background-color", color(item.color));
+
+                legendItem.append("div")
+                    .text(item.text);
+            });
+
+            // Handle window resize
+            window.addEventListener("resize", () => {
+                const sidebarWidth = document.getElementById("sidebar").offsetWidth;
+                const newWidth = window.innerWidth - sidebarWidth;
+                svg.attr("width", newWidth);
+                simulation.force("center", d3.forceCenter(newWidth / 2, height / 2));
+                simulation.alpha(1).restart();
+            });
+
+            // Helper function to get status class
+            function getStatusClass(d) {
+                if (d.malware) return "red";
+                if (d.advisories > 0) return "orange";
+                if (d.versions_behind <= 2) return "green";
+                if (d.versions_behind <= 6) return "yellow";
+                return "orange";
+            }
+
+            // Helper function to get status text
+            function getStatusText(d) {
+                if (d.malware) return "Malware Detected";
+                if (d.advisories > 0) return "Has Security Advisories";
+                if (d.versions_behind <= 2) return "Up to Date";
+                if (d.versions_behind <= 6) return "Slightly Outdated";
+                return "Outdated";
+            }
+
+            // Dark mode toggle functionality
+            const toggleButton = document.getElementById("toggleMode");
+            const body = document.body;
+            let isDarkMode = false;
+
+            toggleButton.addEventListener("click", () => {
+                isDarkMode = !isDarkMode;
+
+                // Toggle body class
+                body.classList.toggle("dark-mode");
+
+                // Update button text
+                toggleButton.textContent = isDarkMode ? "Light Mode" : "Dark Mode";
+
+                // Update SVG background color
+                if (isDarkMode) {
+                    svg.style("background-color", "#121212");
+
+                    // Update labels to light color
+                    d3.selectAll(".bubble-label")
+                        .style("fill", "rgba(55, 55, 55, 0.8)")
+                        .style("font-weight", "500");
+                } else {
+                    svg.style("background-color", "white");
+
+                    // Update labels to dark color
+                    d3.selectAll(".bubble-label")
+                        .style("fill", "black");
+                }
+
+                // Update legend background and text
+                const legend = d3.select(".legend");
+                if (isDarkMode) {
+                    legend.style("background-color", "rgba(40, 40, 40, 0.8)")
+                          .style("color", "#e0e0e0");
+                } else {
+                    legend.style("background-color", "rgba(255, 255, 255, 0.8)")
+                          .style("color", "black");
+                }
+            });
+
+            // Set initial SVG background color
+            svg.style("background-color", "white");
+        </script>
+    </body>
+</html>

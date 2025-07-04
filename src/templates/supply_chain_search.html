@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Supply Chain Analysis - Kospex Web</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <style>
+            .grid-cols-3 {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        </style>
+    </head>
+    <body class="bg-white">
+        {% include '_header.html' %}
+
+        <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            <!-- Page Header -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-4">Supply Chain Analysis</h1>
+                    <p class="text-gray-600">Analyze package dependencies and their security status. Enter a package name to visualize its dependency tree with security insights.</p>
+                </div>
+            </div>
+
+            <!-- Error Alert -->
+            {% if error %}
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6" role="alert">
+                <strong class="font-bold">Error:</strong>
+                <span class="block sm:inline ml-1">{{ error }}</span>
+            </div>
+            {% endif %}
+
+            <!-- Search Form -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h2 class="text-xl font-semibold text-gray-900 mb-6">Package Search</h2>
+                    
+                    <form method="get" action="/supply-chain/" class="space-y-6">
+                        <!-- Form Fields in Single Row -->
+                        <div class="grid grid-cols-3 gap-4">
+                            <!-- Package Ecosystem Column -->
+                            <div>
+                                <label for="ecosystem" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Package Ecosystem
+                                </label>
+                                <select id="ecosystem" name="ecosystem" required class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">Select ecosystem...</option>
+                                    <option value="npm" {% if ecosystem == 'npm' %}selected{% endif %}>npm (Node.js)</option>
+                                    <option value="pypi" {% if ecosystem == 'pypi' %}selected{% endif %}>PyPI (Python)</option>
+                                    <option value="maven" {% if ecosystem == 'maven' %}selected{% endif %}>Maven (Java)</option>
+                                    <option value="nuget" {% if ecosystem == 'nuget' %}selected{% endif %}>NuGet (.NET)</option>
+                                    <option value="rubygems" {% if ecosystem == 'rubygems' %}selected{% endif %}>RubyGems (Ruby)</option>
+                                    <option value="go" {% if ecosystem == 'go' %}selected{% endif %}>Go Modules</option>
+                                    <option value="cargo" {% if ecosystem == 'cargo' %}selected{% endif %}>Cargo (Rust)</option>
+                                    <option value="composer" {% if ecosystem == 'composer' %}selected{% endif %}>Composer (PHP)</option>
+                                </select>
+                            </div>
+
+                            <!-- Package Name Column -->
+                            <div>
+                                <label for="package_name" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Package Name
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="package_name" 
+                                    name="package_name" 
+                                    required
+                                    value="{{ package_name or '' }}"
+                                    placeholder="e.g., react, numpy, spring-boot"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
+
+                            <!-- Package Version Column -->
+                            <div>
+                                <label for="package_version" class="block text-sm font-medium text-gray-700 mb-2">
+                                    Version
+                                </label>
+                                <input 
+                                    type="text" 
+                                    id="package_version" 
+                                    name="package_version" 
+                                    required
+                                    value="{{ package_version or '' }}"
+                                    placeholder="e.g., 1.0.0, latest"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
+                        </div>
+
+                        <!-- Search Button -->
+                        <div class="flex justify-center mt-4">
+                            <button 
+                                type="submit" 
+                                class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-4 px-12 rounded-lg transition-colors shadow-sm flex items-center"
+                            >
+                                &nbsp; 
+                                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                                Analyze Dependencies &nbsp;
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Information Section -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Security Color Coding</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-4 h-4 bg-green-500 rounded-full"></div>
+                            <span class="text-sm text-gray-700">
+                                <strong>Green:</strong> Up to date, secure
+                            </span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-4 h-4 bg-yellow-400 rounded-full"></div>
+                            <span class="text-sm text-gray-700">
+                                <strong>Yellow:</strong> 2-6 versions behind
+                            </span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-4 h-4 bg-orange-500 rounded-full"></div>
+                            <span class="text-sm text-gray-700">
+                                <strong>Orange:</strong> Has advisories
+                            </span>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-4 h-4 bg-red-500 rounded-full"></div>
+                            <span class="text-sm text-gray-700">
+                                <strong>Red:</strong> Has malware/critical issues
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // Form submission handler to build package parameter
+            document.querySelector('form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const ecosystem = document.getElementById('ecosystem').value;
+                const packageName = document.getElementById('package_name').value;
+                const packageVersion = document.getElementById('package_version').value;
+                
+                if (!ecosystem || !packageName || !packageVersion) {
+                    alert('Please fill in all fields');
+                    return;
+                }
+                
+                // Build package parameter in format: ecosystem:package:version
+                const packageParam = `${ecosystem}:${packageName}:${packageVersion}`;
+                
+                // Redirect to supply chain with package parameter
+                window.location.href = `/supply-chain/?package=${encodeURIComponent(packageParam)}`;
+            });
+        </script>
+    </body>
+</html>
