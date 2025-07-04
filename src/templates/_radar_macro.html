@@ -6,8 +6,8 @@
     <canvas id="{{canvas_id}}"></canvas>
 </div>
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Chart.js - Local static version -->
+<script src="/static/js/chart.min.js"></script>
 <script>
     const ctx = document.getElementById('{{canvas_id}}').getContext('2d');
     new Chart(ctx, {

@@ -1,58 +1,126 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Bootstrap Web App</title>
-        <link
-            href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
-            rel="stylesheet"
-        />
+        <title>Dependencies - Kospex Web</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <style>
+            /* Custom styles for DataTables with Tailwind */
+            .dataTables_wrapper .dataTables_length select,
+            .dataTables_wrapper .dataTables_filter input {
+                @apply border border-gray-300 rounded px-3 py-2 text-sm;
+            }
+            .dataTables_wrapper .dataTables_length,
+            .dataTables_wrapper .dataTables_filter,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                @apply text-sm text-gray-700;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+                @apply bg-blue-600 text-white border-blue-600;
+            }
+        </style>
     </head>
-    <body>
-        {% include 'header.html' %}
+    <body class="bg-white">
+        {% include '_header.html' %}
 
         <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            <!-- Page Header -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-4">Dependencies</h1>
+                    <p class="text-gray-600">Analysis of project dependencies and their maintenance and security status.</p>
+                </div>
+            </div>
 
-        <div class="container mt-5">
-            <h1 class="mb-4">Dependencies</h1>
-            <table class="table table-striped compact" id="myTable">
-                <thead>
-                    <tr>
-                        <th>File</th>
-                        <th>Type</th>
-                        <th>Name</th>
-                        <th>Version</th>
-                        <th>Versions behind</th>
-                        <th>Released</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in data %}
-                    <tr>
-                        <td>{{ row['file_path'] }}</td>
-                        <td>{{ row['package_type'] }}</td>
-                        <td>{{ row['package_name'] }}</td>
-                        <td class="dt-body-right">
-                            {{ row['package_version'] }}
-                        </td>
-                        <td class="dt-body-right">
-                            {{ row['versions_behind'] }}
-                        </td>
-                        <td class="dt-body-right">{{ row['published_at'] }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <!-- Warning Card -->
+            <div class="bg-orange-100 border border-orange-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-orange-800">Work in Progress</h3>
+                            <div class="mt-2 text-sm text-orange-700">
+                                <p>Dependency analysis is incomplete and version information may not be current.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dependencies Table -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Dependency Analysis</h2>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="myTable">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Version</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Versions Behind</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Released</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in data %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ row['file_path'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                                            {{ row['package_type'] }}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ row['package_name'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">{{ row['package_version'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                        {% if row['versions_behind'] and row['versions_behind'] > 0 %}
+                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
+                                                {{ row['versions_behind'] }}
+                                            </span>
+                                        {% else %}
+                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                                Up to date
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['published_at'] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                                            </br>
+                    </div>
+
+                    </div>
+                </div>
+            </div>
         </div>
 
-        {% include '_footer_scripts.html' %} {% include
-        '_datatable_scripts.html' %}
+        {% include '_footer_scripts.html' %}
+        {% include '_datatable_scripts.html' %}
 
         <script>
             $(document).ready(function () {
                 $("#myTable").DataTable({
-                    order: [[1, "desc"]],
+                    order: [[4, "desc"]],
+                    responsive: true,
+                    pageLength: 25,
+                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
                 });
             });
         </script>
