@@ -2,6 +2,7 @@
 """This is the kospex command line tool."""
 import os
 import os.path
+import json
 import logging
 from datetime import datetime, timezone, timedelta
 from shutil import which
@@ -487,7 +488,7 @@ def deps(repo, file, directory, out, dev):
 @cli.command("sca")
 @click.option('-repo', type=GitRepo(), help="NOT IMPLEMENTED - File path to git repo.")
 @click.option('-dev', is_flag=True, default=True, help="Include dev/test dependencies. EXPERIMENTAL.")
-@click.option('-save', is_flag=True, default=True, help="Save results to kospex DB.")
+@click.option('-save', is_flag=False, default=True, help="Save results to kospex DB.")
 @click.option('-malware', is_flag=True, default=False, help="Check for malware in dependencies.")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")
 @click.argument('file_path', required=False, type=click.Path(exists=True))
@@ -508,6 +509,9 @@ def sca(repo, dev, save, malware, out, file_path):
     if file_path:
         # Handle a dependency file (e.g. package.json, requirements.txt) and check dependencies
         results = kospex.dependencies.assess(file_path,**params)
+
+        import pprint
+        pprint.PrettyPrinter(indent=4).pprint(results)
 
         if malware:
             print("Checking packages for malware on maliciouspackages.com")
@@ -945,7 +949,7 @@ def upgrade_db(apply):
     Run without options, it inspects the database and current kospex schema and detects changes
     -apply will execute the alter table commands and update the db.
     """
-    click.echo(f"Kospex CLI version {VERSION}")
+    click.echo(f"Kospex CLI version {Kospex.VERSION}")
     # WARN about backups first
     print("\nWARNING: backup your database before performing ANY upgrade.\nJust in case ...\n")
     # Check versions
@@ -1039,6 +1043,33 @@ def upgrade_db(apply):
     else:
         print("No changes required, up to date.")
 
+@cli.command("advisory-history")
+@click.option('-ecosystem', type=click.STRING, help="E.g. npm, pypi")
+@click.option('-package', type=click.STRING, help="Name of package")
+def advisory_history(ecosystem, package):
+    """
+    Show the advisories for the previous X (default 10) versions of the package
+    """
+    if ecosystem and package:
+        print(f"Fetching advisories for {package} in {ecosystem}...")
+        # Fetch advisories logic here
+        data = kospex.dependencies.deps_dev_package(ecosystem, package)
+        kd = kospex.dependencies
+
+        import pprint
+        #pprint.PrettyPrinter(indent=4).pprint(data)
+        for p in data.get("versions"):
+            print(p.get("purl"))
+            parts = kd.extract_purl(p.get("purl"))
+            package_info = kd.deps_dev(parts["ecosystem"],
+                parts["package_name"],
+                parts["package_version"]
+            )
+            pprint.PrettyPrinter(indent=4).pprint(package_info)
+            print("\n")
+            #pprint.PrettyPrinter(indent=4).pprint(kd.extract_purl(p.get("purl")))
+    else:
+        print("Please provide both ecosystem and package names.")
 
 
 @cli.command("system-status")
