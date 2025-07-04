@@ -96,7 +96,7 @@ Kospex employs multiple layers of automated security testing:
    export GITHUB_TOKEN=your_token_here
    ```
 
-3. **Network Access**: Web interface accessible only via `http://127.0.0.1:PORT` by default
+3. **Network Access**: Web interface accessible only via `http://127.0.0.1:8000` by default
 
 ### Production Considerations
 
@@ -111,10 +111,10 @@ Kospex employs multiple layers of automated security testing:
 
 ### Current Security Limitations
 
-- **No Authentication**: Web interface has no built-in authentication mechanism
+- **No Authentication**: Web interface has no built-in authentication mechanism, relying on 127.0.0.1 connection only
 - **No SSL/TLS**: Direct HTTPS support not implemented in MVP
 - **File System Security**: Relies on operating system file permissions
-- **Session Management**: [PLACEHOLDER - Document session handling if implemented]
+- **Session Management**: The application does not use sessions currently. 
 
 ### Future Security Enhancements
 
