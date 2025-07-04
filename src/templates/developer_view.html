@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Developer View - Kospex Web</title>
         <!-- Tailwind CSS -->
-        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <link rel="stylesheet" href="/static/css/tailwind.css" />
         <style>
             /* Custom styles for DataTables with Tailwind */
             .dataTables_wrapper .dataTables_length select,
@@ -31,14 +31,42 @@
         <nav class="bg-gray-800 text-white">
             <div class="container mx-auto px-4">
                 <div class="flex items-center justify-between h-16">
-                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
+                    <a
+                        class="text-white text-lg font-medium hover:text-gray-300"
+                        href="/"
+                        >K. web</a
+                    >
                     <div class="flex space-x-8">
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
-                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/repos/"
+                            >Repos</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/orgs/"
+                            >Orgs</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/developers/"
+                            >Developers</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/landscape/"
+                            >Landscape</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/metadata/"
+                            >Metadata</a
+                        >
+                        <a
+                            class="text-gray-300 hover:text-white transition-colors"
+                            href="/help/"
+                            >Help</a
+                        >
                     </div>
                 </div>
             </div>
@@ -47,44 +75,92 @@
         <!-- Main content area -->
         <div class="container mx-auto px-4 mt-12">
             <!-- Developer Header -->
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
                 <div class="p-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-6">{{ author_email }}</h1>
-                    
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">
+                        {{ author_email }}
+                    </h1>
+
                     <div class="flex flex-wrap gap-4 text-sm">
-                        <a href="/graph?author_email={{author_email}}" class="text-blue-600 hover:text-blue-800 underline">Graph explore {{author_email}}</a>
+                        <a
+                            href="/graph/?author_email={{author_email}}"
+                            class="text-blue-600 hover:text-blue-800 underline"
+                            >Graph explore {{author_email}}</a
+                        >
                         {% if github_handle %}
                         <span class="text-gray-500">|</span>
-                        <span class="text-gray-700">View</span>
-                        <a href="https://github.com/{{github_handle}}" class="text-blue-600 hover:text-blue-800 underline" target="_blank">{{github_handle}}</a>
-                        <span class="text-gray-700">on GitHub</span>
+                        <span class="text-gray-700"
+                            >View
+                            <a
+                                href="https://github.com/{{github_handle}}"
+                                class="text-blue-600 hover:text-blue-800 underline"
+                                target="_blank"
+                                >{{github_handle}}</a
+                            >
+                            on GitHub</span
+                        >
                         {% endif %}
                     </div>
                 </div>
             </div>
 
             <!-- Repository Activity -->
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Repository Activity</h2>
-                    
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Repository Activity
+                    </h2>
+
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200" id="myTable">
+                        <table
+                            class="min-w-full divide-y divide-gray-200"
+                            id="myTable"
+                        >
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repository</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Commits</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen (days)</th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Repository
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        # Commits
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Last Seen (days)
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for row in repos %}
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <a href="/repo/{{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['_repo_id'] }}</a>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm"
+                                    >
+                                        <a
+                                            href="/repo/{{ row['_repo_id'] }}"
+                                            class="text-blue-600 hover:text-blue-800 underline"
+                                            >{{ row['_repo_id'] }}</a
+                                        >
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['commits'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['last_seen'] }}</td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row['commits'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row['last_seen'] }}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -94,29 +170,76 @@
             </div>
 
             <!-- Technology View -->
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+            <div
+                class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
+            >
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Technology View</h2>
-                    
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Technology View
+                    </h2>
+
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200" id="devTable">
+                        <table
+                            class="min-w-full divide-y divide-gray-200"
+                            id="devTable"
+                        >
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Technology</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Commits</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Repos</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen (days)</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Days Active</th>
+                                    <th
+                                        class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Technology
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        # Commits
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        # Repos
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Last Seen (days)
+                                    </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Days Active
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for row in tech %}
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ row['_ext'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['commits'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['repos'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['last_seen'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['days_active'] }}</td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                                    >
+                                        {{ row['_ext'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row['commits'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row['repos'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row['last_seen'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row['days_active'] }}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -128,14 +251,16 @@
             <!-- Radar Chart Section -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Technology Skills Radar</h2>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                        Technology Skills Radar
+                    </h2>
                     {% include '_single_radar.html' %}
                 </div>
             </div>
         </div>
 
-        {% include '_footer_scripts.html' %}
-        {% include '_datatable_scripts.html' %}
+        {% include '_footer_scripts.html' %} {% include
+        '_datatable_scripts.html' %}
 
         <script>
             $(document).ready(function () {
@@ -143,14 +268,20 @@
                     order: [[2, "asc"]],
                     responsive: true,
                     pageLength: 25,
-                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    lengthMenu: [
+                        [10, 25, 50, 100, -1],
+                        [10, 25, 50, 100, "All"],
+                    ],
                     dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
                 });
                 $("#devTable").DataTable({
                     order: [[1, "desc"]],
                     responsive: true,
                     pageLength: 25,
-                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    lengthMenu: [
+                        [10, 25, 50, 100, -1],
+                        [10, 25, 50, 100, "All"],
+                    ],
                     dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
                 });
             });
