@@ -1,5 +1,6 @@
 """ Helper functions for kospex web UI """
 import csv
+import base64
 from io import StringIO
 from flask import make_response
 import kospex_utils as KospexUtils
@@ -37,23 +38,43 @@ def download_csv(dict_data, filename=None):
 
     return output
 
-def get_id_params(id):
+def get_id_params(id,request_params=None):
     """
     Parse an id into either:
         repo_id
         org_key
         server
+    if request_params is passed, we'll look at that, but the id takes precedence
     and return a dict with that key to be passed into a KospexQuery
     """
     params = {}
 
+    # Only look at request_params if the id is None
     if id is None:
+
+        if request_params:
+            if repo_id := request_params.get("repo_id"):
+                params["repo_id"] = repo_id
+            elif org_key := request_params.get("org_key"):
+                params["org_key"] = org_key
+            elif server := request_params.get("server"):
+                params["server"] = server
+            elif author_email := request_params.get("author_email"):
+                # Web URLs sometimes translate + to a space
+                # so so we need to replace ' ' with +
+                # Like in github emails like 109855528+USERNAME@users.noreply.github.com
+                params["author_email"] = author_email.replace(" ","+")
+
+
         return params
 
-    if org_key := KospexUtils.parse_org_key(id):
+    # These methods return a Dict if parsed or None if not
+    if KospexUtils.parse_org_key(id):
         params["org_key"] = id
-    elif repo_id := KospexUtils.parse_repo_id(id):
+    elif KospexUtils.parse_repo_id(id):
         params["repo_id"] = id
+    elif KospexUtils.is_base64(id):
+        params["author_email"] = KospexUtils.decode_base64(id)
     else:
         params["server"] = id
 
