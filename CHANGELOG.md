@@ -2,23 +2,7 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.17 - 2025-04-20
-
-### Added
-  - Implemented a pretty_table in the kospex_git class
-### Changed
-  - kospex --version now uses the version number in kospex_core.pyg
-  - kgit --version now uses the version number in kospex_core.py
-  - [Implemented PyGithub to remove some bespoke code](https://github.com/kospex/kospex/issues/28)
-  - Initial work on [SSH clone issue](https://github.com/kospex/kospex/issues/7) However, still a WIP
-### Fixed
-  - Cleanup the requirements.txt from some experimental uses
-  - Removed commented code in Git changes
-  - removed some unnecessary switches in kgit github
-
-## [Unreleased]
-
-## VERSION - DATE
+## 0.0.18 - 2025-07-07
 
 ## Major Changes (non breaking)
 
@@ -39,6 +23,31 @@ Refactored from [Flask to FastAPI](https://github.com/kospex/kospex/issues/33)
 - Removed broken hotspots link from repo view
 
 ### Fixed
+- Probably a few bugs here and there
+
+## [Unreleased]
+
+## VERSION - DATE - IN PROGRESS
+
+### Added
+### Changed
+### Fixed
+
+## 0.0.17 - 2025-04-20
+
+### Added
+  - Implemented a pretty_table in the kospex_git class
+### Changed
+  - kospex --version now uses the version number in kospex_core.pyg
+  - kgit --version now uses the version number in kospex_core.py
+  - [Implemented PyGithub to remove some bespoke code](https://github.com/kospex/kospex/issues/28)
+  - Initial work on [SSH clone issue](https://github.com/kospex/kospex/issues/7) However, still a WIP
+### Fixed
+  - Cleanup the requirements.txt from some experimental uses
+  - Removed commented code in Git changes
+  - removed some unnecessary switches in kgit github
+
+
 
 ## 0.0.16 - 2025-04-06
 

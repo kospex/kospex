@@ -64,11 +64,11 @@ class GraphService:
                 fallback_author_email = request_args.get('author_email')
             elif request_args and isinstance(request_args, dict):
                 fallback_author_email = request_args.get('author_email')
-            
+
             if fallback_author_email:
                 fallback_author_email = fallback_author_email.replace(" ", "+")
             return self.query.get_graph_info(author_email=fallback_author_email)
-    
+
     def _process_graph_data(self, org_info, repo_id, focus):
         """Process raw org info into graph nodes and links."""
         dev_lookup = {}
@@ -76,14 +76,14 @@ class GraphService:
         file_lookup = {}
         links = []
         nodes = []
-        
+
         group_numbers = {
             'Active': 1,
             'Aging': 2,
             'Stale': 3,
             'Unmaintained': 4
         }
-        
+
         for element in org_info:
             last_commit = element.get("last_commit")
             status = KospexUtils.development_status(
@@ -118,7 +118,7 @@ class GraphService:
         
         return {
             "nodes": nodes,
-            "links": links
+            "links": links,
         }
     
     def _process_developer_node(self, element, dev_lookup, group_numbers, status, last_commit):
