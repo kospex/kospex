@@ -690,7 +690,7 @@ async def graph(request: Request, org_key: Optional[str] = None):
             org_key = f"?author_email={author_email}"
 
         return templates.TemplateResponse(
-            "graph2.html",
+            "graph.html",
             {
                 "request": request,
                 "org_key": org_key
@@ -847,21 +847,21 @@ async def developer_view(request: Request, id: Optional[str] = None):
     """View individual developer details"""
     try:
         logger.info(f"Developer view requested with id: {id}")
-        
+
         author_email = request.query_params.get('author_email')
-        
+
         if id:
             author_email = KospexUtils.decode_base64(id)
-        
+
         # Github uses +, which get interpreted as a " " in the URL.
         if author_email:
             author_email = author_email.replace(" ", "+")
-        
+
         repo_list = KospexQuery().repos_by_author(author_email)
         techs = KospexQuery().author_tech(author_email=author_email)
         labels = []
         datapoints = []
-        
+
         count = 0
         for tech in techs:
             labels.append(tech['_ext'])
@@ -869,7 +869,7 @@ async def developer_view(request: Request, id: Optional[str] = None):
             count += 1
             if count > 10:
                 break
-        
+
         return templates.TemplateResponse(
             "developer_view.html",
             {

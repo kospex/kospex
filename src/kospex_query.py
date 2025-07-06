@@ -468,7 +468,7 @@ class KospexQuery:
             summary_sql += " LIMIT ?"
             params.append(limit)
 
-        print(f"SQL: {summary_sql}")
+        #print(f"SQL: {summary_sql}")
 
         data = []
         for row in self.kospex_db.query(summary_sql, params):

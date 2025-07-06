@@ -1,25 +1,20 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Details graph</title>
-        <script src="/static/js/d3.min.js"></script>
-        <!-- Local TailwindCSS instead of Bootstrap -->
+        <title>Force Graph - Kospex Web</title>
+        <!-- Local static assets -->
         <link rel="stylesheet" href="/static/css/tailwind.css">
+        <script src="/static/js/d3.min.js"></script>
         <style>
             body {
-                font-family: Arial, sans-serif;
-                margin: 0;
-                padding: 0;
-                display: flex;
-                flex-direction: column;
-                height: 100vh;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             }
-
+            
             .content-wrapper {
                 display: flex;
-                flex: 1;
+                height: calc(100vh - 4rem); /* Account for header height */
                 overflow: hidden;
             }
 
@@ -27,14 +22,14 @@
                 width: 250px;
                 min-width: 100px;
                 max-width: 50%;
-                background-color: #f0f0f0;
-                padding: 20px;
+                background-color: #f9fafb;
                 box-sizing: border-box;
                 overflow-y: auto;
                 display: flex;
                 flex-direction: column;
                 resize: horizontal;
                 position: relative;
+                border-right: 1px solid #e5e7eb;
             }
 
             #sidebar::after {
@@ -44,66 +39,98 @@
                 right: 0;
                 bottom: 0;
                 width: 5px;
-                background: #ccc;
+                background: #d1d5db;
                 cursor: ew-resize;
             }
 
             #graph {
                 flex-grow: 1;
                 position: relative;
+                background-color: #ffffff;
             }
+            
             #resetButton {
                 position: absolute;
-                top: 10px;
-                right: 10px;
-                padding: 10px;
-                background-color: #f0f0f0;
-                border: 1px solid #999;
-                border-radius: 5px;
-                cursor: pointer;
+                top: 16px;
+                right: 16px;
+                z-index: 10;
             }
+            
             .slider-container {
                 display: flex;
                 flex-direction: column;
                 margin-bottom: 20px;
             }
+            
             .button-container {
                 display: flex;
                 justify-content: center;
                 margin-top: 10px;
             }
-            .slider-button {
-                width: 30px;
-                height: 30px;
-                font-size: 18px;
-                margin: 0 5px;
-                cursor: pointer;
-            }
+            
             .slider {
                 width: 100%;
                 margin: 10px 0;
+                height: 6px;
+                border-radius: 3px;
+                background: #e5e7eb;
+                outline: none;
+                -webkit-appearance: none;
             }
+            
+            .slider::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                background: #2563eb;
+                cursor: pointer;
+                border: 2px solid #ffffff;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            
+            .slider::-moz-range-thumb {
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                background: #2563eb;
+                cursor: pointer;
+                border: 2px solid #ffffff;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            
             .sliderValue {
                 text-align: center;
                 margin-bottom: 5px;
             }
-            hr {
-                width: 100%;
-                border: none;
-                border-top: 1px solid #ccc;
-                margin: 15px 0;
-            }
         </style>
     </head>
-    <body>
-        <!-- Bootstrap header -->
-        {% include 'header.html' %}
+    <body class="bg-white">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
+                    <div class="flex space-x-8">
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
         <!-- Sidebar and Graph -->
         <div class="content-wrapper">
-            <div id="sidebar">
-                <h3>Filters</h3>
+            <div id="sidebar" class="p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Filters</h3>
+                
                 <div class="slider-container">
-                    <label for="commitSlider">Commit Filter</label>
+                    <label for="commitSlider" class="block text-sm font-medium text-gray-700 mb-2">Commit Filter</label>
                     <input
                         type="range"
                         id="commitSlider"
@@ -112,19 +139,17 @@
                         max="100"
                         value="0"
                     />
-                    <span id="commitValue" class="sliderValue"
-                        >Minimum commits: 0</span
-                    >
+                    <span id="commitValue" class="sliderValue text-sm text-gray-600">Minimum commits: 0</span>
                     <div class="button-container">
-                        <button class="slider-button" id="commitMinus">
+                        <button class="w-8 h-8 text-lg bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" id="commitMinus">
                             -
                         </button>
-                        <button class="slider-button" id="commitPlus">+</button>
+                        <button class="w-8 h-8 text-lg bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ml-2" id="commitPlus">+</button>
                     </div>
                 </div>
 
                 <div class="slider-container">
-                    <label for="repoSlider">Repository Filter:</label>
+                    <label for="repoSlider" class="block text-sm font-medium text-gray-700 mb-2">Repository Filter</label>
                     <input
                         type="range"
                         id="repoSlider"
@@ -133,24 +158,29 @@
                         max="10"
                         value="0"
                     />
-                    <span id="repoValue" class="sliderValue"
-                        >Minimum repos: 0</span
-                    >
+                    <span id="repoValue" class="sliderValue text-sm text-gray-600">Minimum repos: 0</span>
                     <div class="button-container">
-                        <button class="slider-button" id="repoMinus">-</button>
-                        <button class="slider-button" id="repoPlus">+</button>
+                        <button class="w-8 h-8 text-lg bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" id="repoMinus">-</button>
+                        <button class="w-8 h-8 text-lg bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ml-2" id="repoPlus">+</button>
                     </div>
                 </div>
-                <hr />
-                <h3>Node Information</h3>
-                <div id="nodeInfo">
+                
+                <hr class="my-6 border-gray-200" />
+                
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Node Information</h3>
+                <div id="nodeInfo" class="text-sm text-gray-600">
                     <p>Click on a node to see its information.</p>
                 </div>
             </div>
+            
             <div id="graph">
-                <button id="resetButton">Reset Positions</button>
+                <button id="resetButton" class="bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 border border-gray-300 rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    Reset Positions
+                </button>
             </div>
         </div>
+
+        {% include '_footer_scripts.html' %}
         <script>
             let data = {
                 nodes: [],
@@ -158,8 +188,7 @@
             };
 
             const width = window.innerWidth - 250; // Subtract sidebar width
-            //const width = window.innerWidth - sidebar.offsetWidth; // Use sidebar's actual width
-            const height = window.innerHeight;
+            const height = window.innerHeight - 64; // Subtract header height
 
             const svg = d3
                 .select("#graph")
@@ -176,6 +205,11 @@
                     link.style("stroke", "#999").style("stroke-opacity", 0.6);
                     node.style("stroke", null).style("stroke-width", null);
                 }
+            });
+
+            svg.on("contextmenu", function (event) {
+                event.preventDefault();
+                showContextMenu(event);
             });
 
             let simulation = d3
@@ -277,7 +311,7 @@
                     .append("circle")
                     .attr("r", 10)
                     .attr("fill", (d) =>
-                        d.group === 1 ? "#3498db" : "#2ecc71",
+                        d.group === 1 ? "#3b82f6" : "#10b981",
                     )
                     .call(
                         d3
@@ -287,6 +321,10 @@
                             .on("end", dragended),
                     )
                     .on("click", nodeClicked)
+                    .on("contextmenu", function (event, d) {
+                        event.preventDefault();
+                        showContextMenu(event, d);
+                    })
                     .merge(node);
 
                 // Update text labels
@@ -298,6 +336,7 @@
                     .attr("font-size", 12)
                     .attr("dx", 12)
                     .attr("dy", 4)
+                    .attr("fill", "#374151")
                     .merge(text)
                     .text((d) => d.label || d.id);
 
@@ -312,7 +351,7 @@
                     .enter()
                     .append("text")
                     .attr("font-size", 10)
-                    .attr("fill", "#666")
+                    .attr("fill", "#6b7280")
                     .merge(commitText)
                     .text((d) => d.commits);
 
@@ -363,7 +402,43 @@
                     visibleRepos.add(targetId);
                 });
 
-                // Filter nodes
+                // Show/hide nodes based on filter criteria instead of removing them
+                node.style("display", (d) => {
+                    if (d.group === 1) {
+                        return visibleDevs.has(d.id) ? "block" : "none";
+                    } else {
+                        return visibleRepos.has(d.id) ? "block" : "none";
+                    }
+                });
+
+                // Show/hide text labels based on filter criteria
+                text.style("display", (d) => {
+                    if (d.group === 1) {
+                        return visibleDevs.has(d.id) ? "block" : "none";
+                    } else {
+                        return visibleRepos.has(d.id) ? "block" : "none";
+                    }
+                });
+
+                // Show/hide links based on filter criteria
+                link.style("display", (l) => {
+                    const sourceId = l.source.id || l.source;
+                    const targetId = l.target.id || l.target;
+                    const sourceVisible = l.source.group === 1 ? visibleDevs.has(sourceId) : visibleRepos.has(sourceId);
+                    const targetVisible = l.target.group === 1 ? visibleDevs.has(targetId) : visibleRepos.has(targetId);
+                    return sourceVisible && targetVisible ? "block" : "none";
+                });
+
+                // Show/hide commit text based on link visibility
+                commitText.style("display", (l) => {
+                    const sourceId = l.source.id || l.source;
+                    const targetId = l.target.id || l.target;
+                    const sourceVisible = l.source.group === 1 ? visibleDevs.has(sourceId) : visibleRepos.has(sourceId);
+                    const targetVisible = l.target.group === 1 ? visibleDevs.has(targetId) : visibleRepos.has(targetId);
+                    return sourceVisible && targetVisible ? "block" : "none";
+                });
+
+                // Filter the simulation to only include visible nodes and links for physics
                 const visibleNodes = data.nodes.filter((d) => {
                     if (d.group === 1) {
                         return visibleDevs.has(d.id);
@@ -372,72 +447,10 @@
                     }
                 });
 
-                // Update links
-                link = link.data(
-                    visibleLinks,
-                    (d) =>
-                        `${d.source.id || d.source}-${d.target.id || d.target}`,
-                );
-                link.exit().remove();
-                link = link
-                    .enter()
-                    .append("line")
-                    .attr("stroke", "#999")
-                    .attr("stroke-opacity", 0.6)
-                    .merge(link)
-                    .attr("stroke-width", (d) => linkScale(d.commits));
-
-                // Update nodes
-                node = node.data(visibleNodes, (d) => d.id);
-                node.exit().remove();
-                node = node
-                    .enter()
-                    .append("circle")
-                    .attr("r", 10)
-                    .attr("fill", (d) =>
-                        d.group === 1 ? "#3498db" : "#2ecc71",
-                    )
-                    .call(
-                        d3
-                            .drag()
-                            .on("start", dragstarted)
-                            .on("drag", dragged)
-                            .on("end", dragended),
-                    )
-                    .on("click", nodeClicked)
-                    .merge(node);
-
-                // Update text labels
-                text = text.data(visibleNodes, (d) => d.id);
-                text.exit().remove();
-                text = text
-                    .enter()
-                    .append("text")
-                    .attr("font-size", 12)
-                    .attr("dx", 12)
-                    .attr("dy", 4)
-                    .merge(text)
-                    .text((d) => d.label || d.id);
-
-                // Update commit text
-                commitText = commitText.data(
-                    visibleLinks,
-                    (d) =>
-                        `${d.source.id || d.source}-${d.target.id || d.target}`,
-                );
-                commitText.exit().remove();
-                commitText = commitText
-                    .enter()
-                    .append("text")
-                    .attr("font-size", 10)
-                    .attr("fill", "#666")
-                    .merge(commitText)
-                    .text((d) => d.commits);
-
-                // Update simulation
+                // Update simulation with filtered nodes and links but don't restart to preserve positions
                 simulation.nodes(visibleNodes);
                 simulation.force("link").links(visibleLinks);
-                simulation.alpha(1).restart();
+                // Don't call alpha(1).restart() to preserve node positions
             }
 
             function ticked() {
@@ -480,19 +493,13 @@
                     .attr("stroke-opacity", 0.6);
 
                 // Highlight links connected to the clicked node
-                //link.filter((l) => l.source === d || l.target === d)
-                //    .attr("stroke-width", (d) => linkScale(d.commits) * 2)
-                //    .attr("stroke", "#ff7f0e")
-                //    .attr("stroke-opacity", 1);
-
-                // These lines do the highlighting of links when nodes are clicked on
                 link.style("stroke", (l) =>
-                    l.source === d || l.target === d ? "orange" : "#999",
+                    l.source === d || l.target === d ? "#f97316" : "#999",
                 ).style("stroke-opacity", (l) =>
                     l.source === d || l.target === d ? 1 : 0.6,
                 );
 
-                node.style("stroke", (n) => (n === d ? "black" : null)).style(
+                node.style("stroke", (n) => (n === d ? "#1f2937" : null)).style(
                     "stroke-width",
                     (n) => (n === d ? 2 : null),
                 );
@@ -500,18 +507,86 @@
                 updateSidebar(d);
             }
 
+            function showContextMenu(event, d) {
+                event.preventDefault();
+                const contextMenu = d3.select("#contextMenu");
+                contextMenu
+                    .style("left", event.pageX + "px")
+                    .style("top", event.pageY + "px")
+                    .style("display", "block");
+
+                // Show/hide options based on node type (if a node was clicked)
+                if (d) {
+                    d3.select("#addDevelopers").style(
+                        "display",
+                        d.group === 2 ? "block" : "none",
+                    );
+                    d3.select("#addRepos").style(
+                        "display",
+                        d.group === 1 ? "block" : "none",
+                    );
+                    d3.select("#addFiles").style(
+                        "display",
+                        d.group === 2 ? "block" : "none",
+                    );
+                } else {
+                    // Show all options if right-clicked on SVG background
+                    d3.selectAll("#contextMenu li").style("display", "block");
+                }
+
+                // Set up click handlers for menu items
+                d3.select("#addDevelopers").on("click", () =>
+                    addItems(d, "developers"),
+                );
+                d3.select("#addRepos").on("click", () => addItems(d, "repos"));
+                d3.select("#addFiles").on("click", () => addItems(d, "files"));
+            }
+
+            // Hide context menu when clicking outside
+            d3.select("body").on("click", () => {
+                d3.select("#contextMenu").style("display", "none");
+            });
+
+            async function addItems(node, itemType) {
+                const nodeId = node.id;
+                const endpoint = `/add-${itemType}/${nodeId}`;
+                try {
+                    const response = await fetch(endpoint, { method: "POST" });
+                    if (!response.ok) {
+                        throw new Error(
+                            `HTTP error! status: ${response.status}`,
+                        );
+                    }
+                    const result = await response.json();
+                    console.log(`Added ${itemType} to ${nodeId}:`, result);
+                    // Refresh the graph data
+                    await updateGraphPeriodically();
+                } catch (error) {
+                    console.error(
+                        `Error adding ${itemType} to ${nodeId}:`,
+                        error,
+                    );
+                }
+                // Hide the context menu
+                d3.select("#contextMenu").style("display", "none");
+            }
+
             function updateSidebar(d) {
                 const nodeInfo = d3.select("#nodeInfo");
-                node_label = d.label || d.id;
+                const node_label = d.label || d.id;
                 nodeInfo.html(`
-                <h4>${d.label || d.id}</h4>
-                <h4><a href="/developer/${d.id_b64}">${node_label}</a></h4>
-                <p><strong>Type:</strong> ${d.group === 1 ? "Developer" : "Repository"}</p>
-                <p><strong>ID:</strong> ${d.id}</p>
-                <p>b64:${d.id_b64}</p>
-                ${d.group === 1 ? `<p><strong>Repos contributed to:</strong> ${d.repos}</p>` : ""}
-                ${d.info ? `<p><strong>Info:</strong> ${d.info}</p>` : ""}
-            `);
+                    <div class="space-y-3">
+                        <h4 class="font-semibold text-gray-900">${d.label || d.id}</h4>
+                        ${d.id_b64 ? `<h4><a href="/developer/${d.id_b64}" class="text-blue-600 hover:text-blue-800 underline">${node_label}</a></h4>` : ''}
+                        <div class="space-y-2">
+                            <p class="text-sm"><span class="font-medium text-gray-700">Type:</span> <span class="text-gray-600">${d.group === 1 ? "Developer" : "Repository"}</span></p>
+                            <p class="text-sm"><span class="font-medium text-gray-700">ID:</span> <span class="text-gray-600 font-mono text-xs">${d.id}</span></p>
+                            ${d.id_b64 ? `<p class="text-sm"><span class="font-medium text-gray-700">Base64:</span> <span class="text-gray-600 font-mono text-xs">${d.id_b64}</span></p>` : ''}
+                            ${d.group === 1 ? `<p class="text-sm"><span class="font-medium text-gray-700">Repos contributed to:</span> <span class="text-gray-600">${d.repos}</span></p>` : ""}
+                            ${d.info ? `<p class="text-sm"><span class="font-medium text-gray-700">Info:</span> <span class="text-gray-600">${d.info}</span></p>` : ""}
+                        </div>
+                    </div>
+                `);
             }
 
             async function updateGraphPeriodically() {
@@ -600,47 +675,13 @@
             // TODO - cleanup the
             // updateGraphPeriodically();
             setInitialGraph();
-
-            // Code for sidebar resizing
-
-            const sidebar = document.getElementById("sidebar");
-            const graph = document.getElementById("graph");
-            let isResizing = false;
-            let lastDownX = 0;
-            sidebar.addEventListener("mousedown", (e) => {
-                if (e.offsetX > sidebar.offsetWidth - 10) {
-                    isResizing = true;
-                    lastDownX = e.clientX;
-                }
-            });
-
-            document.addEventListener("mousemove", (e) => {
-                if (!isResizing) return;
-
-                const width = sidebar.offsetWidth + (e.clientX - lastDownX);
-                const minWidth = 100;
-                const maxWidth = window.innerWidth * 0.5; // 50% of window width
-
-                if (width > minWidth && width < maxWidth) {
-                    sidebar.style.width = `${width}px`;
-                    graph.style.width = `${window.innerWidth - width}px`;
-                }
-
-                lastDownX = e.clientX;
-            });
-
-            document.addEventListener("mouseup", () => {
-                isResizing = false;
-            });
-
-            // Update graph width when window is resized
-            window.addEventListener("resize", () => {
-                const sidebarWidth = sidebar.offsetWidth;
-                graph.style.width = `${window.innerWidth - sidebarWidth}px`;
-            });
-            // End of code for sidebar resizing
         </script>
-        <!-- Local jQuery -->
-        <script src="/static/js/jquery.min.js"></script>
+        <div id="contextMenu" class="hidden fixed z-50 bg-white border border-gray-300 rounded-lg shadow-lg">
+            <ul class="py-2">
+                <li><a href="#" id="addDevelopers" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Add developers</a></li>
+                <li><a href="#" id="addRepos" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Add repos</a></li>
+                <li><a href="#" id="addFiles" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Add files</a></li>
+            </ul>
+        </div>
     </body>
 </html>
