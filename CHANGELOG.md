@@ -26,6 +26,8 @@ This version did a refactor from Bootstrap 4 to [TailwindCSS](https://tailwindcs
 now manages the CSS and JS files programatically and stores local versions
 [Documentation for TailwindCSS web and JS assets](/web-assets.md)
 
+Refactored from [Flask to FastAPI](https://github.com/kospex/kospex/issues/33) 
+
 ### Added
 - [Create local static css and js files and package management](https://github.com/kospex/kospex/issues/31)
 - [Implemented Author Collaborator view](https://github.com/kospex/kospex/issues/32)
