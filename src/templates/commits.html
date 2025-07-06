@@ -56,6 +56,8 @@
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author</th>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Committer</th>
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Files</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Commit #</th>
+
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Committed</th>
                                 </tr>
                             </thead>
@@ -105,6 +107,11 @@
                                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
                                             {{ row['_files'] }}
                                         </span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                        <a href="/commit/{{ row['_repo_id'] }}/{{ row['hash'] }}" class="text-blue-600 hover:text-blue-800 underline font-mono">
+                                            {{ row['hash'][:8] }}
+                                        </a>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">
                                         {{ row['committer_when'] }}

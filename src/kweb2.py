@@ -411,6 +411,36 @@ async def collab(request: Request, repo_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/file-collab/{repo_id}/", response_class=HTMLResponse)
+async def file_collaboration(request: Request, repo_id: str):
+    """Display file collaboration information"""
+    try:
+        logger.info(f"File collaboration page requested for repo: {repo_id}")
+        
+        file_path = request.query_params.get('file_path')
+        
+        if not file_path:
+            raise HTTPException(status_code=400, detail="file_path parameter is required")
+        
+        logger.info(f"File collaboration requested for: {file_path}")
+        
+        kquery = KospexQuery()
+        collaborators = kquery.get_file_collaborators(repo_id=repo_id, file_path=file_path)
+        
+        return templates.TemplateResponse(
+            "file_collaboration.html",
+            {
+                "request": request,
+                "collaborators": collaborators,
+                "repo_id": repo_id,
+                "file_path": file_path
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in file_collaboration endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.get("/orgs/", response_class=HTMLResponse)
 @app.get("/orgs/{server}", response_class=HTMLResponse)
 async def orgs(request: Request, server: Optional[str] = None):
@@ -903,24 +933,30 @@ async def observations(request: Request):
 
 
 @app.get("/commits/", response_class=HTMLResponse)
-async def commits(request: Request):
-    """Display Git commit information"""
+@app.get("/commits/{repo_id}", response_class=HTMLResponse)
+async def commits(request: Request, repo_id: Optional[str] = None):
+    """
+    Display Git commit information
+    """
     try:
         logger.info("Commits page requested")
-        
-        repo_id = request.query_params.get('repo_id', "")
+        if repo_id is None:
+            # If no repo_id is provided, use the query parameter
+            # This allows for filtering by author or committer email
+            repo_id = request.query_params.get('repo_id', "")
+
         author_email = request.query_params.get('author_email')
         committer_email = request.query_params.get('committer_email')
-        
+
         logger.info(f"Author email: {author_email}")
-        
+
         data = KospexQuery().commits(
-            limit=100,
+            limit=1000,
             repo_id=repo_id,
             author_email=author_email,
             committer_email=committer_email
         )
-        
+
         return templates.TemplateResponse(
             "commits.html",
             {
@@ -955,6 +991,29 @@ async def dependencies(request: Request, id: Optional[str] = None):
         )
     except Exception as e:
         logger.error(f"Error in dependencies endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/commit/{repo_id}/{commit_hash}", response_class=HTMLResponse)
+async def commit(request: Request, repo_id: str, commit_hash: str):
+    """Display individual commit information"""
+    try:
+        logger.info(f"Commit page requested for repo: {repo_id}, hash: {commit_hash}")
+
+        data = KospexQuery().commit(repo_id=repo_id, commit_hash=commit_hash)
+
+        files = KospexQuery().commit_files(repo_id=repo_id, commit_hash=commit_hash)
+
+        return templates.TemplateResponse(
+            "commit.html",
+            {
+                "request": request,
+                "commit": data,
+                "files": files,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in commit endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

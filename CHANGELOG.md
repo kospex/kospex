@@ -31,6 +31,7 @@ now manages the CSS and JS files programatically and stores local versions
 - [Implemented Author Collaborator view](https://github.com/kospex/kospex/issues/32)
 - Exposed the collaborator feature (/collab/) via the /repo/ page to show author / committer summary
 - Exposed the tenure feature (/tenure/) via the /repo/ page to show stats on current commits and authors
+- Better [single commit and commits per file view](https://github.com/kospex/kospex/issues/35) 
 
 ### Changed
 - Removed broken hotspots link from repo view

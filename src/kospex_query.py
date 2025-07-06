@@ -382,6 +382,47 @@ class KospexQuery:
 
         return data
 
+    def commit(self, repo_id, commit_hash):
+        """ Get a specific commit by repo_id and commit hash."""
+        summary_sql = """SELECT _repo_id as repo_id, hash, author_when, author_name,
+        author_email, committer_when, committer_name, committer_email, _cycle_time, _files as files
+        FROM commits
+        WHERE _repo_id = ? AND hash = ?
+        """
+        data = next(self.kospex_db.query(summary_sql, [repo_id, commit_hash]), None)
+        return data
+
+    def commit_files(self, repo_id, commit_hash):
+        """ Get the files for a specific commit by repo_id and commit hash."""
+        summary_sql = """SELECT _repo_id as repo_id, hash, file_path, additions, deletions
+        FROM commit_files
+        WHERE _repo_id = ? AND hash = ?
+        """
+        data = []
+        for row in self.kospex_db.query(summary_sql, [repo_id, commit_hash]):
+            data.append(row)
+
+        return data
+
+    def get_file_collaborators(self, repo_id, file_path):
+        """
+        Get the author committer states dependencies for the given repo_id and file_path.
+        This is used to find the collaborators for a specific file in a repository.
+        """
+
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.select("author_email")
+        kd.select("author_when")
+        kd.select("committer_email")
+        kd.select("committer_when")
+        kd.select("hash")
+        kd.where("_repo_id", "=", repo_id)
+        kd.where_commit_filename(repo_id, file_path)
+        results = kd.execute()
+
+        return results
+
     def commits(self, repo_id=None, before=None, after=None, limit=None,
                 hash=None, author_email=None, committer_email=None):
         """ Provide a summary of the known repositories."""
@@ -426,6 +467,8 @@ class KospexQuery:
         if limit:
             summary_sql += " LIMIT ?"
             params.append(limit)
+
+        print(f"SQL: {summary_sql}")
 
         data = []
         for row in self.kospex_db.query(summary_sql, params):
@@ -1452,6 +1495,20 @@ class KospexData:
             self.where("_git_server", "=", parts[0])
             self.where("_git_owner", "=", parts[1])
 
+    def where_commit_filename(self, repo_id=None, file_path=None):
+        """
+        Add a where clause to the query for commit_files table
+        """
+        # The basic logic is a join between commits and commit_files
+        # HASH in ( SELECT hash FROM commit_files WHERE _repo_id = ? AND file_path = ? )
+        # so we need to do a subselect where the hash is in the commit_files table
+        # and the file_path matches the file_path parameter in the commit_files table
+        raw_sql = """
+        hash IN ( SELECT hash FROM commit_files WHERE _repo_id = ? AND file_path = ? )
+        """
+        self.where_clause.append(raw_sql)
+        self.params.append(repo_id)
+        self.params.append(file_path)
 
     def from_table(self, *tables):
         """ Add a table to the query """
@@ -1686,6 +1743,10 @@ class KospexData:
             self.where("_git_server","=",server)
         else:
             print(f"ERROR: can't identify {id}")
+
+
+    
+
 
     def group_name_where_subselect(self, group_name):
         """ Add a subselect where clause to the query """
