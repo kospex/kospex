@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Kospex Web",
     description="Kospex Code and Developer analytics platform",
-    version="2.0.0"
+    version=Kospex.VERSION
 )
 
 # Add CORS middleware
@@ -687,6 +687,7 @@ async def graph(request: Request, org_key: Optional[str] = None):
 
         if repo_id:
             org_key = f"?repo_id={repo_id}"
+            focus = "files"
         elif author_email:
             org_key = f"?author_email={author_email}"
 
@@ -694,7 +695,8 @@ async def graph(request: Request, org_key: Optional[str] = None):
             "graph.html",
             {
                 "request": request,
-                "org_key": org_key
+                "org_key": org_key,
+                "focus": focus
             }
         )
     except Exception as e:
