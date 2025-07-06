@@ -21,6 +21,8 @@ dependencies = [
     "PyGithub==2.6.1",
     "PyYAML",
     "mkdocs",
+    "fastapi",
+    "uvicorn",
 ]
 
 requires-python = ">=3.11"
@@ -43,7 +45,8 @@ kospex = "kospex:cli"
 kospex-agent = "kospex_agent:cli"
 krunner = "krunner:cli"
 kreaper = "kreaper:cli"
-kweb = "kweb:kweb"
+#kweb = "kweb:kweb"
+kweb = "kweb2:main"
 kwatch = "kwatch:cli"
 
 [project.urls]

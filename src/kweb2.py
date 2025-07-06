@@ -3,6 +3,7 @@
 
 import logging
 import csv
+import sys
 from io import StringIO
 from typing import Optional
 from pathlib import Path
@@ -1224,7 +1225,7 @@ async def supply_chain(request: Request):
                     "package_version": package_version
                 }
             )
-        
+
         # Check if data was found
         if data is None or (isinstance(data, dict) and not data.get("nodes")):
             logger.warning(f"No dependency data found for package: {package}")
@@ -1239,13 +1240,13 @@ async def supply_chain(request: Request):
                     "package_version": package_version
                 }
             )
-        
+
         # Ensure all nodes have the ecosystem property set
         if data and "nodes" in data:
             for node in data["nodes"]:
                 if "ecosystem" not in node or not node["ecosystem"]:
                     node["ecosystem"] = ecosystem.strip()
-                    
+
         logger.info(f"Added ecosystem '{ecosystem}' to {len(data.get('nodes', []))} nodes")
         
         return templates.TemplateResponse(
@@ -1269,7 +1270,24 @@ async def catch_all(request: Request, full_path: str):
     logger.warning(f"404 - Path not found: {full_path}")
     raise HTTPException(status_code=404, detail="Page not found")
 
+def main():
+    #uvicorn.run("kweb2:app", host="0.0.0.0", port=8000, reload=True)
+    import uvicorn
+    if len(sys.argv) > 1:
+        if "-debug" in sys.argv:
+            uvicorn.run("kweb2:app", host="127.0.0.1", port=5000, reload=True)
+        else:
+            sys.exit("Usage: kweb2.py [-debug] to run in debug mode")
+    else:
+        uvicorn.run("kweb2:app", host="127.0.0.1", port=8000)
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    #import uvicorn
+    # if len(sys.argv) > 1:
+    #     if "-debug" in sys.argv:
+    #         uvicorn.run("kweb2:app", host="127.0.0.1", port=5000, reload=True)
+    #     else:
+    #         sys.exit("Usage: kweb2.py [-debug] to run in debug mode")
+    # else:
+    #     uvicorn.run("kweb2:app", host="127.0.0.1", port=8000)
+    main()
