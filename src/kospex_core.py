@@ -33,7 +33,7 @@ class Kospex:
     """
     kospex core functionality
     """
-    VERSION = "0.0.17" # This value should align with the pyproject.toml version for pip
+    VERSION = "0.0.18" # This value should align with the pyproject.toml version for pip
     def __init__(self):
 
         self.original_cwd = None

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kospex"
-version = "0.0.17"
+version = "0.0.18"
 description = "The kospex CLI tool."
 authors = [{ name = "Peter Freiberg", email = "peter.freiberg@gmail.com" }]
 license = { file = "LICENSE" }
@@ -28,7 +28,7 @@ dependencies = [
 
 requires-python = ">=3.11"
 readme = "README.short.md"
-keywords = ["analytics", "git", "code analytics", "predictive maintenance"]
+keywords = ["analytics", "git", "code analytics", "developer analytics", "open source inventory", "predictive maintenance"]
 classifiers = ["Programming Language :: Python :: 3"]
 
 

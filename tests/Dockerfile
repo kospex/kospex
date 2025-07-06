@@ -9,6 +9,7 @@ RUN dnf -y update && dnf -y upgrade && \
     dnf -y install \
     python3.11 \
     python3.11-pip \
+    which \
     git \
     && dnf clean all
 
