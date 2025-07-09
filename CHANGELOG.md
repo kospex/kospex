@@ -2,6 +2,26 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.19 - 2025-07-09 
+
+### Added
+- Nothing
+
+### Changed
+- Nothing
+
+### Fixed
+- [Static files (js,css) not packaged for kweb](https://github.com/kospex/kospex/issues/37)
+
+## [Unreleased]
+
+## VERSION - DATE - IN PROGRESS
+
+### Added
+### Changed
+### Fixed
+
+
 ## 0.0.18 - 2025-07-07
 
 ## Major Changes (non breaking)
@@ -24,14 +44,6 @@ Refactored from [Flask to FastAPI](https://github.com/kospex/kospex/issues/33)
 
 ### Fixed
 - Probably a few bugs here and there
-
-## [Unreleased]
-
-## VERSION - DATE - IN PROGRESS
-
-### Added
-### Changed
-### Fixed
 
 ## 0.0.17 - 2025-04-20
 
