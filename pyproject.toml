@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kospex"
-version = "0.0.18"
-description = "The kospex CLI tool."
+version = "0.0.19"
+description = "kospex - Code and Developer Analytics."
 authors = [{ name = "Peter Freiberg", email = "peter.freiberg@gmail.com" }]
 license = { file = "LICENSE" }
 
@@ -22,8 +22,9 @@ dependencies = [
     "python-multipart>=0.0.20",
     "PyYAML",
     "mkdocs",
-    "fastapi",
-    "uvicorn",
+    "jinja2>=3.1.6",
+    "fastapi>=0.116.0",
+    "uvicorn>=0.35.0",
 ]
 
 requires-python = ">=3.11"
@@ -32,12 +33,14 @@ keywords = ["analytics", "git", "code analytics", "developer analytics", "open s
 classifiers = ["Programming Language :: Python :: 3"]
 
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.package-data]
 "*" = [
     "templates/*.html",
     "templates/**/*.html",
-    "static/css/*.css",
-    "static/js/*.js"
+    "static/**/*"
 ]
 
 [project.scripts]
