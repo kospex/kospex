@@ -41,4 +41,7 @@ jobs:
       - name: Run CLI tests
         run: |
           # Run CLI tests
+          kospex init -create
+          kospex
+          kospex summary
           ./test-cli.sh
