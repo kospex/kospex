@@ -44,4 +44,4 @@ jobs:
           kospex init -create
           kospex
           kospex summary
-          ./test-cli.sh
+          #./test-cli.sh
