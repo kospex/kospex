@@ -22,9 +22,10 @@ log = logging.getLogger(__name__)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 #VERSION = "0.0.16" # This value should align with the pyproject.toml version for pip
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.version_option(version=Kospex.VERSION)
-def cli():
+@click.pass_context
+def cli(ctx):
     """Kospex is a tool for assessing code and git repositories.
 
     It is designed to help understand the structure of code, who are developers and
@@ -35,6 +36,10 @@ def cli():
     See also https://kospex.io/
 
     """
+    if ctx.invoked_subcommand is None:
+        # Default behavior when no command is provided
+        click.echo(ctx.get_help())
+        ctx.exit(0)
 
 @cli.command("init")
 @click.option('-create', is_flag=True, default=False, help="Create the default ~/code or KOSPEX_CODE directory.")

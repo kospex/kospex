@@ -2,7 +2,7 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.19 - 2025-07-09 
+## 0.0.19 - 2025-07-09
 
 ### Added
 - Nothing
@@ -20,6 +20,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Added
 ### Changed
 ### Fixed
+- [kospex CLI exited with error code 2](/changes/click-exit-2-error.md) when no arguments are provided
 
 
 ## 0.0.18 - 2025-07-07
@@ -30,14 +31,14 @@ This version did a refactor from Bootstrap 4 to [TailwindCSS](https://tailwindcs
 now manages the CSS and JS files programatically and stores local versions
 [Documentation for TailwindCSS web and JS assets](/web-assets.md)
 
-Refactored from [Flask to FastAPI](https://github.com/kospex/kospex/issues/33) 
+Refactored from [Flask to FastAPI](https://github.com/kospex/kospex/issues/33)
 
 ### Added
 - [Create local static css and js files and package management](https://github.com/kospex/kospex/issues/31)
 - [Implemented Author Collaborator view](https://github.com/kospex/kospex/issues/32)
 - Exposed the collaborator feature (/collab/) via the /repo/ page to show author / committer summary
 - Exposed the tenure feature (/tenure/) via the /repo/ page to show stats on current commits and authors
-- Better [single commit and commits per file view](https://github.com/kospex/kospex/issues/35) 
+- Better [single commit and commits per file view](https://github.com/kospex/kospex/issues/35)
 
 ### Changed
 - Removed broken hotspots link from repo view
