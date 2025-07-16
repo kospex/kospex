@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Collaboration Network Graph - Kospex Web</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <style>
+            .graph-container {
+                width: 100%;
+                height: 80vh;
+                min-height: 600px;
+                border: 1px solid #e5e7eb;
+                border-radius: 0.5rem;
+            }
+            
+            .node {
+                cursor: pointer;
+                stroke: #fff;
+                stroke-width: 2px;
+                fill: #3b82f6 !important; /* Force blue color */
+            }
+            
+            .node.pinned {
+                stroke: #f59e0b;
+                stroke-width: 3px;
+            }
+            
+            svg {
+                border: 1px solid #ccc; /* Add border to see SVG boundaries */
+            }
+            
+            .link {
+                stroke: #999;
+                stroke-opacity: 0.8;
+            }
+            
+            .self-link {
+                fill: none;
+                stroke: #999;
+                stroke-width: 2px;
+                stroke-opacity: 0.8;
+            }
+            
+            .node-label {
+                pointer-events: none;
+                font: 12px sans-serif;
+                text-anchor: middle;
+                fill: #333;
+            }
+            
+            .tooltip {
+                position: absolute;
+                text-align: center;
+                padding: 8px;
+                font: 12px sans-serif;
+                background: #1f2937;
+                color: white;
+                border-radius: 4px;
+                pointer-events: none;
+                opacity: 0;
+                z-index: 1000;
+            }
+            
+            .legend {
+                font: 12px sans-serif;
+            }
+            
+            .link-label, .self-link-label {
+                pointer-events: none;
+                user-select: none;
+                text-shadow: 1px 1px 2px rgba(255,255,255,0.8);
+            }
+            
+            .side-panel {
+                position: fixed;
+                top: 0;
+                left: -400px;
+                width: 400px;
+                height: 100vh;
+                background: white;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+                transition: left 0.3s ease-in-out;
+                z-index: 1000;
+                overflow-y: auto;
+            }
+            
+            .side-panel.open {
+                left: 0;
+            }
+            
+            .overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                z-index: 999;
+                opacity: 0;
+                visibility: hidden;
+                transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+            }
+            
+            .overlay.open {
+                opacity: 1;
+                visibility: visible;
+            }
+        </style>
+    </head>
+    <body class="bg-white">
+        <!-- Header with solid black background -->
+        <nav class="bg-gray-800 text-white">
+            <div class="container mx-auto px-4">
+                <div class="flex items-center justify-between h-16">
+                    <a class="text-white text-lg font-medium hover:text-gray-300" href="/">K. web</a>
+                    <div class="flex space-x-8">
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/repos/">Repos</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/orgs/">Orgs</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/developers/">Developers</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/landscape/">Landscape</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/metadata/">Metadata</a>
+                        <a class="text-gray-300 hover:text-white transition-colors" href="/help/">Help</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            <!-- Collaboration Network Graph -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h1 class="text-3xl font-bold text-gray-900">Collaboration Network</h1>
+                            <p class="text-gray-600 mt-2">Network visualization of author and committer relationships</p>
+                            <p class="text-sm text-gray-500 mt-1">Repository: <code class="bg-gray-100 px-2 py-1 rounded">{{ repo_id }}</code></p>
+                        </div>
+                        <div class="text-right flex gap-2">
+                            <button id="downloadGraph" class="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                <span class="w-4 h-4 mr-1 flex items-center justify-center text-xs bg-blue-100 border border-blue-300 rounded">⬇</span>
+                                Download PNG
+                            </button>
+                            <button id="resetZoom" class="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                Reset Zoom
+                            </button>
+                            <a href="/collab/{{ repo_id }}" class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                View Table
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- Legend -->
+                    <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                        <h3 class="text-sm font-medium text-gray-900 mb-2">Legend & Controls</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <h4 class="text-xs font-medium text-gray-700 mb-1">Visualization</h4>
+                                <div class="flex flex-wrap gap-3 text-sm text-gray-600">
+                                    <div class="flex items-center">
+                                        <div class="w-4 h-4 mr-2" style="background-color: #3b82f6; border-radius: 50%;"></div>
+                                        <span>Developer (size = commits)</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="mr-2" style="width: 24px; height: 3px; background-color: #9ca3af; border-radius: 1px;"></div>
+                                        <span>Collaboration</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-4 h-4 mr-2" style="border: 2px solid #22c55e; border-radius: 50%; background-color: transparent;"></div>
+                                        <span>Self-commits</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 class="text-xs font-medium text-gray-700 mb-1">Controls</h4>
+                                <div class="text-sm text-gray-600 space-y-1">
+                                    <div class="flex items-center">
+                                        <div class="w-4 h-4 mr-2 flex items-center justify-center text-xs bg-gray-200 rounded">↕</div>
+                                        <span><strong>Scroll:</strong> Zoom in/out</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-4 h-4 mr-2 flex items-center justify-center text-xs bg-gray-200 rounded">⤴</div>
+                                        <span><strong>Click + Drag:</strong> Pan graph</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-3 h-3 bg-blue-500 rounded-full mr-2 border border-orange-400"></div>
+                                        <span><strong>Drag nodes:</strong> Pin in place</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-4 h-4 mr-2 flex items-center justify-center text-xs bg-gray-200 rounded">×</div>
+                                        <span><strong>Double-click:</strong> Unpin nodes</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-4 h-4 mr-2 flex items-center justify-center text-xs bg-gray-200 rounded">ℹ</div>
+                                        <span><strong>Click nodes:</strong> Show details panel</span>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <div class="w-4 h-4 mr-2 flex items-center justify-center text-xs bg-blue-100 border border-blue-300 rounded">⬇</div>
+                                        <span><strong>Download:</strong> Save as PNG image</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Loading indicator -->
+                    <div id="loading" class="text-center py-8">
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        <p class="mt-2 text-gray-600">Loading collaboration data...</p>
+                    </div>
+                    
+                    <!-- Graph container -->
+                    <div id="graph" class="graph-container -mx-6" style="display: none;"></div>
+                    
+                    <!-- Tooltip -->
+                    <div class="tooltip" id="tooltip"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Side Panel Overlay -->
+        <div class="overlay" id="overlay"></div>
+        <div class="side-panel" id="sidePanel">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-900">Developer Details</h2>
+                    <button id="closeSidePanel" class="text-gray-400 hover:text-gray-600">
+                        <span class="text-2xl">&times;</span>
+                    </button>
+                </div>
+                
+                <div id="developerInfo">
+                    <!-- Developer information will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %}
+        <script src="/static/js/d3.min.js"></script>
+
+        <script>
+            // Graph configuration
+            const graphElement = document.getElementById('graph');
+            
+            let width = graphElement.offsetWidth || 800; // Fallback width
+            let height = graphElement.offsetHeight || Math.max(600, window.innerHeight * 0.8);
+            const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+            
+            // Create SVG
+            const svg = d3.select("#graph")
+                .append("svg")
+                .attr("width", width)
+                .attr("height", height);
+            
+            // Create main group for zooming and panning
+            const container = svg.append("g");
+            const g = container.append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+            
+            // Add zoom and pan behavior
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 10]) // Allow zoom from 10% to 1000%
+                .on("zoom", function(event) {
+                    container.attr("transform", event.transform);
+                });
+            
+            // Apply zoom to SVG
+            svg.call(zoom);
+            
+            
+            // Tooltip
+            const tooltip = d3.select("#tooltip");
+            
+            // Load data and create visualization
+            fetch(`/api/collab/graph/{{ repo_id }}`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('graph').style.display = 'block';
+                    
+                    // Recalculate dimensions now that graph is visible
+                    setTimeout(() => {
+                        const newWidth = graphElement.offsetWidth || 800;
+                        const newHeight = graphElement.offsetHeight || Math.max(600, window.innerHeight * 0.8);
+                        
+                        // Update SVG dimensions
+                        svg.attr("width", newWidth).attr("height", newHeight);
+                        
+                        // Update global width/height variables
+                        width = newWidth;
+                        height = newHeight;
+                        
+                        createNetworkGraph(data);
+                    }, 10); // Small delay to ensure layout is updated
+                })
+                .catch(error => {
+                    console.error('Error loading data:', error);
+                    document.getElementById('loading').innerHTML = '<p class="text-red-600">Error loading collaboration data</p>';
+                });
+            
+            function createNetworkGraph(data) {
+                // Process data to create nodes and links
+                const emailSet = new Set();
+                const commitCounts = new Map();
+                
+                // Collect all unique emails and their commit counts
+                data.forEach(d => {
+                    emailSet.add(d.author_email);
+                    emailSet.add(d.committer_email);
+                    
+                    // Only count commits once per email to avoid double-counting self-commits
+                    if (d.author_email === d.committer_email) {
+                        // Self-commit: only add once
+                        commitCounts.set(d.author_email, (commitCounts.get(d.author_email) || 0) + d.commits);
+                    } else {
+                        // Different author and committer: add to both
+                        commitCounts.set(d.author_email, (commitCounts.get(d.author_email) || 0) + d.commits);
+                        commitCounts.set(d.committer_email, (commitCounts.get(d.committer_email) || 0) + d.commits);
+                    }
+                });
+                
+                // Create nodes with initial positions
+                const centerX = (width - margin.left - margin.right) / 2;
+                const centerY = (height - margin.top - margin.bottom) / 2;
+                const nodes = Array.from(emailSet).map((email, i) => ({
+                    id: email,
+                    commits: commitCounts.get(email) || 0,
+                    type: 'developer',
+                    x: centerX + (Math.random() - 0.5) * 100, // Random position near center
+                    y: centerY + (Math.random() - 0.5) * 100
+                }));
+                
+                // Create links and self-loops
+                const links = [];
+                const selfLoops = [];
+                
+                data.forEach(d => {
+                    if (d.author_email === d.committer_email) {
+                        // Self-loop - find the corresponding node
+                        const node = nodes.find(n => n.id === d.author_email);
+                        if (node) {
+                            selfLoops.push({
+                                source: node,
+                                target: node,
+                                commits: d.commits
+                            });
+                        }
+                    } else {
+                        // Regular link
+                        links.push({
+                            source: d.author_email,
+                            target: d.committer_email,
+                            commits: d.commits
+                        });
+                    }
+                });
+                
+                // Set up scales
+                const maxCommits = d3.max(nodes, d => d.commits);
+                const nodeScale = d3.scaleSqrt()
+                    .domain([1, maxCommits])
+                    .range([5, 20]);
+                
+                // Handle case where there are no regular links (only self-loops)
+                const maxLinkCommits = links.length > 0 ? d3.max(links, d => d.commits) : 1;
+                const linkScale = d3.scaleLinear()
+                    .domain([1, maxLinkCommits])
+                    .range([1, 8]);
+                
+                // Create force simulation
+                const simulation = d3.forceSimulation(nodes);
+                
+                // Only add link force if there are links
+                if (links.length > 0) {
+                    simulation.force("link", d3.forceLink(links).id(d => d.id).distance(100));
+                }
+                
+                simulation
+                    .force("charge", d3.forceManyBody().strength(-200))
+                    .force("center", d3.forceCenter((width - margin.left - margin.right) / 2, (height - margin.top - margin.bottom) / 2))
+                    .force("collision", d3.forceCollide().radius(d => nodeScale(d.commits) + 5))
+                    .force("x", d3.forceX((width - margin.left - margin.right) / 2).strength(0.1))
+                    .force("y", d3.forceY((height - margin.top - margin.bottom) / 2).strength(0.1));
+                
+                // Add links
+                const linkGroup = g.append("g").attr("class", "links");
+                
+                const link = linkGroup
+                    .selectAll("line")
+                    .data(links)
+                    .enter().append("line")
+                    .attr("class", "link")
+                    .attr("stroke-width", d => linkScale(d.commits));
+                
+                // Add link labels for commit counts
+                const linkLabels = linkGroup
+                    .selectAll("text")
+                    .data(links)
+                    .enter().append("text")
+                    .attr("class", "link-label")
+                    .attr("text-anchor", "middle")
+                    .attr("font-size", "10px")
+                    .attr("fill", "#666")
+                    .attr("dy", "-2px")
+                    .text(d => d.commits);
+                
+                // Add self-loops (curved paths)
+                const selfLinkGroup = g.append("g").attr("class", "self-links");
+                
+                const selfLink = selfLinkGroup
+                    .selectAll("path")
+                    .data(selfLoops)
+                    .enter().append("path")
+                    .attr("class", "self-link")
+                    .attr("stroke-width", d => linkScale(d.commits))
+                    .attr("stroke", "#22c55e")
+                    .attr("marker-end", "url(#arrow)");
+                
+                // Add self-loop labels for commit counts
+                const selfLinkLabels = selfLinkGroup
+                    .selectAll("text")
+                    .data(selfLoops)
+                    .enter().append("text")
+                    .attr("class", "self-link-label")
+                    .attr("text-anchor", "middle")
+                    .attr("font-size", "10px")
+                    .attr("fill", "#22c55e")
+                    .attr("font-weight", "bold")
+                    .text(d => d.commits);
+                
+                // Add arrow marker for self-loops
+                svg.append("defs").append("marker")
+                    .attr("id", "arrow")
+                    .attr("viewBox", "0 -5 10 10")
+                    .attr("refX", 8)
+                    .attr("refY", 0)
+                    .attr("markerWidth", 6)
+                    .attr("markerHeight", 6)
+                    .attr("orient", "auto")
+                    .append("path")
+                    .attr("d", "M0,-5L10,0L0,5")
+                    .attr("fill", "#22c55e");
+                
+                // Add nodes
+                const node = g.append("g")
+                    .attr("class", "nodes")
+                    .selectAll("circle")
+                    .data(nodes)
+                    .enter().append("circle")
+                    .attr("class", "node")
+                    .attr("r", d => nodeScale(d.commits))
+                    .attr("fill", "#3b82f6")
+                    .call(d3.drag()
+                        .on("start", dragstarted)
+                        .on("drag", dragged)
+                        .on("end", dragended))
+                    .on("mouseover", function(event, d) {
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        tooltip.html(`
+                            <strong>${d.id}</strong><br/>
+                            Total commits: ${d.commits}
+                        `)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 28) + "px");
+                    })
+                    .on("mouseout", function(d) {
+                        tooltip.transition()
+                            .duration(500)
+                            .style("opacity", 0);
+                    })
+                    .on("click", function(event, d) {
+                        // Delay single click to allow for double-click detection
+                        const selection = d3.select(this);
+                        setTimeout(() => {
+                            if (!selection.classed("double-clicked")) {
+                                showDeveloperPanel(d);
+                            }
+                            selection.classed("double-clicked", false);
+                        }, 300);
+                    })
+                    .on("dblclick", function(event, d) {
+                        // Mark as double-clicked to prevent single-click action
+                        d3.select(this).classed("double-clicked", true);
+                        
+                        // Double-click to unpin node
+                        d.fx = null;
+                        d.fy = null;
+                        
+                        // Check if there are any unpinned nodes to determine if we should restart simulation
+                        const hasUnpinnedNodes = nodes.some(n => n.fx == null && n.fy == null);
+                        if (hasUnpinnedNodes) {
+                            simulation.restart();
+                        }
+                        
+                        event.stopPropagation(); // Prevent zoom behavior
+                        
+                        // Remove visual indicator for pinned node
+                        d3.select(this).classed("pinned", false);
+                    });
+                
+                // Add labels
+                const label = g.append("g")
+                    .attr("class", "labels")
+                    .selectAll("text")
+                    .data(nodes)
+                    .enter().append("text")
+                    .attr("class", "node-label")
+                    .attr("dy", ".35em")
+                    .text(d => d.id.split('@')[0]); // Show username part only
+                
+                // Update positions on tick
+                const graphWidth = width - margin.left - margin.right;
+                const graphHeight = height - margin.top - margin.bottom;
+                
+                simulation.on("tick", () => {
+                    
+                    // Constrain nodes to stay within bounds
+                    nodes.forEach(d => {
+                        const radius = nodeScale(d.commits);
+                        d.x = Math.max(radius, Math.min(graphWidth - radius, d.x));
+                        d.y = Math.max(radius, Math.min(graphHeight - radius, d.y));
+                    });
+                    
+                    link
+                        .attr("x1", d => d.source.x)
+                        .attr("y1", d => d.source.y)
+                        .attr("x2", d => d.target.x)
+                        .attr("y2", d => d.target.y);
+                    
+                    // Position link labels at midpoint
+                    linkLabels
+                        .attr("x", d => (d.source.x + d.target.x) / 2)
+                        .attr("y", d => (d.source.y + d.target.y) / 2);
+                    
+                    // Self-loops as circular arcs
+                    selfLink.attr("d", d => {
+                        const x = d.source.x;
+                        const y = d.source.y;
+                        const r = nodeScale(d.source.commits) + 15;
+                        return `M ${x + r},${y} A ${r},${r} 0 1,1 ${x - r},${y}`;
+                    });
+                    
+                    // Position self-loop labels
+                    selfLinkLabels
+                        .attr("x", d => d.source.x)
+                        .attr("y", d => d.source.y - nodeScale(d.source.commits) - 25);
+                    
+                    node
+                        .attr("cx", d => d.x)
+                        .attr("cy", d => d.y);
+                    
+                    label
+                        .attr("x", d => d.x)
+                        .attr("y", d => d.y + nodeScale(d.commits) + 15);
+                });
+                
+                // Drag functions for nodes (works with zoom)
+                function dragstarted(event, d) {
+                    // Stop the simulation completely during drag
+                    simulation.stop();
+                    d.fx = d.x;
+                    d.fy = d.y;
+                    // Prevent zoom during node drag
+                    event.sourceEvent.stopPropagation();
+                }
+                
+                function dragged(event, d) {
+                    d.fx = event.x;
+                    d.fy = event.y;
+                    
+                    // Manually update positions during drag (no simulation)
+                    d.x = event.x;
+                    d.y = event.y;
+                    
+                    // Update visual elements manually
+                    d3.select(this)
+                        .attr("cx", d.x)
+                        .attr("cy", d.y);
+                    
+                    // Update connected links
+                    link
+                        .filter(l => l.source === d || l.target === d)
+                        .attr("x1", l => l.source.x)
+                        .attr("y1", l => l.source.y)
+                        .attr("x2", l => l.target.x)
+                        .attr("y2", l => l.target.y);
+                    
+                    // Update link labels
+                    linkLabels
+                        .filter(l => l.source === d || l.target === d)
+                        .attr("x", l => (l.source.x + l.target.x) / 2)
+                        .attr("y", l => (l.source.y + l.target.y) / 2);
+                    
+                    // Update self-loops
+                    selfLink
+                        .filter(l => l.source === d)
+                        .attr("d", l => {
+                            const x = l.source.x;
+                            const y = l.source.y;
+                            const r = nodeScale(l.source.commits) + 15;
+                            return `M ${x + r},${y} A ${r},${r} 0 1,1 ${x - r},${y}`;
+                        });
+                    
+                    // Update self-loop labels
+                    selfLinkLabels
+                        .filter(l => l.source === d)
+                        .attr("x", l => l.source.x)
+                        .attr("y", l => l.source.y - nodeScale(l.source.commits) - 25);
+                    
+                    // Update node labels
+                    label
+                        .filter((n, i, nodes) => d3.select(nodes[i]).datum() === d)
+                        .attr("x", d.x)
+                        .attr("y", d.y + nodeScale(d.commits) + 15);
+                }
+                
+                function dragended(event, d) {
+                    // Don't restart simulation - keep other nodes static
+                    // Keep the node pinned at its final position
+                    // d.fx and d.fy remain set, so the node stays where dragged
+                    
+                    // Add visual indicator for pinned node
+                    d3.select(this).classed("pinned", true);
+                }
+                
+                // Add reset zoom functionality
+                document.getElementById('resetZoom').addEventListener('click', function() {
+                    svg.transition().duration(750).call(
+                        zoom.transform,
+                        d3.zoomIdentity.translate(0, 0).scale(1)
+                    );
+                });
+                
+                // Add download functionality
+                document.getElementById('downloadGraph').addEventListener('click', function() {
+                    downloadSVGAsPNG();
+                });
+                
+                function downloadSVGAsPNG() {
+                    // Clone the SVG element to avoid modifying the original
+                    const svgElement = svg.node();
+                    const clonedSvg = svgElement.cloneNode(true);
+                    
+                    // Add inline styles to ensure they're preserved
+                    const style = document.createElement('style');
+                    style.textContent = `
+                        .node { fill: #3b82f6; stroke: #fff; stroke-width: 2px; cursor: pointer; }
+                        .node.pinned { stroke: #f59e0b; stroke-width: 3px; }
+                        .link { stroke: #999; stroke-opacity: 0.8; }
+                        .self-link { fill: none; stroke: #22c55e; stroke-width: 2px; stroke-opacity: 0.8; }
+                        .node-label { font: 12px sans-serif; text-anchor: middle; fill: #333; pointer-events: none; }
+                        .link-label, .self-link-label { font: 10px sans-serif; pointer-events: none; text-shadow: 1px 1px 2px rgba(255,255,255,0.8); }
+                        .self-link-label { fill: #22c55e; font-weight: bold; }
+                        .link-label { fill: #666; }
+                    `;
+                    clonedSvg.insertBefore(style, clonedSvg.firstChild);
+                    
+                    // Set explicit dimensions
+                    clonedSvg.setAttribute('width', width);
+                    clonedSvg.setAttribute('height', height);
+                    clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                    
+                    // Serialize the enhanced SVG
+                    const svgData = new XMLSerializer().serializeToString(clonedSvg);
+                    
+                    // Create a canvas element
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Set canvas size (higher resolution for better quality)
+                    const scaleFactor = 2;
+                    canvas.width = width * scaleFactor;
+                    canvas.height = height * scaleFactor;
+                    
+                    // Scale the context for high DPI
+                    ctx.scale(scaleFactor, scaleFactor);
+                    
+                    // Set white background
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, width, height);
+                    
+                    // Create an image from SVG
+                    const img = new Image();
+                    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                    const url = URL.createObjectURL(svgBlob);
+                    
+                    img.onload = function() {
+                        // Draw the image to canvas
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // Convert canvas to PNG and download
+                        canvas.toBlob(function(blob) {
+                            const link = document.createElement('a');
+                            link.download = `collaboration-graph-{{ repo_id.replace('~', '-').replace('/', '-') }}.png`;
+                            link.href = URL.createObjectURL(blob);
+                            link.click();
+                            
+                            // Clean up
+                            URL.revokeObjectURL(url);
+                            URL.revokeObjectURL(link.href);
+                        }, 'image/png');
+                    };
+                    
+                    img.onerror = function() {
+                        // Fallback: try a different approach
+                        console.warn('SVG to PNG conversion failed, trying fallback method');
+                        downloadSVGFallback();
+                    };
+                    
+                    img.src = url;
+                }
+                
+                function downloadSVGFallback() {
+                    // Fallback: download as SVG file
+                    const svgElement = svg.node();
+                    const svgData = new XMLSerializer().serializeToString(svgElement);
+                    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                    const url = URL.createObjectURL(svgBlob);
+                    
+                    const link = document.createElement('a');
+                    link.download = `collaboration-graph-{{ repo_id.replace('~', '-').replace('/', '-') }}.svg`;
+                    link.href = url;
+                    link.click();
+                    
+                    URL.revokeObjectURL(url);
+                }
+                
+                // Side panel functionality
+                function showDeveloperPanel(nodeData) {
+                    const sidePanel = document.getElementById('sidePanel');
+                    const overlay = document.getElementById('overlay');
+                    const developerInfo = document.getElementById('developerInfo');
+                    
+                    // Calculate commits for this developer from the original data
+                    let totalCommits = 0;
+                    let selfCommits = 0;
+                    let collaborations = [];
+                    
+                    data.forEach(d => {
+                        if (d.author_email === nodeData.id) {
+                            totalCommits += d.commits;
+                            if (d.author_email === d.committer_email) {
+                                selfCommits += d.commits;
+                            } else {
+                                collaborations.push({
+                                    committer: d.committer_email,
+                                    commits: d.commits
+                                });
+                            }
+                        }
+                        if (d.committer_email === nodeData.id && d.author_email !== nodeData.id) {
+                            totalCommits += d.commits;
+                            collaborations.push({
+                                author: d.author_email,
+                                commits: d.commits
+                            });
+                        }
+                    });
+                    
+                    // Extract username from email
+                    const username = nodeData.id.split('@')[0];
+                    const isGithubUser = nodeData.id.includes('users.noreply.github.com');
+                    
+                    // Create developer info HTML
+                    developerInfo.innerHTML = `
+                        <div class="space-y-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900">Email</h3>
+                                <p class="text-sm text-gray-600 break-all">${nodeData.id}</p>
+                            </div>
+                            
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-900">Username</h3>
+                                <p class="text-sm text-gray-600">${username}</p>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-blue-50 p-3 rounded-lg">
+                                    <div class="text-2xl font-bold text-blue-600">${totalCommits}</div>
+                                    <div class="text-sm text-blue-800">Total Commits</div>
+                                </div>
+                                <div class="bg-green-50 p-3 rounded-lg">
+                                    <div class="text-2xl font-bold text-green-600">${selfCommits}</div>
+                                    <div class="text-sm text-green-800">Self Commits</div>
+                                </div>
+                            </div>
+                            
+                            ${collaborations.length > 0 ? `
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Collaborations</h3>
+                                    <div class="space-y-2 max-h-40 overflow-y-auto">
+                                        ${collaborations.map(c => `
+                                            <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                                <span class="text-sm text-gray-700 truncate">${(c.committer || c.author || '').split('@')[0]}</span>
+                                                <span class="text-sm font-medium text-gray-900">${c.commits} commits</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="pt-4 border-t">
+                                <a href="/developers/?author_email=${encodeURIComponent(nodeData.id)}" 
+                                   target="_blank" 
+                                   class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                    View Full Developer Profile →
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Show the panel
+                    sidePanel.classList.add('open');
+                    overlay.classList.add('open');
+                }
+                
+                function hideDeveloperPanel() {
+                    const sidePanel = document.getElementById('sidePanel');
+                    const overlay = document.getElementById('overlay');
+                    
+                    sidePanel.classList.remove('open');
+                    overlay.classList.remove('open');
+                }
+                
+                // Add event listeners for closing the panel
+                document.getElementById('closeSidePanel').addEventListener('click', hideDeveloperPanel);
+                document.getElementById('overlay').addEventListener('click', hideDeveloperPanel);
+                
+                // Close panel with Escape key
+                document.addEventListener('keydown', function(event) {
+                    if (event.key === 'Escape') {
+                        hideDeveloperPanel();
+                    }
+                });
+                
+            }
+        </script>
+    </body>
+</html>

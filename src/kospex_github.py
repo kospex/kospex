@@ -112,8 +112,8 @@ class KospexGithub:
 
         for repo in repos:
             #print(repo.full_name)
-            print(json.dumps(repo._rawData, indent=4))
-            print("\n")
+            #print(json.dumps(repo._rawData, indent=4))
+            #print("\n")
 
             record = {
                 'name': repo.full_name,

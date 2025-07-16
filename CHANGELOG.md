@@ -18,6 +18,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ## VERSION - DATE - IN PROGRESS
 
 ### Added
+- Added a [network graph view of commit collaborators ](https://github.com/kospex/kospex/issues/38)
 ### Changed
 ### Fixed
 - [kospex CLI exited with error code 2](/changes/click-exit-2-error.md) when no arguments are provided

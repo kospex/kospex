@@ -242,6 +242,26 @@ async def health_check():
     return {"status": "healthy", "service": "kospex-web"}
 
 
+@app.get("/generate-repo-id/")
+async def generate_repo_id(url: str):
+    """Generate a repo_id from a git URL"""
+    try:
+        logger.info(f"Generate repo_id requested for URL: {url}")
+        
+        # TODO: Implement repo_id generation logic
+        # For now, return a stub response
+        repo_id = "TODO_IMPLEMENT_REPO_ID_GENERATION"
+        
+        return JSONResponse(content={
+            "url": url,
+            "repo_id": repo_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in generate_repo_id endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.get("/servers/", response_class=HTMLResponse)
 async def servers(request: Request):
     """Display Git server information."""
@@ -399,16 +419,50 @@ async def collab(request: Request, repo_id: str):
 
         kquery = KospexQuery()
         collabs = kquery.get_collabs(repo_id=repo_id)
-
+        
         return templates.TemplateResponse(
             "collab.html",
             {
                 "request": request,
+                "repo_id": repo_id,
                 "collabs": collabs
             }
         )
     except Exception as e:
         logger.error(f"Error in collab endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/collab/graph/{repo_id}", response_class=HTMLResponse)
+async def collab_graph(request: Request, repo_id: str):
+    """Display network graph visualization of repository collaboration"""
+    try:
+        logger.info(f"Collaboration graph page requested for repo: {repo_id}")
+
+        return templates.TemplateResponse(
+            "collab_graph.html",
+            {
+                "request": request,
+                "repo_id": repo_id
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in collab_graph endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/collab/graph/{repo_id}", response_class=JSONResponse)
+async def collab_graph_data(request: Request, repo_id: str):
+    """Return JSON data for collaboration network graph"""
+    try:
+        logger.info(f"Collaboration graph data requested for repo: {repo_id}")
+
+        kquery = KospexQuery()
+        collabs = kquery.get_collabs(repo_id=repo_id)
+        
+        return JSONResponse(content=collabs)
+    except Exception as e:
+        logger.error(f"Error in collab_graph_data endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
