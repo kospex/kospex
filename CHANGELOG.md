@@ -22,7 +22,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - Added metadata repos view to see last commit, last sync of the data
 ### Changed
 - Single developer view now displays the years active in repos and the technologies used.
-- Updated [HTML views to use //src//templates//_header.html](/changes/ 202507-template-header-updates.md)
+- Updated [HTML views to use src/templates/_header.html](/changes/202507-template-header-updates.md)
 ### Fixed
 - [kospex CLI exited with error code 2](/changes/click-exit-2-error.md) when no arguments are provided
 
