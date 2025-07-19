@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Repository Metadata - Kospex Web</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <style>
+            /* Custom styles for DataTables with Tailwind */
+            .dataTables_wrapper .dataTables_length select,
+            .dataTables_wrapper .dataTables_filter input {
+                @apply border border-gray-300 rounded px-3 py-2 text-sm;
+            }
+            .dataTables_wrapper .dataTables_length,
+            .dataTables_wrapper .dataTables_filter,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                @apply text-sm text-gray-700;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+                @apply bg-blue-600 text-white border-blue-600;
+            }
+        </style>
+    </head>
+    <body class="bg-white">
+        {% include '_header.html' %}
+
+        <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            <!-- Repository Metadata -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Repository Metadata</h1>
+                    {% if repo_id %}
+                        <p class="text-gray-600 mb-6">Metadata for repository: <strong>{{ repo_id }}</strong></p>
+                    {% else %}
+                        <p class="text-gray-600 mb-6">Metadata for all repositories in the database.</p>
+                    {% endif %}
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="repoTable">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repository</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Git Server</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Commit</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Sync</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">First Commit</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for repo in repos %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        <div class="flex items-center space-x-2">
+                                            <button onclick="openModal('{{ repo['_repo_id'] or '' }}', '{{ repo['_git_repo'] or '' }}', '{{ repo['_git_owner'] or '' }}', '{{ repo['_git_server'] or '' }}', '{{ repo['git_remote'] or '' }}', '{{ repo['created_at'] or '' }}', '{{ repo['file_path'] or '' }}', '{{ repo['last_seen'] or '' }}', '{{ repo['last_sync'] or '' }}', '{{ repo['first_seen'] or '' }}')" class="text-gray-400 hover:text-gray-600">
+                                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                                                </svg>
+                                            </button>
+                                            <a href="/repo/{{ repo['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline">
+                                                {{ repo['_git_repo'] or '-' }}
+                                            </a>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        {{ repo['_git_owner'] or '-' }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        {{ repo['_git_server'] or '-' }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">
+                                        {{ repo['last_seen'] or '-' }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">
+                                        {{ repo['last_sync'] or '-' }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">
+                                        {{ repo['first_seen'] or '-' }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal -->
+        <div id="repoModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden">
+            <div class="container mx-auto px-4" style="padding-top: 10vh;">
+                <div class="relative border shadow-lg rounded-md bg-white overflow-hidden">
+                    <!-- Header bar matching navigation -->
+                    <div class="bg-gray-800 h-4"></div>
+                    
+                    <div class="p-5" style="padding-top: 30px; padding-bottom: 30px;">
+                    <div class="mt-3">
+                        <div class="flex items-center justify-between mb-4" style="padding-left: 60px;">
+                            <h3 class="text-lg font-medium text-gray-900" id="modalTitle">Repository Details</h3>
+                            <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="space-y-3" style="padding-left: 60px;">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">Repository:</label>
+                            <p class="mt-1 text-sm text-gray-900" id="modalRepo"></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">Owner:</label>
+                            <p class="mt-1 text-sm text-gray-900" id="modalOwner"></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">Git Server:</label>
+                            <p class="mt-1 text-sm text-gray-900" id="modalServer"></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">Git Remote:</label>
+                            <p class="mt-1 text-sm text-gray-900 break-all" id="modalRemote"></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">File Path:</label>
+                            <p class="mt-1 text-sm text-gray-900 break-all" id="modalPath"></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">Created At:</label>
+                            <p class="mt-1 text-sm text-gray-900" id="modalCreated"></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">First Commit:</label>
+                            <p class="mt-1 text-sm text-gray-900" id="modalFirst"></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">Last Commit:</label>
+                            <p class="mt-1 text-sm text-gray-900" id="modalLast"></p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700">Last Sync:</label>
+                            <p class="mt-1 text-sm text-gray-900" id="modalSync"></p>
+                        </div>
+                    </div>
+                    <div class="mt-6 flex justify-center">
+                        <button onclick="closeModal()" class="bg-blue-600 text-white py-2 rounded hover:bg-blue-700" style="width: 120px;">
+                            Close
+                        </button>
+                    </div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %}
+        {% include '_datatable_scripts.html' %}
+
+        <script>
+            $(document).ready(function () {
+                $("#repoTable").DataTable({
+                    order: [[0, "asc"]],
+                    responsive: true,
+                    pageLength: 25,
+                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
+                    scrollX: true
+                });
+            });
+
+            function openModal(repoId, repo, owner, server, remote, createdAt, filePath, lastSeen, lastSync, firstSeen) {
+                document.getElementById('modalRepo').textContent = repo || '-';
+                document.getElementById('modalOwner').textContent = owner || '-';
+                document.getElementById('modalServer').textContent = server || '-';
+                document.getElementById('modalRemote').textContent = remote || '-';
+                document.getElementById('modalPath').textContent = filePath || '-';
+                document.getElementById('modalCreated').textContent = createdAt || '-';
+                document.getElementById('modalFirst').textContent = firstSeen || '-';
+                document.getElementById('modalLast').textContent = lastSeen || '-';
+                document.getElementById('modalSync').textContent = lastSync || '-';
+                document.getElementById('repoModal').classList.remove('hidden');
+            }
+
+            function closeModal() {
+                document.getElementById('repoModal').classList.add('hidden');
+            }
+
+            // Close modal when clicking outside of it
+            document.getElementById('repoModal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeModal();
+                }
+            });
+        </script>
+    </body>
+</html>

@@ -27,50 +27,7 @@
         </style>
     </head>
     <body class="bg-white">
-        <!-- Header with solid black background -->
-        <nav class="bg-gray-800 text-white">
-            <div class="container mx-auto px-4">
-                <div class="flex items-center justify-between h-16">
-                    <a
-                        class="text-white text-lg font-medium hover:text-gray-300"
-                        href="/"
-                        >K. web</a
-                    >
-                    <div class="flex space-x-8">
-                        <a
-                            class="text-gray-300 hover:text-white transition-colors"
-                            href="/repos/"
-                            >Repos</a
-                        >
-                        <a
-                            class="text-gray-300 hover:text-white transition-colors"
-                            href="/orgs/"
-                            >Orgs</a
-                        >
-                        <a
-                            class="text-gray-300 hover:text-white transition-colors"
-                            href="/developers/"
-                            >Developers</a
-                        >
-                        <a
-                            class="text-gray-300 hover:text-white transition-colors"
-                            href="/landscape/"
-                            >Landscape</a
-                        >
-                        <a
-                            class="text-gray-300 hover:text-white transition-colors"
-                            href="/metadata/"
-                            >Metadata</a
-                        >
-                        <a
-                            class="text-gray-300 hover:text-white transition-colors"
-                            href="/help/"
-                            >Help</a
-                        >
-                    </div>
-                </div>
-            </div>
-        </nav>
+        {% include '_header.html' %}
 
         <!-- Main content area -->
         <div class="container mx-auto px-4 mt-12">
@@ -137,6 +94,11 @@
                                     >
                                         Last Seen (days)
                                     </th>
+                                    <th
+                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Years active
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -160,6 +122,11 @@
                                         class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
                                     >
                                         {{ row['last_seen'] }}
+                                    </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
+                                    >
+                                        {{ row['years_active'] }}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -205,24 +172,21 @@
                                     >
                                         Last Seen (days)
                                     </th>
-                                    <th
-                                        class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                                    >
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Days Active
+                                    </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Years Active
                                     </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for row in tech %}
                                 <tr class="hover:bg-gray-50">
-                                    <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
-                                    >
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                         {{ row['_ext'] }}
                                     </td>
-                                    <td
-                                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
-                                    >
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
                                         {{ row['commits'] }}
                                     </td>
                                     <td
@@ -239,6 +203,9 @@
                                         class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right"
                                     >
                                         {{ row['days_active'] }}
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                                        {{ row['years_active'] }}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -259,8 +226,8 @@
             </div>
         </div>
 
-        {% include '_footer_scripts.html' %} {% include
-        '_datatable_scripts.html' %}
+        {% include '_footer_scripts.html' %} {% include'_datatable_scripts.html'
+        %}
 
         <script>
             $(document).ready(function () {

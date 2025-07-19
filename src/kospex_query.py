@@ -281,7 +281,7 @@ class KospexQuery:
     def repos_by_author(self, author_email):
         """ Find repos for the given author_email."""
 
-        summary_sql = """SELECT _repo_id, count(*) 'commits', MAX(committer_when) 'last_commit'
+        summary_sql = """SELECT _repo_id, count(*) 'commits', MAX(committer_when) 'last_commit', MIN(committer_when) 'first_commit'
         FROM commits
         WHERE author_email = ?
         GROUP BY _repo_id
@@ -291,6 +291,11 @@ class KospexQuery:
 
         for row in self.kospex_db.query(summary_sql, [author_email]):
             row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
+            days_between = KospexUtils.days_between_datetimes(row['first_commit'], row['last_commit'])
+            if days_between > 0:
+                row['years_active'] = f"{days_between / 365:.3f}"
+            else:
+                row['days_between'] = 0
             data.append(row)
 
         return data
@@ -989,9 +994,6 @@ class KospexQuery:
             repo_where = "AND c._repo_id = ?"
             kd.where("commits._repo_id", "=", repo_id)
 
-        print(kd.generate_sql())
-
-
         # We're going to need a few lookups
         # Potentially we could do this in a nasty join, but it's easier to read this way
 
@@ -1013,6 +1015,8 @@ class KospexQuery:
             row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
             row['first_seen'] = KospexUtils.days_ago(row['first_commit'])
             row['days_active'] = int(row.get('first_seen',0)) - int(row.get('last_seen',0))
+            #row['years_active'] = round(row['days_active'] / 365,2)
+            row['years_active'] = f"{row['days_active'] / 365:.3f}"
             results.append(row)
 
         return results
@@ -1099,6 +1103,22 @@ class KospexQuery:
 
         return repos
 
+    def get_repos_last_sync(self, older_than=None, newer_than=None):
+        """
+        Get repos that were last synced before or after a given date.
+        """
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(KospexSchema.TBL_REPOS)
+        kd.select("*")
+        if older_than:
+            kd.where("last_sync", "<", older_than)
+        if newer_than:
+            kd.where("last_sync", ">", newer_than)
+        if older_than and newer_than:
+            raise ValueError("Cannot specify both older_than and newer_than")
+
+        return kd.execute()
+
     def get_observations(self, repo_id=None, observation_key=None):
         """ Return a list of observations for a repo_id and observation_key """
         kd = KospexData(kospex_db=self.kospex_db)
@@ -1128,6 +1148,18 @@ class KospexQuery:
 #        for row in data:
 #            results.append(row)
 #        return results
+
+
+    def get_observations_summary(self, repo_id=None, observation_key=None):
+        """ Return a list of observations for a repo_id and observation_key """
+        sql = f"""SELECT observation_key, count(*) as count FROM {KospexSchema.TBL_OBSERVATIONS} WHERE _repo_id = ? GROUP BY observation_key"""
+        params = [repo_id]
+        data = self.kospex_db.query(sql, params)
+        results = []
+        for row in data:
+            results.append(row)
+        return results
+
 
     def git_servers(self):
         """ Return a list of git servers """
@@ -1745,7 +1777,7 @@ class KospexData:
             print(f"ERROR: can't identify {id}")
 
 
-    
+
 
 
     def group_name_where_subselect(self, group_name):

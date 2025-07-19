@@ -68,29 +68,29 @@ def download_csv_fastapi(dict_data, filename=None):
     """FastAPI-compatible CSV download function"""
     if not dict_data:
         raise HTTPException(status_code=400, detail="No data to download")
-    
+
     # Create CSV content
     with StringIO() as output:
         # Use the keys of the first dictionary for the header
         fieldnames = dict_data[0].keys()
-        
+
         # Create a CSV writer object
         writer = csv.DictWriter(output, fieldnames=fieldnames)
-        
+
         # Write the header
         writer.writeheader()
-        
+
         # Write the rows
         for row_dict in dict_data:
             writer.writerow(row_dict)
-        
+
         # Get the CSV string
         csv_string = output.getvalue()
-    
+
     # Set the output file name
     if not filename:
         filename = "download.csv"
-    
+
     # Create FastAPI Response with CSV content
     return Response(
         content=csv_string,
@@ -247,16 +247,16 @@ async def generate_repo_id(url: str):
     """Generate a repo_id from a git URL"""
     try:
         logger.info(f"Generate repo_id requested for URL: {url}")
-        
+
         # TODO: Implement repo_id generation logic
         # For now, return a stub response
         repo_id = "TODO_IMPLEMENT_REPO_ID_GENERATION"
-        
+
         return JSONResponse(content={
             "url": url,
             "repo_id": repo_id
         })
-        
+
     except Exception as e:
         logger.error(f"Error in generate_repo_id endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -300,6 +300,37 @@ async def metadata(request: Request):
         )
     except Exception as e:
         logger.error(f"Error in metadata endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/metadata/repos/", response_class=HTMLResponse)
+@app.get("/metadata/repos/{id}", response_class=HTMLResponse)
+async def metadata_repos(request: Request, id: Optional[str] = None):
+    """
+    Display repository metadata information based on git commits and sync.
+    """
+    try:
+        logger.info(f"Metadata repos page requested with id: {id}")
+
+        kquery = KospexQuery()
+        repos = kquery.get_repos()
+
+        #import pprint as pp
+        #pp.pprint(repos)
+
+        # If id is provided, filter to specific repo
+        if id:
+            repos = [repo for repo in repos if repo.get('_repo_id') == id]
+
+        return templates.TemplateResponse(
+            "metadata_repos.html",
+            {
+                "request": request,
+                "repos": repos,
+                "repo_id": id
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in metadata repos endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -419,7 +450,7 @@ async def collab(request: Request, repo_id: str):
 
         kquery = KospexQuery()
         collabs = kquery.get_collabs(repo_id=repo_id)
-        
+
         return templates.TemplateResponse(
             "collab.html",
             {
@@ -459,7 +490,7 @@ async def collab_graph_data(request: Request, repo_id: str):
 
         kquery = KospexQuery()
         collabs = kquery.get_collabs(repo_id=repo_id)
-        
+
         return JSONResponse(content=collabs)
     except Exception as e:
         logger.error(f"Error in collab_graph_data endpoint: {e}")
@@ -471,17 +502,17 @@ async def file_collaboration(request: Request, repo_id: str):
     """Display file collaboration information"""
     try:
         logger.info(f"File collaboration page requested for repo: {repo_id}")
-        
+
         file_path = request.query_params.get('file_path')
-        
+
         if not file_path:
             raise HTTPException(status_code=400, detail="file_path parameter is required")
-        
+
         logger.info(f"File collaboration requested for: {file_path}")
-        
+
         kquery = KospexQuery()
         collaborators = kquery.get_file_collaborators(repo_id=repo_id, file_path=file_path)
-        
+
         return templates.TemplateResponse(
             "file_collaboration.html",
             {
@@ -502,17 +533,17 @@ async def orgs(request: Request, server: Optional[str] = None):
     """Display organization information"""
     try:
         logger.info(f"Organizations page requested with server: {server}")
-        
+
         org = request.query_params.get('org')
         params = KospexWeb.get_id_params(server)
-        
+
         kospex = KospexQuery()
         git_orgs = kospex.orgs()
         active_devs = kospex.active_devs(org=True)
-        
+
         for row in git_orgs:
             row['active_devs'] = active_devs.get(row['org_key'], 0)
-        
+
         return templates.TemplateResponse(
             "orgs.html",
             {
@@ -531,24 +562,24 @@ async def repos(request: Request, id: Optional[str] = None):
     """Display repository information"""
     try:
         logger.info(f"Repositories page requested with id: {id}")
-        
+
         params = KospexWeb.get_id_params(id)
         repo_id = request.query_params.get('repo_id') or params.get("repo_id")
         org_key = request.query_params.get('org_key') or params.get("org_key")
         server = request.query_params.get('server') or params.get("server")
-        
+
         kospex = KospexQuery()
-        
+
         page = {}
         # TODO - validate params
         techs = None
         # Maintenance ranges
         ranges = None
-        
+
         page['repo_id'] = repo_id
-        
+
         data = []
-        
+
         if org_key:
             parts = org_key.split("~")
             if len(parts) == 2:
@@ -558,16 +589,16 @@ async def repos(request: Request, id: Optional[str] = None):
                 ranges = kospex.commit_ranges2(org_key=org_key)
         elif server:
             page['git_server'] = server
-        
+
         # The repos method handles null values for parameters
         data = kospex.repos(org_key=org_key, server=server)
         active_devs = kospex.active_devs()
         for row in data:
             row['active_devs'] = active_devs.get(row['_repo_id'], 0)
-        
+
         developers = kospex.developers(org_key=org_key, server=server)
         developer_status = KospexUtils.repo_stats(developers, "last_commit")
-        
+
         return templates.TemplateResponse(
             "repos.html",
             {
@@ -589,16 +620,16 @@ async def repo(request: Request, repo_id: str):
     """Display individual repository information"""
     try:
         logger.info(f"Repository view requested for repo: {repo_id}")
-        
+
         kospex = KospexQuery()
         commit_ranges = kospex.commit_ranges(repo_id)
         email_domains = kospex.email_domains(repo_id=repo_id)
         summary = kospex.author_summary(repo_id)
         techs = kospex.tech_landscape(repo_id=repo_id)
-        
+
         developers = kospex.developers(repo_id=repo_id)
         developer_status = KospexUtils.repo_stats(developers, "last_commit")
-        
+
         # TODO - make generic function for radar graph (in developer view too)
         labels = []
         datapoints = []
@@ -609,7 +640,7 @@ async def repo(request: Request, repo_id: str):
             count += 1
             if count > 10:
                 break
-        
+
         return templates.TemplateResponse(
             "repo_view.html",
             {
@@ -635,16 +666,16 @@ async def landscape(request: Request, id: Optional[str] = None):
     """Serve up the technology landscape metadata"""
     try:
         logger.info(f"Technology landscape page requested with id: {id}")
-        
+
         kospex = KospexQuery()
-        
+
         params = KospexWeb.get_id_params(id)
         repo_id = request.query_params.get('repo_id') or params.get("repo_id")
         org_key = request.query_params.get('org_key') or params.get("org_key")
         data = kospex.tech_landscape(org_key=org_key, repo_id=repo_id)
-        
+
         download = request.query_params.get('download')
-        
+
         if download:
             # Download tech landscape data as CSV
             return download_csv_fastapi(data, "tech_landscape.csv")
@@ -668,14 +699,14 @@ async def developers(request: Request):
     """Developer info page"""
     try:
         logger.info("Developers page requested")
-        
+
         author_email = request.query_params.get('author_email')
         download = request.query_params.get('download')
         days = request.query_params.get('days')
         org_key = request.query_params.get('org_key')
-        
+
         devs = KospexQuery().authors(days=days, org_key=org_key)
-        
+
         if author_email:
             logger.info(f"Developer view requested for: {author_email}")
             # Github uses +, which get interpreted as a " " in the URL.
@@ -684,9 +715,9 @@ async def developers(request: Request):
             techs = KospexQuery().author_tech(author_email=author_email)
             labels = []
             datapoints = []
-            
+
             github_handle = KospexUtils.extract_github_username(author_email)
-            
+
             count = 0
             for tech in techs:
                 labels.append(tech['_ext'])
@@ -694,7 +725,7 @@ async def developers(request: Request):
                 count += 1
                 if count > 10:
                     break
-            
+
             return templates.TemplateResponse(
                 "developer_view.html",
                 {
@@ -707,7 +738,7 @@ async def developers(request: Request):
                     "datapoints": datapoints
                 }
             )
-        
+
         elif download:
             return download_csv_fastapi(devs, "developers.csv")
         else:
@@ -731,6 +762,7 @@ async def graph(request: Request, org_key: Optional[str] = None):
     """Force directed graphs for data in the Kospex DB."""
     try:
         logger.info(f"Graph page requested with org_key: {org_key}")
+        focus = None
 
         author_email = request.query_params.get('author_email')
         if author_email:
@@ -778,41 +810,41 @@ async def tenure(request: Request, id: Optional[str] = None):
     """View developer tenure for all, a server, org or a repo"""
     try:
         from statistics import mean, median, mode, stdev
-        
+
         logger.info(f"Tenure page requested with id: {id}")
-        
+
         # TODO - CHECK THIS FOR SECURITY
         params = KospexWeb.get_id_params(id)
         developers = KospexQuery().developers(**params)
         active_devs = []
-        
+
         for entry in developers:
             entry['tenure_status'] = KospexUtils.get_status(entry['tenure'])
-        
+
         for dev in developers:
             if "Active" == dev.get("status"):
                 active_devs.append(dev)
-        
+
         data = {}
         data['developers'] = len(developers)
         data['active_devs'] = len(active_devs)
         days_values = [entry['tenure'] for entry in developers]
-        
+
         commit_stats = KospexQuery().get_activity_stats(params)
         data['days_active'] = commit_stats.get('days_active')
         data['years_active'] = commit_stats.get('years_active')
         data['repos'] = commit_stats.get('repos')
         data['commits'] = commit_stats.get('commits')
-        
+
         data['max'] = round(max(days_values))
         data['mean'] = round(mean(days_values), 2)
         data['mode'] = round(mode(days_values), 2)
         data['median'] = round(median(days_values), 2)
         data['std_dev'] = round(stdev(days_values), 2)
-        
+
         distribution = KospexUtils.get_status_distribution(developers)
         active_d = KospexUtils.get_status_distribution(active_devs)
-        
+
         return templates.TemplateResponse(
             "tenure.html",
             {
@@ -833,10 +865,10 @@ async def author_domains(request: Request):
     """Display author email domain analysis"""
     try:
         logger.info("Author domains page requested")
-        
+
         kospex = KospexQuery()
         email_domains = kospex.email_domains()
-        
+
         return templates.TemplateResponse(
             "meta-author-domains.html",
             {
@@ -854,9 +886,9 @@ async def tech_change(request: Request):
     """Technology change radar visualization"""
     try:
         logger.info("Tech change radar page requested")
-        
+
         labels = ["Java", "Go", "JavaScript", "Python", "Kotlin"]
-        
+
         return templates.TemplateResponse(
             "tech-change.html",
             {
@@ -874,17 +906,17 @@ async def repo_with_tech(request: Request, tech: str):
     """Show repositories with the given technology"""
     try:
         logger.info(f"Tech filtering page requested for technology: {tech}")
-        
+
         repo_id = request.query_params.get('repo_id')
         kospex = KospexQuery()
         template = "repos.html"
-        
+
         if repo_id:
             repos_with_tech = kospex.repo_files(tech, repo_id=repo_id)
             template = "repo_files.html"
         else:
             repos_with_tech = kospex.repos_with_tech(tech)
-        
+
         return templates.TemplateResponse(
             template,
             {
@@ -948,11 +980,11 @@ async def observations(request: Request):
     """Display observation information"""
     try:
         logger.info("Observations page requested")
-        
+
         kquery = KospexQuery()
         repo_id = request.query_params.get('repo_id')
         observation_key = request.query_params.get('observation_key')
-        
+
         if observation_key:
             # We should have an observation key and a repo_id for this to work
             logger.info(f"Observation key: {observation_key}")
@@ -965,7 +997,7 @@ async def observations(request: Request):
                     "repo_id": repo_id
                 }
             )
-        
+
         elif repo_id:
             logger.info(f"Repo ID: {repo_id}")
             return templates.TemplateResponse(
@@ -1033,12 +1065,12 @@ async def dependencies(request: Request, id: Optional[str] = None):
     """Display SCA (Software Composition Analysis) information"""
     try:
         logger.info(f"Dependencies page requested with id: {id}")
-        
+
         params = KospexWeb.get_id_params(id)
         data = KospexQuery().get_dependencies(id=params)
-        
+
         logger.info(f"Dependencies data: {data}")
-        
+
         return templates.TemplateResponse(
             "dependencies.html",
             {
@@ -1079,7 +1111,7 @@ async def package_check(request: Request):
     """Display the package check page with drag and drop interface"""
     try:
         logger.info("Package check page requested")
-        
+
         return templates.TemplateResponse(
             "package_check.html",
             {
@@ -1098,34 +1130,34 @@ async def package_check_upload(file: UploadFile = File(...)):
         import tempfile
         import os
         import pprint
-        
+
         logger.info(f"Package upload requested for file: {file.filename}")
-        
+
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file selected")
-        
+
         # Save the uploaded file temporarily
         temp_dir = tempfile.mkdtemp()
         temp_path = os.path.join(temp_dir, file.filename)
-        
+
         # Read and save file content
         content = await file.read()
         with open(temp_path, 'wb') as f:
             f.write(content)
-        
+
         try:
             # Analyze the file using KospexDependencies
             kospex = Kospex()
             results = kospex.dependencies.assess(temp_path)
             print(results)
-            
+
             # Sort results by status
             pprint.PrettyPrinter(indent=4).pprint(results)
-            
+
             # Clean up the temporary file
             os.remove(temp_path)
             os.rmdir(temp_dir)
-            
+
             # Add status based on advisories and versions behind
             for item in results:
                 if item.get('advisories', 0) > 0:
@@ -1136,9 +1168,9 @@ async def package_check_upload(file: UploadFile = File(...)):
                     item['status'] = 'Behind'
                 else:
                     item['status'] = 'Current'
-            
+
             return JSONResponse(content=results)
-            
+
         except Exception as e:
             # Clean up in case of error
             if os.path.exists(temp_path):
@@ -1147,7 +1179,7 @@ async def package_check_upload(file: UploadFile = File(...)):
                 os.rmdir(temp_dir)
             logger.error(f"Error processing file: {e}")
             raise HTTPException(status_code=500, detail=str(e))
-            
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1160,9 +1192,9 @@ async def hotspots(request: Request, repo_id: str):
     """Display code hotspots analysis for a repository"""
     try:
         logger.info(f"Hotspots page requested for repo: {repo_id}")
-        
+
         data = KospexQuery().hotspots(repo_id=repo_id)
-        
+
         return templates.TemplateResponse(
             "hotspots.html",
             {
@@ -1212,11 +1244,11 @@ async def supply_chain(request: Request):
     """
     try:
         import json
-        
+
         logger.info("Supply chain page requested")
-        
+
         package = request.query_params.get('package')
-        
+
         # If no package parameter, show the search form
         if not package:
             logger.info("Showing supply chain search form")
@@ -1226,23 +1258,23 @@ async def supply_chain(request: Request):
                     "request": request
                 }
             )
-        
+
         # Package parameter exists, show visualization
         logger.info(f"Supply chain visualization requested for package: {package}")
         data = None
-        
+
         # Parse package parameter
         ecosystem = package_name = package_version = None
         try:
             parts = package.split(":")
             if len(parts) != 3:
                 raise ValueError("Package must be in format ecosystem:package:version")
-            
+
             ecosystem, package_name, package_version = parts
-            
+
             if not all([ecosystem.strip(), package_name.strip(), package_version.strip()]):
                 raise ValueError("All package components (ecosystem, name, version) must be provided")
-                
+
         except ValueError as e:
             logger.warning(f"Invalid package format: {package} - {e}")
             # Return to search form with error and prefilled data
@@ -1256,18 +1288,18 @@ async def supply_chain(request: Request):
                     "package_version": package_version if package_version else ""
                 }
             )
-        
+
         # Try to get dependency data
         data = None
         try:
             kospex = Kospex()
             data = kospex.dependencies.package_dependencies(
                 package=package_name.strip(),
-                version=package_version.strip(), 
+                version=package_version.strip(),
                 ecosystem=ecosystem.strip()
             )
             logger.info(f"Retrieved data for {package}: {json.dumps(data, indent=3) if data else 'No data'}")
-            
+
         except Exception as e:
             logger.error(f"Error retrieving package dependencies for {package}: {e}")
             # Return to search form with error and prefilled data
@@ -1304,7 +1336,7 @@ async def supply_chain(request: Request):
                     node["ecosystem"] = ecosystem.strip()
 
         logger.info(f"Added ecosystem '{ecosystem}' to {len(data.get('nodes', []))} nodes")
-        
+
         return templates.TemplateResponse(
             "supply_chain.html",
             {
