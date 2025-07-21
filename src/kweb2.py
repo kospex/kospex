@@ -777,7 +777,7 @@ async def developers(request: Request):
         elif download:
             return download_csv_fastapi(devs, "developers.csv")
         else:
-            data = KospexQuery().summary(days=days)
+            data = KospexQuery().summary(days=days,org_key=org_key)
             return templates.TemplateResponse(
                 "developers.html",
                 {

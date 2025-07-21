@@ -46,29 +46,11 @@ class KospexQuery:
         kd.select_raw("COUNT(DISTINCT(committer_email)) as committers")
         kd.select_raw("COUNT(DISTINCT(_git_server)) as servers")
 
-        #summary_sql = """SELECT count(distinct(_repo_id)) AS 'repos', count(*) 'commits',
-        #count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
-        #count(distinct(_git_server)) AS servers
-        #FROM commits"""
-
-        # summary_sql = """SELECT count(distinct(_repo_id)) AS 'repos', count(*) 'commits',
-        # count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
-        # count(distinct(_git_server)) AS servers
-        # FROM commits"""
-        # params = []
-
-        # if days or repo_id:
-        #     summary_sql += " WHERE 1=1"
-
         if days:
             from_date = KospexUtils.days_ago_iso_date(days)
-            # summary_sql += " AND committer_when > ?"
-            # params.append(from_date)
             kd.where("committer_when", ">", from_date)
 
         if repo_id:
-            # summary_sql += " AND _repo_id = ?"
-            # params.append(repo_id)
             kd.where('_repo_id', "=", repo_id)
 
         if org_key:
@@ -80,8 +62,6 @@ class KospexQuery:
 
         # TODO - need to add params to orgs
         orgs = self.orgs()
-        #data = next(self.kospex_db.query(summary_sql, params), None)
-        #
         if results:
             data['orgs'] = len(orgs)
 
