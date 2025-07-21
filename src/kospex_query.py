@@ -30,32 +30,61 @@ class KospexQuery:
 
         return version
 
-    def summary(self, days=None, repo_id=None):
+    def summary(self, days=None, repo_id=None, org_key=None):
         """
         Provide a summary of the known repositories.
         """
+        # Used to hold the date value calculated from days
+        from_date = None
+        data = {} # Hold the data, should be a list of authors, commiters, total orgs
 
-        summary_sql = """SELECT count(distinct(_repo_id)) AS 'repos', count(*) 'commits',
-        count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
-        count(distinct(_git_server)) AS servers
-        FROM commits"""
-        params = []
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
+        kd.select_as("count(*)",'commits')
+        kd.select_raw("COUNT(DISTINCT(author_email)) as authors")
+        kd.select_raw("COUNT(DISTINCT(committer_email)) as committers")
+        kd.select_raw("COUNT(DISTINCT(_git_server)) as servers")
 
-        if days or repo_id:
-            summary_sql += " WHERE 1=1"
+        #summary_sql = """SELECT count(distinct(_repo_id)) AS 'repos', count(*) 'commits',
+        #count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
+        #count(distinct(_git_server)) AS servers
+        #FROM commits"""
+
+        # summary_sql = """SELECT count(distinct(_repo_id)) AS 'repos', count(*) 'commits',
+        # count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
+        # count(distinct(_git_server)) AS servers
+        # FROM commits"""
+        # params = []
+
+        # if days or repo_id:
+        #     summary_sql += " WHERE 1=1"
 
         if days:
             from_date = KospexUtils.days_ago_iso_date(days)
-            summary_sql += " AND committer_when > ?"
-            params.append(from_date)
+            # summary_sql += " AND committer_when > ?"
+            # params.append(from_date)
+            kd.where("committer_when", ">", from_date)
 
         if repo_id:
-            summary_sql += " AND _repo_id = ?"
-            params.append(repo_id)
+            # summary_sql += " AND _repo_id = ?"
+            # params.append(repo_id)
+            kd.where('_repo_id', "=", repo_id)
 
+        if org_key:
+            kd.where_org_key(org_key)
+
+        results = kd.execute()
+        if results:
+            data = results[0]
+
+        # TODO - need to add params to orgs
         orgs = self.orgs()
-        data = next(self.kospex_db.query(summary_sql, params), None)
-        data['orgs'] = len(orgs)
+        #data = next(self.kospex_db.query(summary_sql, params), None)
+        #
+        if results:
+            data['orgs'] = len(orgs)
+
         return data
 
     def repo_summary(self, repo_id):
@@ -625,9 +654,13 @@ class KospexQuery:
 
 
     def authors(self, days=None, org_key=None):
-        """ Provide a summary of authors in the known repositories."""
+        """
+        Provide a summary of authors in the known repositories.
+        days: Number of days ago to query from, e.g. 90 is last 90 days
+        org_key: Organization key to filter by (e.g. github.com~kospex)
+        """
 
-        params = [] # parameters for the SQL query
+        # Used to hold the date value calculated from days
         from_date = None
 
         kd = KospexData(self.kospex_db)
@@ -646,37 +679,10 @@ class KospexQuery:
         if org_key:
             kd.where_org_key(org_key)
 
-        authors = [] # list of authors from the sql query
-        where_clause = ""
-
-        if from_date:
-            where_clause = "WHERE committer_when > ?"
-            params.append(from_date)
-
-        summary_sql = f"""SELECT distinct(author_email), count(*) 'commits',
-        count(distinct(_repo_id)) 'repos', MAX(committer_when) 'last_commit'
-        FROM commits
-        {where_clause}
-        GROUP BY author_email"""
-
-        #summary_sql = """SELECT _repo_id, count(distinct(author_email)) 'devs'
-        #FROM commits
-        #WHERE committer_when > ?
-        #GROUP BY _repo_id
-        #"""
-        data = self.kospex_db.query(summary_sql, params)
-        for row in data:
-            row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
-            authors.append(row)
-
-        print(summary_sql)
-        print(kd.generate_sql())
-
         kresults = kd.execute()
         for row in kresults:
             row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
 
-        #return authors
         return kresults
 
     def active_devs_by_repo(self, repo_id, days=90):
