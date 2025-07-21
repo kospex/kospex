@@ -2,6 +2,25 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.20 - 2025-07-21
+
+### Added
+- Added a [network graph view of commit collaborators ](https://github.com/kospex/kospex/issues/38)
+- Added metadata repos view to see last commit, last sync of the data
+- [key person risk view in kweb based on the commit percentages](https://github.com/kospex/kospex/issues/40
+### Changed
+- Single developer view now displays the years active in repos and the technologies used.
+- Updated [HTML views to use src/templates/_header.html](/changes/202507-template-header-updates.md)
+### Fixed
+- [kospex CLI exited with error code 2](/changes/click-exit-2-error.md) when no arguments are provided
+
+## VERSION - DATE - IN PROGRESS
+
+### Added
+### Changed
+### Fixed
+
+
 ## 0.0.19 - 2025-07-09
 
 ### Added
@@ -12,19 +31,6 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 - [Static files (js,css) not packaged for kweb](https://github.com/kospex/kospex/issues/37)
-
-## [Unreleased]
-
-## VERSION - DATE - IN PROGRESS
-
-### Added
-- Added a [network graph view of commit collaborators ](https://github.com/kospex/kospex/issues/38)
-- Added metadata repos view to see last commit, last sync of the data
-### Changed
-- Single developer view now displays the years active in repos and the technologies used.
-- Updated [HTML views to use src/templates/_header.html](/changes/202507-template-header-updates.md)
-### Fixed
-- [kospex CLI exited with error code 2](/changes/click-exit-2-error.md) when no arguments are provided
 
 
 ## 0.0.18 - 2025-07-07
