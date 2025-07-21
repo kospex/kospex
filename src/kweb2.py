@@ -660,6 +660,39 @@ async def repo(request: Request, repo_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/key-person/{repo_id}", response_class=HTMLResponse)
+async def key_person(request: Request, repo_id: str):
+    """Display key person analysis for a repository"""
+    try:
+        logger.info(f"Key person view requested for repo: {repo_id}")
+
+        kospex = KospexQuery()
+
+        # Get commits summary data (same as repo view)
+        commit_ranges = kospex.commit_ranges(repo_id)
+
+        # Get developer status (same as repo view)
+        developers = kospex.developers(repo_id=repo_id)
+        developer_status = KospexUtils.repo_stats(developers, "last_commit")
+
+        # Get key person data
+        key_people = kospex.key_person(repo_id=repo_id,top=5)
+
+        return templates.TemplateResponse(
+            "key_person.html",
+            {
+                "request": request,
+                "repo_id": repo_id,
+                "ranges": commit_ranges,
+                "developer_status": developer_status,
+                "key_people": key_people
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in key_person endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.get("/landscape/", response_class=HTMLResponse)
 @app.get("/landscape/{id}", response_class=HTMLResponse)
 async def landscape(request: Request, id: Optional[str] = None):
@@ -704,6 +737,8 @@ async def developers(request: Request):
         download = request.query_params.get('download')
         days = request.query_params.get('days')
         org_key = request.query_params.get('org_key')
+        debug = locals()
+        logger.info(debug)
 
         devs = KospexQuery().authors(days=days, org_key=org_key)
 

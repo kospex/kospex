@@ -559,7 +559,7 @@ def author_tech(author_email,repo_id):
 @click.argument('directory', required=False, type=GitRepo())
 def key_person(directory,top):
     """
-    Identify the key perople for a repo based on number of commits.
+    Identify the key people for a repo based on number of commits.
 
     Firstly, the top X committers of all time
 
@@ -581,41 +581,6 @@ def key_person(directory,top):
     table = KospexUtils.key_person_prettytable()
     headers = table.field_names
 
-    # active = kquery.commit_stats(repo_id=kgit.get_repo_id(),days=90)
-    # active_dict = {d["author"]: d for d in active}
-    # key = "commits"
-    # total_active_commits = sum(item[key] for item in active if key in item)
-
-    # authors = kquery.commit_stats(repo_id=kgit.get_repo_id())
-    # key = "commits"
-    # total_commits = sum(item[key] for item in authors if key in item)
-    # print(f"Total commits: {total_commits}")
-    # for a in authors:
-    #     a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
-    #     a['% commits'] = f"{a['commits'] / total_commits * 100:.1f}%"
-    #     # TODO - We only want to do this if we're printing the table, modify if we're dumping to CSV
-    #     a['last_commit'] = KospexUtils.extract_db_date(a['last_commit'])
-    #     a['first_commit'] = KospexUtils.extract_db_date(a['first_commit'])
-
-    #     if total_active_commits > 0:
-    #         a['% active'] = f"{a['active_commits'] / total_active_commits * 100:.1f}%"
-    #     else:
-    #         a['% active'] = "0%"
-
-    # authors_dict = {d["author"]: d for d in authors}
-
-    # for a in authors[:top]:
-    #     #a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
-    #     table.add_row(KospexUtils.get_values_by_keys(a, headers))
-
-    # top_authors_dict = {d["author"]: d for d in authors[:top]}
-
-    # for a in active[:top]:
-    #     a_dict = top_authors_dict.get(a['author'])
-    #     if not a_dict:
-    #         a_dict = authors_dict[a['author']]
-    #         table.add_row(KospexUtils.get_values_by_keys(a_dict, headers))
-    #
     authors = kquery.key_person(repo_id=kgit.get_repo_id(),top=top)
 
     for a in authors:

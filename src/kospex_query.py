@@ -632,12 +632,12 @@ class KospexQuery:
 
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
-        kd.select_as("DISTINCT(author_email)", "author")
+        kd.select_as("DISTINCT(author_email)", "author_email")
         kd.select_as("count(*)",'commits')
         kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
         kd.select_as("MIN(committer_when)", "first_commit")
         kd.select_as("MAX(committer_when)", "last_commit")
-        kd.group_by("author")
+        kd.group_by("author_email")
 
         if days:
             from_date = KospexUtils.days_ago_iso_date(days)
@@ -669,11 +669,15 @@ class KospexQuery:
             row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
             authors.append(row)
 
+        print(summary_sql)
+        print(kd.generate_sql())
+
         kresults = kd.execute()
         for row in kresults:
             row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
 
-        return authors
+        #return authors
+        return kresults
 
     def active_devs_by_repo(self, repo_id, days=90):
         """ Look for distinct developers in the last X 'days' """
@@ -1193,6 +1197,8 @@ class KospexQuery:
     def key_person(self, days=None, repo_id=None,top=None):
         """
         Return a high level key person based on commits
+        Top is the number of "top" authors to return
+        Days is the number of preceding days to consider "active"for the key person default is 90 days
         """
 
         active = self.commit_stats(repo_id=repo_id,days=90)
