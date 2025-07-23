@@ -41,12 +41,12 @@ async def collab_graph_data(request: Request, repo_id: str):
 ```json
 [
   {
-    "author_email": "102937168+ericinfins@users.noreply.github.com",
-    "committer_email": "noreply@github.com", 
+    "author_email": "1021137168+bobby@users.noreply.github.com",
+    "committer_email": "noreply@github.com",
     "commits": 86
   },
   {
-    "author_email": "105425571+john-masters@users.noreply.github.com",
+    "author_email": "1054789571+frankie@users.noreply.github.com",
     "committer_email": "noreply@github.com",
     "commits": 1
   }
@@ -133,7 +133,7 @@ const nodeScale = d3.scaleSqrt()
     .domain([1, maxCommits])
     .range([5, 20]);
 
-// Link thickness scaling  
+// Link thickness scaling
 const linkScale = d3.scaleLinear()
     .domain([1, maxLinkCommits])
     .range([1, 8]);
@@ -169,7 +169,7 @@ const linkScale = d3.scaleLinear()
 
 The implementation provides:
 1. **Visual feedback** for loading states
-2. **Error handling** for API failures  
+2. **Error handling** for API failures
 3. **Graceful degradation** if no collaboration data exists
 4. **Cross-browser compatibility** through D3.js standard implementation
 

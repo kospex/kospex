@@ -1104,8 +1104,6 @@ async def dependencies(request: Request, id: Optional[str] = None):
         params = KospexWeb.get_id_params(id)
         data = KospexQuery().get_dependencies(id=params)
 
-        logger.info(f"Dependencies data: {data}")
-
         return templates.TemplateResponse(
             "dependencies.html",
             {
@@ -1398,7 +1396,7 @@ def main():
     import uvicorn
     if len(sys.argv) > 1:
         if "-debug" in sys.argv:
-            uvicorn.run("kweb2:app", host="127.0.0.1", port=5000, reload=True)
+            uvicorn.run("kweb2:app", host="127.0.0.1", port=8000, reload=True)
         else:
             sys.exit("Usage: kweb2.py [-debug] to run in debug mode")
     else:
