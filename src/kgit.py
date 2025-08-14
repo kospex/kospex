@@ -9,14 +9,20 @@ import subprocess
 import click
 from prettytable import PrettyTable
 from kospex_core import GitRepo, Kospex
+from rich.console import Console
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 from kospex_github import KospexGithub
 from kospex_bitbucket import KospexBitbucket
 
-KospexUtils.init()
+# Initialize Kospex environment with logging
+KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kgit = KospexGit()
 kospex = Kospex()
+console = Console()
+
+# Get logger using the new centralized logging system
+log = KospexUtils.get_kospex_logger('kgit')
 
 @click.group()
 @click.version_option(version=Kospex.VERSION)
@@ -101,7 +107,8 @@ def clone(sync, filename,repo):
     if repo:
         repo_path = kgit.clone_repo(repo)
         if sync and repo_path:
-            print("Syncing repo: " + repo_path)
+            log.info(f"Syncing repository: {repo_path}")
+            print("Syncing repo: " + repo_path)  # Keep user feedback
             kospex.sync_repo(repo_path)
 
     elif filename:
@@ -109,6 +116,7 @@ def clone(sync, filename,repo):
             for line in file:
                 repo = line.strip()
                 if repo.startswith("#"):
+                    log.debug(f"Skipping commented line in config: {repo}")
                     print(f"\n\nSkipping commented line: {repo}\n\n")
                 else:
                     repo_path = kgit.clone_repo(repo)
@@ -119,6 +127,61 @@ def clone(sync, filename,repo):
                         print("Syncing: " + repo)
                         kospex = Kospex()
                         kospex.sync_repo(repo_path)
+
+
+@cli.command("sync")
+@click.option('--org', is_flag=True, default=False, help="Sync all repositories from an organization (URL should not include specific repo)")
+@click.option('-sync-db', is_flag=True, default=True, help="Sync the repositories to the database (Default)")
+@click.argument('url', type=click.STRING, required=True)
+def sync(org, sync_db, url):
+    """
+    Sync repositories from a URL.
+
+    Examples:
+    kgit sync https://github.com/owner/repo (sync single repo)
+    kgit sync --org https://github.com/owner (sync all repos from organization)
+    """
+    log.info(f"Starting sync operation for URL: {url}, org mode: {org}")
+
+    if org:
+        # Organization sync - URL should be like https://github.com/orgname
+        log.info(f"Organization sync mode for: {url}")
+        print(f"Starting organization sync for: {url}")
+
+        # TODO: Implement organization sync logic
+        # This should:
+        # 1. Parse the URL to extract git provider and org name
+        # 2. Use appropriate API (GitHub, BitBucket, etc.) to list all repos
+        # 3. Clone each repo that doesn't exist locally
+        # 4. Pull updates for repos that already exist
+        # 5. Optionally sync to database
+
+        print("Organization sync is not yet implemented")
+        log.warning("Organization sync functionality is stubbed - not yet implemented")
+
+    else:
+        # Single repository sync - URL should be complete repo URL
+        log.info(f"Single repository sync mode for: {url}")
+        console.log(f"Starting single repository sync for: {url}")
+
+        repo_path = kgit.clone_repo(url)
+        log.info(f"Syncing repository {url} to path: {repo_path}")
+        commits = kospex.sync_repo(repo_path)
+        #console.print_json(json.dumps(commits))
+        console.print(f"Synced {len(commits)} commits")
+
+        #for commit in commits:
+            #console.log(commit)
+
+        # TODO: Implement single repo sync logic
+        # This should:
+        # 1. Check if repo exists locally
+        # 2. If exists, do git pull
+        # 3. If not exists, clone it
+        # 4. Optionally sync to database
+
+        print("Single repository sync is not yet implemented")
+        log.warning("Single repository sync functionality is stubbed - not yet implemented")
 
 
 @cli.command("pull")

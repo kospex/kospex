@@ -4,6 +4,7 @@ import os.path
 import sys
 import subprocess
 import csv
+import time
 from shutil import which
 from datetime import datetime, timezone
 import click
@@ -15,6 +16,8 @@ from kospex_query import KospexQuery, KospexData
 from kospex_dependencies import KospexDependencies
 #from kospex_mergestat import KospexMergeStat
 import panopticas
+from sqlite_utils import Database
+
 
 class GitRepo(click.ParamType):
     """ Custom click param type for git repos """
@@ -150,13 +153,12 @@ class Kospex:
         """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
         #def sync_commits(conn, git_dir, limit=None, from_date=None, to_date=None):
 
+        results = []
+
         use_scc = True
         if no_scc:
             use_scc = False
-
-        #if not no_scc:
-        if use_scc:
-            self.file_metadata(directory)
+        # See at the bottom for file metadata
 
         self.set_repo_dir(directory)
 
@@ -248,6 +250,8 @@ class Kospex:
             commit['_files'] = files
             commit = self.git.add_git_to_dict(commit)
             commit_files = commit['filenames']
+            # Need to copy as we
+            results.append(commit.copy())
             del commit['filenames']
             self.kospex_db.table(KospexSchema.TBL_COMMITS).upsert(commit,pk=['_repo_id', 'hash'])
 
@@ -275,8 +279,16 @@ class Kospex:
         last_sync = datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
         self.update_repo_status(last_sync=last_sync)
 
+        print("Processing file metadata...")
+
+        # We should process the metadata after the commits, so we can query the last date time from the database
+        #if not no_scc:
+        if use_scc:
+            metadata_files = self.file_metadata(directory,skip_last_commit=True)
+
         self.chdir_original()
 
+        return results
 
     def get_one(self, query, table, params=None):
         """ helper function to return a single value from a query"""
@@ -849,9 +861,11 @@ class Kospex:
         #print(table)
 
 
-    def file_metadata(self, repo_directory,force=None):
+    def file_metadata(self, repo_directory,force=None,skip_last_commit=None):
         """
         Get some basic metadata about the files in the repo using 'scc'
+        skip_last_commit: bool = False - Don't run the git command for each file if true
+
         """
         self.set_repo_dir(repo_directory)
         git_hash = self.git.get_current_hash()
@@ -869,7 +883,12 @@ class Kospex:
         else:
 
             # scc wont' analyse everything, so we need to do a file find for items not analysed
-            files = self.git.get_repo_files()
+            #files = self.git.get_repo_files(skip_last_commit=skip_last_commit)
+            start = time.perf_counter()
+            print("Finding repo files ...")
+            files = self.git.get_repo_files(skip_last_commit=skip_last_commit)
+            end = time.perf_counter()
+            print(f"get_repo_files executed in {(end - start)*1000:.2f}ms")
             # This will be a dict of file paths and their metadata
 
             # Reset "latest" flags to false
@@ -905,6 +924,23 @@ class Kospex:
                 meta_cols = [ "Language","Provider","Filename","Lines",
                             "Code","Comments","Blanks","Complexity","Bytes" ]
 
+                commit_info_sql = f"""SELECT committer_when, hash FROM {KospexSchema.TBL_COMMIT_FILES}
+                WHERE file_path = ? and _repo_id = ? ORDER BY committer_when DESC LIMIT 1"""
+
+                #
+                # Create an in memory database to handle the queries, WAY FASTER
+                #
+
+                file_commits = self.kospex_query.get_commit_files(repo_id=repo_id)
+                # Create in-memory DB
+                db = Database(memory=True)  # equivalent to Database(":memory:")
+
+                # Insert: sqlite-utils will create the table and infer types automatically
+                # - pk sets primary key (optional)
+                # - alter=True allows adding new columns if later rows introduce them
+                table = db[KospexSchema.TBL_COMMIT_FILES]
+                table.insert_all(file_commits, alter=True)
+
                 for row in csv_reader:
                     row = {key: row[key] for key in meta_cols if key in row}
                     row['hash'] = git_hash
@@ -917,7 +953,18 @@ class Kospex:
                     # We only want to add files which are managed by Git
                     file_path = row.get("Provider")
                     if files.get(file_path):
+                        print(f"file_path/Provider : {file_path}")
+                        #commit_info = next(self.kospex_db.query(commit_info_sql, [row['Provider'], repo_id]),None)
+                        commit_info = next(db.query(commit_info_sql, [row['Provider'], repo_id]),None)
+
+                        if commit_info:
+                            row['committer_when'] = commit_info.get("committer_when")
+                            row['hash'] = commit_info.get("hash")
+                        else:
+                            print(f"commit_info is None for file_path : {file_path}")
+
                         data_rows.append(self.git.add_git_to_dict(row))
+
                     else:
                         print(f"file_path/Provider : {file_path}, not managed by Git")
 

@@ -19,9 +19,10 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Added
 - [MVP version of logging](https://github.com/kospex/kospex/issues/22)
 - [Add a collab graph link from the collab page](https://github.com/kospex/kospex/issues/42)
-
 ### Changed
 ### Fixed
+- [Removed old Flask Kweb](https://github.com/kospex/kospex/issues/41)
+- [Improve Sync time](https://github.com/kospex/kospex/issues/39)
 
 
 ## 0.0.19 - 2025-07-09

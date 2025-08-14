@@ -1,6 +1,7 @@
 """ Use case queries for the kospex DB"""
 import time
 import re
+from typing import Optional
 from datetime import datetime, timezone, timedelta
 from sqlite_utils import Database
 import kospex_utils as KospexUtils
@@ -309,6 +310,37 @@ class KospexQuery:
 
         return data
 
+    def get_repo_sync_data(self, limit=None):
+        """
+        Get the sync and last commit data for repositories from the "repos" table.
+        """
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMITS)
+        kd.select("*")
+        #kd.set_params_by_id(id)
+        if limit:
+            kd.limit(limit)
+
+          # [_repo_id] TEXT,
+          # [_git_server] TEXT,
+          # [_git_owner] TEXT,
+          # [_git_repo] TEXT,
+          # [created_at] DEFAULT CURRENT_TIMESTAMP,
+          # [last_sync] TEXT,  -- date of last kospex sync
+          # [last_seen] TEXT,  -- date of last commit, to be updated by the sync
+          # [first_seen] TEXT, -- date of first commit, to be updated by the sync
+          # [git_remote] TEXT, -- URL of the git repo
+          # [file_path] TEXT,  -- path to the repo on the local filesystem
+          # PRIMARY KEY(_repo_id)
+          #
+        results = kd.execute()
+
+        for row in results:
+            row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
+            row['status'] = KospexUtils.development_status(row['last_commit'])
+
+        return results
+
     def repos2(self,id=None):
         """
         Provide a summary of the known repositories.
@@ -327,6 +359,7 @@ class KospexQuery:
         kd.select_raw("COUNT(DISTINCT(committer_email)) as committers")
 
         kd.select_git_details()
+
 
         kd.group_by("_repo_id")
         kd.order_by("_repo_id")
@@ -417,6 +450,17 @@ class KospexQuery:
             data.append(row)
 
         return data
+
+    def get_commit_files(self,repo_id=None):
+        """
+        Get all commit files based on criteria
+        """
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_COMMIT_FILES)
+        if repo_id:
+            kd.where("_repo_id", "=", repo_id)
+
+        return kd.execute()
 
     def get_file_collaborators(self, repo_id, file_path):
         """
@@ -519,14 +563,21 @@ class KospexQuery:
 
         return repos
 
-    def developers(self, org_key=None,repo_id=None,server=None,days=None):
+    @KospexUtils.timer()
+    def developers(self, org_key=None,repo_id=None,server=None,days=None,to_date=None,from_date=None):
         """
+
+        days means commits in the last 'X' days, based on the committer_when
+        after_date means commits after 'X' date, based on the committer_when
+        before_date means commits before 'X' date, based on the committer_when
+
         Return a list of developers (based on author_email) with meta data
             author_email AS author
             first_commit
             last_commit
             days_active
             status
+
         """
 
         kd = KospexData(self.kospex_db)
@@ -534,10 +585,18 @@ class KospexQuery:
         kd.select_as("DISTINCT(author_email)", "author")
         kd.select_as("MIN(committer_when)", "first_commit")
         kd.select_as("MAX(committer_when)", "last_commit")
+        kd.select_as("count(*)",'commits')
+
         kd.group_by("author")
 
         # TODO - Think if we want to sanity check
         # There should only be one of repo_id, org_key or server used
+
+        if to_date:
+            kd.where("committer_when", "<", to_date)
+
+        if from_date:
+            kd.where("committer_when", ">", from_date)
 
         if days:
             from_date = KospexUtils.days_ago_iso_date(days)
@@ -550,14 +609,18 @@ class KospexQuery:
             kd.where_org_key(org_key)
 
         if server:
+            print(f"Server: {server}")
             kd.where("_git_server", "=", server)
 
         results =  kd.execute()
 
         for i in results:
+
             i["status"] = KospexUtils.development_status(i['last_commit'])
             i['tenure'] = KospexUtils.days_between_datetimes(i['first_commit'],
                 i['last_commit'],min_one=True)
+            i['years_active'] = round(i['tenure'] / 365,2) if i['tenure'] else 0
+
 
         return results
 
@@ -632,7 +695,7 @@ class KospexQuery:
 
         return data
 
-
+    @KospexUtils.timer()
     def authors(self, days=None, org_key=None):
         """
         Provide a summary of authors in the known repositories.
@@ -1459,7 +1522,9 @@ class KospexQuery:
     #     return data
 
 class KospexData:
-    """ Data wrangling DSL like functions for Kospex """
+    """
+    Data wrangling DSL like functions for Kospex database schema
+    """
 
     def __init__(self, kospex_db=None):
         self.kospex_db = kospex_db
@@ -1470,6 +1535,7 @@ class KospexData:
         self.where_clause = []
         self.group_by_columns = []
         self.order_by_columns = []
+        self.limit_clause = None
 
     def get_bind_parameters(self):
         """ Return the bind parameters for the query """
@@ -1502,6 +1568,11 @@ class KospexData:
 
         self.where_clause.append(f"{column} {operator} ?")
         self.params.append(value)
+
+    def limit(self, limit: Optional[int] = None):
+        """ Add a limit clause to the query """
+        if limit is not None:
+            self.limit_clause = f"LIMIT {limit}"
 
     def where_dependency(self):
         """ HACK to add the tech_type  """
@@ -1819,6 +1890,10 @@ class KospexData:
         if self.order_by_columns:
             sql += "ORDER BY "
             sql += ", ".join(self.order_by_columns)
+
+        if self.limit_clause:
+            sql += self.limit_clause
+            sql += line_end
 
         return sql
 
