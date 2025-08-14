@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Kospex Web - Recent Syncs</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <style>
+            /* Custom styles for DataTables with Tailwind */
+            .dataTables_wrapper .dataTables_length select,
+            .dataTables_wrapper .dataTables_filter input {
+                @apply border border-gray-300 rounded px-3 py-2 text-sm;
+            }
+            .dataTables_wrapper .dataTables_length,
+            .dataTables_wrapper .dataTables_filter,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                @apply text-sm text-gray-700;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+                @apply bg-blue-600 text-white border-blue-600;
+            }
+        </style>
+    </head>
+    <body class="bg-white">
+        {% include '_header.html' %}
+
+        <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Recent Syncs</h1>
+                    <p class="text-gray-600 mb-6">The 10 most recently synchronized repositories</p>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="myTable">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repo ID</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Commit</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Sync</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Days Active</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in data %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <a href="/repo/{{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['_git_repo'] }}</a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">{{ row['last_commit'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">{{ row['last_sync'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['days_active'] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %}
+        {% include '_datatable_scripts.html' %}
+
+        <script>
+            $(document).ready(function () {
+                $("#myTable").DataTable({
+                    order: [[2, "desc"]], // Sort by Last Sync descending (most recent first)
+                    responsive: true,
+                    pageLength: 10,
+                    lengthMenu: [[10, 25, 50], [10, 25, 50]],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
+                });
+            });
+        </script>
+
+    </body>
+</html>
