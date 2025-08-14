@@ -14,7 +14,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Fixed
 - [kospex CLI exited with error code 2](/changes/click-exit-2-error.md) when no arguments are provided
 
-## VERSION - DATE - IN PROGRESS
+## 0.0.21 - NOT RELEASED
 
 ### Added
 - [MVP version of logging](https://github.com/kospex/kospex/issues/22)
