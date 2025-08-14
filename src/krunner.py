@@ -11,8 +11,12 @@ from kospex_core import Kospex
 import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
 
-KospexUtils.init()
+# Initialize Kospex environment with logging
+KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kospex = Kospex()
+
+# Get logger using the new centralized logging system
+log = KospexUtils.get_kospex_logger('krunner')
 
 @click.group()
 def cli():
