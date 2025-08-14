@@ -22,16 +22,16 @@ async def api_servers(request: Request, id: Optional[str] = None):
     """API endpoint for server information"""
     try:
         logger.info(f"API servers endpoint requested with id: {id}")
-        
+
         kquery = KospexQuery()
-        
+
         if id:
             # Get specific server data
-            data = kquery.server_summary(server=id)
+            data = kquery.server_summary(id=id)
         else:
             # Get all servers
             data = kquery.server_summary()
-        
+
         return JSONResponse(content={
             "status": "success",
             "data": data,
@@ -48,22 +48,22 @@ async def api_developers(request: Request, id: Optional[str] = None):
     """API endpoint for developers information"""
     try:
         logger.info(f"API developers endpoint requested with id: {id}")
-        
+
         days = request.query_params.get('days')
         org_key = request.query_params.get('org_key')
-        
+
         kquery = KospexQuery()
-        
+
         if id:
             # Get specific developer data using base64 decoded ID
             author_email = KospexUtils.decode_base64(id)
             if author_email:
                 author_email = author_email.replace(" ", "+")
-            
+
             repo_list = kquery.repos_by_author(author_email)
             techs = kquery.author_tech(author_email=author_email)
             github_handle = KospexUtils.extract_github_username(author_email)
-            
+
             data = {
                 "developer_id": id,
                 "author_email": author_email,
@@ -74,7 +74,7 @@ async def api_developers(request: Request, id: Optional[str] = None):
         else:
             # Get all developers
             data = kquery.authors(days=days, org_key=org_key)
-        
+
         return JSONResponse(content={
             "status": "success",
             "data": data,
@@ -90,15 +90,15 @@ async def api_orgs(request: Request):
     """API endpoint for organizations information"""
     try:
         logger.info("API orgs endpoint requested")
-        
+
         kquery = KospexQuery()
         git_orgs = kquery.orgs()
         active_devs = kquery.active_devs(org=True)
-        
+
         # Enhance org data with active developer counts
         for row in git_orgs:
             row['active_devs'] = active_devs.get(row['org_key'], 0)
-        
+
         return JSONResponse(content={
             "status": "success",
             "data": git_orgs
@@ -114,9 +114,9 @@ async def api_repos(request: Request, id: Optional[str] = None):
     """API endpoint for repositories information"""
     try:
         logger.info(f"API repos endpoint requested with id: {id}")
-        
+
         kquery = KospexQuery()
-        
+
         if id:
             # Get specific repository data
             repo_id = id
@@ -125,7 +125,7 @@ async def api_repos(request: Request, id: Optional[str] = None):
             summary = kquery.author_summary(repo_id)
             techs = kquery.tech_landscape(repo_id=repo_id)
             developers = kquery.developers(repo_id=repo_id)
-            
+
             data = {
                 "repo_id": repo_id,
                 "commit_ranges": commit_ranges,
@@ -140,14 +140,14 @@ async def api_repos(request: Request, id: Optional[str] = None):
             repo_id = request.query_params.get('repo_id') or params.get("repo_id")
             org_key = request.query_params.get('org_key') or params.get("org_key")
             server = request.query_params.get('server') or params.get("server")
-            
+
             data = kquery.repos(org_key=org_key, server=server)
             active_devs = kquery.active_devs()
-            
+
             # Enhance repo data with active developer counts
             for row in data:
                 row['active_devs'] = active_devs.get(row['_repo_id'], 0)
-        
+
         return JSONResponse(content={
             "status": "success",
             "data": data,
@@ -163,21 +163,21 @@ async def api_developer(request: Request, id: str):
     """API endpoint for individual developer information (ID required)"""
     try:
         logger.info(f"API developer endpoint requested with id: {id}")
-        
+
         # Decode the base64 ID to get author email
         author_email = KospexUtils.decode_base64(id)
-        
+
         # Handle GitHub + signs in URLs
         if author_email:
             author_email = author_email.replace(" ", "+")
-        
+
         kquery = KospexQuery()
         repo_list = kquery.repos_by_author(author_email)
         techs = kquery.author_tech(author_email=author_email)
-        
+
         # Extract GitHub username if possible
         github_handle = KospexUtils.extract_github_username(author_email)
-        
+
         data = {
             "developer_id": id,
             "author_email": author_email,
@@ -185,7 +185,7 @@ async def api_developer(request: Request, id: str):
             "repositories": repo_list,
             "technologies": techs
         }
-        
+
         return JSONResponse(content={
             "status": "success",
             "data": data
@@ -211,13 +211,13 @@ async def api_summary(request: Request):
     """API endpoint for summary information"""
     try:
         logger.info("API summary endpoint requested")
-        
+
         days = request.query_params.get('days')
         org_key = request.query_params.get('org_key')
-        
+
         kquery = KospexQuery()
         data = kquery.summary(days=days, org_key=org_key)
-        
+
         return JSONResponse(content={
             "status": "success",
             "data": data
@@ -232,13 +232,13 @@ async def api_tech_landscape(request: Request):
     """API endpoint for technology landscape"""
     try:
         logger.info("API tech landscape endpoint requested")
-        
+
         repo_id = request.query_params.get('repo_id')
         org_key = request.query_params.get('org_key')
-        
+
         kquery = KospexQuery()
         data = kquery.tech_landscape(org_key=org_key, repo_id=repo_id)
-        
+
         return JSONResponse(content={
             "status": "success",
             "data": data,

@@ -442,7 +442,6 @@ async def osi(request: Request, id: Optional[str] = None):
         logger.error(f"Error in osi endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@app.get("/collab/", response_class=HTMLResponse)
 @app.get("/collab/{repo_id}", response_class=HTMLResponse)
 async def collab(request: Request, repo_id: str):
     """Display repository collaboration information"""
@@ -450,6 +449,7 @@ async def collab(request: Request, repo_id: str):
         logger.info(f"Collaboration page requested for repo: {repo_id}")
 
         kquery = KospexQuery()
+
         collabs = kquery.get_collabs(repo_id=repo_id)
 
         return templates.TemplateResponse(
@@ -1009,7 +1009,9 @@ async def repo_with_tech(request: Request, tech: str):
 @app.get("/developer/", response_class=HTMLResponse)
 @app.get("/developer/{id}", response_class=HTMLResponse)
 async def developer_view(request: Request, id: Optional[str] = None):
-    """View individual developer details"""
+    """
+    View individual developer details
+    """
     try:
         logger.info(f"Developer view requested with id: {id}")
 
@@ -1017,6 +1019,16 @@ async def developer_view(request: Request, id: Optional[str] = None):
 
         if id:
             author_email = KospexUtils.decode_base64(id)
+
+        if author_email is None:
+            logger.error("No email passed to Developer view")
+            return templates.TemplateResponse(
+                "404.html",
+                {
+                    "request": request,
+                    "error": "No email passed to Developer view",
+                }
+            )
 
         # Github uses +, which get interpreted as a " " in the URL.
         if author_email:

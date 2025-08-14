@@ -7,6 +7,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Added
 - [MVP version of logging](https://github.com/kospex/kospex/issues/22)
 - [Add a collab graph link from the collab page](https://github.com/kospex/kospex/issues/42)
+- [Added initial kweb testing](https://github.com/kospex/kospex/issues/46)
 ### Changed
 - Added a leavers tenure view where we show how long they have been in an org or repo
 - Removed kgit pull as we don't really need it anymore
@@ -36,7 +37,6 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 - [Static files (js,css) not packaged for kweb](https://github.com/kospex/kospex/issues/37)
-
 
 ## 0.0.18 - 2025-07-07
 

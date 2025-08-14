@@ -78,17 +78,28 @@ class KospexQuery:
         data = next(self.kospex_db.query(summary_sql, [repo_id]), None)
         return data
 
-    def server_summary(self):
-        """ Provide a summary of the known servers."""
-        summary_sql = """SELECT _git_server, count(distinct(_repo_id)) 'repos',
+    def server_summary(self,id=None):
+        """
+        Provide a summary of the known servers.
+        """
+        params = []
+        if id:
+            params.append(id)
+            where_clause = "WHERE _git_server = ?"
+        else:
+            where_clause = ""
+
+        summary_sql = f"""SELECT _git_server, count(distinct(_repo_id)) 'repos',
         count(distinct(author_email)) 'developers'
         FROM commits
+        {where_clause}
         GROUP BY _git_server
         """
+        print(summary_sql)
+        print(params)
         data = []
-        for row in self.kospex_db.query(summary_sql):
+        for row in self.kospex_db.query(summary_sql,params):
             data.append(row)
-
         return data
 
     def tech_landscape(self, repo_id=None,org_key=None):
