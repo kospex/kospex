@@ -280,11 +280,10 @@ class KospexGit:
         """ return the repo ID (e.g. github.com~owner~repo)"""
         return self.repo_id
 
-    def get_repo_files(self,language=None):
+    def get_repo_files(self,language=None,skip_last_commit=None):
         """ return a list of files in the repo, excluding .git """
         repo_files = {}
         repo_path = Path(self.repo_dir).resolve()
-
         p_files = Panopticas.identify_files(repo_path)
 
         unmanaged = 0
@@ -302,18 +301,26 @@ class KospexGit:
             tags = Panopticas.get_filename_metatypes(entry)
             data['tech_type'] = tags
 
-            git_metadata = KospexUtils.get_last_commit_info(entry)
-            data['committer_when'] = git_metadata.get("committer_when")
-            data['status'] = git_metadata.get("status")
-
-            if git_metadata.get("unmanaged"):
-                unmanaged += 1
-            else:
+            # This process is very CPU intensitve, so might skip it for big repos
+            git_metadata = {}
+            if skip_last_commit:
+                data['committer_when'] = None
+                data['status'] = None
                 repo_files[entry] = data
+            else:
+                git_metadata = KospexUtils.get_last_commit_info(entry)
+                data['committer_when'] = git_metadata.get("committer_when")
+                data['status'] = git_metadata.get("status")
+
+                if git_metadata.get("unmanaged"):
+                    unmanaged += 1
+                else:
+                    repo_files[entry] = data
 
         self.repo_files = repo_files
 
         if language:
+
             language_files = {}
             for item in repo_files:
                 if repo_files[item].get("Language") == language:
