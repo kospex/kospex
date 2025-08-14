@@ -16,16 +16,55 @@ import kospex_schema as KospexSchema
 from kospex_dependencies import KospexDependencies
 import krunner_utils as KrunnerUtils
 
-KospexUtils.init()
+# Initialize Kospex environment with enhanced logging
+KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kospex = Kospex()
-log = logging.getLogger(__name__)
+
+# Get logger using the new centralized logging system
+log = KospexUtils.get_kospex_logger('kospex')
+
+
+def _configure_runtime_logging(debug=False, verbose=False, quiet=False, log_console=False):
+    """Configure logging based on runtime CLI flags."""
+    import os
+    import logging
+
+    # Set environment variables for the logging system
+    if debug:
+        os.environ['KOSPEX_LOG_LEVEL'] = 'DEBUG'
+        log.info("Debug logging enabled via CLI flag")
+    elif verbose:
+        os.environ['KOSPEX_LOG_LEVEL'] = 'INFO'
+        log.info("Verbose logging enabled via CLI flag")
+    elif quiet:
+        os.environ['KOSPEX_LOG_LEVEL'] = 'ERROR'
+        log.info("Quiet mode enabled via CLI flag")
+
+    if log_console:
+        os.environ['KOSPEX_CONSOLE_LOGGING'] = 'true'
+        log.info("Console logging enabled via CLI flag")
+
+    # Get a fresh logger instance with the new configuration
+    # Note: This is a simplified approach. For full runtime reconfiguration,
+    # we would need to reset the logging handlers, but this provides
+    # immediate feedback for the current session
+    if debug:
+        log.setLevel(logging.DEBUG)
+    elif verbose:
+        log.setLevel(logging.INFO)
+    elif quiet:
+        log.setLevel(logging.ERROR)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 #VERSION = "0.0.16" # This value should align with the pyproject.toml version for pip
 
 @click.group(invoke_without_command=True)
 @click.version_option(version=Kospex.VERSION)
+@click.option('--debug', is_flag=True, default=False, help="Enable debug logging (overrides config).")
+@click.option('--verbose', '-v', is_flag=True, default=False, help="Enable verbose logging.")
+@click.option('--quiet', '-q', is_flag=True, default=False, help="Suppress most output (errors only).")
+@click.option('--log-console', is_flag=True, default=False, help="Enable console logging in addition to file logging.")
 @click.pass_context
-def cli(ctx):
+def cli(ctx, debug, verbose, quiet, log_console):
     """Kospex is a tool for assessing code and git repositories.
 
     It is designed to help understand the structure of code, who are developers and
@@ -35,45 +74,157 @@ def cli(ctx):
 
     See also https://kospex.io/
 
+    Global Options:
+      --debug: Enable debug-level logging for detailed troubleshooting
+      --verbose: Enable verbose output and INFO-level logging
+      --quiet: Reduce output to errors only
+      --log-console: Show log messages on console as well as in files
+
     """
+    # Store logging preferences in context for subcommands
+    ctx.ensure_object(dict)
+    ctx.obj['debug'] = debug
+    ctx.obj['verbose'] = verbose
+    ctx.obj['quiet'] = quiet
+    ctx.obj['log_console'] = log_console
+
+    # Apply runtime logging configuration
+    if debug or verbose or quiet or log_console:
+        _configure_runtime_logging(debug, verbose, quiet, log_console)
+
     if ctx.invoked_subcommand is None:
         # Default behavior when no command is provided
         click.echo(ctx.get_help())
         ctx.exit(0)
 
 @cli.command("init")
-@click.option('-create', is_flag=True, default=False, help="Create the default ~/code or KOSPEX_CODE directory.")
-def kospex_init(create):
+@click.option('--create', is_flag=True, default=False, help="Create the default ~/code or KOSPEX_CODE directory.")
+@click.option('--verbose', is_flag=True, default=False, help="Show detailed initialization status.")
+@click.option('--validate', is_flag=True, default=False, help="Validate Kospex setup and configuration.")
+def kospex_init(create, verbose, validate):
     """
-    Perform basic initial setup.
+    Perform comprehensive Kospex environment initialization.
 
-    Use -create to create the default ~/code or KOSPEX_CODE directory.
+    This command sets up the Kospex directory structure, validates configuration,
+    and initializes the centralized logging system.
 
+    Use --create to create missing directories including ~/code or KOSPEX_CODE.
+    Use --verbose for detailed status information during setup.
+    Use --validate to check the current setup without making changes.
     """
-    kospex_code = KospexUtils.get_kospex_code_path()
-    kconf = KospexUtils.get_kospex_config()
+    log.info("Starting Kospex initialization")
+
+    if validate:
+        # Run validation without making changes
+        validation = KospexUtils.validate_kospex_setup()
+
+        print("\n=== Kospex Setup Validation ===")
+        print(f"Overall Status: {validation['overall_status'].upper()}")
+
+        print("\nEnvironment Variables:")
+        for var, info in validation['environment_vars'].items():
+            status = "✓" if info['set'] else "✗"
+            print(f"  {status} {var}: {info['value'] or 'Not set'}")
+
+        print("\nDirectories:")
+        for name, info in validation['directories'].items():
+            exists = "✓" if info['exists'] else "✗"
+            writable = ""
+            if name == 'kospex_home' and info['exists']:
+                writable = " (writable)" if info['writable'] else " (not writable)"
+            elif name == 'kospex_code' and info['exists']:
+                writable = " (readable)" if info['readable'] else " (not readable)"
+            print(f"  {exists} {info['path']}{writable}")
+
+        if validation['logging']:
+            print("\nLogging System:")
+            if validation['logging'].get('directories_exist'):
+                print("  ✓ Logging directories configured")
+            else:
+                print("  ✗ Logging directories need setup")
+
+        if validation['recommendations']:
+            print("\nRecommendations:")
+            for rec in validation['recommendations']:
+                print(f"  • {rec}")
+
+        return
+
+    # Perform initialization
+    init_result = KospexUtils.init(
+        create_directories=create,
+        setup_logging=True,
+        verbose=verbose
+    )
+
+    if verbose:
+        print("\n=== Initialization Results ===")
+        print(f"KOSPEX_HOME: {init_result['kospex_home']}")
+
+        if init_result['directories_created']:
+            print("\nDirectories Created:")
+            for dir_path in init_result['directories_created']:
+                print(f"  • {dir_path}")
+
+        if init_result['environment_vars_set']:
+            print("\nEnvironment Variables Set:")
+            for var in init_result['environment_vars_set']:
+                print(f"  • {var}")
+
+        if init_result['warnings']:
+            print("\nWarnings:")
+            for warning in init_result['warnings']:
+                print(f"  ⚠ {warning}")
+
+        if init_result['errors']:
+            print("\nErrors:")
+            for error in init_result['errors']:
+                print(f"  ✗ {error}")
+
+    # Check for scc installation
     installed = which('scc')
     if not installed:
-        print("Please install scc from https://github.com/boyter/scc")
-        print("This is used to count lines of code, complexity and determine the language.")
+        log.warning("scc binary not found")
+        print("\n⚠ Please install scc from https://github.com/boyter/scc")
+        print("  This is used to count lines of code, complexity and determine the language.")
+    elif verbose:
+        log.info("scc binary found!")
+        print("\n✓ scc binary found and ready")
+
+    # Handle code directory creation/validation
+    kospex_code = KospexUtils.get_kospex_code_path()
 
     if create:
         if not os.path.exists(kospex_code):
-            os.makedirs(kospex_code)
+            try:
+                os.makedirs(kospex_code, exist_ok=True)
+                log.info(f"Created code directory: {kospex_code}")
+                if verbose:
+                    print(f"✓ Created code directory: {kospex_code}")
+            except OSError as e:
+                log.error(f"Failed to create code directory: {e}")
+                print(f"✗ Failed to create code directory: {e}")
         else:
-            print("Directory already exists.")
+            if verbose:
+                print(f"✓ Code directory already exists: {kospex_code}")
     else:
         if os.path.exists(kospex_code):
-            print("~/code directory exists.")
-            print("If you want to overide the code directory")
-            print(f"edit the {kconf} file or")
-            print("set the KOSPEX_CODE environment variable.\n")
+            if verbose:
+                print(f"✓ Code directory exists: {kospex_code}")
+                print("  To override, edit config file or set KOSPEX_CODE environment variable")
         else:
-            print("Directory does not exist.")
-            print("Run with -create to create either the")
-            print("~/code (default) directory, or")
-            print("a directory specified in the KOSPEX_CODE variable.")
-            print(f"or edit the {kconf} file and change the KOSPEX_CODE evironment variable.\n")
+            log.warning(f"Code directory does not exist: {kospex_code}")
+            print(f"\n⚠ Code directory does not exist: {kospex_code}")
+            print("  Run 'kospex init --create' to create it, or")
+            print("  Set the KOSPEX_CODE environment variable to a different location")
+
+    if not init_result['errors']:
+        log.info("Kospex initialization completed successfully")
+        if not verbose:
+            print("✓ Kospex initialization complete!")
+            print("  Run 'kospex init --validate' to check your setup")
+    else:
+        log.error("Kospex initialization completed with errors")
 
 
 @cli.command("summary")
@@ -87,15 +238,25 @@ def kospex_init(create):
 @click.option('-group', type=click.STRING, help="Name of group (of repos) to query with.")
 @click.option('-org', type=click.STRING, help="Name of Org/Team to query with.")
 @click.option('-debug', is_flag=True, default=False, help="Debug mode.")
+@click.option('--verbose', is_flag=True, default=False, help="Verbose output.")
+@click.pass_context
 #@click.option('-', type=click.STRING, help="Name of group (of repos) to query with.")
 # pylint: disable=unused-argument
-def summary(out,server,email, active, docker, dependencies, email_contains,group,org,debug):
+def summary(ctx, out,server,email, active, docker, dependencies, email_contains,group,org,debug,verbose):
     """ Provide a summary of all the known repositories."""
+    # Respect global logging settings from context
+    global_verbose = ctx.obj.get('verbose', False) if ctx.obj else False
+    is_verbose = verbose or global_verbose
+
+    log.info("Starting repository summary")
+
     params = locals()
     if group and org:
+        log.error("Cannot specify both group and org parameters")
         print("Please specify either a group or an org, not both.")
         exit(1)
     elif group and email:
+        log.error("Cannot specify both group and email parameters")
         print("Please specify either a group or an email, not both.")
         exit(1)
 
@@ -155,25 +316,24 @@ def summary(out,server,email, active, docker, dependencies, email_contains,group
         if unknown > 0:
             print(f"WARNING: {unknown} repos found without an entry in 'repos' table.\n")
 
-
     else:
         print("No repositories found in the kospex DB.\n")
 
-@cli.command("sync")
-@click.option('--no-scc', is_flag=True, default=False, help="Skip scc analysis.")
-@click.argument('repo', type=GitRepo())
-def sync(repo,no_scc):
-    """
-    Sync a single repo to the kospex DB, using the native git commands.
-    """
+# @cli.command("sync")
+# @click.option('--no-scc', is_flag=True, default=False, help="Skip scc analysis.")
+# @click.argument('repo', type=GitRepo())
+# def sync(repo,no_scc):
+#     """
+#     Sync a single repo to the kospex DB, using the native git commands.
+#     """
 
-    installed = which('scc')
-    if not installed:
-        print("Please install scc from https://github.com/boyter/scc")
-        print("This is used to count lines of code, complexity and determine the language.")
-        print("or run sync with --no-scc to skip this step.")
+#     installed = which('scc')
+#     if not installed:
+#         print("Please install scc from https://github.com/boyter/scc")
+#         print("This is used to count lines of code, complexity and determine the language.")
+#         print("or run sync with --no-scc to skip this step.")
 
-    kospex.sync_repo(repo, no_scc=no_scc)
+#     kospex.sync_repo(repo, no_scc=no_scc)
 
 #@cli.command("sync")
 #@click.option('-previous', type=int, help='# Commits to sync from the oldest in kospex DB.')
