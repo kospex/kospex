@@ -18,6 +18,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 - [MVP version of logging](https://github.com/kospex/kospex/issues/22)
+- [Add a collab graph link from the collab page](https://github.com/kospex/kospex/issues/42)
 
 ### Changed
 ### Fixed

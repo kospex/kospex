@@ -23,14 +23,17 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from kospex_query import KospexQuery
 import kospex_web as KospexWeb
 import kospex_utils as KospexUtils
+import kospex_stats as KospexStats
 from kweb_help_service import HelpService
 from kweb_graph_service import GraphService
 from kospex_core import Kospex
 from api_routes import router as api_router
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Initialize Kospex environment
+KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
+
+# Set up logging using centralized system
+logger = KospexUtils.get_kospex_logger('kweb2')
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -556,6 +559,27 @@ async def orgs(request: Request, server: Optional[str] = None):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/recent/", response_class=HTMLResponse)
+async def recent_syncs(request: Request):
+    """Display recently synced repositories"""
+    try:
+        logger.info("Recent syncs view requested")
+        kospex = KospexQuery()
+
+        # TODO: Implement proper query for last 10 syncs
+        # This is stubbed for now - will need to add database query for recent syncs
+        data = []  # Placeholder for recent sync data
+
+        return templates.TemplateResponse("recent-syncs.html", {
+            "request": request,
+            "data": data,
+            "page": {"title": "Recent Syncs"}
+        })
+    except Exception as e:
+        logger.error(f"Error in recent syncs endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.get("/repos/", response_class=HTMLResponse)
 @app.get("/repos/{id}", response_class=HTMLResponse)
 async def repos(request: Request, id: Optional[str] = None):
@@ -740,6 +764,7 @@ async def developers(request: Request):
         debug = locals()
         logger.info(debug)
 
+
         devs = KospexQuery().authors(days=days, org_key=org_key)
 
         if author_email:
@@ -842,9 +867,10 @@ async def org_graph(request: Request, org_key: Optional[str] = None, focus: Opti
 @app.get("/tenure/", response_class=HTMLResponse)
 @app.get("/tenure/{id}", response_class=HTMLResponse)
 async def tenure(request: Request, id: Optional[str] = None):
-    """View developer tenure for all, a server, org or a repo"""
+    """
+    View developer tenure for all, a server, org or a repo
+    """
     try:
-        from statistics import mean, median, mode, stdev
 
         logger.info(f"Tenure page requested with id: {id}")
 
@@ -852,6 +878,7 @@ async def tenure(request: Request, id: Optional[str] = None):
         params = KospexWeb.get_id_params(id)
         developers = KospexQuery().developers(**params)
         active_devs = []
+        dev_leavers = []
 
         for entry in developers:
             entry['tenure_status'] = KospexUtils.get_status(entry['tenure'])
@@ -859,11 +886,26 @@ async def tenure(request: Request, id: Optional[str] = None):
         for dev in developers:
             if "Active" == dev.get("status"):
                 active_devs.append(dev)
+            else:
+                if KospexUtils.days_ago(dev['last_commit']) < 365:
+                    dev_leavers.append(dev)
+
+        #Calculate developers who've left and the distribugion
+        for entry in dev_leavers:
+            entry['tenure_status'] = KospexUtils.get_status(entry['tenure'])
+
+        leavers = KospexUtils.get_status_distribution(dev_leavers)
 
         data = {}
+
+        data["leavers"] = len(dev_leavers)
+
+
         data['developers'] = len(developers)
         data['active_devs'] = len(active_devs)
+
         days_values = [entry['tenure'] for entry in developers]
+        active_days_values = [entry['tenure'] for entry in active_devs]
 
         commit_stats = KospexQuery().get_activity_stats(params)
         data['days_active'] = commit_stats.get('days_active')
@@ -871,11 +913,10 @@ async def tenure(request: Request, id: Optional[str] = None):
         data['repos'] = commit_stats.get('repos')
         data['commits'] = commit_stats.get('commits')
 
-        data['max'] = round(max(days_values))
-        data['mean'] = round(mean(days_values), 2)
-        data['mode'] = round(mode(days_values), 2)
-        data['median'] = round(median(days_values), 2)
-        data['std_dev'] = round(stdev(days_values), 2)
+        data |= KospexStats.tenure_stats(days_values)
+
+        # Holds the active stats
+        active_data = KospexStats.tenure_stats(active_days_values)
 
         distribution = KospexUtils.get_status_distribution(developers)
         active_d = KospexUtils.get_status_distribution(active_devs)
@@ -885,9 +926,11 @@ async def tenure(request: Request, id: Optional[str] = None):
             {
                 "request": request,
                 "data": data,
+                "active_data": active_data,
                 "distribution": distribution,
                 "developers": developers,
-                "active_distribution": active_d
+                "active_distribution": active_d,
+                "leavers": leavers
             }
         )
     except Exception as e:
