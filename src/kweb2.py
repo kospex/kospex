@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""FastAPI implementation of Kospex web server."""
+"""FastAPI Kospex web server."""
 
-import logging
 import csv
 import sys
 from io import StringIO
@@ -243,7 +242,6 @@ async def active_developers(request: Request, repo_id: str):
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "kospex-web"}
-
 
 @app.get("/generate-repo-id/")
 async def generate_repo_id(url: str):

@@ -2,6 +2,18 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.21 - NOT RELEASED
+
+### Added
+- [MVP version of logging](https://github.com/kospex/kospex/issues/22)
+- [Add a collab graph link from the collab page](https://github.com/kospex/kospex/issues/42)
+### Changed
+- Added a leavers tenure view where we show how long they have been in an org or repo
+- Removed kgit pull as we don't really need it anymore
+### Fixed
+- [Removed old Flask Kweb](https://github.com/kospex/kospex/issues/41)
+- [Improve Sync time](https://github.com/kospex/kospex/issues/39)
+
 ## 0.0.20 - 2025-07-21
 
 ### Added
@@ -13,18 +25,6 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - Updated [HTML views to use src/templates/_header.html](/changes/202507-template-header-updates.md)
 ### Fixed
 - [kospex CLI exited with error code 2](/changes/click-exit-2-error.md) when no arguments are provided
-
-## 0.0.21 - NOT RELEASED
-
-### Added
-- [MVP version of logging](https://github.com/kospex/kospex/issues/22)
-- [Add a collab graph link from the collab page](https://github.com/kospex/kospex/issues/42)
-### Changed
-- Added a leavers tenure view where we show how long they have been in an org or repo
-### Fixed
-- [Removed old Flask Kweb](https://github.com/kospex/kospex/issues/41)
-- [Improve Sync time](https://github.com/kospex/kospex/issues/39)
-
 
 ## 0.0.19 - 2025-07-09
 

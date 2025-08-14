@@ -34,13 +34,27 @@ def cli():
     """
 
 @cli.command("status")
-@click.argument('repo',  type=GitRepo())
+@click.argument('repo', required=False, type=GitRepo())
 # pylint: disable=unused-argument
 def status(repo):
-    """Date and commit metadata for the given repo."""
-    print(f"\nRepo status for path: {repo}")
-    st = time.time()
+    """
+    Show date and commit metadata for the given repo directory.
+    """
+    print()
+    if repo is None:
+        current_dir = os.getcwd()
+        git_base = KospexUtils.find_git_base(current_dir)
+        if git_base is None:
+            console.log("No git repository found")
+            return
+        elif current_dir != git_base:
+            console.print("You are not in the root directory of the git repository")
+            console.print("Using the base repo directory.")
+        repo = git_base
 
+    console.print(f"\nRepo status for path: {repo}\n")
+
+    st = time.time()
     stats = KospexUtils.get_git_stats(repo, 90)
     table = PrettyTable()
     table.field_names = ["Subject", "Value"]
@@ -86,7 +100,6 @@ def branches(sync, repo):
             bob.append(i.lstrip()) # remove leading spaces
     print(bob)
 
-
 @cli.command("clone")
 @click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
 @click.option('-filename',  type=click.Path(exists=True), help="File with HTTP git clone URLs")
@@ -102,7 +115,6 @@ def clone(sync, filename,repo):
 
     if repo and filename:
         exit("You can't specify both a repo and a filename. Please choose one.")
-
 
     if repo:
         repo_path = kgit.clone_repo(repo)
@@ -167,41 +179,27 @@ def sync(org, sync_db, url):
         repo_path = kgit.clone_repo(url)
         log.info(f"Syncing repository {url} to path: {repo_path}")
         commits = kospex.sync_repo(repo_path)
-        #console.print_json(json.dumps(commits))
         console.print(f"Synced {len(commits)} commits")
 
-        #for commit in commits:
-            #console.log(commit)
 
-        # TODO: Implement single repo sync logic
-        # This should:
-        # 1. Check if repo exists locally
-        # 2. If exists, do git pull
-        # 3. If not exists, clone it
-        # 4. Optionally sync to database
-
-        print("Single repository sync is not yet implemented")
-        log.warning("Single repository sync functionality is stubbed - not yet implemented")
-
-
-@cli.command("pull")
-@click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
-def pull(sync):
-    """
-    Check if we're in a git repo, do a git pull,
-    and sync to the kospex DB.
-    """
-    current = os.getcwd()
-    git_base = KospexUtils.find_git_base(current)
-    if git_base:
-        os.chdir(git_base)
-        os.system("git pull")
-        if sync:
-            print("Syncing to kospex DB ...")
-            kospex.sync_repo(git_base)
-        os.chdir(current)
-    else:
-        print(f"{current} does not appear to be in a git repo")
+# @cli.command("pull")
+# @click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
+# def pull(sync):
+#     """
+#     Check if we're in a git repo, do a git pull,
+#     and sync to the kospex DB.
+#     """
+#     current = os.getcwd()
+#     git_base = KospexUtils.find_git_base(current)
+#     if git_base:
+#         os.chdir(git_base)
+#         os.system("git pull")
+#         if sync:
+#             print("Syncing to kospex DB ...")
+#             kospex.sync_repo(git_base)
+#         os.chdir(current)
+#     else:
+#         print(f"{current} does not appear to be in a git repo")
 
 @cli.command("github")
 @click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")

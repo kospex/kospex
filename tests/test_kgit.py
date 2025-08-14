@@ -1,6 +1,7 @@
-""" Tests for KospexGit """
+"""
+Tests for KospexGit
+"""
 from kospex_git import KospexGit
-import kospex_utils as KospexUtils
 
 def test_parse_git_remote():
     """ Test the  function """
