@@ -20,6 +20,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - [MVP version of logging](https://github.com/kospex/kospex/issues/22)
 - [Add a collab graph link from the collab page](https://github.com/kospex/kospex/issues/42)
 ### Changed
+- Added a leavers tenure view where we show how long they have been in an org or repo
 ### Fixed
 - [Removed old Flask Kweb](https://github.com/kospex/kospex/issues/41)
 - [Improve Sync time](https://github.com/kospex/kospex/issues/39)
