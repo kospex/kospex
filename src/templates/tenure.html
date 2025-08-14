@@ -24,21 +24,22 @@
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
                 <div class="p-6">
                     <h2 class="text-2xl font-bold text-gray-900 mb-6">Basic Statistics</h2>
-                    
+
                     <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                         <p class="text-gray-700 leading-relaxed">
                             There have been <strong class="text-blue-600">{{ data.get("developers","Unknown") }}</strong> developers
                             who've committed <strong class="text-blue-600">{{ data.get("commits", "Unknown") }}</strong> times to
-                            <strong class="text-blue-600">{{ data.get("repos", "Unknown") }}</strong> repos over 
-                            <strong class="text-blue-600">{{ data.get("days_active","Unknown") }}</strong> days 
+                            <strong class="text-blue-600">{{ data.get("repos", "Unknown") }}</strong> repos over
+                            <strong class="text-blue-600">{{ data.get("days_active","Unknown") }}</strong> days
                             (<strong class="text-blue-600">{{ data.get("years_active","Unknown") }}</strong> years)
                         </p>
                     </div>
-                    
+
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Developer Group</th>
                                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Mean</th>
                                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
                                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Median</th>
@@ -48,11 +49,28 @@
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        All time
+                                        <span class="text-gray-500 font-normal">({{ data.get("developers") }})</span>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ data.get("mean") }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ data.get("mode") }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ data.get("median") }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ data.get("std_dev") }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ data.get("max") }}</td>
+                                </tr>
+                            </tbody>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        Active developers
+                                        <span class="text-gray-500 font-normal">({{ data.get("active_devs") }})</span>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ active_data.get("mean") }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ active_data.get("mode") }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ active_data.get("median") }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ active_data.get("std_dev") }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center font-medium">{{ active_data.get("max") }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -67,10 +85,10 @@
             </div>
 
             <!-- Tenure Distribution -->
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Tenure Distribution</h2>
-                    
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Tenure Distribution (commits)</h2>
+
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
@@ -106,16 +124,127 @@
 
                     <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                         <p class="text-sm text-gray-700">
-                            <strong class="text-blue-800">Explanation:</strong> 
-                            "All time" includes any developer who has ever contributed to the repository, 
-                            while "Active developers" are those who have committed within the last 90 days (default). 
+                            <strong class="text-blue-800">Explanation:</strong>
+                            "All time" includes any developer who has ever contributed to the repository,
+                            while "Active developers" are those who have committed within the last 90 days (default).
                             The tenure shown represents how long they have been active in the codebase.
                         </p>
                     </div>
                 </div>
             </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Recent Leavers Tenure</h2>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Developer Group</th>
+                                    {% for my_item in leavers %}
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">{{ my_item }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        Last {{ data.get("leavers",0) }} days
+                                        <span class="text-gray-500 font-normal">({{ data.get("leavers",0) }})</span>
+                                    </td>
+                                    {% for my_item in leavers %}
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ leavers.get(my_item,"0") }}%</td>
+                                    {% endfor %}
+                                </tr>
+
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p class="text-sm text-gray-700">
+                            <strong class="text-blue-800">Explanation:</strong>
+                            This table represents the percentage of developers who have left the repository over the last 12 months,
+                            based on no commit activity in the last 90 days.
+                            The tenure shown represents how long they have been active in the codebase.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Developer Details Table -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Developer Details</h2>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="developersTable">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Author</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">First Commit</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Commit</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Tenure (days)</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Years Active</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for dev in developers %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <a href="/developers/?author_email={{ dev['author'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ dev['author'] }}</a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">{{ dev['first_commit'][:10] if dev['first_commit'] else 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">{{ dev['last_commit'][:10] if dev['last_commit'] else 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ "%.1f"|format(dev['tenure']) if dev['tenure'] else 'N/A' }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ "%.2f"|format(dev['years_active']) if dev['years_active'] else 'N/A' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+
         </div>
 
+
+
         {% include '_footer_scripts.html' %}
+        {% include '_datatable_scripts.html' %}
+
+        <style>
+            /* Custom styles for DataTables with Tailwind */
+            .dataTables_wrapper .dataTables_length select,
+            .dataTables_wrapper .dataTables_filter input {
+                @apply border border-gray-300 rounded px-3 py-2 text-sm;
+            }
+            .dataTables_wrapper .dataTables_length,
+            .dataTables_wrapper .dataTables_filter,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                @apply text-sm text-gray-700;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+                @apply bg-blue-600 text-white border-blue-600;
+            }
+        </style>
+
+        <script>
+            $(document).ready(function () {
+                $("#developersTable").DataTable({
+                    order: [[3, "desc"]], // Sort by tenure descending
+                    responsive: true,
+                    pageLength: 25,
+                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
+                });
+            });
+        </script>
     </body>
 </html>
