@@ -5,11 +5,26 @@ import subprocess
 import shlex
 import base64
 import csv
+import time
+import functools
+import logging
 from datetime import datetime, timezone, timedelta
 from dateutil import parser
 from collections import Counter, OrderedDict
 from prettytable import PrettyTable
 from dotenv import load_dotenv
+
+# Import centralized logging after other imports to handle potential import errors
+try:
+    from .kospex_logging import get_logger, validate_logging_setup
+except ImportError:
+    # Try absolute import as fallback
+    try:
+        from kospex_logging import get_logger, validate_logging_setup
+    except ImportError:
+        # Final fallback if kospex_logging is not available
+        get_logger = None
+        validate_logging_setup = None
 
 KOSPEX_DB_FILENAME="kospex.db"
 
@@ -42,47 +57,246 @@ def is_git(directory):
     git_path = f"{directory}/.git/"
     return os.path.exists(git_path)
 
-def init():
-    """ Initialize the kospex environment """
+def init(create_directories=True, setup_logging=True, verbose=False):
+    """ 
+    Initialize the kospex environment with enhanced directory and logging setup.
+    
+    Args:
+        create_directories: Whether to create directories if they don't exist
+        setup_logging: Whether to initialize the centralized logging system
+        verbose: Whether to print detailed status information
+    
+    Returns:
+        dict: Initialization status and validation results
+    """
     user_kospex_home = os.path.expanduser("~/kospex")
-    kospex_home = os.getenv("KOSPEX_HOME",user_kospex_home)
+    kospex_home = os.getenv("KOSPEX_HOME", user_kospex_home)
+    
+    # Initialize status tracking
+    init_status = {
+        "kospex_home": kospex_home,
+        "directories_created": [],
+        "environment_vars_set": [],
+        "logging_status": None,
+        "warnings": [],
+        "errors": []
+    }
+    
+    try:
+        # Create KOSPEX_HOME directory if needed
+        if kospex_home == user_kospex_home and create_directories:
+            if not os.path.exists(kospex_home):
+                os.makedirs(kospex_home, mode=0o750, exist_ok=True)
+                init_status["directories_created"].append(kospex_home)
+                if verbose:
+                    print(f"✓ Created KOSPEX_HOME: {kospex_home}")
+                
+                # Create default environment file
+                env_file_path = f"{kospex_home}/kospex.env"
+                with open(env_file_path, "w") as env_file:
+                    env_file.write(KOSPEX_DEFAULT_ENV)
+                if verbose:
+                    print(f"✓ Created environment file: {env_file_path}")
+    
+        # Set environment variables
+        if not os.getenv("KOSPEX_HOME"):
+            os.environ["KOSPEX_HOME"] = kospex_home
+            init_status["environment_vars_set"].append("KOSPEX_HOME")
+    
+        default_kospex_db = f"{kospex_home}/{KOSPEX_DB_FILENAME}"
+        os.environ["KOSPEX_DB"] = default_kospex_db
+        init_status["environment_vars_set"].append("KOSPEX_DB")
+    
+        # Set up configuration
+        config_path = f"{kospex_home}/kospex.env"
+        os.environ["KOSPEX_CONFIG"] = config_path
+        init_status["environment_vars_set"].append("KOSPEX_CONFIG")
+        
+        # Load existing configuration
+        if os.path.exists(config_path):
+            load_config(config_path)
+    
+        # Set up code directory
+        kospex_code = os.path.expanduser("~/code")
+        if os.getenv("KOSPEX_CODE") is None:
+            os.environ["KOSPEX_CODE"] = kospex_code
+            init_status["environment_vars_set"].append("KOSPEX_CODE")
+    
+        # Validate code directory exists
+        if not os.path.isdir(os.getenv("KOSPEX_CODE")):
+            warning_msg = f"KOSPEX_CODE directory '{kospex_code}' does not exist"
+            init_status["warnings"].append(warning_msg)
+            if verbose:
+                print(f"⚠ WARNING: {warning_msg}")
+    
+        # Set up logging directory (legacy support)
+        kospex_logs = os.getenv("KOSPEX_LOGS", f"{kospex_home}/logs")
+        if os.getenv("KOSPEX_LOGS") is None:
+            os.environ["KOSPEX_LOGS"] = kospex_logs
+            init_status["environment_vars_set"].append("KOSPEX_LOGS")
+    
+        # Create logs directory (will be handled by centralized logging, but maintain compatibility)
+        if create_directories and not os.path.exists(kospex_logs):
+            os.makedirs(kospex_logs, mode=0o750, exist_ok=True)
+            init_status["directories_created"].append(kospex_logs)
+            if verbose:
+                print(f"✓ Created logs directory: {kospex_logs}")
+    
+        # Initialize centralized logging system if available and requested
+        if setup_logging and get_logger and validate_logging_setup:
+            try:
+                # Validate logging setup
+                logging_status = validate_logging_setup()
+                init_status["logging_status"] = logging_status
+                
+                if verbose:
+                    if logging_status.get("directories_exist") and logging_status.get("directories_writable"):
+                        print("✓ Logging system validated successfully")
+                    else:
+                        print("⚠ Logging system validation found issues")
+                        for error in logging_status.get("errors", []):
+                            print(f"  - {error}")
+            except Exception as e:
+                error_msg = f"Failed to initialize centralized logging: {e}"
+                init_status["errors"].append(error_msg)
+                if verbose:
+                    print(f"⚠ WARNING: {error_msg}")
+                    print("  Continuing with legacy logging setup")
+        
+        if verbose and not init_status["errors"]:
+            print("\n✓ Kospex initialization complete!")
+            
+    except Exception as e:
+        error_msg = f"Critical error during initialization: {e}"
+        init_status["errors"].append(error_msg)
+        if verbose:
+            print(f"✗ ERROR: {error_msg}")
+    
+    return init_status
 
-    # TODO check if this equality misses something, or needs removing
-    if kospex_home == user_kospex_home:
-        if not os.path.exists(kospex_home):
-            os.mkdir(kospex_home)
-            with open(f"{kospex_home}/kospex.env","w") as env_file:
-                env_file.write(KOSPEX_DEFAULT_ENV)
 
-    if not os.getenv("KOSPEX_HOME"):
-        os.environ["KOSPEX_HOME"] = kospex_home
+def get_kospex_logger(module_name='kospex'):
+    """
+    Get a logger instance for Kospex modules with fallback support.
+    
+    Args:
+        module_name: Name of the module requesting the logger
+        
+    Returns:
+        Logger instance (either from centralized system or basic logger)
+    """
+    if get_logger:
+        try:
+            return get_logger(module_name)
+        except Exception as e:
+            # Fallback to basic logging if centralized system fails
+            logger = logging.getLogger(module_name)
+            if not logger.handlers:
+                handler = logging.StreamHandler()
+                formatter = logging.Formatter('%(levelname)s: %(message)s')
+                handler.setFormatter(formatter)
+                logger.addHandler(handler)
+                logger.setLevel(logging.INFO)
+            logger.warning(f"Using fallback logging due to error: {e}")
+            return logger
+    else:
+        # Basic logger when centralized logging is not available
+        logger = logging.getLogger(module_name)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(levelname)s: %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+        return logger
 
-    default_kospex_db = f"{kospex_home}/{KOSPEX_DB_FILENAME}"
-    os.environ["KOSPEX_DB"] = default_kospex_db
 
-    # Check if the KOSPEX_CONFIG is set, if not set it to the default
-    os.environ["KOSPEX_CONFIG"] = f"{kospex_home}/kospex.env"
-    load_config(f"{kospex_home}/kospex.env")
+def validate_kospex_setup():
+    """
+    Comprehensive validation of Kospex environment setup.
+    
+    Returns:
+        dict: Detailed validation results
+    """
+    validation = {
+        "environment_vars": {},
+        "directories": {},
+        "logging": None,
+        "overall_status": "unknown",
+        "recommendations": []
+    }
+    
+    # Check environment variables
+    for var in KOSPEX_CONFIG_ITEMS:
+        value = os.getenv(var)
+        validation["environment_vars"][var] = {
+            "set": value is not None,
+            "value": value
+        }
+    
+    # Check critical directories
+    kospex_home = os.getenv("KOSPEX_HOME", os.path.expanduser("~/kospex"))
+    kospex_code = os.getenv("KOSPEX_CODE", os.path.expanduser("~/code"))
+    
+    validation["directories"]["kospex_home"] = {
+        "path": kospex_home,
+        "exists": os.path.exists(kospex_home),
+        "writable": os.access(kospex_home, os.W_OK) if os.path.exists(kospex_home) else False
+    }
+    
+    validation["directories"]["kospex_code"] = {
+        "path": kospex_code,
+        "exists": os.path.exists(kospex_code),
+        "readable": os.access(kospex_code, os.R_OK) if os.path.exists(kospex_code) else False
+    }
+    
+    # Check logging system if available
+    if validate_logging_setup:
+        try:
+            validation["logging"] = validate_logging_setup()
+        except Exception as e:
+            validation["logging"] = {"error": str(e)}
+    
+    # Generate recommendations
+    if not validation["directories"]["kospex_home"]["exists"]:
+        validation["recommendations"].append("Run 'kospex init --create' to initialize directory structure")
+    
+    if not validation["directories"]["kospex_code"]["exists"]:
+        validation["recommendations"].append(f"Create code directory: mkdir -p {kospex_code}")
+    
+    # Determine overall status
+    critical_issues = []
+    if not validation["directories"]["kospex_home"]["exists"]:
+        critical_issues.append("KOSPEX_HOME missing")
+    if not validation["directories"]["kospex_home"]["writable"]:
+        critical_issues.append("KOSPEX_HOME not writable")
+    
+    if not critical_issues:
+        validation["overall_status"] = "healthy"
+    else:
+        validation["overall_status"] = "issues_found"
+        validation["critical_issues"] = critical_issues
+    
+    return validation
 
-    # Set a default kospex code directory
-    kospex_code = os.path.expanduser("~/code")
 
-    # Set up some basic around the kospex code where all the repos live
-    if os.getenv("KOSPEX_CODE") is None:
-        os.environ["KOSPEX_CODE"] = kospex_code
+class KospexTimer:
+    """Simple context manager for timing operations."""
+    
+    def __init__(self, description="operation"):
+        self.description = description
+        self.elapsed = None
+        
+    def __enter__(self):
+        self.start = time.time()
+        return self
+        
+    def __exit__(self, *args):
+        self.elapsed = time.time() - self.start
+        
+    def __str__(self):
+        return f"{self.description}: {self.elapsed:.3f}s" if self.elapsed else self.description
 
-    if not os.path.isdir(os.getenv("KOSPEX_CODE")):
-        print(f"WARNING: KOSPEX_CODE directory '{kospex_code} does not exist!")
-
-    kospex_logs = os.getenv("KOSPEX_LOGS",f"{kospex_home}/logs")
-    # Set up the logging directory
-    if os.getenv("KOSPEX_LOGS") is None:
-        os.environ["KOSPEX_LOGS"] = f"{kospex_home}/logs"
-
-    # Create the logs directory if it doesn't exist
-    if not os.path.exists(kospex_logs):
-        print(f"Creating logs directory: {kospex_logs}")
-        os.mkdir(kospex_logs)
 
 def get_all_config():
     """ Get the kospex config """
@@ -185,8 +399,10 @@ def days_ago(dt_str: str) -> float:
     dt = None
     try:
         dt = datetime.fromisoformat(dt_str)
-    except ValueError:
-        print(f"Error parsing the date: {dt_str}")
+    except ValueError as e:
+        # Get a logger for this utility function
+        logger = get_kospex_logger('kospex_utils')
+        logger.error(f"Error parsing date '{dt_str}': {e}")
         # Try to do something else
         if "T" in dt_str:
             dt_str = dt_str.split("T")[0]
@@ -293,9 +509,11 @@ def days_between_datetimes(datetime1: str, datetime2: str, min_one=None) -> floa
     # Calculate the absolute difference in days
     try:
         difference = abs((d2 - d1).total_seconds() / 86400)  # Convert seconds to days
-    except ValueError:
-        print(f"Error calculating the difference between {datetime1} and {datetime2}")
-        return None
+    except ValueError as e:
+        # Get a logger for this utility function
+        logger = get_kospex_logger('kospex_utils')
+        logger.error(f"Error calculating difference between '{datetime1}' and '{datetime2}': {e}")
+        return 0
 
     # Return the difference rounded to one decimal place
     days = round(difference, 1)
@@ -529,9 +747,12 @@ def get_last_commit_info(filename,remote=None):
         }
 
     except subprocess.CalledProcessError as e:
-        print(f"An error occurred: {e}")
+        # Get a logger for this utility function
+        logger = get_kospex_logger('kospex_utils')
+        logger.error(f"Git command failed for {filename}: {e}")
     except Exception as e:
-        print(f"An unexpected error occurred: {e} for {filename}, potentially not managed by git.")
+        logger = get_kospex_logger('kospex_utils')
+        logger.error(f"Unexpected error for {filename}: {e} (potentially not managed by git)")
         default['error'] = "Potentially not managed by git"
         default['unmanaged'] = True
     finally:
@@ -748,8 +969,10 @@ def run_git_command(directory, args):
     try:
         result = subprocess.check_output(['git', '-C', directory] + args).decode().strip()
     except subprocess.CalledProcessError as e:
-        print(f"An error occurred: {e}.")
-        print(f"Probably {directory} is NOT a repo or is empty, but initiliased.\n")
+        # Get a logger for this utility function
+        logger = get_kospex_logger('kospex_utils')
+        logger.error(f"Git command failed in {directory}: {e}")
+        logger.debug(f"Directory {directory} is probably not a git repo or is empty but initialized")
 
     return result
 
@@ -1167,7 +1390,9 @@ def validate_only_one(params, message, exit_required=None):
         exit_required = True
 
     if sum(params) != 1:
-        print(f"ERROR: {message}")
+        logger = get_kospex_logger('kospex_utils')
+        logger.error(message)
+        print(f"ERROR: {message}")  # Keep CLI output for user
         if exit_required:
             exit(1)
 
@@ -1181,7 +1406,8 @@ def get_scc_build_effort(directory):
         result = subprocess.run(['scc', directory], capture_output=True, text=True, check=True)
         output = result.stdout
     except subprocess.CalledProcessError as e:
-        print(f"An error occurred while running scc: {e}")
+        logger = get_kospex_logger('kospex_utils')
+        logger.error(f"scc command failed: {e}")
         return None
 
     # Define a dictionary to store the parsed results
@@ -1244,7 +1470,9 @@ def parse_mailmap(file_path):
                     entry['commit_email'] = parts[2].rstrip('>').strip()
 
                 else:
-                    print(f"WARNING parser error for line: {line}")
+                    logger = get_kospex_logger('kospex_utils')
+                    logger.warning(f"Parser error for mailmap line: {line}")
+                    print(f"WARNING parser error for line: {line}")  # Keep CLI output for user
 
                 if entry:
                     result.append(entry)
@@ -1365,6 +1593,48 @@ def get_status_distribution(data):
             distribution[threshold] = 0
 
     return distribution
+
+
+def timer(logger=None, level=logging.INFO):
+    """
+    Configurable timer decorator for debugging function performance.
+
+    Args:
+        logger: Logger instance to use for output (optional, defaults to print)
+        level: Logging level to use (default: logging.INFO)
+
+    Returns:
+        Decorator function
+
+    Usage:
+        @timer()  # Uses print for output
+        def my_function():
+            pass
+
+        @timer(logger=logging.getLogger(__name__))
+        def my_function():
+            pass
+
+        @timer(logger=logging.getLogger(__name__), level=logging.DEBUG)
+        def my_function():
+            pass
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            result = func(*args, **kwargs)
+            end = time.perf_counter()
+            duration = end - start
+            message = f"{func.__name__} executed in {duration:.6f}s"
+            if logger:
+                logger.log(level, message)
+            else:
+                print(message)
+            return result
+        return wrapper
+    return decorator
+
 
 def filenames_by_repo_id(json_data):
     """

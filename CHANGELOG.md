@@ -17,6 +17,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ## VERSION - DATE - IN PROGRESS
 
 ### Added
+- [MVP version of logging](https://github.com/kospex/kospex/issues/22)
+
 ### Changed
 ### Fixed
 
