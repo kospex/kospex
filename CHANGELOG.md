@@ -2,7 +2,7 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.21 - NOT RELEASED
+## 0.0.21 - 2025-08-14
 
 ### Added
 - [MVP version of logging](https://github.com/kospex/kospex/issues/22)
