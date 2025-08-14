@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Kospex Development Guide
 
 ## Project Overview
@@ -29,7 +33,14 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - **kreaper.py** - Data deletion
 - **kwatch.py** - File system monitoring
 - **ksyncer.py** - Synchronization utilities
-- **kospex_agent.py** - Agent (stub) to sync repos in the background and generate summaries
+- **repo_sync.py** - Repository synchronization functionality
+- **kospex_agent.py** - Background agent for continuous repository monitoring and synchronization
+- **kospex_stats.py** - Statistical analysis and reporting
+
+### Logging System
+- **kospex_logging.py** - Centralized logging infrastructure with daily rotation
+- **Enhanced init system** - Comprehensive environment setup and validation
+- **Per-module loggers** - Dedicated log files for each CLI tool (kospex.log, kgit.log, etc.)
 
 ## Key Dependencies
 
@@ -57,7 +68,18 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 ## Directory Structure
 
 ```
-~/kospex/          # Config files and SQLite database
+~/kospex/          # Config files, SQLite database, and logs
+  ├── config.json          # Optional logging and system configuration
+  ├── kospex.db            # Main SQLite database
+  ├── kospex.env           # Environment variable overrides
+  └── logs/                # Centralized logging directory
+      ├── kospex.log       # Main CLI tool logs (daily rotation)
+      ├── kgit.log         # Git operations logs
+      ├── kweb2.log        # Web interface logs
+      ├── krunner.log      # Batch processing logs
+      ├── kwatch.log       # File monitoring logs
+      └── kospex_agent.log # Background agent logs
+
 ~/code/            # Git repositories in GIT_SERVER/ORG/REPO format
   github.com/
     kospex/
@@ -71,7 +93,8 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 
 ### Installation & Setup
 - `pip install kospex` - Install from PyPI
-- `kospex init --create` - Initialize default directory structure
+- `kospex init --create --verbose` - Initialize directory structure with detailed output
+- `kospex init --validate` - Validate current setup without making changes
 - `pip install -e .` - Development installation from source
 
 ### Core Operations
@@ -81,16 +104,32 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - `kospex tech-landscape -metadata` - Show technology stack overview
 - `kospex summary` - Overview of all synced repositories
 
+### Logging Control (Global Options)
+- `kospex --debug COMMAND` - Enable debug-level logging for detailed troubleshooting
+- `kospex --verbose COMMAND` - Enable verbose output and INFO-level logging
+- `kospex --quiet COMMAND` - Reduce output to errors only
+- `kospex --log-console COMMAND` - Show log messages on console as well as in files
+
+### Background Agent Operations
+- `kospex-agent start` - Start continuous repository monitoring (default 5-minute interval)
+- `kospex-agent start --interval 60` - Start with custom interval (60 seconds)
+- `kospex-agent --debug start` - Start agent with debug logging enabled
+- `kospex-agent status` - Check repository and agent status
+- `kospex-agent test` - Test repository update checking functionality
+
 ### Web Interface
 - `kweb` - Start Flask web interface
 - `python run_fastapi.py` - Start FastAPI web interface (development)
 
 ### Development & Testing
-- `pytest` - Run test suite
+- `pytest` - Run all tests (no additional setup required)
+- `pytest tests/test_kospex.py` - Run specific test file  
+- `pytest -v` - Run tests with verbose output
+- `pytest -k "test_name"` - Run specific test by name pattern
 - `python -m kospex COMMAND --help` - Get help for specific commands
-- `npm run build` - Build frontend assets
-- `npm run build-css` - Build Tailwind CSS
-- `npm run dev` - Watch mode for CSS development
+- `npm run build` - Build frontend assets (runs build-static.js + CSS)
+- `npm run build-css` - Build Tailwind CSS only
+- `npm run dev` - Watch mode for CSS development (equivalent to build-css-watch)
 
 ### Database Operations
 - `kospex upgrade-db` - Apply database schema updates
@@ -115,10 +154,11 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - JavaScript uses JS with jQuery for DOM manipulation
 
 ### Testing
-- Tests located in `/tests/` directory
-- Use pytest for Python testing
-- Test data in `/tests/data/` directory
-- Docker-based testing available via `/tests/Dockerfile`
+- Tests located in `/tests/` directory using pytest framework
+- Run `pytest` from project root (no additional setup required)  
+- Test modules include: `test_kospex.py`, `test_kgit.py`, `test_kospex_utils.py`, `test_kospex_schema.py`, `test_kweb_help.py`
+- Use `pytest -v` for verbose output, `pytest -k "pattern"` for specific tests
+- Docker-based testing available via `/tests/Dockerfile` and shell scripts
 
 ### Frontend Development
 - CSS: TailwindCSS utility classes, compile with `npm run build-css`
@@ -132,6 +172,11 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - `KOSPEX_CODE` - Base directory for git repositories (default: ~/code)
 - `KOSPEX_HOME` - Config directory (default: ~/kospex)
 - `GITHUB_TOKEN` - GitHub API token for enhanced rate limits and private repo queries
+
+### Logging Environment Variables
+- `KOSPEX_LOG_LEVEL` - Global logging level: DEBUG, INFO, WARNING, ERROR (default: INFO)
+- `KOSPEX_LOG_RETENTION_DAYS` - Number of days to keep log files (default: 30)
+- `KOSPEX_CONSOLE_LOGGING` - Enable console output: true/false (default: false)
 
 ### Key Files
 - `pyproject.toml` - Python project configuration and dependencies
@@ -154,13 +199,81 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - Time-based queries often filter by commit date ranges
 - Technology landscape aggregates by file extensions and scc metadata, also uses panopticas
 
+## Centralized Logging System
+
+Kospex uses a comprehensive centralized logging system with daily rotation and per-module log files:
+
+### Key Features
+- **Daily Log Rotation** - Automatic cleanup prevents disk space issues
+- **Per-Module Logs** - Dedicated files for easy troubleshooting (kospex.log, kgit.log, etc.)
+- **Flexible Configuration** - Environment variables + JSON config file support
+- **Runtime Control** - CLI flags override configuration as needed  
+- **Robust Error Handling** - CLI remains functional even with logging issues
+- **Development Friendly** - Easy debug logging during development
+
+### Configuration Options
+
+#### Environment Variables
+- `KOSPEX_LOG_LEVEL=DEBUG|INFO|WARNING|ERROR` - Global logging level
+- `KOSPEX_LOG_RETENTION_DAYS=30` - Number of days to keep old logs
+- `KOSPEX_CONSOLE_LOGGING=true|false` - Enable console output
+
+#### JSON Configuration (`~/kospex/config.json`)
+```json
+{
+  "logging": {
+    "log_level": "DEBUG",
+    "retention_days": 60,
+    "console_logging": true,
+    "modules": {
+      "kospex": {"level": "INFO"},
+      "kgit": {"level": "DEBUG"},
+      "kweb2": {"level": "WARNING"},
+      "krunner": {"level": "INFO"},
+      "kwatch": {"level": "INFO"}
+    }
+  }
+}
+```
+
+### Usage in Code
+```python
+from kospex_utils import get_kospex_logger
+
+# Get module-specific logger
+logger = get_kospex_logger('kospex')
+logger.info("Starting repository analysis")
+logger.debug("Found 42 repositories")  
+logger.error("Failed to process repository")
+
+# Enable console logging for interactive tools (like kospex-agent)
+import os
+os.environ['KOSPEX_CONSOLE_LOGGING'] = 'true'
+logger = get_kospex_logger('kospex_agent')
+logger.info("This will appear in both console and log file")
+```
+
+### Log File Format
+```
+2025-01-09 14:30:15 [    INFO] [kospex] Starting repository analysis
+2025-01-09 14:30:16 [   DEBUG] [kospex] Found 42 repositories
+2025-01-09 14:30:17 [   ERROR] [kgit] Failed to clone repository: permission denied
+```
+
+### Validation Commands
+- `kospex init --validate` - Check logging system health
+- `kospex init --verbose` - Show detailed initialization status
+- Python: `KospexUtils.validate_kospex_setup()` - Programmatic validation
+
 ## FastAPI Migration
 
-The project is migrating from Flask to FastAPI:
-- `FASTAPI_MIGRATION.md` - Migration progress and notes
-- `run_fastapi.py` - FastAPI development server
-- `kweb2.py` - Hybrid Flask/FastAPI implementation
+The project includes FastAPI support alongside the existing Flask web interface:
+- `run_fastapi.py` - FastAPI development server with auto-reload and Docker support
+- `kweb2.py` - Enhanced Flask web interface with FastAPI integration prep
 - Templates remain Jinja2-based for compatibility
+- Use `python run_fastapi.py` for development with hot reload
+- Use `python run_fastapi.py --host 0.0.0.0` for Docker/container environments
+- Use `python run_fastapi.py --no-reload` to disable auto-reload for production-like testing
 
 ## Troubleshooting
 
@@ -170,7 +283,15 @@ The project is migrating from Flask to FastAPI:
 - **Permission errors**: Ensure proper file permissions in KOSPEX_CODE directory
 - **GitHub rate limits**: Use GITHUB_TOKEN environment variable for authentication
 
+### Logging Issues
+- **Logs not appearing**: Check `kospex init --validate` to verify logging setup
+- **Permission denied on log directory**: Ensure `~/kospex/logs` is writable
+- **Log files too large**: Adjust `KOSPEX_LOG_RETENTION_DAYS` environment variable
+- **Debug info not showing**: Use `kospex --debug COMMAND` or set `KOSPEX_LOG_LEVEL=DEBUG`
+- **Console logging missing**: Use `--log-console` flag or set `KOSPEX_CONSOLE_LOGGING=true`
+
 ### Development Issues
 - **CSS not updating**: Run `npm run build-css` to recompile TailwindCSS
 - **Tests failing**: Check test data setup and database initialization
 - **Import errors**: Ensure development installation with `pip install -e .`
+- **Logging not working in new code**: Use `from kospex_utils import get_kospex_logger`
