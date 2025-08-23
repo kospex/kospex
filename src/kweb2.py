@@ -3,6 +3,8 @@
 
 import csv
 import sys
+import os
+
 from io import StringIO
 from typing import Optional
 from pathlib import Path
@@ -1445,23 +1447,61 @@ async def catch_all(request: Request, full_path: str):
     raise HTTPException(status_code=404, detail="Page not found")
 
 def main():
-    #uvicorn.run("kweb2:app", host="0.0.0.0", port=8000, reload=True)
     import uvicorn
-    if len(sys.argv) > 1:
-        if "-debug" in sys.argv:
-            uvicorn.run("kweb2:app", host="127.0.0.1", port=8000, reload=True)
+
+    # Default values
+    host = "127.0.0.1"
+    port = 8000
+    reload = False
+
+    # Parse command line arguments
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        arg = args[i]
+
+        if arg == "--host":
+            if i + 1 < len(args):
+                host = args[i + 1]
+                i += 2
+            else:
+                sys.exit("Error: --host requires a value")
+        elif arg == "--port":
+            if i + 1 < len(args):
+                try:
+                    port = int(args[i + 1])
+                except ValueError:
+                    sys.exit("Error: --port must be a valid integer")
+                i += 2
+            else:
+                sys.exit("Error: --port requires a value")
+        elif arg == "-debug" or arg == "--debug":
+            reload = True
+            i += 1
+        elif arg == "--help" or arg == "-h":
+            print("Usage: kweb2.py [OPTIONS]")
+            print("Options:")
+            print("  --host HOST     Host to bind to (default: 127.0.0.1)")
+            print("  --port PORT     Port to listen on (default: 8000)")
+            print("  --debug         Enable debug mode with auto-reload")
+            print("  --help, -h      Show this help message")
+            sys.exit(0)
         else:
-            sys.exit("Usage: kweb2.py [-debug] to run in debug mode")
-    else:
-        uvicorn.run("kweb2:app", host="127.0.0.1", port=8000)
+            sys.exit(f"Error: Unknown argument '{arg}'. Use --help for usage information.")
+
+    # Check if running in Docker environment
+    in_docker = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER') == 'true'
+
+    # Default to 0.0.0.0 if in Docker and host not explicitly set
+    if in_docker and host == '127.0.0.1':
+        host = '0.0.0.0'
+        print("Running in Docker environment, binding to all interfaces")
+
+    print(f"Starting Kospex web server on {host}:{port}")
+    if reload:
+        print("Debug mode enabled with auto-reload")
+
+    uvicorn.run("kweb2:app", host=host, port=port, reload=reload)
 
 if __name__ == "__main__":
-    #import uvicorn
-    # if len(sys.argv) > 1:
-    #     if "-debug" in sys.argv:
-    #         uvicorn.run("kweb2:app", host="127.0.0.1", port=5000, reload=True)
-    #     else:
-    #         sys.exit("Usage: kweb2.py [-debug] to run in debug mode")
-    # else:
-    #     uvicorn.run("kweb2:app", host="127.0.0.1", port=8000)
     main()
