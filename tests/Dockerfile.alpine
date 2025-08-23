@@ -1,0 +1,28 @@
+FROM python:3.12-alpine
+
+# Default to arm64
+ARG ARCH=arm64
+
+# Runtime dependencies only
+RUN apk add --no-cache \
+    git \
+    curl \
+    libffi \
+    openssl \
+    yaml \
+    libsodium \
+    github-cli
+
+ENV PATH=/root/.local/bin:$PATH
+
+RUN curl -fL -o scc.tar.gz "https://github.com/boyter/scc/releases/download/v3.5.0/scc_Linux_${ARCH}.tar.gz" && \
+    tar -xzf scc.tar.gz -C /usr/local/bin/ && \
+    chmod +x /usr/local/bin/scc && \
+    rm scc.tar.gz
+
+WORKDIR /
+
+RUN pip install kospex
+RUN kospex init --create
+
+CMD ["/bin/sh"]
