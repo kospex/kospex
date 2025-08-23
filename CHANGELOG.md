@@ -15,6 +15,15 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - [Removed old Flask Kweb](https://github.com/kospex/kospex/issues/41)
 - [Improve Sync time](https://github.com/kospex/kospex/issues/39)
 
+## 0.0.22 - IN PROGRESS
+
+### Added
+- [Email analysis and bot detection](https://github.com/kospex/kospex/issues/47)
+- [Add port and host binding for kweb, add docker awarenes](https://github.com/kospex/kospex/issues/48)
+- [Minimal docker image for testing](https://github.com/kospex/kospex/issues/49)
+### Changed
+### Fixed
+
 ## 0.0.20 - 2025-07-21
 
 ### Added
