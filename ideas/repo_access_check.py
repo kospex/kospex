@@ -11,6 +11,7 @@ Usage:
 
 Environment:
     BITBUCKET_TOKEN - Your Bitbucket API token
+    CACERTS - Path to CA certificates file/directory (optional)
 """
 
 import sys
@@ -55,7 +56,7 @@ def parse_bitbucket_url(clone_url: str) -> Optional[Tuple[str, str, str]]:
     return None
 
 
-def check_repository_access(hostname: str, workspace: str, repo_name: str, token: str) -> Tuple[bool, str, Optional[dict]]:
+def check_repository_access(hostname: str, workspace: str, repo_name: str, token: str, verify_certs=True) -> Tuple[bool, str, Optional[dict]]:
     """
     Check if the API token has access to the specified repository.
 
@@ -64,6 +65,7 @@ def check_repository_access(hostname: str, workspace: str, repo_name: str, token
         workspace: Repository workspace/project
         repo_name: Repository name
         token: API token
+        verify_certs: SSL certificate verification (True, False, or path to CA certs)
 
     Returns:
         Tuple of (has_access, status_message, repo_info)
@@ -82,7 +84,7 @@ def check_repository_access(hostname: str, workspace: str, repo_name: str, token
     }
 
     try:
-        response = requests.get(api_url, headers=headers, timeout=10)
+        response = requests.get(api_url, headers=headers, timeout=10, verify=verify_certs)
 
         if response.status_code == 200:
             repo_info = response.json()
@@ -100,12 +102,49 @@ def check_repository_access(hostname: str, workspace: str, repo_name: str, token
         return False, f"Request failed: {str(e)}", None
 
 
+def get_ca_certs_config():
+    """
+    Get CA certificate configuration from environment variable.
+    
+    Returns:
+        CA certificate verification setting for requests (True, False, or path)
+    """
+    ca_certs_path = os.getenv('CACERTS')
+    if not ca_certs_path:
+        return True  # Default to system CA bundle
+    
+    # Validate the path exists and is readable
+    if os.path.exists(ca_certs_path):
+        if os.path.isfile(ca_certs_path) or os.path.isdir(ca_certs_path):
+            try:
+                # Test if we can read the path
+                if os.path.isfile(ca_certs_path):
+                    with open(ca_certs_path, 'r'):
+                        pass
+                elif os.path.isdir(ca_certs_path):
+                    os.listdir(ca_certs_path)
+                return ca_certs_path
+            except (PermissionError, OSError) as e:
+                print(f"Warning: CACERTS path '{ca_certs_path}' is not readable: {e}")
+                print("Falling back to system CA bundle")
+                return True
+        else:
+            print(f"Warning: CACERTS path '{ca_certs_path}' is not a valid file or directory")
+            print("Falling back to system CA bundle")
+            return True
+    else:
+        print(f"Warning: CACERTS path '{ca_certs_path}' does not exist")
+        print("Falling back to system CA bundle")
+        return True
+
+
 def main():
     # Parse command line arguments
     if len(sys.argv) != 2:
         print("Usage: python repo_access_check.py <git_clone_url>")
         print("Environment:")
         print("  BITBUCKET_TOKEN - Your Bitbucket API token (required)")
+        print("  CACERTS - Path to CA certificates file/directory (optional)")
         sys.exit(1)
 
     clone_url = sys.argv[1]
@@ -115,6 +154,13 @@ def main():
     if not token:
         print("Error: BITBUCKET_TOKEN environment variable not set")
         sys.exit(1)
+
+    # Get CA certificate configuration
+    verify_certs = get_ca_certs_config()
+    if isinstance(verify_certs, str):
+        print(f"Using custom CA certificates: {verify_certs}")
+    elif verify_certs is True:
+        print("Using system CA certificate bundle")
 
     print(f"Checking access to: {clone_url}")
 
@@ -132,7 +178,7 @@ def main():
     print(f"Repository: {workspace}/{repo_name}")
 
     # Check access
-    has_access, message, repo_info = check_repository_access(hostname, workspace, repo_name, token)
+    has_access, message, repo_info = check_repository_access(hostname, workspace, repo_name, token, verify_certs)
 
     if has_access:
         print(f"✅ {message}")
