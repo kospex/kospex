@@ -1,3 +1,23 @@
+## Prerequisites
+
+For the best setup experience, we recommend using Homebrew to install the required dependencies on macOS:
+
+```bash
+# Install Git (if not already installed)
+brew install git
+
+# Install Git Credential Manager for secure authentication
+brew install git-credential-manager
+
+# Install scc for code complexity analysis
+brew install scc
+```
+
+On other platforms:
+- **Git**: Follow instructions at [https://git-scm.com/downloads](https://git-scm.com/downloads)
+- **Git Credential Manager**: Follow instructions at [https://github.com/git-ecosystem/git-credential-manager](https://github.com/git-ecosystem/git-credential-manager)
+- **scc**: Follow instructions at [https://github.com/boyter/scc](https://github.com/boyter/scc)
+
 ## Step 1: Installation, setup and usage
 
 kospex is currently a python module with commands. It works by analysing cloned repositories on the filesystem.
@@ -8,9 +28,8 @@ Installing using pip:
 
 > pip install kospex
 
-For complexity and file type analysis, kospex uses the scc binary.
+For complexity and file type analysis, kospex uses the scc binary (installed in Prerequisites above).
 It is optional, but enables much better file type guessing and provide complexity metrics.
-Follow the instructions for installing [scc](https://github.com/boyter/scc)
 
 ### Step 2: Initial kospex setup
 
