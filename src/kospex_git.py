@@ -1,6 +1,7 @@
 """Functions extract git metadata from a repo directory such as remote, hash, etc. """
 import os
 import re
+from urllib.parse import urlparse
 from pathlib import Path
 from prettytable import PrettyTable
 import kospex_utils as KospexUtils
@@ -64,9 +65,72 @@ class KospexGit:
         return table
 
     @staticmethod
+    def parse_ado_git_url(clone_url):
+        """
+        Parse Azure DevOps clone URL and return server, org, and repo.
+
+        Args:
+            clone_url (str): Azure DevOps clone URL
+
+        Returns:
+            dict: Contains 'server', 'org', and 'repo' keys
+            or
+            None: if URL format is not recognized as Azure DevOps or visual studio team services
+
+        """
+        # Remove .git suffix if present
+        clean_url = clone_url.rstrip('.git')
+
+        # Parse the URL
+        parsed = urlparse(clean_url)
+
+        # Check if it's a dev.azure.com URL
+        if parsed.netloc == 'dev.azure.com':
+            # Format: https://dev.azure.com/{organization}/{project}/_git/{repository}
+            path_parts = parsed.path.strip('/').split('/')
+
+            if len(path_parts) >= 4 and path_parts[2] == '_git':
+                organization = path_parts[0]
+                project = path_parts[1]
+                repository = '/'.join(path_parts[3:])  # Handle repos with slashes in name
+
+                return {
+                    'remote': parsed.netloc,
+                    'org': f"{organization}-{project}",
+                    'project': project,
+                    'repo': repository,
+                    'remote_type': parsed.scheme
+                }
+
+        # Check if it's a legacy visualstudio.com URL
+        elif parsed.netloc.endswith('.visualstudio.com'):
+            # Format: https://{organization}.visualstudio.com/{project}/_git/{repository}
+            # For visualstudio.com, we'll use the project as the "org" since domain includes organisation
+            # which makes it unique
+            path_parts = parsed.path.strip('/').split('/')
+
+            if len(path_parts) >= 3 and path_parts[1] == '_git':
+                project = path_parts[0]
+                repository = '/'.join(path_parts[2:])  # Handle repos with slashes in name
+
+                return {
+                    'remote': parsed.netloc,
+                    'org': project,  # Use project as org for visualstudio.com
+                    'project': project,
+                    'repo': repository,
+                    'remote_type': parsed.scheme
+                }
+
+        # If we got here, nothing parsed, so not a valid ADO or visualstudio.com URL
+        return None
+
+    @staticmethod
     def parse_git_remote(url):
         """
         Extracts the domain name, organisation/user/team, and repository name from a given URL.
+
+        Given the org and workspace are in the URL, we'll concatenate them to form the 'org' in our schema
+
 
         Args:
         url (str): The URL to extract information from.
@@ -96,6 +160,10 @@ class KospexGit:
         # Looks like github URLS have 4 slashes,
         # gitlab URLs have more than 4 slashes (more like 5 or 6 for subprojects),
         # Google/Go URLs have 3 slashes
+
+        ado_repo = KospexGit.parse_ado_git_url(url)
+        if ado_repo:
+            return ado_repo
 
         # Check SSH URLs first
         if ssh_git:

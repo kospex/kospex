@@ -21,8 +21,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - [Email analysis and bot detection](https://github.com/kospex/kospex/issues/47)
 - [Add port and host binding for kweb, add docker awarenes](https://github.com/kospex/kospex/issues/48)
 - [Minimal docker image for testing](https://github.com/kospex/kospex/issues/49)
+- [Handle Azure DevOps clone urls](https://github.com/kospex/kospex/issues/50)
 ### Changed
+Nothing
+
 ### Fixed
+Nothing
 
 ## 0.0.20 - 2025-07-21
 
