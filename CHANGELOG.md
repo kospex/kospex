@@ -2,6 +2,17 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.23 - 2025-09-03
+
+### Added
+- [Handle Bitbucket on premise URLs for repo_id generation](https://github.com/kospex/kospex/issues/51)
+
+### Changed
+Nothing
+
+### Fixed
+Nothing
+
 ## 0.0.22 - 2025-09-02
 
 ### Added

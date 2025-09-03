@@ -125,6 +125,75 @@ class KospexGit:
         return None
 
     @staticmethod
+    def parse_bitbucket_onpremise_url(clone_url):
+        """
+        Parse a Bitbucket on-premise/datacenter clone URL and extract components.
+
+        Args:
+            clone_url (str): The git clone URL to parse
+
+        Returns:
+            dict or None: Dictionary with 'remote', 'org', 'repo', 'remote_type' keys
+                        if valid Bitbucket on-premise URL, otherwise None
+        """
+        if not clone_url or not isinstance(clone_url, str):
+            return None
+
+        # Parse the URL
+        try:
+            parsed = urlparse(clone_url.strip())
+        except Exception:
+            return None
+
+        # Get scheme and clean up netloc for SSH URLs
+        scheme = parsed.scheme.lower()
+        netloc = parsed.netloc
+
+        # For SSH URLs, remove 'git@' prefix from netloc if present
+        if scheme == 'ssh' and netloc.startswith('git@'):
+            domain = netloc[4:].lower()  # Remove 'git@'
+        else:
+            domain = netloc.lower()
+
+        # Check if domain exists
+        if not domain:
+            return None
+
+        # Exclude public hosting services
+        excluded_domains = ['github.com', 'gitlab.com', 'bitbucket.org']
+        if any(excluded in domain for excluded in excluded_domains):
+            return None
+
+        # Check if path starts with /scm/
+        path = parsed.path
+        if not path.startswith('/scm/'):
+            return None
+
+        # Extract the path after /scm/
+        scm_path = path[5:]  # Remove '/scm/' prefix
+
+        # Split path into components, filtering out empty strings
+        path_parts = [part for part in scm_path.split('/') if part]
+
+        # Need at least 2 parts: org and repo
+        if len(path_parts) < 2:
+            return None
+
+        org = path_parts[0]
+        repo_with_git = path_parts[1]
+
+        # Remove .git suffix if present
+        repo = repo_with_git[:-4] if repo_with_git.endswith('.git') else repo_with_git
+
+        return {
+            'remote': domain,
+            'org': org,
+            'repo': repo,
+            'remote_type': scheme
+        }
+
+
+    @staticmethod
     def parse_git_remote(url):
         """
         Extracts the domain name, organisation/user/team, and repository name from a given URL.
@@ -164,6 +233,10 @@ class KospexGit:
         ado_repo = KospexGit.parse_ado_git_url(url)
         if ado_repo:
             return ado_repo
+
+        bitbucket_onpremise = KospexGit.parse_bitbucket_onpremise_url(url)
+        if bitbucket_onpremise:
+            return bitbucket_onpremise
 
         # Check SSH URLs first
         if ssh_git:
