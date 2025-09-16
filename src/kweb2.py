@@ -420,7 +420,7 @@ async def osi(request: Request, id: Optional[str] = None):
         logger.info(f"OSI page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
-        deps = KospexQuery().get_dependency_files(id=params)
+        deps = KospexQuery().get_dependency_files(request_id=params)
 
         for file in deps:
             file["days_ago"] = KospexUtils.days_ago(file.get("committer_when"))
@@ -604,6 +604,9 @@ async def repos(request: Request, id: Optional[str] = None):
 
         data = []
 
+        all_repos = kospex.get_repos()
+        repo_lookup = {d["_repo_id"]: d for d in all_repos}
+
         if org_key:
             parts = org_key.split("~")
             if len(parts) == 2:
@@ -622,6 +625,10 @@ async def repos(request: Request, id: Optional[str] = None):
 
         developers = kospex.developers(org_key=org_key, server=server)
         developer_status = KospexUtils.repo_stats(developers, "last_commit")
+
+        for repo in data:
+            if r := repo_lookup.get(repo.get("_repo_id")):
+                repo['years_active'] = r.get("years_active")
 
         return templates.TemplateResponse(
             "repos.html",
@@ -1064,6 +1071,30 @@ async def developer_view(request: Request, id: Optional[str] = None):
         logger.error(f"Error in developer_view endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@app.get("/observation/{uuid}", response_class=HTMLResponse)
+async def observation(request: Request, uuid: str):
+    """
+    Display observation information
+    """
+    try:
+        logger.info(f"display single observations with uuid: {uuid}")
+
+        kquery = KospexQuery()
+
+        observation = kquery.get_single_observation(uuid=uuid)
+
+        return templates.TemplateResponse(
+            "observation.html",
+            {
+                "request": request,
+                "observation": observation,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in repo_with_tech endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 
 @app.get("/observations/", response_class=HTMLResponse)
 async def observations(request: Request):
@@ -1157,7 +1188,7 @@ async def dependencies(request: Request, id: Optional[str] = None):
         logger.info(f"Dependencies page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
-        data = KospexQuery().get_dependencies(id=params)
+        data = KospexQuery().get_dependencies(request_id=params)
 
         return templates.TemplateResponse(
             "dependencies.html",

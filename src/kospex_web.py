@@ -38,20 +38,20 @@ def download_csv(dict_data, filename=None):
 
     return output
 
-def get_id_params(id,request_params=None):
+def get_id_params(request_id,request_params=None):
     """
-    Parse an id into either:
+    Parse a request_id into either:
         repo_id
         org_key
         server
-    if request_params is passed, we'll look at that, but the id takes precedence
+    if request_params is passed, we'll look at that, but the request_id takes precedence
     and return a dict with that key to be passed into a KospexQuery
     """
     params = {}
 
-    # Only look at request_params if the id is None
-    if id is None:
-
+    # Only look at request_params if the request_id is None
+    if request_id is None:
+        print("ID is none")
         if request_params:
             if repo_id := request_params.get("repo_id"):
                 params["repo_id"] = repo_id
@@ -65,17 +65,16 @@ def get_id_params(id,request_params=None):
                 # Like in github emails like 109855528+USERNAME@users.noreply.github.com
                 params["author_email"] = author_email.replace(" ","+")
 
-
         return params
 
     # These methods return a Dict if parsed or None if not
-    if KospexUtils.parse_org_key(id):
-        params["org_key"] = id
-    elif KospexUtils.parse_repo_id(id):
-        params["repo_id"] = id
-    elif KospexUtils.is_base64(id):
-        params["author_email"] = KospexUtils.decode_base64(id)
+    if KospexUtils.parse_org_key(request_id):
+        params["org_key"] = request_id
+    elif KospexUtils.parse_repo_id(request_id):
+        params["repo_id"] = request_id
+    elif KospexUtils.is_base64(request_id):
+        params["author_email"] = KospexUtils.decode_base64(request_id)
     else:
-        params["server"] = id
+        params["server"] = request_id
 
     return params
