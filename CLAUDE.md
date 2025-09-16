@@ -120,6 +120,10 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 ### Web Interface
 - `kweb` - Start Flask web interface
 - `python run_fastapi.py` - Start FastAPI web interface (development)
+- `python kweb2.py` - Start FastAPI web interface (default: localhost:8000)
+- `python kweb2.py --host 0.0.0.0 --port 8080` - Start with custom host/port
+- `python kweb2.py --debug` - Start with debug mode and auto-reload
+- `python kweb2.py --help` - Show web server options
 
 ### Development & Testing
 - `pytest` - Run all tests (no additional setup required)
@@ -269,11 +273,19 @@ logger.info("This will appear in both console and log file")
 
 The project includes FastAPI support alongside the existing Flask web interface:
 - `run_fastapi.py` - FastAPI development server with auto-reload and Docker support
-- `kweb2.py` - Enhanced Flask web interface with FastAPI integration prep
+- `kweb2.py` - Main FastAPI web interface with Docker-aware host binding
 - Templates remain Jinja2-based for compatibility
-- Use `python run_fastapi.py` for development with hot reload
-- Use `python run_fastapi.py --host 0.0.0.0` for Docker/container environments
-- Use `python run_fastapi.py --no-reload` to disable auto-reload for production-like testing
+
+### Development Usage
+- `python run_fastapi.py` for development with hot reload
+- `python run_fastapi.py --host 0.0.0.0` for Docker/container environments
+- `python run_fastapi.py --no-reload` to disable auto-reload for production-like testing
+
+### Production Usage with kweb2.py
+- `python kweb2.py` - Default: localhost:8000
+- `python kweb2.py --host 0.0.0.0 --port 8080` - Custom host/port
+- `python kweb2.py --debug` - Debug mode with auto-reload
+- Automatically detects Docker environment and binds to 0.0.0.0 when running in containers
 
 ## Troubleshooting
 
