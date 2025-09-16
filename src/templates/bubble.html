@@ -47,12 +47,12 @@
                 cursor: pointer;
                 transition: stroke-width 0.2s ease;
             }
-            
+
             .bubble:hover {
                 stroke: #000;
                 stroke-width: 1.5px;
             }
-            
+
             .bubble-label {
                 font: 10px sans-serif;
                 text-anchor: middle;
@@ -271,7 +271,7 @@
 
                 <div class="mb-6">
                     <h3 class="text-lg font-semibold text-gray-900 mb-4">Filters</h3>
-                    
+
                     <!-- Commit Filter -->
                     <div class="mb-6">
                         <label for="commitSlider" class="block text-sm font-medium text-gray-700 mb-2">Commit Filter</label>
@@ -467,12 +467,12 @@
 
             function updateVisualizationWithFilters(minCommits, timeValue) {
                 const filterDate = getTimeFilterDate(timeValue);
-                
+
                 // Filter nodes based on commit value, group, and time
                 const filteredNodes = originalData.nodes.filter((node) => {
                     if (node.node_type !== "developer") return false;
                     if (node.commits < minCommits) return false;
-                    
+
                     // Check if the node has any commits after the filter date
                     const lastCommitDate = new Date(node.last_commit);
                     return lastCommitDate >= filterDate;
@@ -593,6 +593,7 @@
                     const nodeInfo = document.getElementById("nodeInfo");
                     const node_label = d.data.label || d.data.id;
                     const node_link = d.data.link || "/developer/" + d.data.id_b64;
+                    const bot_status = d.data.is_bot ? "Yes" : "No";
                     nodeInfo.innerHTML = `
                         <h4 class="text-lg font-semibold text-gray-900 mb-3">
                             <a href="${node_link}" class="text-blue-600 hover:text-blue-800 underline">${node_label}</a>
@@ -600,8 +601,8 @@
                         <div class="space-y-2 text-sm">
                             <p><strong class="text-gray-700">ID:</strong> <span class="text-gray-600">${d.data.id}</span></p>
                             <p><strong class="text-gray-700">Commits:</strong> <span class="text-gray-600">${d.data.commits}</span></p>
-                            <p><strong class="text-gray-700">Group:</strong> <span class="text-gray-600">${d.data.group}</span></p>
                             <p><strong class="text-gray-700">Status:</strong> <span class="text-gray-600">${d.data.status}</span></p>
+                            <p><strong class="text-gray-700">Bot:</strong> <span class="text-gray-600">${bot_status}</span></p>
                             <p><strong class="text-gray-700">Last Commit:</strong><br/><span class="text-gray-600">${d.data.last_commit}</span></p>
                         </div>
                     `;
