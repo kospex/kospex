@@ -32,6 +32,76 @@ If `kgit clone` fails, here are the most common causes and solutions:
   git config --global http.proxy http://proxy.company.com:8080
   ```
 
+#### Private Certificate Authority (CA) Issues
+- **Problem**: Clone fails with SSL certificate verification errors in corporate environments using private CAs
+- **Solutions**:
+
+  **Option 1: Add Private CA Certificate to Git (Recommended)**
+  ```bash
+  # Find your private CA certificate file (usually .crt or .pem)
+  # Add the CA certificate to Git's certificate bundle
+  git config --global http.sslCAInfo /path/to/your/private-ca.crt
+  
+  # Or append to system CA bundle (macOS example)
+  cat /path/to/your/private-ca.crt >> /usr/local/etc/openssl/cert.pem
+  ```
+
+  **Option 2: Configure Git to Use System Certificate Store**
+  ```bash
+  # On macOS, use system keychain
+  git config --global http.sslCAInfo /etc/ssl/cert.pem
+  
+  # On Linux systems
+  git config --global http.sslCAInfo /etc/ssl/certs/ca-certificates.crt
+  ```
+
+  **Option 3: Add CA Certificate to System Store**
+  ```bash
+  # macOS - Add to system keychain
+  sudo security add-trusted-cert -d -r trustRoot -k /System/Library/Keychains/SystemRootCertificates.keychain /path/to/your/private-ca.crt
+  
+  # Or add to login keychain
+  security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain /path/to/your/private-ca.crt
+  
+  # Linux (Ubuntu/Debian)
+  sudo cp /path/to/your/private-ca.crt /usr/local/share/ca-certificates/
+  sudo update-ca-certificates
+  
+  # Linux (RHEL/CentOS)
+  sudo cp /path/to/your/private-ca.crt /etc/pki/ca-trust/source/anchors/
+  sudo update-ca-trust
+  ```
+
+  **Option 4: Repository-Specific CA Configuration**
+  ```bash
+  # Configure CA certificate for specific repository URL
+  git config --global http."https://your-git-server.company.com/".sslCAInfo /path/to/your/private-ca.crt
+  
+  # Or disable SSL verification for specific host (less secure)
+  git config --global http."https://your-git-server.company.com/".sslVerify false
+  ```
+
+  **Temporary Workaround (Not Recommended for Production)**
+  ```bash
+  # Disable SSL verification globally (INSECURE - use only for testing)
+  git config --global http.sslVerify false
+  
+  # Re-enable SSL verification after fixing CA issues
+  git config --global http.sslVerify true
+  ```
+
+  **Verifying CA Certificate Installation**
+  ```bash
+  # Test SSL connection to your git server
+  openssl s_client -connect your-git-server.company.com:443 -servername your-git-server.company.com
+  
+  # Check current Git SSL configuration
+  git config --list | grep ssl
+  
+  # Test clone with verbose output
+  GIT_CURL_VERBOSE=1 git clone https://your-git-server.company.com/repo.git
+  ```
+
 #### Directory Permission Issues
 - **Problem**: Cannot write to the clone destination directory
 - **Solution**: 
