@@ -2,6 +2,7 @@
 import os
 import json
 import re
+import csv
 import yaml
 from prettytable import PrettyTable
 
@@ -160,7 +161,7 @@ def find_docker_from_statements(filename):
 # helper function to recursively pull out image info from docker-compose file
 def find_docker_compose_images_recursively(data, filename, parent_key=''):
     images = []
-    
+
     if isinstance(data, dict):
         for key, value in data.items():
             if key == 'image':
@@ -172,7 +173,7 @@ def find_docker_compose_images_recursively(data, filename, parent_key=''):
                 images.append(image)
             else:
                 images.extend(find_docker_compose_images_recursively(value, filename, parent_key if parent_key else key))
-    
+
     return images
 
 def find_docker_compose_images(filename):
@@ -195,8 +196,8 @@ def find_docker_compose_images(filename):
         print(images)
     else:
         print(f"Configuration is empty or invalid for file: {filename}")
-    
-    return images 
+
+    return images
 
 def get_docker_images(records):
     """
@@ -239,19 +240,35 @@ def count_dict_keyvalues(records,keyname):
     """
     # Initialize an empty dictionary to hold the counts
     base_image_count = {}
-    
+
     # Loop through each record in the records list
     for record in records:
         # Check if 'base_image' key exists in the record
         if keyname in record:
             # Get the value of 'base_image'
             base_image_value = record[keyname]
-            
+
             # Increment the count for this base_image_value in the base_image_count dictionary
             if base_image_value in base_image_count:
                 base_image_count[base_image_value] += 1
             else:
                 base_image_count[base_image_value] = 1
-    
+
     return base_image_count
-    
+
+def write_dict_to_csv(filename, data):
+    """
+    Write a dictionary to a CSV file.
+    """
+    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+        # Get column names from the keys of the first dictionary
+        fieldnames = data[0].keys()
+
+        # Create DictWriter object
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        # Write header row
+        writer.writeheader()
+
+        # Write data rows
+        writer.writerows(data)

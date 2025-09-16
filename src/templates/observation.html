@@ -1,0 +1,131 @@
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Observation</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <style>
+            /* Custom styles for DataTables with Tailwind */
+            .dataTables_wrapper .dataTables_length select,
+            .dataTables_wrapper .dataTables_filter input {
+                @apply border border-gray-300 rounded px-3 py-2 text-sm;
+            }
+            .dataTables_wrapper .dataTables_length,
+            .dataTables_wrapper .dataTables_filter,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                @apply text-sm text-gray-700;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+                @apply bg-blue-600 text-white border-blue-600;
+            }
+        </style>
+    </head>
+    <body class="bg-white">
+        {% include '_header.html' %}
+
+<div class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <h1 class="text-3xl font-bold mb-6 text-gray-800">Observation Details</h1>
+
+        {% if observation and observation|length > 0 %}
+            {% set obs = observation[0] %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full bg-white border border-gray-300 rounded-lg">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+                                Field
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+                                Value
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for key, value in obs.items() %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 border-r">
+                                {{ key }}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-700">
+                                {% if value is none %}
+                                    <span class="text-gray-400 italic">null</span>
+                                {% elif value == "" %}
+                                    <span class="text-gray-400 italic">empty</span>
+                                {% elif key in ['data', 'raw'] and value|length > 200 %}
+                                    <div class="max-w-lg">
+                                        <div class="truncate mb-2">{{ value[:200] }}...</div>
+                                        <details class="text-xs">
+                                            <summary class="cursor-pointer text-blue-600 hover:text-blue-800">Show full content</summary>
+                                            <pre class="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">{{ value }}</pre>
+                                        </details>
+                                    </div>
+                                {% elif key in ['created_at', 'committer_when'] %}
+                                    <span class="text-gray-600">{{ value }}</span>
+                                {% elif key == 'latest' %}
+                                    {% if value == 1 %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                            Latest
+                                        </span>
+                                    {% else %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                                            Historical
+                                        </span>
+                                    {% endif %}
+                                {% elif key == 'observation_type' %}
+                                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                                        {{ value }}
+                                    </span>
+                                {% elif key == 'observation_key' %}
+                                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
+                                        {{ value }}
+                                    </span>
+                                {% else %}
+                                    {{ value }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="mt-6 flex space-x-4">
+                {% if obs._repo_id %}
+                <a href="/repo/{{ obs._repo_id }}"
+                   class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    View Repository
+                </a>
+                {% endif %}
+
+                {% if obs._repo_id and obs.observation_key %}
+                <a href="/observations/?repo_id={{ obs._repo_id }}&observation_key={{ obs.observation_key }}"
+                   class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    View All {{ obs.observation_key }} Observations
+                </a>
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="text-center py-8">
+                <div class="text-gray-500 text-lg">No observation data found</div>
+                <p class="text-gray-400 mt-2">The requested observation could not be located.</p>
+                <a href="/observations/"
+                   class="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Browse All Observations
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% include '_footer_scripts.html' %}
+    </body>
+</html>

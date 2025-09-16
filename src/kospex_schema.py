@@ -4,7 +4,8 @@ from sqlite_utils import Database
 import kospex_utils as KospexUtils
 
 # Definitions of the kospex DB tables
-
+TBL_BRANCHES = "branches"
+TBL_BRANCH_HISTORY = "branch_history"
 TBL_COMMITS = "commits"
 TBL_COMMIT_FILES = "commit_files"
 TBL_COMMIT_METADATA = "commit_metadata"
@@ -22,19 +23,22 @@ TBL_KOSPEX_CONFIG = "kospex_config"
 # Not yet implemented
 TBL_MAILMAP = "mailmaps"
 
+
+
 KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE, TBL_KRUNNER,
                 TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META, TBL_GROUPS, TBL_KOSPEX_CONFIG ]
 
 # The following are tables with a repo_id
 REPO_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
-                TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS, TBL_GROUPS ]
+                TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS,
+                TBL_GROUPS, TBL_BRANCHES, TBL_BRANCH_HISTORY ]
 
 # Mapping of table name to create statement is below the create statement definitions in:
 # DB_CREATE_STATEMENTS
 
 # KOSPEX_DB_VERSION will be updated every time we updated the schema
-KOSPEX_DB_VERSION=1
+KOSPEX_DB_VERSION=2
 KOSPEX_DB_VERSION_KEY = "KOSPEX_DB_VERSION_KEY"
 # Version 1, we're drawing a line in the sand as of 2025-02-16
 
@@ -152,6 +156,37 @@ SQL_CREATE_COMMIT_METADATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_COMMIT_METADAT
     [_repo_id] TEXT
     )'''
 
+# This table will store the current branch data for a repository
+SQL_CREATE_BRANCHES = f'''CREATE TABLE IF NOT EXISTS [{TBL_BRANCHES}] (
+    [count] INTEGER,
+    [branch_data] TEXT, -- JSON array of branch names
+    [hash] TEXT,        -- hash of the commit
+    [_repo_id] TEXT,
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
+    [last_sync] TEXT,  -- date of last kospex sync
+    [last_seen] TEXT,  -- date of last commit, to be updated by the sync
+    PRIMARY KEY(_repo_id)
+    )'''
+
+# This table will store the HISTORIC branch data for a repository
+SQL_CREATE_BRANCH_HISTORY = f'''CREATE TABLE IF NOT EXISTS [{TBL_BRANCH_HISTORY}] (
+    [count] INTEGER,
+    [branch_data] TEXT, -- JSON array of branch names
+    [hash] TEXT,        -- hash of the commit
+    [_repo_id] TEXT,
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [created_at] DEFAULT CURRENT_TIMESTAMP,
+    [last_sync] TEXT,  -- date of last kospex sync
+    [last_seen] TEXT,  -- date of last commit, to be updated by the sync
+    PRIMARY KEY(_repo_id, hash)
+    )'''
+
+
 # We're going to capture additional data about the dependencies in a file
 #SQL_PK_DEPENDENCY_DATA = '''PRIMARY KEY(_repo_id,hash,file_path,package_type,package_name,package_version)'''
 SQL_CREATE_DEPENDENCY_DATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEPENDENCY_DATA}] (
@@ -215,6 +250,7 @@ SQL_CREATE_URL_CACHE = f'''CREATE TABLE IF NOT EXISTS [{TBL_URL_CACHE}] (
 #    )'''
 
 SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
+    [uuid] TEXT,            -- unique identifier for the observation
     [hash] TEXT,             -- hash of the commit
     [file_path] TEXT,        -- file path in the repo (if applicable, can be repo level)
     [format] TEXT,           -- format type e.g. JSON, JSONL, CSV, LINE
@@ -231,7 +267,7 @@ SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
     [_git_owner] TEXT,
     [_git_repo] TEXT,
     [_repo_id] TEXT,
-    PRIMARY KEY(_repo_id,hash,file_path,observation_key)
+    PRIMARY KEY(_repo_id,hash,file_path,observation_key,latest)
     )'''
 
 # TODO - This table has not been set up properly or created yet
@@ -298,7 +334,9 @@ DB_CREATE_STATEMENTS = {
     TBL_REPOS: SQL_CREATE_REPOS,
     TBL_KOSPEX_META: SQL_CREATE_KOSPEX_META,
     TBL_GROUPS: SQL_CREATE_GROUPS,
-    TBL_KOSPEX_CONFIG: SQL_CREATE_KOSPEX_CONFIG
+    TBL_KOSPEX_CONFIG: SQL_CREATE_KOSPEX_CONFIG,
+    TBL_BRANCHES: SQL_CREATE_BRANCHES,
+    TBL_BRANCH_HISTORY: SQL_CREATE_BRANCH_HISTORY,
 }
 
 # Functions for SQLite stuff
@@ -334,6 +372,9 @@ def connect_or_create_kospex_db():
     kospex_db.execute(SQL_CREATE_REPOS)
     kospex_db.execute(SQL_CREATE_GROUPS)
     kospex_db.execute(SQL_CREATE_KOSPEX_CONFIG)
+
+    kospex_db.execute(SQL_CREATE_BRANCHES)
+    kospex_db.execute(SQL_CREATE_BRANCH_HISTORY)
 
     # TODO - look at moving all table creates to "create if not exits"
 

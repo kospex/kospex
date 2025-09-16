@@ -8,12 +8,19 @@ import shlex
 import glob
 import click
 from kospex_core import Kospex
+from kospex_observation import Observation
 import kospex_utils as KospexUtils
+from kospex_git import KospexGit
 import krunner_utils as KrunnerUtils
+import kospex_web as KospexWeb
+from rich.console import Console
+from rich.table import Table
+
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kospex = Kospex()
+console = Console()
 
 # Get logger using the new centralized logging system
 log = KospexUtils.get_kospex_logger('krunner')
@@ -27,6 +34,162 @@ def cli():
     See also https://kospex.io/krunner
 
     """
+
+def get_repos(request_id):
+    """
+    Help function get repos filtered by request_id (server, org_key or repo_id)
+    """
+    params = {}
+    if request_id:
+        params = KospexWeb.get_id_params(request_id)
+
+    return kospex.kospex_query.get_repos(**params)
+
+@cli.command("repos")
+@click.option('-file', required=False, type=click.Path(), help="filename of clone urls to check.")
+@click.argument('request_id', required=False, type=click.STRING)
+def repos(file,request_id):
+    """
+    List repos in the kospex db.
+    Optionally, provide a filter of
+    server (e.g. github.com)
+    org_key github.com~kospex (SERVER~OWNER)
+    or a repo_id
+    github.com~kospex~panopticas (SERVER~OWNER~REPO)
+    """
+    #repos = get_repos(request_id)
+    params = KospexWeb.get_id_params(request_id)
+    repos = kospex.kospex_query.get_repos(**params)
+
+    table = Table(title="Repositories")
+    table.add_column("repo_id", justify="left", style="cyan", no_wrap=True)
+    table.add_column("file_path", style="magenta")
+    count = 0
+
+    for r in repos:
+        table.add_row(r['_repo_id'], r['file_path'])
+        count += 1
+
+    console.print(table)
+    console.print(f"Total repos: {count}")
+
+
+@cli.command("file-metadata")
+@click.argument('request_id', required=False, type=click.STRING)
+def file_metadata(request_id):
+    """
+    Update the file metadata for the in-scope repos.
+    """
+    repos = get_repos(request_id)
+    # params = KospexWeb.get_id_params(id)
+    # repos = kospex.kospex_query.get_repos(**params)
+    for r in repos:
+        console.log(f"{r['_repo_id']}\t{r['file_path']}")
+
+@cli.command("branches")
+@click.option('-save', is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
+@click.option('-csv', is_flag=True, default=False, help="Save to CSV file. (Default: False)")
+@click.option('-verbose', is_flag=True, default=False, help="Verbose output. (Default: False)")
+@click.argument('request_id', required=False, type=click.STRING)
+def branches(save,csv,verbose,request_id):
+    """
+    Update the current branches for the in-scope repos.
+    """
+    repos = get_repos(request_id)
+    results = []
+
+    for r in repos:
+        kgit = KospexGit()
+        kgit.set_repo(r['file_path'])
+        obs = kgit.new_observation("BRANCHES","REPO")
+
+        branches = KospexGit.get_branches(r['file_path'])
+        obs.raw = branches
+        obs.format = "INTEGER"
+        obs.data = len(branches)
+
+        entry = {
+            'repo_id': r['_repo_id'],
+            'branches': obs.data,
+            'file_path': r['file_path'],
+        }
+        results.append(entry)
+
+        console.log(f"{r['_repo_id']}\t{r['file_path']}")
+        if verbose:
+            console.log(f"# Branches: {len(branches)}")
+            console.log(branches)
+            console.log("Observation:")
+            console.log(obs)
+
+        if save:
+            existing_obs = kospex.kospex_query.get_single_observation(r['_repo_id'], obs.observation_key,
+                obs.hash, obs.file_path)
+            if existing_obs:
+                console.log(f"Existing repo size exists for this hash and repo_id {r['_repo_id']}",
+                    style="dark_orange")
+                console.log(f"Existing observation UUID: {existing_obs}")
+            else:
+                kospex.kospex_query.add_observation(obs.to_dict())
+
+    if csv:
+        filename = 'branches.csv'
+        console.log(f"Writing {len(results)} repo sizes to {filename}")
+        KrunnerUtils.write_dict_to_csv(filename, results)
+
+
+@cli.command("repo-size")
+@click.option('-save', is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
+@click.option('-csv', is_flag=True, default=False, help="Save to CSV file. (Default: False)")
+@click.option('-verbose', is_flag=True, default=False, help="Verbose output. (Default: False)")
+@click.argument('request_id', required=False, type=click.STRING)
+def repo_size(save,csv,request_id,verbose):
+    """
+    View the current repo size for the in-scope repos.
+    Calculate total, .git directory and working directory sizes.
+    Write the results to the observations table with -save
+    """
+    repos = get_repos(request_id)
+    results = []
+
+    for r in repos:
+        console.log(f"\n{r['_repo_id']}\t{r['file_path']}")
+
+        kgit = KospexGit()
+        kgit.set_repo(r['file_path'])
+        obs = kgit.new_observation("REPO_SIZE","REPO")
+        sizes = KospexGit.get_repo_size(r['file_path'])
+
+        obs.raw = sizes
+        obs.format = "INTEGER"
+        obs.data = sizes['total']
+
+        entry = {
+            'repo_id': r['_repo_id'],
+            'file_path': r['file_path'],
+            'total_size': sizes['total'],
+            'git_size': sizes['git'],
+            'workspace_size': sizes['workspace']
+        }
+        results.append(entry)
+
+        if verbose:
+            console.log(sizes)
+            console.log(obs.to_json())
+
+        if save:
+            existing_obs = kospex.kospex_query.get_single_observation(r['_repo_id'], obs.observation_key,
+                obs.hash, obs.file_path)
+            if existing_obs:
+                console.log(f"Existing repo size exists for this hash and repo_id {r['_repo_id']}",
+                    style="dark_orange")
+            else:
+                kospex.kospex_query.add_observation(obs.to_dict())
+
+    if csv:
+        filename = 'repo-sizes.csv'
+        console.log(f"Writing {len(results)} repo sizes to {filename}")
+        KrunnerUtils.write_dict_to_csv(filename, results)
 
 @cli.command("find-docker")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")

@@ -3,9 +3,11 @@ import os
 import re
 from urllib.parse import urlparse
 from pathlib import Path
+import subprocess
 from prettytable import PrettyTable
 import kospex_utils as KospexUtils
 import panopticas as Panopticas
+from kospex_observation import Observation
 
 class KospexGit:
     """Git metadata class for kospex"""
@@ -266,6 +268,127 @@ class KospexGit:
         else:
             return None
 
+    # @staticmethod
+    # def get_repo_size(directory):
+
+    #     results = {}
+
+    #     result_git = subprocess.run(
+    #         ['du', '-s', str(directory)],
+    #         capture_output=True,
+    #         text=True,
+    #         check=True,
+    #         timeout=300
+    #     )
+    #     results["total"] = int(result_git.stdout.split('\t')[0])
+    #     result_git = subprocess.run(
+    #         ['du', '-s', str(f"{directory}/.git")],
+    #         capture_output=True,
+    #         text=True,
+    #         check=True,
+    #         timeout=300
+    #     )
+    #     results[".git"] = int(result_git.stdout.split('\t')[0])
+    #     results["working"] = results["total"] - results[".git"]
+
+    #     return results
+
+    @staticmethod
+    def get_repo_size(directory=None):
+        """
+        Get disk usage information for a git repository.
+
+        Args:
+            directory (str, optional): Directory path to analyze.
+                                     Uses current directory if None.
+
+        Returns:
+            dict: Dictionary containing:
+                - total: Total disk usage of directory in bytes
+                - git: Disk usage of .git directory in bytes
+                - workspace: Workspace disk usage (total - git) in bytes
+
+        Raises:
+            ValueError: If directory is not a git repository
+            subprocess.CalledProcessError: If du command fails
+        """
+        if directory is None:
+            directory = os.getcwd()
+
+        # Create KospexGit instance to use is_git_repo method
+        kgit = KospexGit()
+        if not kgit.is_git_repo(directory):
+            raise ValueError(f"Directory {directory} is not a git repository")
+
+        results = {}
+
+        # Get total directory size
+        result_total = subprocess.run(
+            ['du', '-sk', str(directory)],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=300
+        )
+        results["total"] = int(result_total.stdout.split('\t')[0])
+
+        # Get .git directory size
+        git_dir = os.path.join(directory, '.git')
+        result_git = subprocess.run(
+            ['du', '-sk', git_dir],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=300
+        )
+        results["git"] = int(result_git.stdout.split('\t')[0])
+
+        # Calculate workspace size (total - git)
+        results["workspace"] = results["total"] - results["git"]
+
+        return results
+
+    @staticmethod
+    def get_branches(directory):
+        """
+        Retrieves the branches of a Git repository.
+
+        Args:
+        directory (str): The path to the Git repository.
+
+        Returns:
+        list: A list of branch names.
+        """
+        original_directory = os.getcwd()
+        os.chdir(directory)
+        # Run git command to get remote branches
+        result = subprocess.run(
+            ['git', 'branch', '-r'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        # Parse the output
+        remote_branches = []
+        for line in result.stdout.strip().split('\n'):
+            line = line.strip()
+            if line and not line.startswith('origin/HEAD'):
+                # Remove 'origin/' prefix and any leading/trailing whitespace
+                if line.startswith('origin/'):
+                    branch_name = line[7:]  # Remove 'origin/' (7 characters)
+                    remote_branches.append(branch_name)
+                else:
+                    # Handle other remotes (not just origin)
+                    if '/' in line:
+                        remote_branches.append(line.split('/', 1)[1])
+
+
+        os.chdir(original_directory)
+
+        return remote_branches
+
+
     def extract_git_url_parts(self, url):
         """
         Extracts the domain name, organization, and repository name from a given URL.
@@ -471,6 +594,22 @@ class KospexGit:
 
         else:
             return repo_files
+
+    def new_observation(self,observation_key, observation_type = None):
+        """
+        Create a template observation for the current repo.
+        Prerequisites: KospexGit object initialized with the current repo
+        """
+        obs = Observation(self.current_hash, self.repo_dir,
+                                    self.repo_id,observation_key)
+
+        if observation_type:
+            obs.observation_type = observation_type
+
+        obs.update_from_dict(self.add_git_to_dict({}))
+
+        return obs
+
 
     def clone_repo(self, repo_url):
         """ Clone a repo to the kospex code directory """
