@@ -724,7 +724,7 @@ class KospexQuery:
 
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
-        kd.select_as("DISTINCT(author_email)", "author_email")
+        kd.select_raw("DISTINCT(LOWER(author_email)) as author_email")
         kd.select_as("count(*)",'commits')
         kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
         kd.select_as("MIN(committer_when)", "first_commit")
@@ -765,7 +765,7 @@ class KospexQuery:
 
     def authors_by_repo(self, repo_id):
         """ Provide a summary of authors in the provided repo."""
-        summary_sql = """SELECT author_email, count(*) 'commits', MIN(author_when) 'first_commit',
+        summary_sql = """SELECT LOWER(author_email) as author_email, count(*) 'commits', MIN(author_when) 'first_commit',
         MAX(author_when) 'last_commit'
         FROM commits
         WHERE _repo_id = ?
