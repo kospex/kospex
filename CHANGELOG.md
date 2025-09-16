@@ -12,7 +12,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - [add repo size observation in krunner](https://github.com/kospex/kospex/issues/57)
 
 ### Fixed
-- [KospexData not handling mixed cased emails in some queries](https://github.com/kospex/kospex/issues/56)
+- [Issues handling mixed cased emails in some queries](https://github.com/kospex/kospex/issues/55)
 - [years active now displayed on repos page](https://github.com/kospex/kospex/issues/54)
 - [Committed some files missed in email bot detection](https://github.com/kospex/kospex/issues/47)
 
