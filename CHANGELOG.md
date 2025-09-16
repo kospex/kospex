@@ -2,7 +2,7 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.24 - 2025-09-XX
+## 0.0.24 - 2025-09-16
 
 ### Changed
 [Bumped panopticas to 0.0.11](https://github.com/kospex/kospex/issues/52)
