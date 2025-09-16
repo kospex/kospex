@@ -2,6 +2,20 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.24 - 2025-09-XX
+
+### Changed
+[Bumped panopticas to 0.0.11](https://github.com/kospex/kospex/issues/52)
+
+### Added
+- [Add branch observation in krunner](https://github.com/kospex/kospex/issues/53)
+- [add repo size observation in krunner](https://github.com/kospex/kospex/issues/57)
+
+### Fixed
+- [KospexData not handling mixed cased emails in some queries](https://github.com/kospex/kospex/issues/56)
+- [years active now displayed on repos page](https://github.com/kospex/kospex/issues/54)
+- [Committed some files missed in email bot detection](https://github.com/kospex/kospex/issues/47)
+
 ## 0.0.23 - 2025-09-03
 
 ### Added
