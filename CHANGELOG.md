@@ -4,6 +4,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## 0.0.25 - 2025-09-XX
 
+### Added
+- [Krunner file-metadata command to re-run metadata](https://github.com/kospex/kospex/issues/58)
+This enables re-running metadata for files in Krunner, when there's new features in panopticas.
+
+### Changed
+- [Bumped panopticas to 0.0.12 for pipeline and CI file types](https://github.com/kospex/kospex/issues/59 )
+
 ### Fixed
 - [Missed a couple of places to lowercase the email address](https://github.com/kospex/kospex/issues/55)
 
