@@ -10,6 +10,7 @@ import click
 from kospex_core import Kospex
 from kospex_observation import Observation
 import kospex_utils as KospexUtils
+import kospex_schema as KospexSchema
 from kospex_git import KospexGit
 import krunner_utils as KrunnerUtils
 import kospex_web as KospexWeb
@@ -75,8 +76,9 @@ def repos(file,request_id):
 
 
 @cli.command("file-metadata")
+@click.option('-force', is_flag=True, default=False, help="Force a refresh of metadata for repo. (Default: False)")
 @click.argument('request_id', required=False, type=click.STRING)
-def file_metadata(request_id):
+def file_metadata(force, request_id):
     """
     Update the file metadata for the in-scope repos.
     """
@@ -85,6 +87,25 @@ def file_metadata(request_id):
     # repos = kospex.kospex_query.get_repos(**params)
     for r in repos:
         console.log(f"{r['_repo_id']}\t{r['file_path']}")
+        repo_id = r['_repo_id']
+        current_hash = KospexUtils.get_git_hash(r['file_path'])
+        console.log(f"Current hash: {current_hash}")
+
+        # Check to see if we have already got metadata for this repo and hash
+        sql = f"""SELECT hash, _repo_id FROM {KospexSchema.TBL_FILE_METADATA}
+        WHERE _repo_id = ? AND hash = ?"""
+        row = kospex.kospex_db.execute(sql,[repo_id,current_hash]).fetchone()
+        print(row)
+
+        if force and row:
+            console.log(f"Force update metadata for repo {repo_id} and hash {current_hash}",
+                style="dark_orange")
+            sql = f"""DELETE FROM {KospexSchema.TBL_FILE_METADATA}
+            WHERE _repo_id = ? AND hash = ?"""
+            row = kospex.kospex_db.execute(sql,[repo_id,current_hash]).fetchone()
+
+        files = kospex.file_metadata(r['file_path'])
+        console.log(f"Metadata collected for # of Files: {len(files)}")
 
 @cli.command("branches")
 @click.option('-save', is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
