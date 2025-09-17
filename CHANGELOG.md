@@ -2,6 +2,11 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.26 - 2025-09-18
+
+### Fixed
+- [Missed a few more places to lowercase the email address](https://github.com/kospex/kospex/issues/55)
+
 ## 0.0.25 - 2025-09-17
 
 ### Added

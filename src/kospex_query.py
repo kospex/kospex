@@ -374,7 +374,6 @@ class KospexQuery:
 
         kd.select_git_details()
 
-
         kd.group_by("_repo_id")
         kd.order_by("_repo_id")
 
@@ -429,7 +428,7 @@ class KospexQuery:
         """ Provide a summary of the known orgs."""
         summary_sql = """SELECT _git_server, _git_owner, count(*) 'commits',
         COUNT(DISTINCT(_git_repo)) AS repos,
-        COUNT(DISTINCT(author_email)) 'authors', COUNT(DISTINCT(committer_email)) 'committers',
+        COUNT(DISTINCT(LOWER(author_email))) 'authors', COUNT(DISTINCT(LOWER(committer_email))) 'committers',
         MAX(committer_when) 'last_commit', _git_server || "~" || _git_owner AS org_key
         FROM commits
         GROUP BY _git_server, _git_owner
@@ -751,7 +750,7 @@ class KospexQuery:
         MAX(committer_when) AS 'last_commit', count(distinct(_repo_id)) AS 'repos'
         FROM commits
         WHERE committer_when > ? AND _repo_id = ?
-        GROUP BY author_email
+        GROUP BY LOWER(author_email)
         ORDER BY commits DESC
         """
         results = []
@@ -769,7 +768,7 @@ class KospexQuery:
         MAX(author_when) 'last_commit'
         FROM commits
         WHERE _repo_id = ?
-        GROUP BY author_email
+        GROUP BY LOWER(author_email)
         ORDER BY commits DESC
         """
         data = self.kospex_db.query(summary_sql, [repo_id])
@@ -1882,11 +1881,14 @@ class KospexData:
 
         return True
 
-    def group_by(self, *columns):
+    def group_by(self, *columns, lower=None):
         """ Add a column to the query """
         for col in columns:
             if self.is_valid_sql_name(col):
-                self.group_by_columns.append(col)
+                if lower:
+                    self.group_by_columns.append(f"LOWER({col})")
+                else:
+                    self.group_by_columns.append(col)
 
     def order_by(self, column, direction="DESC"):
         """ Add a column to the query """
