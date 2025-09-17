@@ -68,7 +68,7 @@ You can run the Web UI using the following command:
 
 > kweb
 
-You can now navigate to http://127.0.0.1:5000
+You can now navigate to http://127.0.0.1:8000
 
 
 ## Git code layout for running analysis

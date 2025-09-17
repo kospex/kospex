@@ -21,7 +21,7 @@ A simple web interface to view the data in the kospex database.
 Run the following command:
 > kweb
 
-Point your browser to http://127.0.0.1:5000
+Point your browser to http://127.0.0.1:8000
 
 ## krunner
 
