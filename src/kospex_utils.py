@@ -58,20 +58,20 @@ def is_git(directory):
     return os.path.exists(git_path)
 
 def init(create_directories=True, setup_logging=True, verbose=False):
-    """ 
+    """
     Initialize the kospex environment with enhanced directory and logging setup.
-    
+
     Args:
         create_directories: Whether to create directories if they don't exist
         setup_logging: Whether to initialize the centralized logging system
         verbose: Whether to print detailed status information
-    
+
     Returns:
         dict: Initialization status and validation results
     """
     user_kospex_home = os.path.expanduser("~/kospex")
     kospex_home = os.getenv("KOSPEX_HOME", user_kospex_home)
-    
+
     # Initialize status tracking
     init_status = {
         "kospex_home": kospex_home,
@@ -81,7 +81,7 @@ def init(create_directories=True, setup_logging=True, verbose=False):
         "warnings": [],
         "errors": []
     }
-    
+
     try:
         # Create KOSPEX_HOME directory if needed
         if kospex_home == user_kospex_home and create_directories:
@@ -90,65 +90,65 @@ def init(create_directories=True, setup_logging=True, verbose=False):
                 init_status["directories_created"].append(kospex_home)
                 if verbose:
                     print(f"✓ Created KOSPEX_HOME: {kospex_home}")
-                
+
                 # Create default environment file
                 env_file_path = f"{kospex_home}/kospex.env"
                 with open(env_file_path, "w") as env_file:
                     env_file.write(KOSPEX_DEFAULT_ENV)
                 if verbose:
                     print(f"✓ Created environment file: {env_file_path}")
-    
+
         # Set environment variables
         if not os.getenv("KOSPEX_HOME"):
             os.environ["KOSPEX_HOME"] = kospex_home
             init_status["environment_vars_set"].append("KOSPEX_HOME")
-    
+
         default_kospex_db = f"{kospex_home}/{KOSPEX_DB_FILENAME}"
         os.environ["KOSPEX_DB"] = default_kospex_db
         init_status["environment_vars_set"].append("KOSPEX_DB")
-    
+
         # Set up configuration
         config_path = f"{kospex_home}/kospex.env"
         os.environ["KOSPEX_CONFIG"] = config_path
         init_status["environment_vars_set"].append("KOSPEX_CONFIG")
-        
+
         # Load existing configuration
         if os.path.exists(config_path):
             load_config(config_path)
-    
+
         # Set up code directory
         kospex_code = os.path.expanduser("~/code")
         if os.getenv("KOSPEX_CODE") is None:
             os.environ["KOSPEX_CODE"] = kospex_code
             init_status["environment_vars_set"].append("KOSPEX_CODE")
-    
+
         # Validate code directory exists
         if not os.path.isdir(os.getenv("KOSPEX_CODE")):
             warning_msg = f"KOSPEX_CODE directory '{kospex_code}' does not exist"
             init_status["warnings"].append(warning_msg)
             if verbose:
                 print(f"⚠ WARNING: {warning_msg}")
-    
+
         # Set up logging directory (legacy support)
         kospex_logs = os.getenv("KOSPEX_LOGS", f"{kospex_home}/logs")
         if os.getenv("KOSPEX_LOGS") is None:
             os.environ["KOSPEX_LOGS"] = kospex_logs
             init_status["environment_vars_set"].append("KOSPEX_LOGS")
-    
+
         # Create logs directory (will be handled by centralized logging, but maintain compatibility)
         if create_directories and not os.path.exists(kospex_logs):
             os.makedirs(kospex_logs, mode=0o750, exist_ok=True)
             init_status["directories_created"].append(kospex_logs)
             if verbose:
                 print(f"✓ Created logs directory: {kospex_logs}")
-    
+
         # Initialize centralized logging system if available and requested
         if setup_logging and get_logger and validate_logging_setup:
             try:
                 # Validate logging setup
                 logging_status = validate_logging_setup()
                 init_status["logging_status"] = logging_status
-                
+
                 if verbose:
                     if logging_status.get("directories_exist") and logging_status.get("directories_writable"):
                         print("✓ Logging system validated successfully")
@@ -162,26 +162,26 @@ def init(create_directories=True, setup_logging=True, verbose=False):
                 if verbose:
                     print(f"⚠ WARNING: {error_msg}")
                     print("  Continuing with legacy logging setup")
-        
+
         if verbose and not init_status["errors"]:
             print("\n✓ Kospex initialization complete!")
-            
+
     except Exception as e:
         error_msg = f"Critical error during initialization: {e}"
         init_status["errors"].append(error_msg)
         if verbose:
             print(f"✗ ERROR: {error_msg}")
-    
+
     return init_status
 
 
 def get_kospex_logger(module_name='kospex'):
     """
     Get a logger instance for Kospex modules with fallback support.
-    
+
     Args:
         module_name: Name of the module requesting the logger
-        
+
     Returns:
         Logger instance (either from centralized system or basic logger)
     """
@@ -214,7 +214,7 @@ def get_kospex_logger(module_name='kospex'):
 def validate_kospex_setup():
     """
     Comprehensive validation of Kospex environment setup.
-    
+
     Returns:
         dict: Detailed validation results
     """
@@ -225,7 +225,7 @@ def validate_kospex_setup():
         "overall_status": "unknown",
         "recommendations": []
     }
-    
+
     # Check environment variables
     for var in KOSPEX_CONFIG_ITEMS:
         value = os.getenv(var)
@@ -233,67 +233,67 @@ def validate_kospex_setup():
             "set": value is not None,
             "value": value
         }
-    
+
     # Check critical directories
     kospex_home = os.getenv("KOSPEX_HOME", os.path.expanduser("~/kospex"))
     kospex_code = os.getenv("KOSPEX_CODE", os.path.expanduser("~/code"))
-    
+
     validation["directories"]["kospex_home"] = {
         "path": kospex_home,
         "exists": os.path.exists(kospex_home),
         "writable": os.access(kospex_home, os.W_OK) if os.path.exists(kospex_home) else False
     }
-    
+
     validation["directories"]["kospex_code"] = {
         "path": kospex_code,
         "exists": os.path.exists(kospex_code),
         "readable": os.access(kospex_code, os.R_OK) if os.path.exists(kospex_code) else False
     }
-    
+
     # Check logging system if available
     if validate_logging_setup:
         try:
             validation["logging"] = validate_logging_setup()
         except Exception as e:
             validation["logging"] = {"error": str(e)}
-    
+
     # Generate recommendations
     if not validation["directories"]["kospex_home"]["exists"]:
         validation["recommendations"].append("Run 'kospex init --create' to initialize directory structure")
-    
+
     if not validation["directories"]["kospex_code"]["exists"]:
         validation["recommendations"].append(f"Create code directory: mkdir -p {kospex_code}")
-    
+
     # Determine overall status
     critical_issues = []
     if not validation["directories"]["kospex_home"]["exists"]:
         critical_issues.append("KOSPEX_HOME missing")
     if not validation["directories"]["kospex_home"]["writable"]:
         critical_issues.append("KOSPEX_HOME not writable")
-    
+
     if not critical_issues:
         validation["overall_status"] = "healthy"
     else:
         validation["overall_status"] = "issues_found"
         validation["critical_issues"] = critical_issues
-    
+
     return validation
 
 
 class KospexTimer:
     """Simple context manager for timing operations."""
-    
+
     def __init__(self, description="operation"):
         self.description = description
         self.elapsed = None
-        
+
     def __enter__(self):
         self.start = time.time()
         return self
-        
+
     def __exit__(self, *args):
         self.elapsed = time.time() - self.start
-        
+
     def __str__(self):
         return f"{self.description}: {self.elapsed:.3f}s" if self.elapsed else self.description
 
@@ -498,6 +498,8 @@ def generate_date_ranges(to_date, days_apart, previous_days):
     date_ranges.append(recent_range)
 
     return date_ranges
+
+
 
 def days_between_datetimes(datetime1: str, datetime2: str, min_one=None) -> float:
     """
@@ -1207,7 +1209,7 @@ def key_person_prettytable():
 
     table = PrettyTable()
     headers = ["author", "commits", "% commits", "last_commit",
-               "first_commit", "active_commits", "% active"]
+               "first_commit", "active_commits", "% active", "tenure"]
     table.field_names = headers
     table.align["author"] = "l"
     table.align["commits"] = "r"
@@ -1216,6 +1218,7 @@ def key_person_prettytable():
     table.align["active_commits"] = "r"
     table.align["% commits"] = "r"
     table.align["% active"] = "r"
+    table.align["tenure"] = "r"
 
     return table
 

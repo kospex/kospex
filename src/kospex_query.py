@@ -46,8 +46,8 @@ class KospexQuery:
         kd.from_table(KospexSchema.TBL_COMMITS)
         kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
         kd.select_as("count(*)",'commits')
-        kd.select_raw("COUNT(DISTINCT(author_email)) as authors")
-        kd.select_raw("COUNT(DISTINCT(committer_email)) as committers")
+        kd.select_raw("COUNT(DISTINCT(LOWER(author_email))) as authors")
+        kd.select_raw("COUNT(DISTINCT(LOWER(committer_email))) as committers")
         kd.select_raw("COUNT(DISTINCT(_git_server)) as servers")
 
         if days:
@@ -307,13 +307,13 @@ class KospexQuery:
 
         summary_sql = """SELECT _repo_id, count(*) 'commits', MAX(committer_when) 'last_commit', MIN(committer_when) 'first_commit'
         FROM commits
-        WHERE author_email = ?
+        WHERE LOWER(author_email) = ?
         GROUP BY _repo_id
         ORDER BY commits DESC
         """
         data = []
 
-        for row in self.kospex_db.query(summary_sql, [author_email]):
+        for row in self.kospex_db.query(summary_sql, [author_email.lower()]):
             row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
             days_between = KospexUtils.days_between_datetimes(row['first_commit'], row['last_commit'])
             if days_between > 0:
@@ -728,6 +728,7 @@ class KospexQuery:
         kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
         kd.select_as("MIN(committer_when)", "first_commit")
         kd.select_as("MAX(committer_when)", "last_commit")
+        #kd.group_by("author_email",lower=True)
         kd.group_by("author_email")
 
         if days:
@@ -1349,6 +1350,11 @@ class KospexQuery:
                 a['% active'] = f"{a['active_commits'] / total_active_commits * 100:.1f}%"
             else:
                 a['% active'] = "0%"
+
+            days = KospexUtils.days_between_datetimes(a['first_commit'], a['last_commit'],min_one=True)
+            tenure = f"{days / 354:.3f}"
+
+            a['tenure'] = tenure
 
         authors_dict = {d["author"]: d for d in authors}
 

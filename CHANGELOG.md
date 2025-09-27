@@ -2,6 +2,15 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.27 - 2025-XX-XX
+
+### Fixed
+
+### Changed
+- added a tenure field to the key_person function in KospexQuery
+
+### Added
+
 ## 0.0.26 - 2025-09-18
 
 ### Fixed
