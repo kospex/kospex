@@ -10,6 +10,7 @@ import click
 from kospex_core import Kospex
 from kospex_observation import Observation
 import kospex_utils as KospexUtils
+from kospex_utils import KospexTimer
 import kospex_schema as KospexSchema
 from kospex_git import KospexGit
 import krunner_utils as KrunnerUtils
@@ -211,6 +212,80 @@ def repo_size(save,csv,request_id,verbose):
         filename = 'repo-sizes.csv'
         console.log(f"Writing {len(results)} repo sizes to {filename}")
         KrunnerUtils.write_dict_to_csv(filename, results)
+
+@cli.command("developer-tech")
+@click.option('-csv', is_flag=True, default=False, help="Save to CSV file. (Default: False)")
+@click.option('-verbose', is_flag=True, default=False, help="Verbose output. (Default: False)")
+@click.option('-developers', is_flag=True, default=False, help="Show all developer technologies")
+@click.argument('dev', required=False, type=click.STRING)
+def developer_tech(csv,verbose,developers,dev):
+    """
+    Show technology for a given developer
+    """
+    results = []
+
+    if verbose:
+        console.log(f"Developer: {dev}")
+
+    if dev:
+        console.log(f"Showing technology for developer {dev}")
+    else:
+        console.log("Showing technology for all developers")
+
+    results = []
+
+    # This will be the memory kospex query object
+    memory_kq = None
+
+    with KospexTimer("Loading data to in memory database") as load_memory:
+        memory_kq = kospex.kospex_query.create_memory_kospex_query(["commits", "commit_files"])
+    console.log(f"Loaded tables to memory db {load_memory}")
+
+    with KospexTimer("creating indexes") as index_timer:
+        memory_kq.kospex_db["commits"].create_index(['hash'])
+        memory_kq.kospex_db["commit_files"].create_index(['hash'])
+    console.log(f"{index_timer}")
+
+    with KospexTimer("Assessing developer tech in memory") as memory_timer:
+        results = memory_kq.developer_tech(author_email=dev,developers=developers)
+    console.log(f"{memory_timer}")
+
+    table = Table(title="Technology")
+    table.add_column("Tech", justify="left", style="cyan", no_wrap=True)
+    table.add_column("commits", style="magenta",justify="right")
+    table.add_column("repos", style="magenta",justify="right")
+    table.add_column("Unique files", style="magenta",justify="right")
+    table.add_column("Years active", style="magenta",justify="right")
+    table.add_column("Last commit", style="bright_black",justify="right")
+
+
+    display_results = results
+
+    if developers:
+        # Run the whole tech stack query again to get the display of tech for the organisation
+        all_results = memory_kq.developer_tech()
+        display_results = all_results
+
+    for r in display_results:
+        table.add_row(r['language'], str(r['commits']),
+            str(r['repos']),str(r['files']),str(r['years_active']),str(r['last_commit']))
+
+    console.print(table)
+
+    tech_number = len(results)
+    if developers:
+        tech_number = len(display_results)
+
+    console.log(f"Technologies found: {tech_number}")
+
+    if developers and not csv:
+        console.log("\nWarning: No results for invididual developers shown", style="red")
+        console.log("use -csv to export\n", style="red")
+
+    if csv:
+         filename = 'dev-tech.csv'
+         console.log(f"Writing {dev} technology to {filename}")
+         KrunnerUtils.write_dict_to_csv(filename, results)
 
 @cli.command("find-docker")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")

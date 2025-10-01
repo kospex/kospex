@@ -1,14 +1,19 @@
 """ Use case queries for the kospex DB"""
+from ctypes import memmove
+from logging import lastResort
 import time
 import re
 from typing import Optional
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 import json
 from sqlite_utils import Database
 import kospex_utils as KospexUtils
+from kospex_utils import KospexTimer
 import kospex_schema as KospexSchema
 import requests
 from kospex_observation import Observation
+import panopticas as Panopticas
 
 
 class KospexQuery:
@@ -70,6 +75,31 @@ class KospexQuery:
             data['orgs'] = len(orgs)
 
         return data
+
+    def create_memory_kospex_query(self, table_names):
+        """
+        Return an in memory db kospex_query object
+        with the specified tables
+        """
+
+        memory_db = Database(memory=True)
+        physical_db_path = KospexUtils.get_kospex_db_path()
+
+        # Attach the physical database
+        memory_db.execute(f"ATTACH DATABASE '{physical_db_path}' AS disk_db")
+
+        # Copy each table using direct SQL (much faster than row-by-row)
+        for table in table_names:
+            memory_db.execute(f"CREATE TABLE {table} AS SELECT * FROM disk_db.{table}")
+
+        # Detach the database
+        memory_db.execute("DETACH DATABASE disk_db")
+
+        # for table in table_names:
+        #     if table in self.kospex_db.table_names():
+        #         memory_db[table].insert_all(self.kospex_db[table].rows, alter=True)
+
+        return KospexQuery(kospex_db=memory_db)
 
     def repo_summary(self, repo_id):
         """ Provide a summary of the known repositories."""
@@ -1089,6 +1119,248 @@ class KospexQuery:
             results.append(row)
 
         return results
+
+    # def summarise_dev_commits(self, commits):
+    #     """
+    #     Summarize commits by author_email and language.
+
+    #     Args:
+    #         commits: List of dicts with commit information
+
+    #     Returns:
+    #         List of dicts with summarized information
+    #     """
+    #     # Group by (author_email, language)
+    #     grouped = defaultdict(lambda: {
+    #         'commits': [],
+    #         'repo_ids': set()
+    #     })
+
+    #     for commit in commits:
+    #         key = (commit['author_email'], commit['language'])
+    #         grouped[key]['commits'].append(commit['committer_when'])
+    #         if '_repo_id' in commit:
+    #             grouped[key]['repo_ids'].add(commit['_repo_id'])
+
+    #     # Build summary list
+    #     summary = []
+    #     for (author_email, language), data in grouped.items():
+    #         # Sort commits to get first and last
+    #         commit_dates = sorted(data['commits'])
+
+    #         summary.append({
+    #             'author_email': author_email,
+    #             'first_commit': commit_dates[0],
+    #             'last_commit': commit_dates[-1],
+    #             'language': language,
+    #             'commits': len(commit_dates),
+    #             'repos': len(data['repo_ids'])
+    #         })
+
+    #     # Sort by author_email, then language for consistent output
+    #     summary.sort(key=lambda x: (x['author_email'], x['language']))
+
+    #     return summary
+
+    def summarise_dev_commits(self, commits):
+        """
+           Summarize commits by author_email and language.
+
+           Args:
+               commits: List of dicts with commit information
+
+           Returns:
+               List of dicts with summarized information
+           """
+        # Group by (author_email, language)
+        grouped = defaultdict(lambda: {
+            'commits': [],
+            'repo_ids': set(),
+            'file_paths': set()
+        })
+
+        for commit in commits:
+            key = (commit['author_email'], commit['language'])
+            grouped[key]['commits'].append(commit['committer_when'])
+            if '_repo_id' in commit:
+                grouped[key]['repo_ids'].add(commit['_repo_id'])
+            if 'file_path' in commit:
+                grouped[key]['file_paths'].add(commit['file_path'])
+
+        # Build summary list
+        summary = []
+        for (author_email, language), data in grouped.items():
+            # Sort commits to get first and last
+            commit_dates = sorted(data['commits'])
+
+            years_active = 0
+
+            last_seen = KospexUtils.days_ago(commit_dates[-1])
+            first_seen = KospexUtils.days_ago(commit_dates[0])
+            if last_seen is not None and first_seen is not None:
+                days_active = first_seen - last_seen
+            else:
+                days_active = None
+
+            if days_active:
+                years_active = f"{days_active / 365:.3f}"
+
+            first_commit = commit_dates[0]
+            last_commit = commit_dates[-1]
+            if "T" in first_commit:
+                first_commit = first_commit.split('T')[0]
+            if "T" in last_commit:
+                last_commit = last_commit.split('T')[0]
+
+            summary.append({
+                'author_email': author_email,
+                'first_commit': first_commit,
+                'last_commit': last_commit,
+                'language': language,
+                'commits': len(commit_dates),
+                'repos': len(data['repo_ids']),
+                'files': len(data['file_paths']),
+                'years_active': years_active
+            })
+
+        # Sort by author_email, then language for consistent output
+        summary.sort(key=lambda x: (x['author_email'], x['language']))
+
+        return summary
+
+    @KospexUtils.timer()
+    def summarize_by_language(self, commits):
+        """
+        Summarize commits by language only (across all authors).
+
+        Args:
+            commits: List of dicts with commit information
+
+        Returns:
+            List of dicts with summarized information by language
+        """
+        # Group by language only
+        grouped = defaultdict(lambda: {
+            'commits': [],
+            'repo_ids': set(),
+            'file_paths': set()
+        })
+
+        for commit in commits:
+            language = commit['language']
+            grouped[language]['commits'].append(commit['committer_when'])
+            if '_repo_id' in commit:
+                grouped[language]['repo_ids'].add(commit['_repo_id'])
+            if 'file_path' in commit:
+                grouped[language]['file_paths'].add(commit['file_path'])
+
+        # Build summary list
+        summary = []
+        for language, data in grouped.items():
+            # Sort commits to get first and last
+            commit_dates = sorted(data['commits'])
+            years_active = 0
+
+            last_seen = KospexUtils.days_ago(commit_dates[-1])
+            first_seen = KospexUtils.days_ago(commit_dates[0])
+            if last_seen is not None and first_seen is not None:
+                days_active = first_seen - last_seen
+            else:
+                days_active = None
+
+            if days_active:
+                years_active = f"{days_active / 365:.3f}"
+
+            first_commit = commit_dates[0]
+            last_commit = commit_dates[-1]
+            if "T" in first_commit:
+                first_commit = first_commit.split('T')[0]
+            if "T" in last_commit:
+                last_commit = last_commit.split('T')[0]
+
+
+            summary.append({
+                'language': language,
+                'first_commit': first_commit,
+                'last_commit': last_commit,
+                'commits': len(commit_dates),
+                'repos': len(data['repo_ids']),
+                'files': len(data['file_paths']),
+                'years_active': years_active
+            })
+
+        # Sort by language for consistent output
+        summary.sort(key=lambda x: x['language'])
+
+        return summary
+
+    def developer_tech(self, author_email=None, repo_id=None, developers=None):
+        """
+        Return the tech stack for an author or repo
+        This function is part of
+        https://github.com/kospex/kospex/issues/63
+        """
+
+        results = []
+        params = []
+
+        kd = KospexData(self.kospex_db)
+        kd.from_table("commit_files", "commits")
+
+        #kd.select_raw("DISTINCT(LOWER(author_email)) as author_email")
+        kd.select_raw("LOWER(author_email) as author_email")
+        #kd.select_as("DISTINCT(author_email)", "author_email")
+        kd.select("_ext", "file_path", "commits.committer_when", "commits._repo_id")
+        #kd.select_as("count(*)", "commits")
+
+        # We need to do the following on the language when we've extracted it
+        #kd.select_as("MAX(author_when)", "last_commit")
+        #kd.select_as("MIN(author_when)", "first_commit")
+
+        # TODO - fix parsing of multiple SQL functions
+        #kd.select_raw("COUNT(DISTINCT(commits._repo_id)) as repos")
+
+        kd.where_join("commits", "hash", "commit_files", "hash")
+        #kd.where_join("commits", "_repo_id", "commit_files", "_repo_id")
+        #kd.where_join("commit_files", "file_path", "file_metadata", "Provider")
+        #kd.where_join("commit_files", "_repo_id", "file_metadata", "_repo_id")
+        #kd.where_join("commit_files", "hash", "file_metadata", "hash")
+
+        #kd.group_by("author_email")
+        #kd.group_by("author_email","_ext")
+        #kd.order_by("commits", "DESC")
+
+        if author_email:
+            params.append(author_email)
+            kd.where("author_email", "=", author_email)
+
+        if repo_id:
+            params.append(repo_id)
+            kd.where("commits._repo_id", "=", repo_id)
+
+        # We're going to need a few lookups
+        # Potentially we could do this in a nasty join, but it's easier to read this way
+
+        data = self.kospex_db.query(kd.generate_sql(), kd.params)
+        for row in data:
+        #     row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
+        #     row['first_seen'] = KospexUtils.days_ago(row['first_commit'])
+        #     row['days_active'] = int(row.get('first_seen',0)) - int(row.get('last_seen',0))
+        #     row['years_active'] = f"{row['days_active'] / 365:.3f}"
+            row['language'] = Panopticas.get_language(row['file_path'], skip_shebang=True)
+            results.append(row)
+
+        # summarise the results
+        #summary = self.summarise_dev_commits2(results)
+        summary = []
+        if developers or author_email:
+            summary = self.summarise_dev_commits(results)
+        else:
+            summary = self.summarize_by_language(results)
+
+        #return results
+        return summary
+
 
     def tech_commits(self, author_email=None, repo_id=None):
         """" Return a KospexData object with tables joined"""
