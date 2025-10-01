@@ -2,14 +2,15 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.27 - 2025-XX-XX
-
-### Fixed
+## 0.0.27 - 2025-10-01
 
 ### Changed
 - added a tenure field to the key_person function in KospexQuery
+- bumped panopticas version to 0.0.13 for additional binary file type detection
 
 ### Added
+- [krunner developer-tech function](https://github.com/kospex/kospex/issues/63)
+- also created a method to load an in memory load of kospex_db and return akospex_query (create_memory_kospex_query)
 
 ## 0.0.26 - 2025-09-18
 
