@@ -175,7 +175,7 @@ def repo_size(save,csv,request_id,verbose):
     results = []
 
     for r in repos:
-        console.log(f"\n{r['_repo_id']}\t{r['file_path']}")
+        console.log(f"\nCalculating {r['_repo_id']} ...\n{r['file_path']}")
 
         kgit = KospexGit()
         kgit.set_repo(r['file_path'])
@@ -207,6 +207,19 @@ def repo_size(save,csv,request_id,verbose):
                     style="dark_orange")
             else:
                 kospex.kospex_query.add_observation(obs.to_dict())
+
+    table = Table(title="Repo Size")
+    table.add_column("Repo ID", justify="left", style="cyan", no_wrap=True)
+    table.add_column("total (Mb)", style="magenta",justify="right")
+    table.add_column("total (kb)", style="magenta",justify="right")
+    table.add_column(".git (kb)", style="magenta",justify="right")
+    table.add_column("workspace (kb)", style="magenta",justify="right")
+
+    for r in results:
+        table.add_row( r['repo_id'], str( round( r['total_size'] / 1024, 3)),
+            str(r['total_size']), str(r['git_size']), str(r['workspace_size']) )
+
+    console.print(table)
 
     if csv:
         filename = 'repo-sizes.csv'
