@@ -216,6 +216,21 @@ class KospexQuery:
 
         return data
 
+    def get_last_commit_file(self,repo_id,file_path):
+        """
+        Get the last commit for a given file path in a repository.
+        """
+        sql = """SELECT _repo_id, _git_server, _git_owner, _git_repo,
+        file_path, committer_when
+        FROM commit_files
+        WHERE _repo_id = ? AND file_path = ?
+        ORDER BY committer_when DESC LIMIT 1
+        """
+        params = [repo_id, file_path]
+        data = next(self.kospex_db.query(sql, params), None)
+
+        return data
+
     def get_dependency_files(self,request_id=None):
         """
         Get the dependency for the given scope.

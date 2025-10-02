@@ -7,6 +7,7 @@ import sys
 import shlex
 import glob
 import click
+from pydantic.fields import Deprecated
 from kospex_core import Kospex
 from kospex_observation import Observation
 import kospex_utils as KospexUtils
@@ -299,6 +300,95 @@ def developer_tech(csv,verbose,developers,dev):
          filename = 'dev-tech.csv'
          console.log(f"Writing {dev} technology to {filename}")
          KrunnerUtils.write_dict_to_csv(filename, results)
+
+@cli.command("dependencies")
+@click.option('-csv', is_flag=True, default=False, help="Save to CSV file. (Default: False)")
+def dependencies(csv):
+    """
+    Show a list of all dependency files
+    use -csv to write the results to the csv file dependencies-list.csv
+    """
+    dependencies = []
+    results = []
+    # This will be the memory kospex query object
+    memory_kq = None
+
+    console.log("Loading data to in memory database ...")
+    with KospexTimer("Loading data to in memory database") as load_memory:
+        memory_kq = kospex.kospex_query.create_memory_kospex_query(
+            ["commit_files", "file_metadata", "repos"])
+    console.log(f"Loaded tables to memory db {load_memory}")
+
+    console.log("Creating indexes ...")
+    with KospexTimer("creating indexes") as index_timer:
+        #memory_kq.kospex_db["commits"].create_index(['hash'])
+        #memory_kq.kospex_db["commit_files"].create_index(['hash'])
+        memory_kq.kospex_db["commit_files"].create_index(['committer_when'])
+    console.log(f"{index_timer}")
+
+    with KospexTimer("Grabbing all dependencies from memory DB") as memory_timer:
+        dependencies = memory_kq.get_dependency_files()
+        #results = memory_kq.developer_tech(author_email=dev,developers=developers)
+    console.log(f"{memory_timer}")
+
+    console.log("Finding dependencies ...")
+    for d in dependencies:
+        console.log(f"repo_id: {d['_repo_id']}")
+        console.log(f"{d['Provider']}\n")
+
+        details = memory_kq.get_last_commit_file(d['_repo_id'], d['Provider'])
+        repo = memory_kq.get_repo_by_id(d['_repo_id'])
+        if repo:
+            d['repo_status'] = KospexUtils.development_status(repo['last_seen'])
+            d['last_repo_commit'] = repo.get('last_seen',"Unknown")
+        else:
+            d['repo_status'] = "Unknown"
+            d['last_repo_commit'] = "Unknown"
+        if details:
+            if not d['committer_when']:
+                d['committer_when'] = details['committer_when']
+        if d['committer_when']:
+            d['status'] = KospexUtils.development_status(d['committer_when'])
+        else:
+            d['status'] = "Unknown"
+
+        dep = {
+            "status": d['status'],
+            "file_path": d['Provider'],
+            "committer_when": d['committer_when'],
+            "repos_status": d['repo_status'],
+            "last_repo_commit": d['last_repo_commit'],
+            "repo_id": d['_repo_id'],
+            "tags": d['tech_type']
+        }
+
+        results.append(dep)
+
+    table = Table(title="Dependencies")
+    table.add_column("Repo ID", justify="left", style="bright_black", no_wrap=True)
+    table.add_column("File Path", style="magenta",justify="left")
+    table.add_column("Last Commit", style="bright_black",justify="right")
+    table.add_column("Status", style="magenta", justify="right")
+
+    for d in results:
+        table.add_row(d['repo_id'], str(d['file_path']),
+            d.get('committer_when',"Unknown"), d['status'])
+
+    console.print(table)
+
+    tech_number = len(dependencies)
+
+    console.log(f"# Dependencies found: {tech_number}")
+
+    if not csv:
+        console.log("\nWarning: No results written to CSV", style="red")
+        console.log("use -csv to export\n", style="red")
+
+    if csv:
+         filename = 'dependencies-list.csv'
+         console.log(f"Writing dependencies to {filename}")
+         KrunnerUtils.write_dict_to_csv(filename, results)
+
 
 @cli.command("find-docker")
 @click.option('-out', type=click.STRING, help="filename to write CSV results to.")
