@@ -19,7 +19,6 @@ import kospex_web as KospexWeb
 from rich.console import Console
 from rich.table import Table
 
-
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kospex = Kospex()
@@ -388,6 +387,81 @@ def dependencies(csv):
          filename = 'dependencies-list.csv'
          console.log(f"Writing dependencies to {filename}")
          KrunnerUtils.write_dict_to_csv(filename, results)
+
+@cli.command("devs-by-tag")
+@click.option('-csv', is_flag=True, default=False, help="Save to CSV file. (Default: False)")
+@click.option('-tag', required=False, type=click.STRING)
+@click.option('-filename', required=False, type=click.STRING)
+def devs_by_tag(csv, tag, filename):
+    """
+    Find all files (last modified only) which have the tag,
+    and the developers that have modified them.
+    use -csv to write the results to the csv file dependencies-list.csv
+    """
+    files = []
+    results = []
+    # This will be the memory kospex query object
+    memory_kq = None
+
+    if not tag and not filename:
+        console.log("\nWarning: One of tag or filename are required", style="red")
+        exit(1)
+
+    console.log("Loading data to in memory database ...")
+    with KospexTimer("Loading data to in memory database") as load_memory:
+        memory_kq = kospex.kospex_query.create_memory_kospex_query(
+            ["commits", "commit_files", "file_metadata"])
+    console.log(f"Loaded tables to memory db {load_memory}")
+
+    console.log("Creating indexes ...")
+    with KospexTimer("creating indexes") as index_timer:
+        memory_kq.kospex_db["commits"].create_index(['hash'])
+        memory_kq.kospex_db["commit_files"].create_index(['hash', 'committer_when'])
+        #memory_kq.kospex_db["commit_files"].create_index(['committer_when'])
+    console.log(f"{index_timer}")
+
+    with KospexTimer("Grabbing all files with the tag {tag} from memory DB") as memory_timer:
+        print(f"tag: {tag}, filename: {filename}")
+        #results = memory_kq.get_developers_by_tag(tag=tag,filename=filename)
+        files = memory_kq.get_metadata_files(tag=tag, filename=filename)
+
+    console.log(f"{memory_timer}")
+
+    for item in files:
+        console.log(f"repo_id: {item['_repo_id']}")
+        console.log(f"{item['Provider']}\n")
+        authors = memory_kq.get_file_authors(file_name=item['Provider'], repo_id=item['_repo_id'])
+        for author in authors:
+            results.append(author)
+        #console.log(item)
+        #console.log(authors)
+
+    table = Table(title="Authors")
+    table.add_column("Author", style="bright_black",justify="left")
+    table.add_column("File Path", style="magenta",justify="left")
+    table.add_column("Last Commit", style="bright_black",justify="right")
+    table.add_column("Commits", style="blue", justify="right")
+    table.add_column("Repo ID", justify="left", style="bright_black", no_wrap=True)
+
+    for d in results:
+         table.add_row(d['author_email'], str(d['file_path']),
+             d.get('committer_when',"Unknown"), str(d['commits']), d['_repo_id'])
+
+    console.print(table)
+
+    tech_number = len(results)
+
+    console.log(f"# authors and files found: {tech_number}")
+
+    if not csv:
+        console.log("\nWarning: No results written to CSV", style="red")
+        console.log("use -csv to export\n", style="red")
+
+    if csv:
+         filename = 'devs-by-tag.csv'
+         console.log(f"Writing dependencies to {filename}")
+         KrunnerUtils.write_dict_to_csv(filename, results)
+
 
 
 @cli.command("find-docker")

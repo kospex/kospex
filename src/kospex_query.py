@@ -278,6 +278,8 @@ class KospexQuery:
 
         return results
 
+
+
     def get_orphans(self,id=None):
         """
         Get the orphaned repos for the given scope.
@@ -1309,6 +1311,34 @@ class KospexQuery:
 
         return summary
 
+
+    def get_file_authors(self, file_name=None, repo_id=None):
+        """
+        Return authors for a given file_name and repo_id
+        """
+        results = []
+        kd = KospexData(self.kospex_db)
+        kd.from_table("commit_files", "commits")
+
+        kd.select_as("DISTINCT(author_email)", "author_email")
+        kd.select("file_path")
+        kd.select_as("count(*)", "commits")
+        kd.select_as("MAX(commit_files.committer_when)", "committer_when")
+        kd.where("commits._repo_id","=",repo_id)
+        kd.where("file_path","=",file_name)
+
+        kd.where_join("commits", "hash", "commit_files", "hash")
+
+        kd.group_by("author_email","file_path")
+        kd.order_by("committer_when", "DESC")
+
+        data = self.kospex_db.query(kd.generate_sql(), kd.params)
+        for row in data:
+            row['_repo_id'] = repo_id
+            results.append(row)
+
+        return results
+
     def developer_tech(self, author_email=None, repo_id=None, developers=None):
         """
         Return the tech stack for an author or repo
@@ -1772,6 +1802,7 @@ class KospexQuery:
         kd.where_join(KospexSchema.TBL_COMMITS, "_repo_id", KospexSchema.TBL_COMMIT_FILES, "_repo_id")
         kd.where_join(KospexSchema.TBL_COMMITS, "hash", KospexSchema.TBL_COMMIT_FILES, "hash")
         kd.group_by("author","file_path")
+
         return kd.execute()
 
     def get_metadata_files(self, filename=None, tag=None,repo_id=None):

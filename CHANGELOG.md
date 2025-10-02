@@ -2,6 +2,12 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.28 - 2025-10-02
+
+### Added
+- [Added krunner dependencies command](https://github.com/kospex/kospex/issues/65)
+- [Added krunner devs-by-tag command](https://github.com/kospex/kospex/issues/66)
+
 ## 0.0.27 - 2025-10-01
 
 ### Changed
