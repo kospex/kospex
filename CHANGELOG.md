@@ -2,6 +2,11 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.29 - 2025-10-03
+
+### Added
+- [Added krunner tenure command](https://github.com/kospex/kospex/issues/68)
+
 ## 0.0.28 - 2025-10-02
 
 ### Added
