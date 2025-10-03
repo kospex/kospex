@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """This is the kospex runner tool - run the same command on all repos."""
+from itertools import count
 import os
 import os.path
 import subprocess
@@ -330,8 +331,11 @@ def dependencies(csv):
         #results = memory_kq.developer_tech(author_email=dev,developers=developers)
     console.log(f"{memory_timer}")
 
-    console.log("Finding dependencies ...")
+    console.log(f"Finding dependencies ... {len(dependencies)}")
+    counter = 0
     for d in dependencies:
+        counter += 1
+        console.log(f"Processing dependency {counter}/{len(dependencies)}")
         console.log(f"repo_id: {d['_repo_id']}")
         console.log(f"{d['Provider']}\n")
 
@@ -424,10 +428,13 @@ def devs_by_tag(csv, tag, filename):
         print(f"tag: {tag}, filename: {filename}")
         #results = memory_kq.get_developers_by_tag(tag=tag,filename=filename)
         files = memory_kq.get_metadata_files(tag=tag, filename=filename)
-
     console.log(f"{memory_timer}")
 
+    console.log(f"Processing files ... {len(files)}")
+    counter = 0
     for item in files:
+        counter += 1
+        console.log(f"Processing file {counter}/{len(files)}")
         console.log(f"repo_id: {item['_repo_id']}")
         console.log(f"{item['Provider']}\n")
         authors = memory_kq.get_file_authors(file_name=item['Provider'], repo_id=item['_repo_id'])
@@ -462,6 +469,111 @@ def devs_by_tag(csv, tag, filename):
          console.log(f"Writing dependencies to {filename}")
          KrunnerUtils.write_dict_to_csv(filename, results)
 
+@cli.command("tenure")
+@click.option('-days', is_flag=False, default=90, help="Days since last commit = Left (Default: 90)")
+@click.option('-seen', is_flag=False, default=365, help="Seen in the last X days (Default: 365)")
+@click.option('-csv', is_flag=True, default=False, help="Save to CSV file. (Default: False)")
+def tenure(days, seen, csv):
+    """
+    Show the tenure of developers
+    """
+
+    results = []
+
+    # This will be the memory kospex query object
+    memory_kq = None
+
+    console.log("Loading data to in memory database ...")
+    with KospexTimer("Loading data to in memory database") as load_memory:
+        memory_kq = kospex.kospex_query.create_memory_kospex_query(["commits"])
+    console.log(f"Loaded tables to memory db {load_memory}")
+
+    console.log("Creating indexes ...")
+    with KospexTimer("creating indexes") as index_timer:
+        memory_kq.kospex_db["commits"].create_index(['committer_when'])
+    console.log(f"{index_timer}")
+
+    console.log("Creating indexes ...")
+    with KospexTimer("Calculating tenure") as memory_timer:
+        results = memory_kq.authors()
+    console.log(f"{memory_timer}")
+
+    # email, first_commit, last_commit, years_active, repos
+
+    table = Table(title="Authors")
+    table.add_column("Developer", style="bright_black",justify="left")
+    table.add_column("First Commit", style="magenta",justify="left")
+    table.add_column("Last Commit", style="bright_black",justify="right")
+    table.add_column("Years Active", style="blue", justify="right")
+    table.add_column("# Repos", justify="right", style="bright_black")
+    table.add_column("# Commits", justify="right", style="bright_black")
+
+    tenure_groups = {
+        "< 1 year": 0,
+        "1-2 years": 0,
+        "2-3 years": 0,
+        "3-4 years": 0,
+        "4-5 years": 0,
+        "5+ years": 0
+    }
+
+    leavers = 0
+
+    developer_leavers = []
+
+    for dev in results:
+
+        # If last_seen > days they've left
+        # and we've seen them in the seen timeframe (default we've seen them in the last year)
+        #
+        if dev['last_seen'] > days and seen > dev['last_seen']:
+            leavers += 1
+            days_active = KospexUtils.days_between_datetimes(dev['first_commit'], dev['last_commit'])
+            years_active = round(days_active / 365,3)
+            dev['years_active'] = years_active
+
+            if years_active < 1:
+                tenure_groups["< 1 year"] += 1
+            elif years_active < 2:
+                tenure_groups["1-2 years"] += 1
+            elif years_active < 3:
+                tenure_groups["2-3 years"] += 1
+            elif years_active < 4:
+                tenure_groups["3-4 years"] += 1
+            elif years_active < 5:
+                tenure_groups["4-5 years"] += 1
+            else:
+                tenure_groups["5+ years"] += 1
+
+            table.add_row(dev['author_email'], dev['first_commit'], dev['last_commit'],
+                str(years_active), str(dev['repos']), str(dev['commits']))
+
+            developer_leavers.append(dev)
+
+    console.print(table)
+
+    tenure_percentages = KospexUtils.convert_to_percentage(tenure_groups)
+
+    stat_table = Table(title="Tenure of Leavers Summary")
+    stat_table.add_column("Tenure", style="bright_black",justify="left")
+    stat_table.add_column("Number", style="bright_black",justify="right")
+    stat_table.add_column("Percentage", style="bright_black",justify="right")
+    for k in tenure_percentages.keys():
+        stat_table.add_row(k, str(tenure_groups[k]), str(tenure_percentages[k])+"%")
+
+    console.print()
+    console.print(stat_table)
+    console.print(f"\nTotal number of developers seen: {len(results)}")
+    console.print(f"Number of Leavers: {leavers}\n")
+
+    if not csv:
+        console.print("\nWarning: No results written to CSV", style="red")
+        console.print("use -csv to export\n", style="red")
+
+    if csv:
+          filename = 'developer-tenure-leavers.csv'
+          console.log(f"Writing dependencies to {filename}")
+          KrunnerUtils.write_dict_to_csv(filename, developer_leavers)
 
 
 @cli.command("find-docker")
