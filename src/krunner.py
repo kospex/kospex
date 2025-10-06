@@ -231,15 +231,13 @@ def repo_size(save,csv,request_id,verbose):
 @click.option('-csv', is_flag=True, default=False, help="Save to CSV file. (Default: False)")
 @click.option('-verbose', is_flag=True, default=False, help="Verbose output. (Default: False)")
 @click.option('-developers', is_flag=True, default=False, help="Show all developer technologies")
+@click.option('-year', is_flag=False, type=click.INT, help="Year to show results for.")
 @click.argument('dev', required=False, type=click.STRING)
-def developer_tech(csv,verbose,developers,dev):
+def developer_tech(csv,verbose,developers,year,dev):
     """
-    Show technology for a given developer
+    Show technology for all time, a given developer or a specic year
     """
     results = []
-
-    if verbose:
-        console.log(f"Developer: {dev}")
 
     if dev:
         console.log(f"Showing technology for developer {dev}")
@@ -251,9 +249,10 @@ def developer_tech(csv,verbose,developers,dev):
     # This will be the memory kospex query object
     memory_kq = None
 
+    console.log("Starting loading data to in memory database")
     with KospexTimer("Loading data to in memory database") as load_memory:
         memory_kq = kospex.kospex_query.create_memory_kospex_query(["commits", "commit_files"])
-    console.log(f"Loaded tables to memory db {load_memory}")
+    console.log(f"{load_memory}")
 
     with KospexTimer("creating indexes") as index_timer:
         memory_kq.kospex_db["commits"].create_index(['hash'])
@@ -261,10 +260,15 @@ def developer_tech(csv,verbose,developers,dev):
     console.log(f"{index_timer}")
 
     with KospexTimer("Assessing developer tech in memory") as memory_timer:
-        results = memory_kq.developer_tech(author_email=dev,developers=developers)
+        results = memory_kq.developer_tech(author_email=dev,developers=developers, year=year)
     console.log(f"{memory_timer}")
 
-    table = Table(title="Technology")
+    title_year = ""
+    if year:
+        title_year = f" for {year}"
+
+    console.print()
+    table = Table(title=f"Technology{title_year}")
     table.add_column("Tech", justify="left", style="cyan", no_wrap=True)
     table.add_column("commits", style="magenta",justify="right")
     table.add_column("repos", style="magenta",justify="right")
@@ -298,7 +302,9 @@ def developer_tech(csv,verbose,developers,dev):
 
     if csv:
          filename = 'dev-tech.csv'
-         console.log(f"Writing {dev} technology to {filename}")
+         if year:
+             filename = f"dev-tech-{year}.csv"
+         console.log(f"Writing technology to {filename}")
          KrunnerUtils.write_dict_to_csv(filename, results)
 
 @cli.command("dependencies")

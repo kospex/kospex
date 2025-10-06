@@ -1,6 +1,4 @@
 """ Use case queries for the kospex DB"""
-from ctypes import memmove
-from logging import lastResort
 import time
 import re
 from typing import Optional
@@ -1365,7 +1363,7 @@ class KospexQuery:
 
         return results
 
-    def developer_tech(self, author_email=None, repo_id=None, developers=None):
+    def developer_tech(self, author_email=None, repo_id=None, developers=None, year=None):
         """
         Return the tech stack for an author or repo
         This function is part of
@@ -1377,6 +1375,8 @@ class KospexQuery:
 
         kd = KospexData(self.kospex_db)
         kd.from_table("commit_files", "commits")
+
+
 
         #kd.select_raw("DISTINCT(LOWER(author_email)) as author_email")
         kd.select_raw("LOWER(author_email) as author_email")
@@ -1408,6 +1408,16 @@ class KospexQuery:
         if repo_id:
             params.append(repo_id)
             kd.where("commits._repo_id", "=", repo_id)
+
+        if year:
+            start_date = datetime(year, 1, 1)
+            start_iso = start_date.isoformat()  # "2023-01-01T00:00
+            print(f"Start date: {start_iso}")
+            end_date = datetime(year, 12, 31, 23, 59, 59)
+            end_iso = end_date.isoformat()  # "2023-01-01T00:00
+            print(f"End date: {end_iso}")
+            kd.where("commits.committer_when", ">=", start_iso)
+            kd.where("commits.committer_when", "<=", end_iso)
 
         # We're going to need a few lookups
         # Potentially we could do this in a nasty join, but it's easier to read this way
