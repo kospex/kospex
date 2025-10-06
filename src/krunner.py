@@ -139,11 +139,11 @@ def branches(save,csv,verbose,request_id):
         results.append(entry)
 
         console.log(f"{r['_repo_id']}\t{r['file_path']}")
-        if verbose:
-            console.log(f"# Branches: {len(branches)}")
-            console.log(branches)
-            console.log("Observation:")
-            console.log(obs)
+        # if verbose:
+        #     console.log(f"# Branches: {len(branches)}")
+        #     console.log(branches)
+        #     console.log("Observation:")
+        #     console.log(obs)
 
         if save:
             existing_obs = kospex.kospex_query.get_single_observation(r['_repo_id'], obs.observation_key,
@@ -154,6 +154,17 @@ def branches(save,csv,verbose,request_id):
                 console.log(f"Existing observation UUID: {existing_obs}")
             else:
                 kospex.kospex_query.add_observation(obs.to_dict())
+
+    table = Table(title="Repo Branches")
+    table.add_column("Repo ID", justify="left", style="cyan", no_wrap=True)
+    table.add_column("# Branches", style="magenta",justify="right")
+
+    for r in results:
+        table.add_row( r['repo_id'], str(r['branches']))
+
+    console.print(table)
+
+    console.print(f"\nTotal number of repositories checked: {len(results)}\n")
 
     if csv:
         filename = 'branches.csv'

@@ -2,6 +2,18 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.30 - 2025-10-06
+
+### Added
+- [Added krunner -year to developer-tech](https://github.com/kospex/kospex/issues/71)
+- [Added -days to meta/author-domains](https://github.com/kospex/kospex/issues/70)
+
+### Fixed
+- [Krunner repo-size and branches don't display tables](https://github.com/kospex/kospex/issues/64)
+
+### Work In Progress
+- [Started some background code changes on email mapping](https://github.com/kospex/kospex/issues/69)
+
 ## 0.0.29 - 2025-10-03
 
 ### Added
