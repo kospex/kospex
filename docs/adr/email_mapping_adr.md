@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS TBL_EMAIL_MAPPING (
     alias_email TEXT PRIMARY KEY,
     main_email TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    source TEXT, -- Where did we get this, CLI?, local filesystem, mailmap URL
     notes TEXT
 );
 
@@ -40,6 +41,7 @@ ON TBL_EMAIL_MAPPING(main_email);
 | `alias_email` | TEXT | PRIMARY KEY | The email address variant/alias to map from |
 | `main_email` | TEXT | NOT NULL | The canonical/primary email address to map to |
 | `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | When the mapping was created |
+| `source` | TEXT | NULL | Where did we get this, CLI?, local filesystem, mailmap URL |
 | `notes` | TEXT | NULL | Optional notes about why this mapping exists |
 
 #### Index Details
@@ -61,6 +63,14 @@ SELECT
 FROM TBL_GIT_COMMITS c
 LEFT JOIN TBL_EMAIL_MAPPING m ON c.email_address = m.alias_email;
 ```
+'''sql
+CREATE VIEW IF NOT EXISTS {TBL_COMMITS_VIEW} AS
+SELECT
+    c.*,
+    COALESCE(m.main_email, c.author_email) as canonical_email
+FROM {TBL_COMMITS} c
+LEFT JOIN {TBL_EMAIL_MAP} m ON c.author_email = m.alias_email;
+'''
 
 #### How It Works
 
@@ -70,7 +80,7 @@ LEFT JOIN TBL_EMAIL_MAPPING m ON c.email_address = m.alias_email;
 
 #### Column Output
 
-All columns from `TBL_GIT_COMMITS` plus:
+All columns from `TBL_COMMITS` plus:
 - `canonical_email` (TEXT): The normalized email address
 
 ## Usage Examples
@@ -194,7 +204,7 @@ conn.commit()
 
 - **View queries automatically use indexes** on underlying tables
 - `TBL_EMAIL_MAPPING.alias_email` (PRIMARY KEY) is used for JOIN lookups
-- `TBL_GIT_COMMITS` indexes on `commit_hash`, `commit_date`, etc. work through the view
+- `TBL_COMMITS` indexes on `commit_hash`, `commit_date`, etc. work through the view
 - The computed `canonical_email` column cannot be directly indexed (it's computed)
 
 ### Query Patterns
@@ -263,9 +273,9 @@ FROM TBL_GIT_COMMITS;
 
 - [ ] Create `TBL_EMAIL_MAPPING` table with indexes
 - [ ] Create `VIEW_COMMITS_NORMALIZED` view
-- [ ] Add email mapping CLI command: `kospex map-email <alias> <main>`
-- [ ] Add email mapping import CLI command: `kospex import-mailmap <file>`
-- [ ] Add email mapping list CLI command: `kospex list-email-mappings`
+- [ ] Add email mapping CLI command: `kgit map-email <alias> <main>`
+- [ ] Add email mapping import CLI command: `kgit import-mailmap <file>`
+- [ ] Add email mapping list CLI command: `kgit list-email-mappings`
 - [ ] Update schema version in `TBL_KOSPEX_CONFIG` to [TBD]
 - [ ] Add tests for email mapping functionality
 - [ ] Update documentation with new CLI commands

@@ -7,8 +7,11 @@ import kospex_utils as KospexUtils
 TBL_BRANCHES = "branches"
 TBL_BRANCH_HISTORY = "branch_history"
 TBL_COMMITS = "commits"
+# Will use the normalised email address from the email_map table
+TBL_COMMITS_VIEW = "commits_view"
 TBL_COMMIT_FILES = "commit_files"
 TBL_COMMIT_METADATA = "commit_metadata"
+TBL_EMAIL_MAP = "email_map"
 TBL_FILE_METADATA = "file_metadata"
 TBL_REPO_HOTSPOTS = "repo_hotspots"
 TBL_DEPENDENCY_DATA = "dependency_data"
@@ -23,11 +26,10 @@ TBL_KOSPEX_CONFIG = "kospex_config"
 # Not yet implemented
 TBL_MAILMAP = "mailmaps"
 
-
-
 KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE, TBL_KRUNNER,
-                TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META, TBL_GROUPS, TBL_KOSPEX_CONFIG ]
+                TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META, TBL_GROUPS, TBL_KOSPEX_CONFIG,
+                TBL_EMAIL_MAP]
 
 # The following are tables with a repo_id
 REPO_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
@@ -186,7 +188,6 @@ SQL_CREATE_BRANCH_HISTORY = f'''CREATE TABLE IF NOT EXISTS [{TBL_BRANCH_HISTORY}
     PRIMARY KEY(_repo_id, hash)
     )'''
 
-
 # We're going to capture additional data about the dependencies in a file
 #SQL_PK_DEPENDENCY_DATA = '''PRIMARY KEY(_repo_id,hash,file_path,package_type,package_name,package_version)'''
 SQL_CREATE_DEPENDENCY_DATA = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEPENDENCY_DATA}] (
@@ -307,7 +308,7 @@ SQL_CREATE_GROUPS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_GROUPS}] (
     PRIMARY KEY(group_name,_repo_id,email)
     )'''
 
-SQL_CREATE_MAILMAP = f'''CREATE TABLE  IF NOT EXISTS [{TBL_MAILMAP}] (
+SQL_CREATE_MAILMAP = f'''CREATE TABLE IF NOT EXISTS [{TBL_MAILMAP}] (
     [file_path] TEXT,      -- file path in the repo (if applicable, can be repo level)
     [proper_name] TEXT,    -- the "correct" name
     [email] TEXT,
@@ -320,6 +321,23 @@ SQL_CREATE_MAILMAP = f'''CREATE TABLE  IF NOT EXISTS [{TBL_MAILMAP}] (
     [_repo_id] TEXT,       -- normalised _repo_id from git_url (optional)
     PRIMARY KEY(_repo_id,email,committer_email)
     )'''
+
+SQL_CREATE_EMAIL_MAP = f'''CREATE TABLE IF NOT EXISTS [{TBL_EMAIL_MAP}] (
+    [alias_email] TEXT PRIMARY KEY,
+    [main_email] TEXT NOT NULL,
+    [created_at] TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    [notes] TEXT,
+    [source] TEXT -- Where did we get this, CLI, local filesystem, mailmap URL
+    )'''
+
+SQL_CREATE_COMMITS_VIEW = f'''
+CREATE VIEW IF NOT EXISTS {TBL_COMMITS_VIEW} AS
+SELECT
+    c.*,
+    COALESCE(m.main_email, c.author_email) as canonical_email
+FROM {TBL_COMMITS} c
+LEFT JOIN {TBL_EMAIL_MAP} m ON c.author_email = m.alias_email;
+'''
 
 DB_CREATE_STATEMENTS = {
     TBL_COMMITS: SQL_CREATE_COMMITS,
@@ -337,6 +355,8 @@ DB_CREATE_STATEMENTS = {
     TBL_KOSPEX_CONFIG: SQL_CREATE_KOSPEX_CONFIG,
     TBL_BRANCHES: SQL_CREATE_BRANCHES,
     TBL_BRANCH_HISTORY: SQL_CREATE_BRANCH_HISTORY,
+    TBL_COMMITS_VIEW: SQL_CREATE_COMMITS_VIEW,
+    TBL_EMAIL_MAP: SQL_CREATE_EMAIL_MAP,
 }
 
 # Functions for SQLite stuff
@@ -375,6 +395,9 @@ def connect_or_create_kospex_db():
 
     kospex_db.execute(SQL_CREATE_BRANCHES)
     kospex_db.execute(SQL_CREATE_BRANCH_HISTORY)
+
+    kospex_db.execute(SQL_CREATE_EMAIL_MAP)
+    kospex_db.execute(SQL_CREATE_COMMITS_VIEW)
 
     # TODO - look at moving all table creates to "create if not exits"
 

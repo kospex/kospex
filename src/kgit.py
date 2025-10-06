@@ -14,6 +14,7 @@ import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 from kospex_github import KospexGithub
 from kospex_bitbucket import KospexBitbucket
+from rich.table import Table
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
@@ -99,6 +100,69 @@ def branches(sync, repo):
         if i.lstrip():
             bob.append(i.lstrip()) # remove leading spaces
     print(bob)
+
+@cli.command("map-email")
+@click.argument('alias',type=click.STRING, required=True)
+@click.argument('email',type=click.STRING, required=True)
+def map_email(alias,email):
+    """
+    Add an email alias to email mapping in the database.
+    Used to consolidate/normalised addresses for per developer statistics
+    alias is the email you want to map from
+    email is the email you want to map to
+
+    Example:
+
+    12313+xyz-abs@users.noreply.github.com person@yourcompany.com
+    person@oldbrand.com person@yourcompany.com
+    """
+    console.log(f"Attempting to map email alias {alias} to email {email}\n")
+    # Check if mapping already exists
+    if kospex.kospex_query.get_email_maps(alias=alias, email=email):
+        console.log(f"Email mapping already exists for {alias} -> {email}", style="bold yellow")
+        return
+    else:
+        map_entry = {
+            'alias_email': alias,
+            'main_email': email,
+            'source': 'kgit CLI'
+        }
+        kospex.kospex_db.table("email_map").insert(map_entry,pk=['alias_email'])
+
+
+@cli.command("list-email-mappings")
+@click.option('-email',type=click.STRING, required=True)
+def list_email_mappings(email):
+    """
+    Show all the email mappings
+    """
+    mappings = kospex.kospex_query.get_email_maps(email=email)
+    map_num = len(mappings)
+    console.log(f"\nTotal email mappings: {map_num}")
+    if map_num == 0:
+        console.log("No email mappings found.\n", style="bold yellow")
+    else:
+        table = Table(title="Email Mappings")
+        table.add_column("alias_email", justify="left", style="cyan", no_wrap=True)
+        table.add_column("main_email", style="magenta")
+        table.add_column("source", style="bright_black")
+        table.add_column("Created At", style="bright_black")
+
+        for item in mappings:
+            table.add_row(item['alias_email'], item['main_email'],
+                item['source'], item['created_at'])
+
+        console.print(table)
+        console.print()
+
+@cli.command("import-mailmap")
+@click.option('-filename',  type=click.Path(exists=True), help="Mailmap file to import.")
+def import_mailmap(filename):
+    """
+    Import mailmap file into the database.
+    """
+    console.log("Importing mailmap file into the database.")
+    console.log("\nNOT IMPLEMENTED\n", style="bold red")
 
 @cli.command("clone")
 @click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
