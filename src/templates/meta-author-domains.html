@@ -37,6 +37,16 @@
                     <h1 class="text-3xl font-bold text-gray-900 mb-6">
                         Author Email Domains
                     </h1>
+                    {% if days %}
+                        <p class="text-gray-600 mb-4">Showing data for the last {{ days }} days.
+                        <a href="/meta/author-domains" class="text-blue-600" style="text-decoration: underline dotted;">Show all?</a>
+                        </p>
+                    {% else %}
+                    <p class="text-gray-600 mb-4">
+                        Displaying author email domains for all time.
+                        <a href="?days=365" class="text-blue-600" style="text-decoration: underline dotted;">Show data for last 12 months?</a>
+                    </p>
+                    {% endif %}
 
                     <div class="overflow-x-auto">
                         <table

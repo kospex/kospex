@@ -19,6 +19,7 @@ from fastapi.exception_handlers import (
     request_validation_exception_handler,
 )
 from fastapi.exceptions import RequestValidationError
+from requests.models import LocationParseError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from kospex_query import KospexQuery
@@ -950,14 +951,24 @@ async def author_domains(request: Request):
     """Display author email domain analysis"""
     try:
         logger.info("Author domains page requested")
+        days = request.query_params.get('days')
+        if days:
+            if days.isdigit():
+                days = int(days)
+            else:
+                logger.error(f"Invalid days parameter: {days}")
+                days = None
+        else:
+             days = None
 
         kospex = KospexQuery()
-        email_domains = kospex.email_domains()
+        email_domains = kospex.email_domains(days=days)
 
         return templates.TemplateResponse(
             "meta-author-domains.html",
             {
                 "request": request,
+                "days": days,
                 "email_domains": email_domains
             }
         )
