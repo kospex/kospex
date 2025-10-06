@@ -278,6 +278,23 @@ class KospexQuery:
 
         return results
 
+    def get_email_maps(self, alias=None, email=None):
+        """
+        Get the email maps for the given scope.
+        If no parameters are passed, return all email maps.
+        """
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_EMAIL_MAP)
+
+        if alias:
+            kd.where("alias_email","=",alias)
+
+        if email:
+            kd.where("main_email","=",email)
+
+        results = kd.execute()
+
+        return results
 
 
     def get_orphans(self,id=None):
@@ -953,13 +970,22 @@ class KospexQuery:
 
         return results
 
-    def email_domains(self, repo_id=None):
+    def email_domains(self, repo_id=None, days=None):
         """ Provide a summary of email domains for repositories."""
         where_clause = ""
         params = []
+
         if repo_id:
             where_clause = " WHERE _repo_id = ? "
             params.append(repo_id)
+
+        if days:
+            from_date = KospexUtils.days_ago_iso_date(days)
+            params.append(from_date)
+            if repo_id:
+                where_clause += " AND committer_when >= ?"
+            else:
+                where_clause += " Where committer_when >= ?"
 
         summary_sql = f"""SELECT substr(author_email, instr(author_email, '@') + 1) as domain,
         COUNT(DISTINCT author_email) 'addresses'
