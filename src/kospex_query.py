@@ -1335,6 +1335,19 @@ class KospexQuery:
 
         return summary
 
+    def get_last_sync_datetime(self):
+        """
+        Return the last sync datetime of the most recent repo sync
+        Used to determine if data should be updated
+        """
+
+        sql = f"""SELECT * FROM {KospexSchema.TBL_REPOS} ORDER BY last_sync DESC LIMIT 1"""
+        data = self.kospex_db.query(sql,[])
+        record = next(data, None)
+        if record:
+            return record['last_sync']
+        return None
+
 
     def get_file_authors(self, file_name=None, repo_id=None):
         """
