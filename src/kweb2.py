@@ -4,7 +4,7 @@
 import csv
 import sys
 import os
-
+from datetime import datetime
 from io import StringIO
 from typing import Optional
 from pathlib import Path
@@ -26,6 +26,8 @@ from kospex_query import KospexQuery
 import kospex_web as KospexWeb
 import kospex_utils as KospexUtils
 import kospex_stats as KospexStats
+from kospex_utils import KospexTimer
+from kospex_request_cache import RequestCache
 from kweb_help_service import HelpService
 from kweb_graph_service import GraphService
 from kospex_core import Kospex
@@ -36,6 +38,11 @@ KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 
 # Set up logging using centralized system
 logger = KospexUtils.get_kospex_logger('kweb2')
+
+# Used to cache DB results in memory
+request_cache = RequestCache()
+# structure
+# key: { data, last_updated}
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -133,6 +140,13 @@ async def custom_http_exception_handler(request: Request, exc: StarletteHTTPExce
     # For other status codes, use default handler
     return await http_exception_handler(request, exc)
 
+@app.get("/clear-cache")
+async def clear_cache(request: Request):
+    """
+    Clear the cache the in-memory cache
+    """
+    request_cache.clear()
+    return { "status": "ok"}
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/summary/", response_class=HTMLResponse)
@@ -143,7 +157,18 @@ async def summary(request: Request, id: Optional[str] = None):
         logger.info(f"Summary page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
-        devs = KospexQuery().developers(**params)
+
+        devs = None
+        with KospexTimer("Loading load_developers") as dev_load:
+
+            if data := request_cache.get("summary:developers",KospexQuery().get_last_sync_datetime()):
+                print("Cache found")
+                devs = data
+            else:
+                devs = KospexQuery().developers(**params)
+                request_cache.set("summary:developers", devs)
+
+        print(dev_load)
 
         dev_stats = KospexUtils.count_key_occurrences(devs, "status")
         dev_percentages = KospexUtils.convert_to_percentage(dev_stats)
@@ -173,6 +198,7 @@ async def summary(request: Request, id: Optional[str] = None):
 
         return templates.TemplateResponse(
             "summary.html",
+            #"summary_4col.html",
             {
                 "request": request,
                 "developers": dev_stats,
@@ -293,7 +319,19 @@ async def metadata(request: Request):
     try:
         logger.info("Metadata page requested")
 
-        data = KospexQuery().summary()
+        data = None
+
+        with KospexTimer("Summary load") as summary_load:
+
+            if data := request_cache.get("metadata:summary",KospexQuery().get_last_sync_datetime()):
+                print("Cache found")
+            else:
+                data = KospexQuery().summary()
+                request_cache.set("metadata:summary", data)
+
+        print(summary_load)
+
+        #data = KospexQuery().summary()
 
         return templates.TemplateResponse(
             "metadata.html",
@@ -1005,7 +1043,7 @@ async def repo_with_tech(request: Request, tech: str):
 
         repo_id = request.query_params.get('repo_id')
         kospex = KospexQuery()
-        template = "repos.html"
+        template = "repos-tech.html"
 
         if repo_id:
             repos_with_tech = kospex.repo_files(tech, repo_id=repo_id)
@@ -1018,6 +1056,7 @@ async def repo_with_tech(request: Request, tech: str):
             {
                 "request": request,
                 "data": repos_with_tech,
+                "tech": tech,
                 "page": {}
             }
         )
