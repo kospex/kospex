@@ -9,6 +9,7 @@ __pycache__/
 # Unknown (but think it's deepcode or Snyk)
 .dccache
 
+.DS_Store
 
 # Distribution / packaging
 .Python
