@@ -51,7 +51,7 @@ def get_id_params(request_id,request_params=None):
 
     # Only look at request_params if the request_id is None
     if request_id is None:
-        print("ID is none")
+
         if request_params:
             if repo_id := request_params.get("repo_id"):
                 params["repo_id"] = repo_id
