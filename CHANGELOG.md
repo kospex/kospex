@@ -2,7 +2,12 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.31 - 2025-10-XX
+## 0.0.32 - 2025-10-24
+
+### Fixed
+- Some issues relating to kospex denpencies with missing imports and referenced function calls
+
+## 0.0.31 - 2025-10-24
 
 ### Added
 - [In memory cache for kweb](https://github.com/kospex/kospex/issues/61)
