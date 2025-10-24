@@ -1490,15 +1490,14 @@ class KospexDependencies:
         return sorted_versions[0]
 
     # Additional utility function for more complex parsing
-    @staticmethod
-    def parse_complex_version_spec(version_spec: str) -> dict:
+    def parse_complex_version_spec(self, version_spec: str) -> dict:
         """
         Parse complex version specifications into structured format.
         Returns a dictionary with extracted information.
         """
         result = {
             "original": version_spec,
-            "cleaned": clean_version_spec(version_spec),
+            "cleaned": self.clean_version_spec(version_spec),
             "constraints": [],
             "is_range": False,
             "is_complex": False,
@@ -1517,7 +1516,7 @@ class KospexDependencies:
         for part in parts:
             part = part.strip()
             if part:
-                version = extract_version_from_constraint(part)
+                version = self.extract_version_from_constraint(part)
                 if version:
                     operator = part[: len(part) - len(version)].strip() or "="
                     result["constraints"].append(
