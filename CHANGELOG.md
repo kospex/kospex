@@ -2,6 +2,18 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.31 - 2025-10-XX
+
+### Added
+- [In memory cache for kweb](https://github.com/kospex/kospex/issues/61)
+
+The in-memory cache for kweb is now implemented using a simple dictionary data structure. This allows for faster lookups and reduces the need for disk I/O operations. It's only for a few endpoints (summary, developers) but can be reused for other endpoints as well.
+
+- [Implemented MVP for krunner osi command](https://github.com/kospex/kospex/issues/72)
+
+### Fixed
+- [Repos by Tech didn't display properly](https://github.com/kospex/kospex/issues/45)
+
 ## 0.0.30 - 2025-10-06
 
 ### Added

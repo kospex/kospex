@@ -1,4 +1,5 @@
 """Core functions for running the kospex CLI"""
+
 import os
 import os.path
 import sys
@@ -14,17 +15,19 @@ import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
 from kospex_query import KospexQuery, KospexData
 from kospex_dependencies import KospexDependencies
-#from kospex_mergestat import KospexMergeStat
+
+# from kospex_mergestat import KospexMergeStat
 import panopticas
 from sqlite_utils import Database
 
 
 class GitRepo(click.ParamType):
-    """ Custom click param type for git repos """
+    """Custom click param type for git repos"""
+
     name = "git repo"
 
     def convert(self, value, param, ctx):
-        """ Convert the value to a git repo """
+        """Convert the value to a git repo"""
         if not os.path.isdir(value):
             self.fail(f"{value} is not a directory or does not exist", param, ctx)
 
@@ -32,43 +35,49 @@ class GitRepo(click.ParamType):
             self.fail(f"{value} is not a git repo", param, ctx)
         return value
 
+
 class Kospex:
     """
     kospex core functionality
     """
-    VERSION = "0.0.30" # This value should align with the pyproject.toml version for pip
-    def __init__(self):
 
+    VERSION = (
+        "0.0.31"  # This value should align with the pyproject.toml version for pip
+    )
+
+    def __init__(self):
         self.original_cwd = None
         self.repo_directory = None
         self.git = KospexGit()
         self.kospex_db = KospexSchema.connect_or_create_kospex_db()
-        #self.mergestat = KospexMergeStat()
+        # self.mergestat = KospexMergeStat()
         self.kospex_query = KospexQuery(kospex_db=self.kospex_db)
-        self.dependencies = KospexDependencies(kospex_db=self.kospex_db, kospex_query=self.kospex_query)
+        self.dependencies = KospexDependencies(
+            kospex_db=self.kospex_db, kospex_query=self.kospex_query
+        )
 
     def set_repo_dir(self, directory):
-        """ Set the repo directory """
+        """Set the repo directory"""
         if not KospexUtils.is_git(directory):
             raise MissingGitDirectory(f"{directory} is not a git repo.")
 
-        fullpath=os.path.abspath(directory)
+        fullpath = os.path.abspath(directory)
         self.original_cwd = os.getcwd()
         self.git.set_repo(fullpath)
         self.repo_directory = fullpath
         os.chdir(fullpath)
 
     def chdir_original(self):
-        """ Change back to the original directory """
+        """Change back to the original directory"""
         os.chdir(self.original_cwd)
 
     def get_hash(self, **kwargs):
-        """ Get a hash, based on search criteria.
-         Must pass in either a valid repo with -repo or a repo_id with -repo_id
-         Defaults to commits table and the older hash"""
+        """Get a hash, based on search criteria.
+        Must pass in either a valid repo with -repo or a repo_id with -repo_id
+        Defaults to commits table and the older hash"""
 
-        repo = kwargs.get('repo', None)
-        repo_id = kwargs.get('repo_id', None)
+        repo = kwargs.get("repo", None)
+        repo_id = kwargs.get("repo_id", None)
 
         if repo and repo_id:
             raise ValueError("You can't specify both -repo and -repo_id")
@@ -82,14 +91,18 @@ class Kospex:
         if not repo_id:
             raise ValueError("Could not find a repo_id to query with.")
 
-        table = kwargs.get('table', KospexSchema.TBL_COMMITS)
-        oldest = kwargs.get('oldest', None)
-        newest = kwargs.get('newest', None)
+        table = kwargs.get("table", KospexSchema.TBL_COMMITS)
+        oldest = kwargs.get("oldest", None)
+        newest = kwargs.get("newest", None)
 
         order_by = None
 
-        if table not in [ KospexSchema.TBL_COMMITS, KospexSchema.TBL_COMMIT_FILES,
-                     KospexSchema.TBL_FILE_METADATA, KospexSchema.TBL_REPO_HOTSPOTS ]:
+        if table not in [
+            KospexSchema.TBL_COMMITS,
+            KospexSchema.TBL_COMMIT_FILES,
+            KospexSchema.TBL_FILE_METADATA,
+            KospexSchema.TBL_REPO_HOTSPOTS,
+        ]:
             raise ValueError(f"Unknown table {table}")
 
         if oldest and newest:
@@ -108,13 +121,13 @@ class Kospex:
 
         # Query return value might not have a 'next' method
         # This code checks for that and returns None if there is no next
-        row = next(self.kospex_db.query(sql_query, [ self.git.get_repo_id() ]), None)
+        row = next(self.kospex_db.query(sql_query, [self.git.get_repo_id()]), None)
 
         self.chdir_original()
 
         return row
 
-    #def sync_commit_files(self, directory, last, **kwargs):
+    # def sync_commit_files(self, directory, last, **kwargs):
     #    """Sync the committed files for the given directory which are
     #      more recent than the last hash"""
 
@@ -141,17 +154,19 @@ class Kospex:
     #    return len(data_rows)
 
     def get_latest_commit_datetime(self, repo_id):
-        """ Get the latest commit datetime for the given repo_id """
+        """Get the latest commit datetime for the given repo_id"""
         cursor = self.kospex_db.execute(
-                                    'SELECT MAX(committer_when) FROM commits WHERE _repo_id = ?',
-                                    (repo_id,))
+            "SELECT MAX(committer_when) FROM commits WHERE _repo_id = ?", (repo_id,)
+        )
         latest_datetime = cursor.fetchone()[0]
         return latest_datetime
 
-    #def sync_repo2(self, directory, **kwargs):
-    def sync_repo(self, directory, limit=None, from_date=None, to_date=None, no_scc=None):
-        """ Sync the commit data (authors, commmitters, files, etc) for the given directory"""
-        #def sync_commits(conn, git_dir, limit=None, from_date=None, to_date=None):
+    # def sync_repo2(self, directory, **kwargs):
+    def sync_repo(
+        self, directory, limit=None, from_date=None, to_date=None, no_scc=None
+    ):
+        """Sync the commit data (authors, commmitters, files, etc) for the given directory"""
+        # def sync_commits(conn, git_dir, limit=None, from_date=None, to_date=None):
 
         results = []
 
@@ -169,32 +184,32 @@ class Kospex:
                 from_date = latest_datetime
 
         # Use hash (#) as a delimeter as names can contain spaces
-        cmd = ['git', 'log', '--pretty=format:%H#%aI#%cI#%aN#%aE#%cN#%cE', '--numstat']
+        cmd = ["git", "log", "--pretty=format:%H#%aI#%cI#%aN#%aE#%cN#%cE", "--numstat"]
 
         if from_date and to_date:
-            cmd += ['--since={}'.format(from_date), '--until={}'.format(to_date)]
-            print(f'Syncing commits from {from_date} to {to_date}...')
+            cmd += ["--since={}".format(from_date), "--until={}".format(to_date)]
+            print(f"Syncing commits from {from_date} to {to_date}...")
         elif from_date:
-            cmd += ['--since={}'.format(from_date)]
-            #print("Syncing commits from {}...".format(from_date))
+            cmd += ["--since={}".format(from_date)]
+            # print("Syncing commits from {}...".format(from_date))
             print(f"Syncing commits from {from_date}...")
         elif limit:
-            cmd += ['-n', str(limit)]
-            print(f'Syncing {limit} commits...')
+            cmd += ["-n", str(limit)]
+            print(f"Syncing {limit} commits...")
         else:
-            print('Syncing all commits...')
+            print("Syncing all commits...")
 
-        result = subprocess.run(cmd, capture_output=True, text=True).stdout.split('\n')
+        result = subprocess.run(cmd, capture_output=True, text=True).stdout.split("\n")
 
         commits = []
         commit = {}
 
         for line in result:
             if line:
-                if '\t' in line and len(line.split('\t')) == 3:
+                if "\t" in line and len(line.split("\t")) == 3:
                     # Check if the line represents file stats
-                    additions, deletions, filename = line.split('\t')
-                    if 'filenames' in commit:
+                    additions, deletions, filename = line.split("\t")
+                    if "filenames" in commit:
                         # The following checks for git rename events which change the filename
                         # With a git rename event, the filename will be in the format of
                         # old_filename => new_filename
@@ -205,39 +220,50 @@ class Kospex:
                             fpath = filename
                             path_change = None
 
-                        commit['filenames'].append({
-                            'file_path': fpath,
-                            'path_change': path_change,
-                            'additions': int(additions) if additions != '-' else 0,
-                            'deletions': int(deletions) if deletions != '-' else 0
-                        })
-                elif '#' in line:
-
+                        commit["filenames"].append(
+                            {
+                                "file_path": fpath,
+                                "path_change": path_change,
+                                "additions": int(additions) if additions != "-" else 0,
+                                "deletions": int(deletions) if deletions != "-" else 0,
+                            }
+                        )
+                elif "#" in line:
                     if commit:  # Save the previous commit
                         commits.append(commit)
 
-                    hash_value, author_datetime, committer_datetime, author_name, author_email, committer_name, committer_email = line.split('#', 6)
+                    (
+                        hash_value,
+                        author_datetime,
+                        committer_datetime,
+                        author_name,
+                        author_email,
+                        committer_name,
+                        committer_email,
+                    ) = line.split("#", 6)
 
                     commit = {
-                        'hash': hash_value,
-                        'author_when': author_datetime,
-                        'committer_when': committer_datetime,
-                        'author_name': author_name,
-                        'author_email': author_email,
-                        'committer_name': committer_name,
-                        'committer_email': committer_email,
-                        'filenames': []
+                        "hash": hash_value,
+                        "author_when": author_datetime,
+                        "committer_when": committer_datetime,
+                        "author_name": author_name,
+                        "author_email": author_email,
+                        "committer_name": committer_name,
+                        "committer_email": committer_email,
+                        "filenames": [],
                     }
 
                 else:
-                    commit['filenames'].append({'filename': line, 'additions': 0, 'deletions': 0})
+                    commit["filenames"].append(
+                        {"filename": line, "additions": 0, "deletions": 0}
+                    )
 
             else:
                 if commit:  # Save the last commit
                     commits.append(commit)
                 commit = {}
 
-        #cursor = conn.cursor()
+        # cursor = conn.cursor()
 
         counter = 0
         print("About to insert commits into the database...")
@@ -246,52 +272,56 @@ class Kospex:
         for commit in commits:
             counter += 1
             # Insert the commit to the database
-            files = len(commit['filenames'])
-            commit['_files'] = files
+            files = len(commit["filenames"])
+            commit["_files"] = files
             commit = self.git.add_git_to_dict(commit)
-            commit_files = commit['filenames']
+            commit_files = commit["filenames"]
             # Need to copy as we
             results.append(commit.copy())
-            del commit['filenames']
-            self.kospex_db.table(KospexSchema.TBL_COMMITS).upsert(commit,pk=['_repo_id', 'hash'])
+            del commit["filenames"]
+            self.kospex_db.table(KospexSchema.TBL_COMMITS).upsert(
+                commit, pk=["_repo_id", "hash"]
+            )
 
             # Insert the filenames to the database
             for file_info in commit_files:
                 file_info = self.git.add_git_to_dict(file_info)
-                file_info['hash'] = commit['hash']
-                file_info['_ext'] = KospexUtils.get_extension(file_info['file_path'])
-                file_info['committer_when'] = commit['committer_when']
-                self.kospex_db.table(KospexSchema.TBL_COMMIT_FILES).upsert(file_info,
-                                                                pk=['file_path', '_repo_id',
-                                                                    'hash'])
+                file_info["hash"] = commit["hash"]
+                file_info["_ext"] = KospexUtils.get_extension(file_info["file_path"])
+                file_info["committer_when"] = commit["committer_when"]
+                self.kospex_db.table(KospexSchema.TBL_COMMIT_FILES).upsert(
+                    file_info, pk=["file_path", "_repo_id", "hash"]
+                )
 
             # we'll print a + for each commit and a newline every 80 commits
-            print('+', end='')
+            print("+", end="")
             if (counter % 80) == 0:
                 print()
             if (counter % 500) == 0:
-                print(f'\nSynced {counter} commits so far ...\n')
+                print(f"\nSynced {counter} commits so far ...\n")
 
         print()
         print(f"Synced {len(commits)} total commits")
 
         # Update the repos table with the last sync time
-        last_sync = datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+        last_sync = (
+            datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
+        )
         self.update_repo_status(last_sync=last_sync)
 
         print("Processing file metadata...")
 
         # We should process the metadata after the commits, so we can query the last date time from the database
-        #if not no_scc:
+        # if not no_scc:
         if use_scc:
-            metadata_files = self.file_metadata(directory,skip_last_commit=True)
+            metadata_files = self.file_metadata(directory, skip_last_commit=True)
 
         self.chdir_original()
 
         return results
 
     def get_one(self, query, table, params=None):
-        """ helper function to return a single value from a query"""
+        """helper function to return a single value from a query"""
 
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(table)
@@ -305,7 +335,7 @@ class Kospex:
                 kd.where("author_email", "=", email)
 
             # TODO - check how we want to handle committer_email
-            if email_contains:= params.get("email_contains"):
+            if email_contains := params.get("email_contains"):
                 kd.where("author_email", "LIKE", f"%{email_contains}%")
 
             if org := params.get("org"):
@@ -323,51 +353,84 @@ class Kospex:
             first_key = next(iter(results[0]))
             return str(results[0][first_key])
 
-
     def author_tech_pretty_table(self, author_techs):
         """Pretty print the author_techs data"""
 
         table = PrettyTable()
-        headers = ["author_email", "repos", "_ext", "commits", "first_commit",
-                   "last_commit", "last_seen", "first_seen", "days_active"]
+        headers = [
+            "author_email",
+            "repos",
+            "_ext",
+            "commits",
+            "first_commit",
+            "last_commit",
+            "last_seen",
+            "first_seen",
+            "days_active",
+        ]
         table.field_names = headers
         table.align["author_email"] = "l"
         table.align["_ext"] = "l"
         table.align["commits"] = "r"
         for row in author_techs:
-            row['_ext'] = (row['_ext'][:18] + '..') if len(row['_ext']) > 20 else row['_ext']
-            row['first_commit'] = KospexUtils.extract_db_date(row['first_commit'])
-            row['last_commit'] = KospexUtils.extract_db_date(row['last_commit'])
+            row["_ext"] = (
+                (row["_ext"][:18] + "..") if len(row["_ext"]) > 20 else row["_ext"]
+            )
+            row["first_commit"] = KospexUtils.extract_db_date(row["first_commit"])
+            row["last_commit"] = KospexUtils.extract_db_date(row["last_commit"])
             table.add_row(KospexUtils.get_values_by_keys(row, headers))
 
         return table
 
     def summary(self, results_file=None, **kwargs):
-        """ Display some basic stats what has been sync'ed from repos to the kospex db."""
+        """Display some basic stats what has been sync'ed from repos to the kospex db."""
 
-        server = kwargs.get('server', None)
-        org = kwargs.get('org', None)
-        group = kwargs.get('group', None)
-        email = kwargs.get('email', None)
-        email_contains = kwargs.get('email_contains', None)
-        active = kwargs.get('active', None)
+        server = kwargs.get("server", None)
+        org = kwargs.get("org", None)
+        group = kwargs.get("group", None)
+        email = kwargs.get("email", None)
+        email_contains = kwargs.get("email_contains", None)
+        active = kwargs.get("active", None)
 
         print("\nKospex Summary\nChecking status ...\n")
-        #print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
-        print("# Repositories:\t" + self.get_one("COUNT(DISTINCT(_repo_id))", KospexSchema.TBL_COMMITS, kwargs))
-        #print("# Authors:\t" + self.get_one("SELECT COUNT(DISTINCT(author_email)) FROM commits"))
-        print("# Authors:\t" + self.get_one("COUNT(DISTINCT(author_email))",KospexSchema.TBL_COMMITS,kwargs))
+        # print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
+        print(
+            "# Repositories:\t"
+            + self.get_one(
+                "COUNT(DISTINCT(_repo_id))", KospexSchema.TBL_COMMITS, kwargs
+            )
+        )
+        # print("# Authors:\t" + self.get_one("SELECT COUNT(DISTINCT(author_email)) FROM commits"))
+        print(
+            "# Authors:\t"
+            + self.get_one(
+                "COUNT(DISTINCT(author_email))", KospexSchema.TBL_COMMITS, kwargs
+            )
+        )
 
-        #self.get_one("SELECT COUNT(DISTINCT(committer_email)) FROM commits"))
-        print("# Committers:\t" +
-              self.get_one("COUNT(DISTINCT(committer_email))", KospexSchema.TBL_COMMITS, kwargs))
+        # self.get_one("SELECT COUNT(DISTINCT(committer_email)) FROM commits"))
+        print(
+            "# Committers:\t"
+            + self.get_one(
+                "COUNT(DISTINCT(committer_email))", KospexSchema.TBL_COMMITS, kwargs
+            )
+        )
         print()
 
         table = PrettyTable()
-        headers = ["repo", "status", "developers", "active", "present", "last_commit",
-                             "first_commit", "active_days", "commits" ]
+        headers = [
+            "repo",
+            "status",
+            "developers",
+            "active",
+            "present",
+            "last_commit",
+            "first_commit",
+            "active_days",
+            "commits",
+        ]
 
-        #table.field_names = ["repo", "status", "last_commit",
+        # table.field_names = ["repo", "status", "last_commit",
         #                     "first_commit", "developers", "commits", "active", "present"]
 
         table.field_names = headers
@@ -414,12 +477,11 @@ class Kospex:
             kd.where("committer_when", ">=", KospexUtils.days_ago_iso_date(90))
 
         if group:
-            #kd.where_subselect("_repo_id", "IN", f"SELECT _repo_id FROM {KospexSchema.TBL_REPOS} WHERE _group = ?", [group])
-            #kd.where_subselect("_repo_id", "IN", "_repo_id", KospexSchema.TBL_REPOS, "group_name", group)
+            # kd.where_subselect("_repo_id", "IN", f"SELECT _repo_id FROM {KospexSchema.TBL_REPOS} WHERE _group = ?", [group])
+            # kd.where_subselect("_repo_id", "IN", "_repo_id", KospexSchema.TBL_REPOS, "group_name", group)
             kd.group_name_where_subselect(group)
 
-
-        #print("Repository IDs")
+        # print("Repository IDs")
         # sql = '''SELECT distinct(_repo_id) as repo,
         #         round((julianday('now') - julianday(max(committer_when))) ,1) as last_commit,
         #         round((julianday('now') - julianday(min(committer_when))) ,1) as first_commit,
@@ -431,7 +493,7 @@ class Kospex:
         repoid_lookup = self.kospex_query.get_repo_id_lookup()
 
         for row in kd.execute():
-        #for row in self.kospex_db.query(sql):
+            # for row in self.kospex_db.query(sql):
 
             all_devs = self.kospex_query.authors_by_repo(row["repo"])
             set_devs = set(all_devs)
@@ -439,9 +501,10 @@ class Kospex:
             row["status"] = KospexUtils.development_status(row["last_commit"])
             row["active"] = repo_active_devs.get(row["repo"], 0)
             row["present"] = len(set_devs.intersection(active_devs))
-            #row['active_days'] = round(row["first_commit"] - row["last_commit"])
-            row['active_days'] = KospexUtils.days_between_datetimes(
-                                        row["last_commit"], row["first_commit"])
+            # row['active_days'] = round(row["first_commit"] - row["last_commit"])
+            row["active_days"] = KospexUtils.days_between_datetimes(
+                row["last_commit"], row["first_commit"]
+            )
 
             table.add_row(KospexUtils.get_values_by_keys(row, headers))
 
@@ -460,14 +523,14 @@ class Kospex:
 
         if table.rows:
             print(table)
-            #print(KospexUtils.count_key_occurrences(results, "status"))
+            # print(KospexUtils.count_key_occurrences(results, "status"))
         #    status = KospexUtils.count_key_occurrences(results, "status")
         #    status_table = KospexUtils.get_status_table(status)
         #    print()
-            #print(status_table)
+        # print(status_table)
         #    print()
 
-        #else:
+        # else:
         #    print("No repositories found in the kospex DB\n")
 
         return results
@@ -476,14 +539,14 @@ class Kospex:
         """
         Query the kospex db for active developers
         """
-        all_history = kwargs.get('all', False)
-        days = kwargs.get('days', 90)
+        all_history = kwargs.get("all", False)
+        days = kwargs.get("days", 90)
         # Make sure days is an integer before we use it in the SQL query to avoid SQL injection
         if not isinstance(days, int):
             raise ValueError(f"The value of days '{days}' is NOT an integer")
         where = ""
         date_where = ""
-        server = kwargs.get('server', None)
+        server = kwargs.get("server", None)
 
         params = []
 
@@ -493,30 +556,30 @@ class Kospex:
         # COUNT(DISTINCT(_repo_id)) as repos
         # FROM commits'''
 
-        sql = '''SELECT distinct(author_email) as author,
+        sql = """SELECT distinct(author_email) as author,
         MIN(author_when) as first_commit,
         MAX(author_when) as last_commit,
         round((julianday('now') - julianday(max(author_when))) ,1) as last_seen,
         COUNT(author_email) as commits,
         COUNT(DISTINCT(_repo_id)) as repos
-        FROM commits'''
+        FROM commits"""
 
         if not all_history:
             where = f"WHERE date(author_when) > date('now','-{days} day')"
             date_where = f"AND date(author_when) > date('now','-{days} day')"
 
-        group_by = '''GROUP BY author_email ORDER BY commits DESC'''
+        group_by = """GROUP BY author_email ORDER BY commits DESC"""
 
         row_count = 0
         # Handle if a Git repo is passed in
-        repo = kwargs.get('repo', None)
+        repo = kwargs.get("repo", None)
         if repo:
             # Check if we've synced the repo
             # Check if we've got the latest (and warn if not)
             self.set_repo_dir(repo)
-            kwargs['repo_id'] = self.git.get_repo_id()
+            kwargs["repo_id"] = self.git.get_repo_id()
 
-        org_key = kwargs.get('org_key', None)
+        org_key = kwargs.get("org_key", None)
 
         if org_key:
             # Get the repo_id for the org_key
@@ -524,26 +587,34 @@ class Kospex:
             if org_bits and len(org_bits) == 2:
                 server = org_bits[0]
                 org = org_bits[1]
-                #[_git_server] TEXT,
-                #[_git_owner] TEXT,
-                #where = f"WHERE _git_server = ? AND _git_owner = ? AND date(author_when) > date('now','-{days} day')"
+                # [_git_server] TEXT,
+                # [_git_owner] TEXT,
+                # where = f"WHERE _git_server = ? AND _git_owner = ? AND date(author_when) > date('now','-{days} day')"
                 where = f"WHERE _git_server = ? AND _git_owner = ? {date_where}"
                 params.append(server)
                 params.append(org)
-            #kwargs['repo_id'] = self.kospex_query.repo_id_by_org_key(org_key)
+            # kwargs['repo_id'] = self.kospex_query.repo_id_by_org_key(org_key)
         elif server:
             where = f"WHERE _git_server = ? {date_where}"
             params.append(server)
 
-        if kwargs.get('repo_id', None):
-            #where = f"WHERE _repo_id = ? AND date(author_when) > date('now','-{days} day')"
+        if kwargs.get("repo_id", None):
+            # where = f"WHERE _repo_id = ? AND date(author_when) > date('now','-{days} day')"
             where = f"WHERE _repo_id = ? {date_where}"
-            params.append(kwargs['repo_id'])
+            params.append(kwargs["repo_id"])
 
         sql_query = f"{sql} {where} {group_by}"
 
         table = PrettyTable()
-        table.field_names = ["username", "last_seen", "first_commit", "commits", "repos", "days_active", "author"]
+        table.field_names = [
+            "username",
+            "last_seen",
+            "first_commit",
+            "commits",
+            "repos",
+            "days_active",
+            "author",
+        ]
         table.align["username"] = "l"
         table.align["last_seen"] = "r"
         table.align["first_commit"] = "r"
@@ -564,16 +635,22 @@ class Kospex:
         for row in results:
             row["username"] = KospexUtils.extract_github_username(row["author"])
 
-            row["days_active"] = KospexUtils.days_between_datetimes(row["last_commit"],
-                                                                    row["first_commit"],
-                                                                    min_one=True)
+            row["days_active"] = KospexUtils.days_between_datetimes(
+                row["last_commit"], row["first_commit"], min_one=True
+            )
             records.append(row)
 
-            table.add_row([row["username"], row["last_seen"],
-                           KospexUtils.extract_db_date(row['first_commit']),
-                           row["commits"], row["repos"],
-                           row["days_active"],
-                           row["author"]])
+            table.add_row(
+                [
+                    row["username"],
+                    row["last_seen"],
+                    KospexUtils.extract_db_date(row["first_commit"]),
+                    row["commits"],
+                    row["repos"],
+                    row["days_active"],
+                    row["author"],
+                ]
+            )
             row_count += 1
 
         if row_count > 0:
@@ -586,11 +663,10 @@ class Kospex:
         else:
             print(f"{row_count} active developers in the last {days} days.")
 
-        outfile = kwargs.get("out",None)
+        outfile = kwargs.get("out", None)
         if outfile:
-            #KospexUtils.list_dict_2_csv(records, outfile, table.field_names)
+            # KospexUtils.list_dict_2_csv(records, outfile, table.field_names)
             KospexUtils.list_dict_2_csv(records, outfile)
-
 
         return records
 
@@ -598,8 +674,8 @@ class Kospex:
         """
         Print all the git repos in either the specified directory or database
         """
-        db = kwargs.get('db', False)
-        repo_id = kwargs.get('repo_id', False)
+        db = kwargs.get("db", False)
+        repo_id = kwargs.get("repo_id", False)
 
         table = PrettyTable()
         fields = ["Path", "Remote"]
@@ -618,13 +694,12 @@ class Kospex:
             for file in results:
                 self.git.set_repo(file)
                 parts = [file, self.git.get_remote_url()]
-                #table.add_row([file, os.path.abspath(file), self.git.get_remote_url()])
+                # table.add_row([file, os.path.abspath(file), self.git.get_remote_url()])
                 if repo_id:
                     parts.append(self.git.get_repo_id())
                 table.add_row(parts)
 
         elif db:
-
             # sql = '''SELECT DISTINCT(_repo_id) as repo, file_path, git_remote
             # FROM repos'''
 
@@ -633,46 +708,45 @@ class Kospex:
             #     sql += " WHERE _git_server = ?"
             #     params.append(server)
 
-            #results = self.kospex_db.query(sql, params)
+            # results = self.kospex_db.query(sql, params)
             print(kwargs)
             results = self.kospex_query.get_repos(**kwargs)
 
             for row in results:
-            #for row in self.kospex_db.query(sql,params):
-                parts = [row['file_path'], row['git_remote']]
+                # for row in self.kospex_db.query(sql,params):
+                parts = [row["file_path"], row["git_remote"]]
                 if repo_id:
-                    parts.append(row.get('_repo_id'))
+                    parts.append(row.get("_repo_id"))
                 table.add_row(parts)
 
         print(table)
 
     def file_repo_details(self, file):
-        """ return a hash of the kospex git details, including hash. """
+        """return a hash of the kospex git details, including hash."""
 
         repo_base = KospexUtils.find_git_base(file)
         repo_info = None
-        #self.set_repo_dir(KospexUtils.find_git_base(file))
+        # self.set_repo_dir(KospexUtils.find_git_base(file))
         if repo_base:
             self.set_repo_dir(repo_base)
             repo_info = self.git.add_git_to_dict({})
-            repo_info['hash'] = self.git.get_current_hash()
-            repo_info['file_path'] = file
+            repo_info["hash"] = self.git.get_current_hash()
+            repo_info["file_path"] = file
 
         return repo_info
 
-
     def tech_landscape(self, **kwargs):
-        """ Display the tech landscape using file extensions from commits or output from 'scc'.
+        """Display the tech landscape using file extensions from commits or output from 'scc'.
         Options:
         -repo_id to limit to a specific repo_id
         -metadata to use the file metadata instead of the committed files
         -commits to use the committed files history instead of the file metadata
         -repo to use a specific repo directory as a reference instead of user passing repo_id
         """
-        repo_id = kwargs.get('repo_id', None)
-        metadata = kwargs.get('metadata', False)
-        repo = kwargs.get('repo', None)
-        active = kwargs.get("active",None)
+        repo_id = kwargs.get("repo_id", None)
+        metadata = kwargs.get("metadata", False)
+        repo = kwargs.get("repo", None)
+        active = kwargs.get("active", None)
 
         where_clause = ""
         sync_warnings = []
@@ -682,7 +756,7 @@ class Kospex:
 
         if repo:
             self.set_repo_dir(repo)
-            #if self.needs_sync():
+            # if self.needs_sync():
             #    sync_warning = True
             repo_id = self.git.get_repo_id()
 
@@ -692,16 +766,16 @@ class Kospex:
             else:
                 where_clause = "WHERE _repo_id = ?"
 
-        commits_sql = f'''SELECT distinct(_ext) as Extension, count(distinct(file_path)) as Files
+        commits_sql = f"""SELECT distinct(_ext) as Extension, count(distinct(file_path)) as Files
                 FROM commit_files {where_clause}
                 GROUP BY 1
-                ORDER BY Files DESC'''
+                ORDER BY Files DESC"""
 
-        metadata_sql = f'''SELECT Language, count(*) as Files
+        metadata_sql = f"""SELECT Language, count(*) as Files
                 FROM file_metadata
                 WHERE latest = 1 {where_clause}
                 GROUP BY Language
-                ORDER BY Files DESC'''
+                ORDER BY Files DESC"""
 
         if metadata:
             sql = metadata_sql
@@ -725,7 +799,7 @@ class Kospex:
             for warning in sync_warnings:
                 print(warning)
 
-    #def repo_summary(self, repo_dir):
+    # def repo_summary(self, repo_dir):
     #    """ Display a summary of the repo, for a specific repo directory.
     #        The output includes the file extension, number of commits, % of commits."""
     #    self.set_repo_dir(repo_dir)
@@ -761,8 +835,9 @@ class Kospex:
     #    self.chdir_original()
     #
 
-    def cli_file_metadata(self, repo_dir=None, force=None, repo_id=None,
-        file_type=None,sync=None):
+    def cli_file_metadata(
+        self, repo_dir=None, force=None, repo_id=None, file_type=None, sync=None
+    ):
         """
         Get some basic metadata about the files in the repo using panopticas.
         Should only have a repo_dir OR a repo_id, NOT both
@@ -780,7 +855,7 @@ class Kospex:
             files = self.git.get_repo_files(language=file_type)
 
         elif repo_id:
-            files = self.kospex_query.repo_files(repo_id=repo_id,tech=file_type)
+            files = self.kospex_query.repo_files(repo_id=repo_id, tech=file_type)
 
         else:
             return None
@@ -799,20 +874,20 @@ class Kospex:
                 # Assuming we're a repo_id
                 meta = file
 
-            row['Filename'] = meta.get("Location", meta.get("Provider",""))
-            row['Type'] =  meta.get("Language","?")
+            row["Filename"] = meta.get("Location", meta.get("Provider", ""))
+            row["Type"] = meta.get("Language", "?")
 
             tags = meta.get("tech_type", None)
 
             if repo_dir:
                 if tags:
                     row["tech_type"] = tags
-                    row['Tags'] = ", ".join(tags)
+                    row["Tags"] = ", ".join(tags)
             else:
                 # Assuming we're coming from the DB query
-                tags = KospexSchema.db_tags_to_array(meta.get('tech_type'))
+                tags = KospexSchema.db_tags_to_array(meta.get("tech_type"))
                 if tags:
-                    row['Tags'] = ", ".join(tags)
+                    row["Tags"] = ", ".join(tags)
 
             table.add_row(KospexUtils.get_values_by_keys(row, table.field_names))
 
@@ -820,30 +895,28 @@ class Kospex:
 
             # Handle the format for sync data, only with repo_dir
             # We hould have raised a ValueError at the top of the method
-            #if sync:
-                #PRIMARY KEY(Provider,hash,_repo_id)
-                # sync_data = {
-                #     "hash": git_hash,
-                #     "_repo_id": repo_id,
-                #     "latest": 1
-                # }
-                # Add the latest = 1, because that's what we queried
-                # Only really needed when we don't have any data
-                # and not metadata has been sync'ed
+            # if sync:
+            # PRIMARY KEY(Provider,hash,_repo_id)
+            # sync_data = {
+            #     "hash": git_hash,
+            #     "_repo_id": repo_id,
+            #     "latest": 1
+            # }
+            # Add the latest = 1, because that's what we queried
+            # Only really needed when we don't have any data
+            # and not metadata has been sync'ed
 
-                # sync_data['Provider'] = row['Filename']
-                # sync_data['Language'] = row["Type"]
-                # sync_data['Filename'] = meta.get("Filename")
-                # if tags:
-                #     #sync_data['tech_type'] = "|" + "|".join(panopticas.get_filename_metatypes(file)) + "|"
-                #     sync_data['tech_type'] = KospexSchema.array_to_db_tags(row['tech_type'])
+            # sync_data['Provider'] = row['Filename']
+            # sync_data['Language'] = row["Type"]
+            # sync_data['Filename'] = meta.get("Filename")
+            # if tags:
+            #     #sync_data['tech_type'] = "|" + "|".join(panopticas.get_filename_metatypes(file)) + "|"
+            #     sync_data['tech_type'] = KospexSchema.array_to_db_tags(row['tech_type'])
 
-                #sync_rows.append(sync_data)
-                #sync_rows = KospexSchema.metadata_rows_from_repo_files()
-
+            # sync_rows.append(sync_data)
+            # sync_rows = KospexSchema.metadata_rows_from_repo_files()
 
         if sync:
-
             # Reset "last" flags to false
             reset_last_sql = f"""UPDATE {KospexSchema.TBL_FILE_METADATA} SET LATEST = 0
             WHERE _repo_id = ?"""
@@ -851,17 +924,15 @@ class Kospex:
 
             sync_rows = KospexSchema.metadata_rows_from_repo_files(files)
 
-            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(sync_rows,
-                pk=["Provider","hash","_repo_id"]
+            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(
+                sync_rows, pk=["Provider", "hash", "_repo_id"]
             )
-
 
         return table
 
-        #print(table)
+        # print(table)
 
-
-    def file_metadata(self, repo_directory,force=None,skip_last_commit=None):
+    def file_metadata(self, repo_directory, force=None, skip_last_commit=None):
         """
         Get some basic metadata about the files in the repo using 'scc'
         skip_last_commit: bool = False - Don't run the git command for each file if true
@@ -881,14 +952,13 @@ class Kospex:
         if row and not force:
             print(f"Already have metadata for {git_hash} and repo_id {str(repo_id)}")
         else:
-
             # scc wont' analyse everything, so we need to do a file find for items not analysed
-            #files = self.git.get_repo_files(skip_last_commit=skip_last_commit)
+            # files = self.git.get_repo_files(skip_last_commit=skip_last_commit)
             start = time.perf_counter()
             print("Finding repo files ...")
             files = self.git.get_repo_files(skip_last_commit=skip_last_commit)
             end = time.perf_counter()
-            print(f"get_repo_files executed in {(end - start)*1000:.2f}ms")
+            print(f"get_repo_files executed in {(end - start) * 1000:.2f}ms")
             # This will be a dict of file paths and their metadata
 
             # Reset "latest" flags to false
@@ -901,28 +971,40 @@ class Kospex:
             git_rows = KospexSchema.metadata_rows_from_repo_files(files)
             # Also adds the Latest = 1
 
-            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(git_rows,
-                                 pk=["Provider","hash","_repo_id"]
-                             )
+            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(
+                git_rows, pk=["Provider", "hash", "_repo_id"]
+            )
 
             # Check we've got scc installed, add additional metadata if we can
-            installed = which('scc')
+            installed = which("scc")
             if not installed:
                 print("""WARNING: scc is not installed.
                          Please install scc from https://github.com/boyter/scc""")
             else:
                 # Let's grab the file metadata using 'scc'
-                metadata = subprocess.run(["scc", "--by-file", "-f", "csv"],
-                                        stdout=subprocess.PIPE,
-                                        text=True, check=False)
+                metadata = subprocess.run(
+                    ["scc", "--by-file", "-f", "csv"],
+                    stdout=subprocess.PIPE,
+                    text=True,
+                    check=False,
+                )
 
                 csv_reader = csv.DictReader(metadata.stdout.splitlines())
                 # TODO - revist parsing of scc output
                 # As of version 3.3.3, the output is:
                 # Language,Provider,Filename,Lines,Code,Comments,Blanks,Complexity,Bytes,ULOC
                 # A new ULOC parameter was added, which is not currently in our schema
-                meta_cols = [ "Language","Provider","Filename","Lines",
-                            "Code","Comments","Blanks","Complexity","Bytes" ]
+                meta_cols = [
+                    "Language",
+                    "Provider",
+                    "Filename",
+                    "Lines",
+                    "Code",
+                    "Comments",
+                    "Blanks",
+                    "Complexity",
+                    "Bytes",
+                ]
 
                 commit_info_sql = f"""SELECT committer_when, hash FROM {KospexSchema.TBL_COMMIT_FILES}
                 WHERE file_path = ? and _repo_id = ? ORDER BY committer_when DESC LIMIT 1"""
@@ -943,23 +1025,25 @@ class Kospex:
 
                 for row in csv_reader:
                     row = {key: row[key] for key in meta_cols if key in row}
-                    row['hash'] = git_hash
+                    row["hash"] = git_hash
 
                     # TODO - this doesn't work, a newly cloned repo will have mtime of when it was cloned
-                    #row['_mtime'] = os.path.getmtime(row['Filename'])
+                    # row['_mtime'] = os.path.getmtime(row['Filename'])
                     # Set this entry to the latest. Required for tech landscape queries
-                    row['latest'] = 1
+                    row["latest"] = 1
 
                     # We only want to add files which are managed by Git
                     file_path = row.get("Provider")
                     if files.get(file_path):
                         print(f"file_path/Provider : {file_path}")
-                        #commit_info = next(self.kospex_db.query(commit_info_sql, [row['Provider'], repo_id]),None)
-                        commit_info = next(db.query(commit_info_sql, [row['Provider'], repo_id]),None)
+                        # commit_info = next(self.kospex_db.query(commit_info_sql, [row['Provider'], repo_id]),None)
+                        commit_info = next(
+                            db.query(commit_info_sql, [row["Provider"], repo_id]), None
+                        )
 
                         if commit_info:
-                            row['committer_when'] = commit_info.get("committer_when")
-                            row['hash'] = commit_info.get("hash")
+                            row["committer_when"] = commit_info.get("committer_when")
+                            row["hash"] = commit_info.get("hash")
                         else:
                             print(f"commit_info is None for file_path : {file_path}")
 
@@ -968,18 +1052,24 @@ class Kospex:
                     else:
                         print(f"file_path/Provider : {file_path}, not managed by Git")
 
-                self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(data_rows,
-                    pk=["Provider","hash","_repo_id"]
+                self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(
+                    data_rows, pk=["Provider", "hash", "_repo_id"]
                 )
 
-                print("Added " + str(len(data_rows)) + " rows to " +
-                    KospexSchema.TBL_FILE_METADATA + " for repo_id " + str(self.git.get_repo_id()))
+                print(
+                    "Added "
+                    + str(len(data_rows))
+                    + " rows to "
+                    + KospexSchema.TBL_FILE_METADATA
+                    + " for repo_id "
+                    + str(self.git.get_repo_id())
+                )
 
         self.chdir_original()
         return data_rows
 
     def sync_metadata(self, data_directory):
-        """ Find all git repos and sync the metadata to the kospex database """
+        """Find all git repos and sync the metadata to the kospex database"""
         repos = KospexUtils.find_repos(data_directory)
         print(f"Found {str(len(repos))} repos")
         for repo in repos:
@@ -987,11 +1077,11 @@ class Kospex:
             self.file_metadata(repo)
 
     def hotspot(self, **kwargs):
-        """ Calculate the hotspots for a repo on disk. """
+        """Calculate the hotspots for a repo on disk."""
         # Prequesites - This directory has been synced to commits, files and with file_metadata
         # Find the number of commits in each repo and the 1st and last time we've seen it active
 
-        repo_directory = kwargs.get('repo', None)
+        repo_directory = kwargs.get("repo", None)
 
         # Call the helper and raise an exception if there are any issues
         KospexUtils.validate_params(**kwargs)
@@ -1003,16 +1093,15 @@ class Kospex:
         # Get the more recent commit hash of the directory from the kospex DB
         last_sync = self.get_hash(repo_id=repo_id, newest=True)
 
-        if last_sync and git_hash == last_sync['hash']:
-
-            sql = '''SELECT _repo_id, count(*) as commits, min(committer_when) as first_seen,
+        if last_sync and git_hash == last_sync["hash"]:
+            sql = """SELECT _repo_id, count(*) as commits, min(committer_when) as first_seen,
             count(DISTINCT(author_email)) as authors,
             max(committer_when) as last_seen
             FROM commits
             WHERE _repo_id = ?
             GROUP BY 1
             ORDER BY 2
-            '''
+            """
             row = self.kospex_db.query(sql, [repo_id])
             result = next(row, None)
             print(result)
@@ -1021,17 +1110,18 @@ class Kospex:
             loc = 0
             files = 0
             for file in metadata:
-                loc += file['Lines']
+                loc += file["Lines"]
                 files += 1
-                self.get_file_metadata_hotspot(repo_id, file['Filename'], git_hash)
+                self.get_file_metadata_hotspot(repo_id, file["Filename"], git_hash)
             # Create an entry in the hotspots table for the repo
             # Add the Lines of code we've seen
-            result['loc'] = loc
-            result['files'] = files
-            result['hash'] = git_hash
+            result["loc"] = loc
+            result["files"] = files
+            result["hash"] = git_hash
 
             self.kospex_db.table(KospexSchema.TBL_REPO_HOTSPOTS).upsert(
-                self.git.add_git_to_dict(result), pk=['_repo_id', 'hash'])
+                self.git.add_git_to_dict(result), pk=["_repo_id", "hash"]
+            )
 
             # TODO - remove this debug code
             print(result)
@@ -1046,19 +1136,19 @@ class Kospex:
         self.chdir_original()
 
     def get_last_metadata_files(self, repo_id):
-        """ Get the last metadata files for a specific repo """
-        sql = '''SELECT * FROM file_metadata WHERE _repo_id = ? AND latest = 1'''
+        """Get the last metadata files for a specific repo"""
+        sql = """SELECT * FROM file_metadata WHERE _repo_id = ? AND latest = 1"""
         return self.kospex_db.query(sql, [repo_id])
 
     def get_metadata_files(self, repo_id, git_hash):
-        """ Get the metadata files for a specific repo and hash """
-        sql = '''SELECT * FROM file_metadata WHERE _repo_id = ? AND hash = ?'''
+        """Get the metadata files for a specific repo and hash"""
+        sql = """SELECT * FROM file_metadata WHERE _repo_id = ? AND hash = ?"""
         return self.kospex_db.query(sql, [repo_id, git_hash])
 
     def get_file_metadata_hotspot(self, repo_id, filename, git_hash):
-        """ Get the file metadata for a specific file and hash """
+        """Get the file metadata for a specific file and hash"""
         # TODO - make this git_hash aware, and query there the commits are <= git_hash commit time
-        sql = '''SELECT file_path as Location, COUNT(*) as commits,
+        sql = """SELECT file_path as Location, COUNT(*) as commits,
         COUNT(DISTINCT(author_email)) as authors, commits._repo_id
         FROM commits, commit_files
         WHERE commits._repo_id = ? AND
@@ -1066,21 +1156,22 @@ class Kospex:
         file_path = ? AND
         commits._repo_id = commit_files._repo_id AND
         commits.hash = commit_files.hash
-        GROUP BY 1'''
+        GROUP BY 1"""
         # Next, upsert the calculated hotspot data into the file_metadata table
         result = next(self.kospex_db.query(sql, [repo_id, repo_id, filename]), None)
         # If we don't have a result, then this file is not managed by git
         # and most likely a local file which has not been committed
         if result:
-            result['hash'] = git_hash
+            result["hash"] = git_hash
             self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert(
-                result, pk=['Location', 'hash', '_repo_id'])
+                result, pk=["Location", "hash", "_repo_id"]
+            )
             print(f"Syncing {filename}")
         else:
             print(f"{filename} is not managed by Git")
 
     def get_krunner_directory(self):
-        """ Get the directory where the krunner files are stored """
+        """Get the directory where the krunner files are stored"""
         # TODO - check the init process in KospexUtils .. need to be run on first run
         krunner_path = os.path.expanduser("~/kospex/krunner")
         if not os.path.exists(krunner_path):
@@ -1088,35 +1179,39 @@ class Kospex:
         return krunner_path
 
     def generate_krunner_filename(self, function=None, ext="out"):
-        """ Get the path to a krunner file """
+        """Get the path to a krunner file"""
         krunner_path = self.get_krunner_directory()
         # TODO - do better path join method and validate no path traversal .. etc
-        return os.path.join(krunner_path, self.git.get_repo_id() + "."  + function + "." + ext)
+        return os.path.join(
+            krunner_path, self.git.get_repo_id() + "." + function + "." + ext
+        )
 
     def extract_krunner_file_details(self, filename, krunner_home=None):
-        """ Extract the repo_id and function from a krunner filename """
+        """Extract the repo_id and function from a krunner filename"""
         metadata = filename.removeprefix(krunner_home + "/")
         details = {}
         repo_mash = metadata.split("~")
         # repo mash will split on ~ to more easily the git server
         # Which can have multiple . in a domain name
-        details['org'] = repo_mash[1]
-        details['git_server'] = repo_mash[0]
+        details["org"] = repo_mash[1]
+        details["git_server"] = repo_mash[0]
         repo_function_ext = repo_mash[2]
         parts = repo_function_ext.split(".")
-        details['repo'] = parts[0]
-        details['function'] = parts[1]
-        details['ext'] = parts[2]
-        details['repo_id'] = details['git_server'] + "~" + details['org'] + "~" + details['repo']
+        details["repo"] = parts[0]
+        details["function"] = parts[1]
+        details["ext"] = parts[2]
+        details["repo_id"] = (
+            details["git_server"] + "~" + details["org"] + "~" + details["repo"]
+        )
 
-        #parts = metadata.split(".")
-        #details['repo_id'] = parts[0]
-        #details['function'] = parts[1]
-        #details['ext'] = parts[2]
+        # parts = metadata.split(".")
+        # details['repo_id'] = parts[0]
+        # details['function'] = parts[1]
+        # details['ext'] = parts[2]
         return details
 
     def update_repo_status(self, repo_dir=None, last_sync=None, display_progress=True):
-        """ Update the status of a repo """
+        """Update the status of a repo"""
 
         if repo_dir:
             self.set_repo_dir(repo_dir)
@@ -1124,23 +1219,23 @@ class Kospex:
         # has already been called
 
         details = {}
-        details['file_path'] = self.repo_directory
+        details["file_path"] = self.repo_directory
         details = self.git.add_git_to_dict(details)
 
         if last_sync:
-            details['last_sync'] = last_sync
+            details["last_sync"] = last_sync
 
         details["first_seen"] = KospexUtils.get_first_commit_date(self.repo_directory)
         details["last_seen"] = KospexUtils.get_last_commit_date(self.repo_directory)
-        details['git_remote'] = self.git.get_remote_url()
+        details["git_remote"] = self.git.get_remote_url()
 
         if display_progress:
             print(f"Updating repo status for {self.repo_directory}")
             print(f"\twith repo_id {self.git.get_repo_id()}")
             print(f"\tgit_remote: {self.git.get_remote_url()}")
 
-        #print(details)
-        self.kospex_db.table(KospexSchema.TBL_REPOS).upsert(details,pk=['_repo_id'])
+        # print(details)
+        self.kospex_db.table(KospexSchema.TBL_REPOS).upsert(details, pk=["_repo_id"])
 
     def get_kospex_table_summary(self, display_progress=False):
         """
@@ -1153,10 +1248,9 @@ class Kospex:
 
         table.align["Table"] = "l"
         table.align["Rows"] = "r"
-        #table.align["commits"] = "r"
+        # table.align["commits"] = "r"
 
         for db_table in KospexSchema.KOSPEX_TABLES:
-
             if display_progress:
                 print(f"Checking {db_table} table")
 
@@ -1176,14 +1270,14 @@ class Kospex:
     def get_kospex_config_table(self):
         """
         Get the kospex configuration
-        return it in a PrettyTable """
+        return it in a PrettyTable"""
 
         config = KospexUtils.get_all_config()
         table = KospexUtils.get_keyvalue_table(config)
 
         return table
 
-    def delete_repo_id_from_table(self,table,repo_id):
+    def delete_repo_id_from_table(self, table, repo_id):
         """
         Remove all rows in a table for the given repo_id
         """
@@ -1193,7 +1287,7 @@ class Kospex:
         kd = KospexData(kospex_db=self.kospex_db)
         kd.delete()
         kd.from_table(table)
-        kd.where("_repo_id","=",repo_id)
+        kd.where("_repo_id", "=", repo_id)
         print(kd.generate_sql())
         return kd.execute()
 
@@ -1220,15 +1314,9 @@ class Kospex:
                 # Execute the ALTER TABLE command
                 db.execute(command)
                 # If execution succeeded, no error
-                results.append({
-                    'command': command,
-                    'error': None
-                })
+                results.append({"command": command, "error": None})
             except Exception as e:
                 # If there's an error, store it along with the command
-                results.append({
-                    'command': command,
-                    'error': str(e)
-                })
+                results.append({"command": command, "error": str(e)})
 
         return results
