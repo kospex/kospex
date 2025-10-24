@@ -12,7 +12,7 @@ from dataclasses import dataclass, asdict, field
 from datetime import timezone
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import tomllib
 from packaging.requirements import Requirement
 import dateutil.parser
