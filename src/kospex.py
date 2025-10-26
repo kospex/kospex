@@ -6,9 +6,12 @@ import json
 import logging
 from datetime import datetime, timezone, timedelta
 from shutil import which
+import ssl
+import socket
 import click
 import requests
 from kospex_core import Kospex, GitRepo
+from rich.console import Console
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 from kospex_query import KospexQuery
@@ -19,6 +22,7 @@ import krunner_utils as KrunnerUtils
 # Initialize Kospex environment with enhanced logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kospex = Kospex()
+console = Console()
 
 # Get logger using the new centralized logging system
 log = KospexUtils.get_kospex_logger('kospex')
@@ -742,6 +746,7 @@ def key_person(directory,top):
     headers = table.field_names
 
     authors = kquery.key_person(repo_id=kgit.get_repo_id(),top=top)
+    console.print(authors)
 
     for a in authors:
         table.add_row(KospexUtils.get_values_by_keys(a, headers))
@@ -1238,6 +1243,137 @@ def status():
         print("git:\tNot installed")
 
     print("\n")
+
+@cli.command("connectivity")
+@click.option('-save', is_flag=True, default=False, help="Save root and intermediate CA certificates to ~/kospex/REQUEST_CA_CERTS.")
+def connectivity(save):
+    """
+    Test connectivity to api.deps.dev and check for SSL errors.
+
+    This command attempts to connect to api.deps.dev and reports any SSL certificate errors.
+    Use the -save flag to export the certificate chain to ~/kospex/REQUEST_CA_CERTS.
+    """
+    log.info("Testing connectivity to api.deps.dev")
+
+    test_url = "https://api.deps.dev/v3alpha/systems"
+    hostname = "api.deps.dev"
+    port = 443
+
+    print(f"\nTesting connectivity to {hostname}...")
+    print(f"URL: {test_url}\n")
+
+    # Try to make a simple request
+    ssl_error = None
+    response = None
+
+    try:
+        response = requests.get(test_url, timeout=10)
+        print(f"✓ Successfully connected to {hostname}")
+        print(f"  Status Code: {response.status_code}")
+        print(f"  SSL Verification: PASSED")
+        log.info(f"Successfully connected to {hostname}")
+    except requests.exceptions.SSLError as e:
+        ssl_error = e
+        print(f"✗ SSL Error detected when connecting to {hostname}")
+        print(f"  Error: {str(e)}")
+        log.error(f"SSL Error connecting to {hostname}: {str(e)}")
+    except requests.exceptions.RequestException as e:
+        print(f"✗ Connection error: {str(e)}")
+        log.error(f"Connection error: {str(e)}")
+        return
+
+    # If -save flag is set or if there was an SSL error, extract certificates
+    if save or ssl_error:
+        print(f"\n{'Extracting' if save else 'Analyzing'} certificate chain from {hostname}...")
+
+        try:
+            # Create an SSL context that doesn't verify certificates
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+
+            # Connect and get the certificate chain
+            with socket.create_connection((hostname, port), timeout=10) as sock:
+                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                    # Get the certificate in DER format
+                    der_cert = ssock.getpeercert(binary_form=True)
+
+                    # Convert to PEM format
+                    pem_cert = ssl.DER_cert_to_PEM_cert(der_cert)
+
+                    # Get certificate information
+                    cert_dict = ssock.getpeercert()
+
+                    print(f"\n✓ Retrieved certificate from {hostname}")
+                    if cert_dict:
+                        subject = dict(x[0] for x in cert_dict.get('subject', ()))
+                        issuer = dict(x[0] for x in cert_dict.get('issuer', ()))
+                        print(f"  Subject: {subject.get('commonName', 'N/A')}")
+                        print(f"  Issuer: {issuer.get('commonName', 'N/A')}")
+                        print(f"  Valid from: {cert_dict.get('notBefore', 'N/A')}")
+                        print(f"  Valid until: {cert_dict.get('notAfter', 'N/A')}")
+
+                    if save:
+                        # Save to ~/kospex/REQUEST_CA_CERTS
+                        kospex_home = os.getenv("KOSPEX_HOME", os.path.expanduser("~/kospex"))
+                        cert_file = os.path.join(kospex_home, "REQUEST_CA_CERTS")
+
+                        try:
+                            # Check if certificate already exists in the file
+                            cert_exists = False
+                            if os.path.exists(cert_file):
+                                with open(cert_file, 'r') as f:
+                                    existing_content = f.read()
+                                    # Check if this exact certificate is already in the file
+                                    if pem_cert.strip() in existing_content:
+                                        cert_exists = True
+                                        print(f"\n✓ Certificate already exists in: {cert_file}")
+                                        log.info(f"Certificate for {hostname} already exists in {cert_file}")
+
+                            if not cert_exists:
+                                # Append certificate with header comment
+                                mode = 'a' if os.path.exists(cert_file) else 'w'
+                                with open(cert_file, mode) as f:
+                                    # Add header comment for clarity
+                                    if mode == 'a':
+                                        f.write("\n")  # Add blank line between certificates
+                                    f.write(f"# Certificate for {hostname}\n")
+                                    f.write(f"# Retrieved: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
+                                    f.write(pem_cert)
+                                    if not pem_cert.endswith('\n'):
+                                        f.write('\n')
+
+                                action = "appended to" if mode == 'a' else "saved to"
+                                print(f"\n✓ Certificate {action}: {cert_file}")
+                                print(f"  You can use this file with the REQUESTS_CA_BUNDLE environment variable:")
+                                print(f"  export REQUESTS_CA_BUNDLE={cert_file}")
+                                log.info(f"Certificate for {hostname} {action} {cert_file}")
+                        except IOError as e:
+                            print(f"\n✗ Error saving certificate: {str(e)}")
+                            log.error(f"Error saving certificate: {str(e)}")
+
+        except socket.error as e:
+            print(f"\n✗ Socket error while retrieving certificate: {str(e)}")
+            log.error(f"Socket error while retrieving certificate: {str(e)}")
+        except ssl.SSLError as e:
+            print(f"\n✗ SSL error while retrieving certificate: {str(e)}")
+            log.error(f"SSL error while retrieving certificate: {str(e)}")
+        except Exception as e:
+            print(f"\n✗ Unexpected error: {str(e)}")
+            log.error(f"Unexpected error: {str(e)}")
+
+    # Summary
+    print("\n" + "="*60)
+    if ssl_error:
+        print("⚠ WARNING: SSL certificate verification failed!")
+        print("\nRecommendations:")
+        print("  1. Check your system's CA certificate bundle")
+        print("  2. Update your system's CA certificates")
+        print("  3. Use the -save flag to export the certificate")
+        print("  4. Check if you're behind a corporate proxy")
+    else:
+        print("✓ Connectivity test completed successfully")
+    print("="*60 + "\n")
 
 #
 # Start of the main program
