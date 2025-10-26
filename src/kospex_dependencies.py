@@ -8,6 +8,7 @@ import json
 import csv
 import urllib
 import time
+import codecs
 from dataclasses import dataclass, asdict, field
 from datetime import timezone
 from urllib.parse import urlparse
@@ -729,7 +730,8 @@ class KospexDependencies:
     def parse_pip_requirements_file(self, filename):
         """Parse a pip requirements.txt file and return a list of packages"""
         packages = []
-        with open(filename, "r", encoding="utf-8") as f:
+        encoding = self.detect_encoding(filename)
+        with open(filename, "r", encoding=encoding) as f:
             for line in f.readlines():
                 if line.startswith("#"):
                     continue
@@ -1260,6 +1262,20 @@ class KospexDependencies:
         #     print(f"Skipping package with missing type or name: {package_type} and {package_name}")
 
         return is_malware
+
+    def detect_encoding(self, file_path):
+        """Detect UTF encoding using BOM or default to UTF-8."""
+        with open(file_path, "rb") as f:
+            start = f.read(4)
+
+        if start.startswith(codecs.BOM_UTF8):
+            return "utf-8-sig"
+        elif start.startswith(codecs.BOM_UTF16_LE):
+            return "utf-16-le"
+        elif start.startswith(codecs.BOM_UTF16_BE):
+            return "utf-16-be"
+        else:
+            return "utf-8"
 
     def package_dependencies(self, package: str, version: str, ecosystem: str):
         """
