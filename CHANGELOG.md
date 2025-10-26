@@ -2,6 +2,16 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.33 - 2025-10-26
+
+### Fixed
+- [Encoding type was UTF-8 can now handle UTF-16](https://github.com/kospex/kospex/issues/74)
+
+### Work in Progress
+- [Connectivity check for SSL and trusted CAs](https://github.com/kospex/kospex/issues/73)
+We've done some initial work on implementing SSL CA checks.
+
+
 ## 0.0.32 - 2025-10-24
 
 ### Fixed

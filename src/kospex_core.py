@@ -42,7 +42,7 @@ class Kospex:
     """
 
     VERSION = (
-        "0.0.32"  # This value should align with the pyproject.toml version for pip
+        "0.0.33"  # This value should align with the pyproject.toml version for pip
     )
 
     def __init__(self):
