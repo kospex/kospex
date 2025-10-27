@@ -2,6 +2,12 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.34 - 2025-10-27
+
+### Fixed
+
+- [Fixed a bug which crash the csv process in the krunner osi command](https://github.com/kospex/kospex/issues/76)
+
 ## 0.0.33 - 2025-10-26
 
 ### Fixed

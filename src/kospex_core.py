@@ -41,9 +41,7 @@ class Kospex:
     kospex core functionality
     """
 
-    VERSION = (
-        "0.0.33"  # This value should align with the pyproject.toml version for pip
-    )
+    VERSION = "0.0.34"  # This value should align with the pyproject.toml version for pip
 
     def __init__(self):
         self.original_cwd = None
@@ -162,9 +160,7 @@ class Kospex:
         return latest_datetime
 
     # def sync_repo2(self, directory, **kwargs):
-    def sync_repo(
-        self, directory, limit=None, from_date=None, to_date=None, no_scc=None
-    ):
+    def sync_repo(self, directory, limit=None, from_date=None, to_date=None, no_scc=None):
         """Sync the commit data (authors, commmitters, files, etc) for the given directory"""
         # def sync_commits(conn, git_dir, limit=None, from_date=None, to_date=None):
 
@@ -254,9 +250,7 @@ class Kospex:
                     }
 
                 else:
-                    commit["filenames"].append(
-                        {"filename": line, "additions": 0, "deletions": 0}
-                    )
+                    commit["filenames"].append({"filename": line, "additions": 0, "deletions": 0})
 
             else:
                 if commit:  # Save the last commit
@@ -279,9 +273,7 @@ class Kospex:
             # Need to copy as we
             results.append(commit.copy())
             del commit["filenames"]
-            self.kospex_db.table(KospexSchema.TBL_COMMITS).upsert(
-                commit, pk=["_repo_id", "hash"]
-            )
+            self.kospex_db.table(KospexSchema.TBL_COMMITS).upsert(commit, pk=["_repo_id", "hash"])
 
             # Insert the filenames to the database
             for file_info in commit_files:
@@ -304,9 +296,7 @@ class Kospex:
         print(f"Synced {len(commits)} total commits")
 
         # Update the repos table with the last sync time
-        last_sync = (
-            datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
-        )
+        last_sync = datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
         self.update_repo_status(last_sync=last_sync)
 
         print("Processing file metadata...")
@@ -373,9 +363,7 @@ class Kospex:
         table.align["_ext"] = "l"
         table.align["commits"] = "r"
         for row in author_techs:
-            row["_ext"] = (
-                (row["_ext"][:18] + "..") if len(row["_ext"]) > 20 else row["_ext"]
-            )
+            row["_ext"] = (row["_ext"][:18] + "..") if len(row["_ext"]) > 20 else row["_ext"]
             row["first_commit"] = KospexUtils.extract_db_date(row["first_commit"])
             row["last_commit"] = KospexUtils.extract_db_date(row["last_commit"])
             table.add_row(KospexUtils.get_values_by_keys(row, headers))
@@ -396,24 +384,18 @@ class Kospex:
         # print("# Repositories:\t" + self.get_one("SELECT COUNT(DISTINCT(_repo_id)) FROM commits"))
         print(
             "# Repositories:\t"
-            + self.get_one(
-                "COUNT(DISTINCT(_repo_id))", KospexSchema.TBL_COMMITS, kwargs
-            )
+            + self.get_one("COUNT(DISTINCT(_repo_id))", KospexSchema.TBL_COMMITS, kwargs)
         )
         # print("# Authors:\t" + self.get_one("SELECT COUNT(DISTINCT(author_email)) FROM commits"))
         print(
             "# Authors:\t"
-            + self.get_one(
-                "COUNT(DISTINCT(author_email))", KospexSchema.TBL_COMMITS, kwargs
-            )
+            + self.get_one("COUNT(DISTINCT(author_email))", KospexSchema.TBL_COMMITS, kwargs)
         )
 
         # self.get_one("SELECT COUNT(DISTINCT(committer_email)) FROM commits"))
         print(
             "# Committers:\t"
-            + self.get_one(
-                "COUNT(DISTINCT(committer_email))", KospexSchema.TBL_COMMITS, kwargs
-            )
+            + self.get_one("COUNT(DISTINCT(committer_email))", KospexSchema.TBL_COMMITS, kwargs)
         )
         print()
 
@@ -835,9 +817,7 @@ class Kospex:
     #    self.chdir_original()
     #
 
-    def cli_file_metadata(
-        self, repo_dir=None, force=None, repo_id=None, file_type=None, sync=None
-    ):
+    def cli_file_metadata(self, repo_dir=None, force=None, repo_id=None, file_type=None, sync=None):
         """
         Get some basic metadata about the files in the repo using panopticas.
         Should only have a repo_dir OR a repo_id, NOT both
@@ -1182,9 +1162,7 @@ class Kospex:
         """Get the path to a krunner file"""
         krunner_path = self.get_krunner_directory()
         # TODO - do better path join method and validate no path traversal .. etc
-        return os.path.join(
-            krunner_path, self.git.get_repo_id() + "." + function + "." + ext
-        )
+        return os.path.join(krunner_path, self.git.get_repo_id() + "." + function + "." + ext)
 
     def extract_krunner_file_details(self, filename, krunner_home=None):
         """Extract the repo_id and function from a krunner filename"""
@@ -1200,9 +1178,7 @@ class Kospex:
         details["repo"] = parts[0]
         details["function"] = parts[1]
         details["ext"] = parts[2]
-        details["repo_id"] = (
-            details["git_server"] + "~" + details["org"] + "~" + details["repo"]
-        )
+        details["repo_id"] = details["git_server"] + "~" + details["org"] + "~" + details["repo"]
 
         # parts = metadata.split(".")
         # details['repo_id'] = parts[0]
