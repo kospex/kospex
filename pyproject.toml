@@ -57,3 +57,33 @@ kweb = "kweb2:main"
 Homepage = "https://kospex.io"
 Issues = "https://github.com/kospex/kospex/issues"
 Repository = "https://github.com/kospex/kospex"
+
+[tool.ruff]
+# Enable these rule categories
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+]
+
+# Ignore F401 (unused imports), F541 (f-string without placeholders), E501 (Line too long)
+# Ignore I001 (Import block is un-sorted or unformatted), N812  (Lowercase `x_y` imported as non-lowercase `X_Y`
+# These will only show as warnings, not fail the build
+ignore = ["F401", "F541", "E501", "I001" ,"N812"]
+
+# Exclude common directories
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".venv",
+    "venv",
+]
+
+line-length = 100
