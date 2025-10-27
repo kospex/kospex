@@ -11,6 +11,7 @@ import kospex_utils as KospexUtils
 from kospex_query import KospexQuery
 import panopticas as Panopticas
 from kospex_observation import Observation
+import kospex_schema as KospexSchema
 
 
 class KospexGit:
@@ -107,9 +108,7 @@ class KospexGit:
             if len(path_parts) >= 4 and path_parts[2] == "_git":
                 organization = path_parts[0]
                 project = path_parts[1]
-                repository = "/".join(
-                    path_parts[3:]
-                )  # Handle repos with slashes in name
+                repository = "/".join(path_parts[3:])  # Handle repos with slashes in name
 
                 return {
                     "remote": parsed.netloc,
@@ -128,9 +127,7 @@ class KospexGit:
 
             if len(path_parts) >= 3 and path_parts[1] == "_git":
                 project = path_parts[0]
-                repository = "/".join(
-                    path_parts[2:]
-                )  # Handle repos with slashes in name
+                repository = "/".join(path_parts[2:])  # Handle repos with slashes in name
 
                 return {
                     "remote": parsed.netloc,
@@ -375,9 +372,7 @@ class KospexGit:
         original_directory = os.getcwd()
         os.chdir(directory)
         # Run git command to get remote branches
-        result = subprocess.run(
-            ["git", "branch", "-r"], capture_output=True, text=True, check=True
-        )
+        result = subprocess.run(["git", "branch", "-r"], capture_output=True, text=True, check=True)
 
         # Parse the output
         remote_branches = []
@@ -607,9 +602,7 @@ class KospexGit:
         Create a template observation for the current repo.
         Prerequisites: KospexGit object initialized with the current repo
         """
-        obs = Observation(
-            self.current_hash, self.repo_dir, self.repo_id, observation_key
-        )
+        obs = Observation(self.current_hash, self.repo_dir, self.repo_id, observation_key)
 
         if observation_type:
             obs.observation_type = observation_type
@@ -679,9 +672,7 @@ class KospexGit:
         latest_datetime = cursor.fetchone()[0]
         return latest_datetime
 
-    def sync_repo(
-        self, directory=None, limit=None, from_date=None, to_date=None, no_scc=None
-    ):
+    def sync_repo(self, directory=None, limit=None, from_date=None, to_date=None, no_scc=None):
         """
         Sync the commit data (authors, commmitters, files, etc) for the given directory
         This is a work in progress refactor from kospex_core.py sync_repo
@@ -772,9 +763,7 @@ class KospexGit:
                     }
 
                 else:
-                    commit["filenames"].append(
-                        {"filename": line, "additions": 0, "deletions": 0}
-                    )
+                    commit["filenames"].append({"filename": line, "additions": 0, "deletions": 0})
 
             else:
                 if commit:  # Save the last commit
@@ -797,9 +786,7 @@ class KospexGit:
             # Need to copy as we
             results.append(commit.copy())
             del commit["filenames"]
-            self.kospex_db.table(KospexSchema.TBL_COMMITS).upsert(
-                commit, pk=["_repo_id", "hash"]
-            )
+            self.kospex_db.table(KospexSchema.TBL_COMMITS).upsert(commit, pk=["_repo_id", "hash"])
 
             # Insert the filenames to the database
             for file_info in commit_files:
@@ -822,9 +809,7 @@ class KospexGit:
         print(f"Synced {len(commits)} total commits")
 
         # Update the repos table with the last sync time
-        last_sync = (
-            datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
-        )
+        last_sync = datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
         self.update_repo_status(last_sync=last_sync)
 
         print("Processing file metadata...")
