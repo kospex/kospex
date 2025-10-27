@@ -319,9 +319,7 @@ class KospexDependencies:
         if basefile == "go.mod":
             print(f"Found Go mod package file: {basefile}")
             package_type = "Go module"
-            results = self.gomod_assess(
-                filename, results_file=results_file, repo_info=repo_info
-            )
+            results = self.gomod_assess(filename, results_file=results_file, repo_info=repo_info)
 
         elif self.is_npm_package(filename):
             print(f"Found npm package file: {basefile}")
@@ -513,16 +511,12 @@ class KospexDependencies:
         details["default"] = deps_info.get("isDefault")
         # TODO - need to parse the source repo to create proper links for NPM .. looks
         # a little dirty with actual Git urls and not https to Github
-        details["source_repo"] = KospexUtils.extract_git_url(
-            self.get_source_repo_info(deps_info)
-        )
+        details["source_repo"] = KospexUtils.extract_git_url(self.get_source_repo_info(deps_info))
         details["advisories"] = self.get_advisories_count(deps_info)
 
         # Get the versions behind info
         if package_version:
-            days_info = self.get_versions_behind(
-                package_type, package_name, package_version
-            )
+            days_info = self.get_versions_behind(package_type, package_name, package_version)
             details["versions_behind"] = days_info.get("versions_behind", "Unknown")
 
         # TODO - this is a hacky way of duplicating the keys needed
@@ -561,9 +555,7 @@ class KospexDependencies:
                 # print(details)
                 results.append(details)
                 print(item)
-                table_rows.append(
-                    self.get_values_array(details, self.get_table_field_names(), "-")
-                )
+                table_rows.append(self.get_values_array(details, self.get_table_field_names(), "-"))
 
         if "devDependencies" in data:
             for item in data["devDependencies"]:
@@ -574,14 +566,10 @@ class KospexDependencies:
                     results.append(details)
                     print(item)
                     table_rows.append(
-                        self.get_values_array(
-                            details, self.get_table_field_names(), "-"
-                        )
+                        self.get_values_array(details, self.get_table_field_names(), "-")
                     )
                 else:
-                    print(
-                        f"Skipping check for dev {item} version {data['devDependencies'][item]}"
-                    )
+                    print(f"Skipping check for dev {item} version {data['devDependencies'][item]}")
 
         table.add_rows(table_rows)
         print(table)
@@ -653,6 +641,26 @@ class KospexDependencies:
 
         return package
 
+    def get_package_template(self):
+        """
+        Define a common dict fo use with packages
+        """
+        p_template = {}
+
+        p_template["package_name"] = ("",)
+        p_template["package_version"] = ("",)
+        p_template["version_type"] = ("",)
+        p_template["_repo_id"] = ("",)
+        p_template["file_path"] = ("",)
+        p_template["requirements_type"] = ("",)
+        p_template["extras"] = ("",)
+        p_template["ecosystem"] = ("",)
+        p_template["versions_behind"] = ("",)
+        p_template["advisories"] = ("",)
+        p_template["published_at"] = ""
+
+        return p_template
+
     def parse_package_json(
         self, file_path: str = None, content: str = None
     ) -> List[Dict[str, str]]:
@@ -680,50 +688,51 @@ class KospexDependencies:
         # Parse regular dependencies (runtime/production)
         if "dependencies" in data:
             for package_name, version_spec in data["dependencies"].items():
-                dependencies.append(
-                    {
-                        "package_name": package_name,
-                        "package_version": version_spec,
-                        "ecosystem": "npm",
-                        "requirements_type": "direct",
-                    }
-                )
+                p = self.get_package_template()
+                p["package_name"] = package_name
+                p["package_version"] = version_spec
+                p["ecosystem"] = "npm"
+                p["requirements_type"] = "direct"
+
+                # dependencies.append(
+                #     {
+                #         "package_name": package_name,
+                #         "package_version": version_spec,
+                #         "ecosystem": "npm",
+                #         "requirements_type": "direct",
+                #     }
+                # )
+                dependencies.append(p)
 
         # Parse dev dependencies (build/development only)
         if "devDependencies" in data:
             for package_name, version_spec in data["devDependencies"].items():
-                dependencies.append(
-                    {
-                        "package_name": package_name,
-                        "package_version": version_spec,
-                        "ecosystem": "npm",
-                        "requirements_type": "dev",  # or "dev" if you prefer
-                    }
-                )
+                p = self.get_package_template()
+                p["package_name"] = package_name
+                p["package_version"] = version_spec
+                p["ecosystem"] = "npm"
+                p["requirements_type"] = "dev"
+                dependencies.append(p)
 
         # Parse peer dependencies (expected to be provided by consumer)
         if "peerDependencies" in data:
             for package_name, version_spec in data["peerDependencies"].items():
-                dependencies.append(
-                    {
-                        "package_name": package_name,
-                        "package_version": version_spec,
-                        "ecosystem": "npm",
-                        "requirements_type": "peer",  # you might want to map this to "direct" or create new type
-                    }
-                )
+                p = self.get_package_template()
+                p["package_name"] = package_name
+                p["package_version"] = version_spec
+                p["ecosystem"] = "npm"
+                p["requirements_type"] = "peer"
+                dependencies.append(p)
 
         # Parse optional dependencies
         if "optionalDependencies" in data:
             for package_name, version_spec in data["optionalDependencies"].items():
-                dependencies.append(
-                    {
-                        "package_name": package_name,
-                        "package_version": version_spec,
-                        "ecosystem": "npm",
-                        "requirements_type": "optional",  # you might want to map this to "direct"
-                    }
-                )
+                p = self.get_package_template()
+                p["package_name"] = package_name
+                p["package_version"] = version_spec
+                p["ecosystem"] = "npm"
+                p["requirements_type"] = "optional"
+                dependencies.append(p)
 
         return dependencies
 
@@ -767,14 +776,20 @@ class KospexDependencies:
         deps = pyproject.get("project", {}).get("dependencies", [])
         for dep in deps:
             req = Requirement(dep)
-            results.append(
-                {
-                    "package_name": req.name,
-                    "package_version": str(req.specifier),
-                    "extras": list(req.extras),
-                    "requirements_type": "direct",
-                }
-            )
+            p = self.get_package_template()
+            p["package_name"] = req.name
+            p["package_version"] = str(req.specifier)
+            # p["extras"] = list(req.extras)
+            p["ecosystem"] = "PyPi"
+            p["requirements_type"] = "direct"
+            # results.append(
+            #     {
+            #         "package_name": req.name,
+            #         "package_version": str(req.specifier),
+            #         "extras": list(req.extras),
+            #         "requirements_type": "direct",
+            #     }
+            # )
 
         optional = pyproject.get("project", {}).get("optional-dependencies", {})
         for group, deps in optional.items():
@@ -884,9 +899,7 @@ class KospexDependencies:
                 #        if authors:
                 #            record['authors'] = len(authors)
                 # record['authors'] = self.get_repo_authors(record["source_repo"])
-                table_rows.append(
-                    self.get_values_array(record, self.get_table_field_names(), "-")
-                )
+                table_rows.append(self.get_values_array(record, self.get_table_field_names(), "-"))
 
                 # records.append(row)
                 records.append(record)
@@ -930,9 +943,7 @@ class KospexDependencies:
         table_rows = []
 
         for dep in records:
-            table_rows.append(
-                self.get_values_array(dep, self.get_table_field_names(), "-")
-            )
+            table_rows.append(self.get_values_array(dep, self.get_table_field_names(), "-"))
 
         table.add_rows(table_rows)
         print(table)
@@ -981,12 +992,8 @@ class KospexDependencies:
 
         for pkg in result:
             # print(f"Checking {pkg['package_name']} version {pkg['package_version']}")
-            rec = self.depsdev_record(
-                "NuGet", pkg["package_name"], pkg["package_version"]
-            )
-            table_rows.append(
-                self.get_values_array(rec, self.get_table_field_names(), "-")
-            )
+            rec = self.depsdev_record("NuGet", pkg["package_name"], pkg["package_version"])
+            table_rows.append(self.get_values_array(rec, self.get_table_field_names(), "-"))
 
         table.add_rows(table_rows)
         print(table)
@@ -1048,9 +1055,7 @@ class KospexDependencies:
 
         # Define the base URL for deps.dev API
 
-        base_url = (
-            f"https://deps.dev/_/s/{package_manager}/p/{package_name}/v/{version}"
-        )
+        base_url = f"https://deps.dev/_/s/{package_manager}/p/{package_name}/v/{version}"
 
         # Make a request to get package details
         response = requests.get(base_url)
@@ -1164,9 +1169,7 @@ class KospexDependencies:
                 # self.depsdev_record(repo_info, details)
                 record = self.depsdev_record("go", item["module"], item["version"])
                 print(record)
-                table_rows.append(
-                    self.get_values_array(record, self.get_table_field_names(), "-")
-                )
+                table_rows.append(self.get_values_array(record, self.get_table_field_names(), "-"))
                 records.append(record)
                 # print(item)
 
@@ -1454,11 +1457,7 @@ class KospexDependencies:
         # If no operator, assume it's a plain version
         if constraint and constraint[0].isdigit():
             return constraint
-        elif (
-            constraint.startswith("v")
-            and len(constraint) > 1
-            and constraint[1].isdigit()
-        ):
+        elif constraint.startswith("v") and len(constraint) > 1 and constraint[1].isdigit():
             return constraint[1:]
 
         return None
@@ -1535,9 +1534,7 @@ class KospexDependencies:
                 version = self.extract_version_from_constraint(part)
                 if version:
                     operator = part[: len(part) - len(version)].strip() or "="
-                    result["constraints"].append(
-                        {"operator": operator, "version": version}
-                    )
+                    result["constraints"].append({"operator": operator, "version": version})
 
         return result
 
@@ -1559,9 +1556,7 @@ class Dependency:
     _repo_id: str = None
 
     line_number: Optional[int] = None
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     _git_server: str = None
     _git_owner: str = None
     _git_repo: str = None
