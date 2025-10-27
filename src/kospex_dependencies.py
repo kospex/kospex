@@ -606,6 +606,26 @@ class KospexDependencies:
         else:
             return None
 
+    def get_package_template(self):
+        """
+        Define a common dict fo use with packages
+        """
+        p_template = {}
+
+        p_template["package_name"] = ("",)
+        p_template["package_version"] = ("",)
+        p_template["version_type"] = ("",)
+        p_template["_repo_id"] = ("",)
+        p_template["file_path"] = ("",)
+        p_template["requirements_type"] = ("",)
+        p_template["extras"] = ("",)
+        p_template["ecosystem"] = ("",)
+        p_template["versions_behind"] = ("",)
+        p_template["advisories"] = ("",)
+        p_template["published_at"] = ""
+
+        return p_template
+
     def parse_pypi_package_declaration(self, package_declaration):
         """Parse a PyPi package declaration into a dictionary"""
         # TODO - need to double check the version specifiers as described in:
@@ -640,26 +660,6 @@ class KospexDependencies:
             package["version_type"] = version_spec
 
         return package
-
-    def get_package_template(self):
-        """
-        Define a common dict fo use with packages
-        """
-        p_template = {}
-
-        p_template["package_name"] = ("",)
-        p_template["package_version"] = ("",)
-        p_template["version_type"] = ("",)
-        p_template["_repo_id"] = ("",)
-        p_template["file_path"] = ("",)
-        p_template["requirements_type"] = ("",)
-        p_template["extras"] = ("",)
-        p_template["ecosystem"] = ("",)
-        p_template["versions_behind"] = ("",)
-        p_template["advisories"] = ("",)
-        p_template["published_at"] = ""
-
-        return p_template
 
     def parse_package_json(
         self, file_path: str = None, content: str = None
@@ -796,13 +796,20 @@ class KospexDependencies:
             # results["optional"][group] = []
             for dep in deps:
                 req = Requirement(dep)
-                results.append(
-                    {
-                        "package_name": req.name,
-                        "package_version": str(req.specifier),
-                        "requirements_type": "direct",
-                    }
-                )
+                p = self.get_package_template()
+                p["package_name"] = req.name
+                p["package_version"] = str(req.specifier)
+                # p["extras"] = list(req.extras)
+                p["ecosystem"] = "PyPi"
+                p["requirements_type"] = "optional"
+                results.append(p)
+                # results.append(
+                #     {
+                #         "package_name": req.name,
+                #         "package_version": str(req.specifier),
+                #         "requirements_type": "direct",
+                #     }
+                # )
 
         return results
 
