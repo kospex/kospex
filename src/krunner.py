@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""This is the kospex runner tool - run the same command on all repos."""
+"""
+This is the kospex runner tool - run the same command or queries on all repos.
+"""
 
-from cmath import e
 from itertools import count
 import os
 import os.path
@@ -78,9 +79,7 @@ def load_dependency_memory_db():
 
 
 @cli.command("repos")
-@click.option(
-    "-file", required=False, type=click.Path(), help="filename of clone urls to check."
-)
+@click.option("-file", required=False, type=click.Path(), help="filename of clone urls to check.")
 @click.argument("request_id", required=False, type=click.STRING)
 def repos(file, request_id):
     """
@@ -149,15 +148,9 @@ def file_metadata(force, request_id):
 
 
 @cli.command("branches")
-@click.option(
-    "-save", is_flag=True, default=False, help="Save to kospex DB. (Default: False)"
-)
-@click.option(
-    "-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)"
-)
-@click.option(
-    "-verbose", is_flag=True, default=False, help="Verbose output. (Default: False)"
-)
+@click.option("-save", is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
+@click.option("-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)")
+@click.option("-verbose", is_flag=True, default=False, help="Verbose output. (Default: False)")
 @click.argument("request_id", required=False, type=click.STRING)
 def branches(save, csv, verbose, request_id):
     """
@@ -221,15 +214,9 @@ def branches(save, csv, verbose, request_id):
 
 
 @cli.command("repo-size")
-@click.option(
-    "-save", is_flag=True, default=False, help="Save to kospex DB. (Default: False)"
-)
-@click.option(
-    "-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)"
-)
-@click.option(
-    "-verbose", is_flag=True, default=False, help="Verbose output. (Default: False)"
-)
+@click.option("-save", is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
+@click.option("-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)")
+@click.option("-verbose", is_flag=True, default=False, help="Verbose output. (Default: False)")
 @click.argument("request_id", required=False, type=click.STRING)
 def repo_size(save, csv, request_id, verbose):
     """
@@ -302,15 +289,9 @@ def repo_size(save, csv, request_id, verbose):
 
 
 @cli.command("developer-tech")
-@click.option(
-    "-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)"
-)
-@click.option(
-    "-verbose", is_flag=True, default=False, help="Verbose output. (Default: False)"
-)
-@click.option(
-    "-developers", is_flag=True, default=False, help="Show all developer technologies"
-)
+@click.option("-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)")
+@click.option("-verbose", is_flag=True, default=False, help="Verbose output. (Default: False)")
+@click.option("-developers", is_flag=True, default=False, help="Show all developer technologies")
 @click.option("-year", is_flag=False, type=click.INT, help="Year to show results for.")
 @click.argument("dev", required=False, type=click.STRING)
 def developer_tech(csv, verbose, developers, year, dev):
@@ -331,9 +312,7 @@ def developer_tech(csv, verbose, developers, year, dev):
 
     console.log("Starting loading data to in memory database")
     with KospexTimer("Loading data to in memory database") as load_memory:
-        memory_kq = kospex.kospex_query.create_memory_kospex_query(
-            ["commits", "commit_files"]
-        )
+        memory_kq = kospex.kospex_query.create_memory_kospex_query(["commits", "commit_files"])
     console.log(f"{load_memory}")
 
     with KospexTimer("creating indexes") as index_timer:
@@ -342,9 +321,7 @@ def developer_tech(csv, verbose, developers, year, dev):
     console.log(f"{index_timer}")
 
     with KospexTimer("Assessing developer tech in memory") as memory_timer:
-        results = memory_kq.developer_tech(
-            author_email=dev, developers=developers, year=year
-        )
+        results = memory_kq.developer_tech(author_email=dev, developers=developers, year=year)
     console.log(f"{memory_timer}")
 
     title_year = ""
@@ -386,9 +363,7 @@ def developer_tech(csv, verbose, developers, year, dev):
     console.log(f"Technologies found: {tech_number}")
 
     if developers and not csv:
-        console.log(
-            "\nWarning: No results for invididual developers shown", style="red"
-        )
+        console.log("\nWarning: No results for invididual developers shown", style="red")
         console.log("use -csv to export\n", style="red")
 
     if csv:
@@ -400,9 +375,7 @@ def developer_tech(csv, verbose, developers, year, dev):
 
 
 @cli.command("dependencies")
-@click.option(
-    "-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)"
-)
+@click.option("-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)")
 def dependencies(csv):
     """
     Show a list of all dependency files
@@ -530,7 +503,8 @@ def osi(all, request_id):
         params = KospexWeb.get_id_params(request_id)
     repos = memory_kq.get_repos(**params)
     results = []
-    kdeps = KospexDependencies(kospex_query=memory_kq)
+
+    kdeps = KospexDependencies(kospex_query=kospex.kospex_query)
 
     for r in repos:
         console.log(f"Running OSI on {r['_repo_id']} ...\n")
@@ -566,9 +540,7 @@ def osi(all, request_id):
                 console.log(reqs)
 
             elif "package.json" in d["Provider"]:
-                console.print(
-                    f"Should parse package.json {d['Provider']}", style="blue"
-                )
+                console.print(f"Should parse package.json {d['Provider']}", style="blue")
                 reqs = kdeps.parse_package_json(file_path=full_path)
                 for req in reqs:
                     req["_repo_id"] = r["_repo_id"]
@@ -610,9 +582,7 @@ def osi(all, request_id):
 
 
 @cli.command("devs-by-tag")
-@click.option(
-    "-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)"
-)
+@click.option("-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)")
 @click.option("-tag", required=False, type=click.STRING)
 @click.option("-filename", required=False, type=click.STRING)
 def devs_by_tag(csv, tag, filename):
@@ -644,9 +614,7 @@ def devs_by_tag(csv, tag, filename):
         # memory_kq.kospex_db["commit_files"].create_index(['committer_when'])
     console.log(f"{index_timer}")
 
-    with KospexTimer(
-        "Grabbing all files with the tag {tag} from memory DB"
-    ) as memory_timer:
+    with KospexTimer("Grabbing all files with the tag {tag} from memory DB") as memory_timer:
         print(f"tag: {tag}, filename: {filename}")
         # results = memory_kq.get_developers_by_tag(tag=tag,filename=filename)
         files = memory_kq.get_metadata_files(tag=tag, filename=filename)
@@ -659,9 +627,7 @@ def devs_by_tag(csv, tag, filename):
         console.log(f"Processing file {counter}/{len(files)}")
         console.log(f"repo_id: {item['_repo_id']}")
         console.log(f"{item['Provider']}\n")
-        authors = memory_kq.get_file_authors(
-            file_name=item["Provider"], repo_id=item["_repo_id"]
-        )
+        authors = memory_kq.get_file_authors(file_name=item["Provider"], repo_id=item["_repo_id"])
         for author in authors:
             results.append(author)
         # console.log(item)
@@ -706,12 +672,8 @@ def devs_by_tag(csv, tag, filename):
     default=90,
     help="Days since last commit = Left (Default: 90)",
 )
-@click.option(
-    "-seen", is_flag=False, default=365, help="Seen in the last X days (Default: 365)"
-)
-@click.option(
-    "-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)"
-)
+@click.option("-seen", is_flag=False, default=365, help="Seen in the last X days (Default: 365)")
+@click.option("-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)")
 def tenure(days, seen, csv):
     """
     Show the tenure of developers
@@ -844,9 +806,7 @@ def find_docker(directory, out, images):
     unique_repos = list(set(repos))
     stats_dict = {key: KospexUtils.init_repo_stats() for key in unique_repos}
 
-    repo_status = {
-        data.get("repo"): data.get("status") for data in repo_data if "status" in data
-    }
+    repo_status = {data.get("repo"): data.get("status") for data in repo_data if "status" in data}
 
     files = KrunnerUtils.find_dockerfiles_in_repos(dirs)
     records = KospexUtils.get_git_metadata(files)
@@ -984,9 +944,7 @@ def todo(directory):
 
 
 @cli.command("git-pull")
-@click.option(
-    "-sync", is_flag=True, default=True, help="Sync to kospex DB. (Default: True)"
-)
+@click.option("-sync", is_flag=True, default=True, help="Sync to kospex DB. (Default: True)")
 @click.argument("directory", required=False, type=click.Path(exists=True))
 def git_pull(directory, sync):
     """Run a 'git pull' on all git repositories found in the given directory."""
@@ -1031,9 +989,7 @@ def gitleaks_scan(directory):
 
 @cli.command("secrets-hotspots")
 @click.option("-git_server", type=click.STRING, help="Git server to limit results to.")
-@click.option(
-    "-org_key", type=click.STRING, help="Org key [server~org] to limit results to."
-)
+@click.option("-org_key", type=click.STRING, help="Org key [server~org] to limit results to.")
 def secrets_hotspots(git_server, org_key):
     """Identify secrets hotspots from tools that have been run."""
 
