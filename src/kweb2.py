@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exception_handlers import (
     http_exception_handler,
@@ -76,6 +76,11 @@ graph_service = GraphService()
 app.include_router(api_router)
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(Path(__file__).parent / "static/favicon.ico")
+
+
 def download_csv_fastapi(dict_data, filename=None):
     """FastAPI-compatible CSV download function"""
     if not dict_data:
@@ -116,9 +121,7 @@ def download_csv_fastapi(dict_data, filename=None):
 async def custom_404_handler(request: Request, exc: HTTPException):
     """Custom 404 error handler that serves the 404.html template"""
     try:
-        return templates.TemplateResponse(
-            "404.html", {"request": request}, status_code=404
-        )
+        return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
     except Exception as e:
         # Fallback to basic 404 if template fails
         logger.error(f"Error rendering 404 template: {e}")
@@ -222,17 +225,11 @@ async def help_page(request: Request, id: Optional[str] = None):
         else:
             # Try to serve the specific help page
             try:
-                return templates.TemplateResponse(
-                    f"help/{id}.html", {"request": request}
-                )
+                return templates.TemplateResponse(f"help/{id}.html", {"request": request})
             except Exception:
                 # If specific page doesn't exist, fall back to index
-                logger.warning(
-                    f"Help page help/{id}.html not found, falling back to index"
-                )
-                return templates.TemplateResponse(
-                    "help/index.html", {"request": request}
-                )
+                logger.warning(f"Help page help/{id}.html not found, falling back to index")
+                return templates.TemplateResponse("help/index.html", {"request": request})
     except Exception as e:
         logger.error(f"Error in help endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -288,9 +285,7 @@ async def servers(request: Request):
         kquery = KospexQuery()
         data = kquery.server_summary()
 
-        return templates.TemplateResponse(
-            "servers.html", {"request": request, "data": data}
-        )
+        return templates.TemplateResponse("servers.html", {"request": request, "data": data})
     except Exception as e:
         logger.error(f"Error in servers endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -360,9 +355,7 @@ async def orphans(request: Request, id: Optional[str] = None):
         params = KospexWeb.get_id_params(id)
         data = KospexQuery().get_orphans(id=params)
 
-        return templates.TemplateResponse(
-            "orphans.html", {"request": request, "data": data}
-        )
+        return templates.TemplateResponse("orphans.html", {"request": request, "data": data})
     except Exception as e:
         logger.error(f"Error in orphans endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -505,16 +498,12 @@ async def file_collaboration(request: Request, repo_id: str):
         file_path = request.query_params.get("file_path")
 
         if not file_path:
-            raise HTTPException(
-                status_code=400, detail="file_path parameter is required"
-            )
+            raise HTTPException(status_code=400, detail="file_path parameter is required")
 
         logger.info(f"File collaboration requested for: {file_path}")
 
         kquery = KospexQuery()
-        collaborators = kquery.get_file_collaborators(
-            repo_id=repo_id, file_path=file_path
-        )
+        collaborators = kquery.get_file_collaborators(repo_id=repo_id, file_path=file_path)
 
         return templates.TemplateResponse(
             "file_collaboration.html",
@@ -547,9 +536,7 @@ async def orgs(request: Request, server: Optional[str] = None):
         for row in git_orgs:
             row["active_devs"] = active_devs.get(row["org_key"], 0)
 
-        return templates.TemplateResponse(
-            "orgs.html", {"request": request, "data": git_orgs}
-        )
+        return templates.TemplateResponse("orgs.html", {"request": request, "data": git_orgs})
     except Exception as e:
         logger.error(f"Error in orgs endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -839,9 +826,7 @@ async def graph(request: Request, org_key: Optional[str] = None):
 @app.get("/org-graph/", response_class=JSONResponse)
 @app.get("/org-graph/{org_key}", response_class=JSONResponse)
 @app.get("/org-graph/{focus}/{org_key}", response_class=JSONResponse)
-async def org_graph(
-    request: Request, org_key: Optional[str] = None, focus: Optional[str] = None
-):
+async def org_graph(request: Request, org_key: Optional[str] = None, focus: Optional[str] = None):
     """Return JSON data for the force directed graph."""
     try:
         logger.info(f"Org graph data requested - focus: {focus}, org_key: {org_key}")
@@ -1161,9 +1146,7 @@ async def dependencies(request: Request, id: Optional[str] = None):
         params = KospexWeb.get_id_params(id)
         data = KospexQuery().get_dependencies(request_id=params)
 
-        return templates.TemplateResponse(
-            "dependencies.html", {"request": request, "data": data}
-        )
+        return templates.TemplateResponse("dependencies.html", {"request": request, "data": data})
     except Exception as e:
         logger.error(f"Error in dependencies endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1276,9 +1259,7 @@ async def hotspots(request: Request, repo_id: str):
 
         data = KospexQuery().hotspots(repo_id=repo_id)
 
-        return templates.TemplateResponse(
-            "hotspots.html", {"request": request, "data": data}
-        )
+        return templates.TemplateResponse("hotspots.html", {"request": request, "data": data})
     except Exception as e:
         logger.error(f"Error in hotspots endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1295,9 +1276,7 @@ async def repo_files(request: Request, repo_id: Optional[str] = None):
         if repo_id:
             data = KospexQuery().repo_files(repo_id=repo_id)
 
-        return templates.TemplateResponse(
-            "files.html", {"request": request, "data": data}
-        )
+        return templates.TemplateResponse("files.html", {"request": request, "data": data})
     except Exception as e:
         logger.error(f"Error in repo_files endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1325,9 +1304,7 @@ async def supply_chain(request: Request):
         # If no package parameter, show the search form
         if not package:
             logger.info("Showing supply chain search form")
-            return templates.TemplateResponse(
-                "supply_chain_search.html", {"request": request}
-            )
+            return templates.TemplateResponse("supply_chain_search.html", {"request": request})
 
         # Package parameter exists, show visualization
         logger.info(f"Supply chain visualization requested for package: {package}")
@@ -1342,9 +1319,7 @@ async def supply_chain(request: Request):
 
             ecosystem, package_name, package_version = parts
 
-            if not all(
-                [ecosystem.strip(), package_name.strip(), package_version.strip()]
-            ):
+            if not all([ecosystem.strip(), package_name.strip(), package_version.strip()]):
                 raise ValueError(
                     "All package components (ecosystem, name, version) must be provided"
                 )
@@ -1411,9 +1386,7 @@ async def supply_chain(request: Request):
                 if "ecosystem" not in node or not node["ecosystem"]:
                     node["ecosystem"] = ecosystem.strip()
 
-        logger.info(
-            f"Added ecosystem '{ecosystem}' to {len(data.get('nodes', []))} nodes"
-        )
+        logger.info(f"Added ecosystem '{ecosystem}' to {len(data.get('nodes', []))} nodes")
 
         return templates.TemplateResponse(
             "supply_chain.html",
@@ -1478,14 +1451,10 @@ def main():
             print("  --help, -h      Show this help message")
             sys.exit(0)
         else:
-            sys.exit(
-                f"Error: Unknown argument '{arg}'. Use --help for usage information."
-            )
+            sys.exit(f"Error: Unknown argument '{arg}'. Use --help for usage information.")
 
     # Check if running in Docker environment
-    in_docker = (
-        os.path.exists("/.dockerenv") or os.environ.get("DOCKER_CONTAINER") == "true"
-    )
+    in_docker = os.path.exists("/.dockerenv") or os.environ.get("DOCKER_CONTAINER") == "true"
 
     # Default to 0.0.0.0 if in Docker and host not explicitly set
     if in_docker and host == "127.0.0.1":
