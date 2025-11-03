@@ -14,7 +14,7 @@ If `kgit clone` fails, here are the most common causes and solutions:
   ```bash
   # Install via Homebrew (recommended)
   brew install git-credential-manager
-  
+
   # Or configure Git credentials manually
   git config --global credential.helper manager-core
   ```
@@ -23,11 +23,11 @@ If `kgit clone` fails, here are the most common causes and solutions:
 
 #### Network and SSL Issues
 - **Problem**: Clone fails with SSL certificate or network errors
-- **Solution**: 
+- **Solution**:
   ```bash
   # Check Git SSL settings
   git config --global http.sslVerify true
-  
+
   # For corporate networks, you might need to configure proxy
   git config --global http.proxy http://proxy.company.com:8080
   ```
@@ -41,7 +41,7 @@ If `kgit clone` fails, here are the most common causes and solutions:
   # Find your private CA certificate file (usually .crt or .pem)
   # Add the CA certificate to Git's certificate bundle
   git config --global http.sslCAInfo /path/to/your/private-ca.crt
-  
+
   # Or append to system CA bundle (macOS example)
   cat /path/to/your/private-ca.crt >> /usr/local/etc/openssl/cert.pem
   ```
@@ -50,23 +50,37 @@ If `kgit clone` fails, here are the most common causes and solutions:
   ```bash
   # On macOS, use system keychain
   git config --global http.sslCAInfo /etc/ssl/cert.pem
-  
+
   # On Linux systems
   git config --global http.sslCAInfo /etc/ssl/certs/ca-certificates.crt
   ```
 
-  **Option 3: Add CA Certificate to System Store**
+**Option 3: Git Credential Manager, Private CAs and CURL failures**
+  Git Credntial Manager can call bitbucket or git servers to detect the server type
+  When it can't find it, it default to lauching the UI for the credentials
+
+  If Curl doesn't have a CA bundle set, it will error, even if you've configured your Git SSL certificates
+  The following allows you to use the CA bundle for curl to stop erroring.
+
+  ```bash
+  # Environment variable for CURL
+  #
+  export CURL_CA_BUNDLE=/path/to/your/ca-bundle.crt
+  ```
+
+
+  **Option 4: Add CA Certificate to System Store**
   ```bash
   # macOS - Add to system keychain
   sudo security add-trusted-cert -d -r trustRoot -k /System/Library/Keychains/SystemRootCertificates.keychain /path/to/your/private-ca.crt
-  
+
   # Or add to login keychain
   security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain /path/to/your/private-ca.crt
-  
+
   # Linux (Ubuntu/Debian)
   sudo cp /path/to/your/private-ca.crt /usr/local/share/ca-certificates/
   sudo update-ca-certificates
-  
+
   # Linux (RHEL/CentOS)
   sudo cp /path/to/your/private-ca.crt /etc/pki/ca-trust/source/anchors/
   sudo update-ca-trust
@@ -76,7 +90,7 @@ If `kgit clone` fails, here are the most common causes and solutions:
   ```bash
   # Configure CA certificate for specific repository URL
   git config --global http."https://your-git-server.company.com/".sslCAInfo /path/to/your/private-ca.crt
-  
+
   # Or disable SSL verification for specific host (less secure)
   git config --global http."https://your-git-server.company.com/".sslVerify false
   ```
@@ -85,7 +99,7 @@ If `kgit clone` fails, here are the most common causes and solutions:
   ```bash
   # Disable SSL verification globally (INSECURE - use only for testing)
   git config --global http.sslVerify false
-  
+
   # Re-enable SSL verification after fixing CA issues
   git config --global http.sslVerify true
   ```
@@ -94,21 +108,21 @@ If `kgit clone` fails, here are the most common causes and solutions:
   ```bash
   # Test SSL connection to your git server
   openssl s_client -connect your-git-server.company.com:443 -servername your-git-server.company.com
-  
+
   # Check current Git SSL configuration
   git config --list | grep ssl
-  
+
   # Test clone with verbose output
   GIT_CURL_VERBOSE=1 git clone https://your-git-server.company.com/repo.git
   ```
 
 #### Directory Permission Issues
 - **Problem**: Cannot write to the clone destination directory
-- **Solution**: 
+- **Solution**:
   ```bash
   # Check KOSPEX_CODE directory permissions
   ls -la ~/code/
-  
+
   # Fix permissions if needed
   chmod -R 755 ~/code/
   ```
@@ -127,18 +141,18 @@ If `kgit clone` fails, here are the most common causes and solutions:
 
 #### Database Schema Outdated
 - **Problem**: Database operations fail with schema-related errors
-- **Solution**: 
+- **Solution**:
   ```bash
   kospex upgrade-db
   ```
 
 #### Database Permission Errors
 - **Problem**: Cannot write to `~/kospex/kospex.db`
-- **Solution**: 
+- **Solution**:
   ```bash
   # Check permissions
   ls -la ~/kospex/
-  
+
   # Fix permissions
   chmod 644 ~/kospex/kospex.db
   chmod 755 ~/kospex/
@@ -148,25 +162,25 @@ If `kgit clone` fails, here are the most common causes and solutions:
 
 #### Repository Sync Failures
 - **Problem**: `kospex sync` fails on a repository
-- **Solution**: 
+- **Solution**:
   ```bash
   # Check if directory is a valid git repository
   cd /path/to/repo && git status
-  
+
   # Try syncing with verbose logging
   kospex --debug sync /path/to/repo
-  
+
   # Check logs for detailed error information
   tail -f ~/kospex/logs/kospex.log
   ```
 
 #### scc Binary Not Found
 - **Problem**: File type analysis and complexity metrics are missing
-- **Solution**: 
+- **Solution**:
   ```bash
   # Install scc via Homebrew
   brew install scc
-  
+
   # Or check if scc is in PATH
   which scc
   ```
@@ -175,18 +189,18 @@ If `kgit clone` fails, here are the most common causes and solutions:
 
 #### GitHub Rate Limits
 - **Problem**: GitHub API requests are being rate limited
-- **Solution**: 
+- **Solution**:
   ```bash
   # Set GitHub token for higher rate limits
   export GITHUB_TOKEN=your_github_token_here
-  
+
   # Or add to your shell profile
   echo 'export GITHUB_TOKEN=your_token' >> ~/.bashrc
   ```
 
 #### Bitbucket Authentication
 - **Problem**: Bitbucket API requests fail with authentication errors
-- **Solution**: 
+- **Solution**:
   ```bash
   # Set Bitbucket credentials
   export BITBUCKET_USERNAME=your_username
@@ -199,18 +213,18 @@ If `kgit clone` fails, here are the most common causes and solutions:
 
 #### Port Already in Use
 - **Problem**: Cannot bind to port 8000 or 5000
-- **Solution**: 
+- **Solution**:
   ```bash
   # Use a different port
   python kweb2.py --port 8080
-  
+
   # Or find what's using the port
   lsof -i :8000
   ```
 
 #### Missing Static Assets
 - **Problem**: Web interface loads but styling/JavaScript is broken
-- **Solution**: 
+- **Solution**:
   ```bash
   # Rebuild frontend assets
   npm install
@@ -223,14 +237,14 @@ If `kgit clone` fails, here are the most common causes and solutions:
 
 #### KOSPEX_CODE Directory Issues
 - **Problem**: Repositories aren't being found in expected locations
-- **Solution**: 
+- **Solution**:
   ```bash
   # Check current configuration
   kospex init --validate
-  
+
   # Recreate directory structure
   kospex init --create
-  
+
   # Set custom code directory
   export KOSPEX_CODE=/path/to/your/code
   ```
@@ -239,14 +253,14 @@ If `kgit clone` fails, here are the most common causes and solutions:
 
 #### No Log Output
 - **Problem**: Expected log messages aren't appearing
-- **Solution**: 
+- **Solution**:
   ```bash
   # Enable debug logging
   kospex --debug COMMAND
-  
+
   # Enable console logging
   kospex --log-console COMMAND
-  
+
   # Check log files directly
   ls -la ~/kospex/logs/
   tail -f ~/kospex/logs/kospex.log
@@ -254,7 +268,7 @@ If `kgit clone` fails, here are the most common causes and solutions:
 
 #### Log Directory Permission Denied
 - **Problem**: Cannot write to log directory
-- **Solution**: 
+- **Solution**:
   ```bash
   # Create and fix log directory permissions
   mkdir -p ~/kospex/logs
