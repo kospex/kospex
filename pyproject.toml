@@ -14,9 +14,9 @@ dependencies = [
     "flask",
     "prettytable",
     "dateutils",
-    "panopticas>=0.0.13",
+    "panopticas>=0.0.14",
     "python-dotenv",
-    "sqlite_utils",
+    "sqlite-utils",
     "requests",
     "rich>=14.0.0",
     "PyGithub==2.6.1",
@@ -28,7 +28,7 @@ dependencies = [
     "uvicorn>=0.35.0",
 ]
 
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 readme = "README.short.md"
 keywords = ["analytics", "git", "code analytics", "developer analytics", "open source inventory", "predictive maintenance"]
 classifiers = ["Programming Language :: Python :: 3"]
