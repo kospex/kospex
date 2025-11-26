@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kospex"
-version = "0.0.34"
+version = "0.0.35"
 description = "kospex - Code and Developer Analytics."
 authors = [{ name = "Peter Freiberg", email = "peter.freiberg@gmail.com" }]
 license = { file = "LICENSE" }

@@ -1,24 +1,26 @@
 """Core functions for running the kospex CLI"""
 
+import csv
 import os
 import os.path
-import sys
 import subprocess
-import csv
+import sys
 import time
-from shutil import which
 from datetime import datetime, timezone
+from shutil import which
+
 import click
-from prettytable import PrettyTable, from_db_cursor
-from kospex_git import KospexGit, MissingGitDirectory
-import kospex_utils as KospexUtils
-import kospex_schema as KospexSchema
-from kospex_query import KospexQuery, KospexData
-from kospex_dependencies import KospexDependencies
 
 # from kospex_mergestat import KospexMergeStat
 import panopticas
+from prettytable import PrettyTable, from_db_cursor
 from sqlite_utils import Database
+
+import kospex_schema as KospexSchema
+import kospex_utils as KospexUtils
+from kospex_dependencies import KospexDependencies
+from kospex_git import KospexGit, MissingGitDirectory
+from kospex_query import KospexData, KospexQuery
 
 
 class GitRepo(click.ParamType):
@@ -41,7 +43,7 @@ class Kospex:
     kospex core functionality
     """
 
-    VERSION = "0.0.34"  # This value should align with the pyproject.toml version for pip
+    VERSION = "0.0.35"  # This value should align with the pyproject.toml version for pip
 
     def __init__(self):
         self.original_cwd = None

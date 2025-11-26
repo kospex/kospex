@@ -2,6 +2,13 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.35 - 2025-11-26
+
+### Fixed
+- [Fixed 404 by adding a favicon.ico](https://github.com/kospex/kospex/issues/76)
+- [Add pyproject.toml to supported list in kospex sca]([htt](https://github.com/kospex/kospex/issues/81))
+- [Implement key-person function in kospex and krunner](https://github.com/kospex/kospex/issues/82)
+
 ## 0.0.34 - 2025-10-27
 
 ### Fixed
@@ -21,7 +28,7 @@ We've done some initial work on implementing SSL CA checks.
 ## 0.0.32 - 2025-10-24
 
 ### Fixed
-- Some issues relating to kospex denpencies with missing imports and referenced function calls
+- Some issues relating to kospex dependencies with missing imports and referenced function calls
 
 ## 0.0.31 - 2025-10-24
 
