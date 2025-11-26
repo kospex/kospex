@@ -1,24 +1,26 @@
 """A module to query the dep.dev API and parse package manager files"""
 
-import datetime
-import os
-import sys
-import re
-import json
-import csv
-import urllib
-import time
 import codecs
-from dataclasses import dataclass, asdict, field
+import csv
+import datetime
+import json
+import os
+import re
+import sys
+import time
+import tomllib
+import urllib
+from dataclasses import asdict, dataclass, field
 from datetime import timezone
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
-from typing import List, Dict, Any, Optional, Tuple
-import tomllib
-from packaging.requirements import Requirement
+
 import dateutil.parser
 import requests
+from packaging.requirements import Requirement
 from prettytable import PrettyTable
+
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -307,7 +309,7 @@ class KospexDependencies:
             file_path = filename
 
         basefile = os.path.basename(filename)
-
+        print(basefile)
         # print(f"base: {basefile}")
         # print(f"a: {abs_file_path}\nbd: {base_dir}\ngit_base: {git_base}\n")
         # print(f"rel_path: {file_path}")
@@ -320,6 +322,11 @@ class KospexDependencies:
             print(f"Found Go mod package file: {basefile}")
             package_type = "Go module"
             results = self.gomod_assess(filename, results_file=results_file, repo_info=repo_info)
+
+        elif basefile == "pyproject.toml":
+            deps = self.parse_pyproject_file(filename)
+            package_type = "pypi"
+            results = self.pypi_assess2(deps)
 
         elif self.is_npm_package(filename):
             print(f"Found npm package file: {basefile}")
@@ -348,6 +355,7 @@ class KospexDependencies:
 
         else:
             print(f"Unknown or unsupported package manager file found {basefile}")
+            return None
 
         if results:
             for dep in results:
@@ -362,6 +370,8 @@ class KospexDependencies:
             for r in results:
                 r.pop("days_ago", None)
                 r.pop("authors", None)
+                r.pop("ecosystem", None)  # This was added in krunner osi for CSV output
+                r.pop("semantic", None)  # Usd by npm to show what semantic types
                 r.update(git_details)
                 r["package_type"] = package_type
                 r["latest"] = 1
@@ -612,16 +622,16 @@ class KospexDependencies:
         """
         p_template = {}
 
-        p_template["package_name"] = ("",)
-        p_template["package_version"] = ("",)
-        p_template["version_type"] = ("",)
-        p_template["_repo_id"] = ("",)
-        p_template["file_path"] = ("",)
-        p_template["requirements_type"] = ("",)
-        p_template["extras"] = ("",)
-        p_template["ecosystem"] = ("",)
-        p_template["versions_behind"] = ("",)
-        p_template["advisories"] = ("",)
+        p_template["package_name"] = ""
+        p_template["package_version"] = ""
+        p_template["version_type"] = ""
+        p_template["_repo_id"] = ""
+        p_template["file_path"] = ""
+        p_template["requirements_type"] = ""
+        p_template["extras"] = ""
+        p_template["ecosystem"] = ""
+        p_template["versions_behind"] = ""
+        p_template["advisories"] = ""
         p_template["published_at"] = ""
 
         return p_template
@@ -757,6 +767,8 @@ class KospexDependencies:
         with open(file_path, "rb") as f:
             pyproject = tomllib.load(f)
 
+        print(pyproject)
+
         # result = {
         #     "dependencies": [],
         #     "optional": {}
@@ -782,6 +794,8 @@ class KospexDependencies:
             # p["extras"] = list(req.extras)
             p["ecosystem"] = "PyPi"
             p["requirements_type"] = "direct"
+            results.append(p)
+
             # results.append(
             #     {
             #         "package_name": req.name,
@@ -812,6 +826,26 @@ class KospexDependencies:
                 # )
 
         return results
+
+    def pypi_assess2(self, results):
+        """
+        Using deps.dev to assess and provide a summary of a
+        PyPi dependencies
+        This is the initial work to combine pyproject.toml and requirements.txt
+        as well as future work with uv.lock and other python dependency files
+        """
+
+        dependencies = []
+
+        for r in results:
+            print(r)
+            version = self.clean_version_spec(r.get("package_version"))
+            record = self.depsdev_record("pypi", r.get("package_name"), version)
+            if not record.get("source_repo"):
+                record["source_repo"] = self.get_pypi_source_repo(r.get("package_name"))
+            dependencies.append(record)
+
+        return dependencies
 
     def pypi_assess(
         self,

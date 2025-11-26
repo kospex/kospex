@@ -2,16 +2,18 @@
 
 import os
 import re
-from urllib.parse import urlparse
-from pathlib import Path
 import subprocess
 from datetime import datetime, timezone
-from prettytable import PrettyTable
-import kospex_utils as KospexUtils
-from kospex_query import KospexQuery
+from pathlib import Path
+from urllib.parse import urlparse
+
 import panopticas as Panopticas
-from kospex_observation import Observation
+from prettytable import PrettyTable
+
 import kospex_schema as KospexSchema
+import kospex_utils as KospexUtils
+from kospex_observation import Observation
+from kospex_query import KospexQuery
 
 
 class KospexGit:

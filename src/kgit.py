@@ -135,6 +135,7 @@ def map_email(alias,email):
 def list_email_mappings(email):
     """
     Show all the email mappings
+    the -email is the main email in the database and NOT the alias.
     """
     mappings = kospex.kospex_query.get_email_maps(email=email)
     map_num = len(mappings)

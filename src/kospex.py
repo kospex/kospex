@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """This is the kospex command line tool."""
-import os
-import os.path
+
 import json
 import logging
-from datetime import datetime, timezone, timedelta
-from shutil import which
-import ssl
+import os
+import os.path
 import socket
+import ssl
+from datetime import datetime, timedelta, timezone
+from shutil import which
+
 import click
 import requests
-from kospex_core import Kospex, GitRepo
 from rich.console import Console
+
+import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
+import krunner_utils as KrunnerUtils
+from kospex_core import GitRepo, Kospex
+from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
 from kospex_query import KospexQuery
-import kospex_schema as KospexSchema
-from kospex_dependencies import KospexDependencies
-import krunner_utils as KrunnerUtils
 
 # Initialize Kospex environment with enhanced logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
@@ -25,27 +28,27 @@ kospex = Kospex()
 console = Console()
 
 # Get logger using the new centralized logging system
-log = KospexUtils.get_kospex_logger('kospex')
+log = KospexUtils.get_kospex_logger("kospex")
 
 
 def _configure_runtime_logging(debug=False, verbose=False, quiet=False, log_console=False):
     """Configure logging based on runtime CLI flags."""
-    import os
     import logging
+    import os
 
     # Set environment variables for the logging system
     if debug:
-        os.environ['KOSPEX_LOG_LEVEL'] = 'DEBUG'
+        os.environ["KOSPEX_LOG_LEVEL"] = "DEBUG"
         log.info("Debug logging enabled via CLI flag")
     elif verbose:
-        os.environ['KOSPEX_LOG_LEVEL'] = 'INFO'
+        os.environ["KOSPEX_LOG_LEVEL"] = "INFO"
         log.info("Verbose logging enabled via CLI flag")
     elif quiet:
-        os.environ['KOSPEX_LOG_LEVEL'] = 'ERROR'
+        os.environ["KOSPEX_LOG_LEVEL"] = "ERROR"
         log.info("Quiet mode enabled via CLI flag")
 
     if log_console:
-        os.environ['KOSPEX_CONSOLE_LOGGING'] = 'true'
+        os.environ["KOSPEX_CONSOLE_LOGGING"] = "true"
         log.info("Console logging enabled via CLI flag")
 
     # Get a fresh logger instance with the new configuration
@@ -58,15 +61,27 @@ def _configure_runtime_logging(debug=False, verbose=False, quiet=False, log_cons
         log.setLevel(logging.INFO)
     elif quiet:
         log.setLevel(logging.ERROR)
-#logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
-#VERSION = "0.0.16" # This value should align with the pyproject.toml version for pip
+
+
+# logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
+# VERSION = "0.0.16" # This value should align with the pyproject.toml version for pip
+
 
 @click.group(invoke_without_command=True)
 @click.version_option(version=Kospex.VERSION)
-@click.option('--debug', is_flag=True, default=False, help="Enable debug logging (overrides config).")
-@click.option('--verbose', '-v', is_flag=True, default=False, help="Enable verbose logging.")
-@click.option('--quiet', '-q', is_flag=True, default=False, help="Suppress most output (errors only).")
-@click.option('--log-console', is_flag=True, default=False, help="Enable console logging in addition to file logging.")
+@click.option(
+    "--debug", is_flag=True, default=False, help="Enable debug logging (overrides config)."
+)
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Enable verbose logging.")
+@click.option(
+    "--quiet", "-q", is_flag=True, default=False, help="Suppress most output (errors only)."
+)
+@click.option(
+    "--log-console",
+    is_flag=True,
+    default=False,
+    help="Enable console logging in addition to file logging.",
+)
 @click.pass_context
 def cli(ctx, debug, verbose, quiet, log_console):
     """Kospex is a tool for assessing code and git repositories.
@@ -87,10 +102,10 @@ def cli(ctx, debug, verbose, quiet, log_console):
     """
     # Store logging preferences in context for subcommands
     ctx.ensure_object(dict)
-    ctx.obj['debug'] = debug
-    ctx.obj['verbose'] = verbose
-    ctx.obj['quiet'] = quiet
-    ctx.obj['log_console'] = log_console
+    ctx.obj["debug"] = debug
+    ctx.obj["verbose"] = verbose
+    ctx.obj["quiet"] = quiet
+    ctx.obj["log_console"] = log_console
 
     # Apply runtime logging configuration
     if debug or verbose or quiet or log_console:
@@ -101,10 +116,18 @@ def cli(ctx, debug, verbose, quiet, log_console):
         click.echo(ctx.get_help())
         ctx.exit(0)
 
+
 @cli.command("init")
-@click.option('--create', is_flag=True, default=False, help="Create the default ~/code or KOSPEX_CODE directory.")
-@click.option('--verbose', is_flag=True, default=False, help="Show detailed initialization status.")
-@click.option('--validate', is_flag=True, default=False, help="Validate Kospex setup and configuration.")
+@click.option(
+    "--create",
+    is_flag=True,
+    default=False,
+    help="Create the default ~/code or KOSPEX_CODE directory.",
+)
+@click.option("--verbose", is_flag=True, default=False, help="Show detailed initialization status.")
+@click.option(
+    "--validate", is_flag=True, default=False, help="Validate Kospex setup and configuration."
+)
 def kospex_init(create, verbose, validate):
     """
     Perform comprehensive Kospex environment initialization.
@@ -126,67 +149,63 @@ def kospex_init(create, verbose, validate):
         print(f"Overall Status: {validation['overall_status'].upper()}")
 
         print("\nEnvironment Variables:")
-        for var, info in validation['environment_vars'].items():
-            status = "✓" if info['set'] else "✗"
+        for var, info in validation["environment_vars"].items():
+            status = "✓" if info["set"] else "✗"
             print(f"  {status} {var}: {info['value'] or 'Not set'}")
 
         print("\nDirectories:")
-        for name, info in validation['directories'].items():
-            exists = "✓" if info['exists'] else "✗"
+        for name, info in validation["directories"].items():
+            exists = "✓" if info["exists"] else "✗"
             writable = ""
-            if name == 'kospex_home' and info['exists']:
-                writable = " (writable)" if info['writable'] else " (not writable)"
-            elif name == 'kospex_code' and info['exists']:
-                writable = " (readable)" if info['readable'] else " (not readable)"
+            if name == "kospex_home" and info["exists"]:
+                writable = " (writable)" if info["writable"] else " (not writable)"
+            elif name == "kospex_code" and info["exists"]:
+                writable = " (readable)" if info["readable"] else " (not readable)"
             print(f"  {exists} {info['path']}{writable}")
 
-        if validation['logging']:
+        if validation["logging"]:
             print("\nLogging System:")
-            if validation['logging'].get('directories_exist'):
+            if validation["logging"].get("directories_exist"):
                 print("  ✓ Logging directories configured")
             else:
                 print("  ✗ Logging directories need setup")
 
-        if validation['recommendations']:
+        if validation["recommendations"]:
             print("\nRecommendations:")
-            for rec in validation['recommendations']:
+            for rec in validation["recommendations"]:
                 print(f"  • {rec}")
 
         return
 
     # Perform initialization
-    init_result = KospexUtils.init(
-        create_directories=create,
-        setup_logging=True,
-        verbose=verbose
-    )
+    init_result = KospexUtils.init(create_directories=create, setup_logging=True, verbose=verbose)
 
     if verbose:
         print("\n=== Initialization Results ===")
         print(f"KOSPEX_HOME: {init_result['kospex_home']}")
 
-        if init_result['directories_created']:
+        if init_result["directories_created"]:
             print("\nDirectories Created:")
-            for dir_path in init_result['directories_created']:
+            for dir_path in init_result["directories_created"]:
                 print(f"  • {dir_path}")
 
-        if init_result['environment_vars_set']:
+        if init_result["environment_vars_set"]:
             print("\nEnvironment Variables Set:")
-            for var in init_result['environment_vars_set']:
+            for var in init_result["environment_vars_set"]:
                 print(f"  • {var}")
 
-        if init_result['warnings']:
+        if init_result["warnings"]:
             print("\nWarnings:")
-            for warning in init_result['warnings']:
+            for warning in init_result["warnings"]:
                 print(f"  ⚠ {warning}")
 
-        if init_result['errors']:
+        if init_result["errors"]:
             print("\nErrors:")
-            for error in init_result['errors']:
+            for error in init_result["errors"]:
                 print(f"  ✗ {error}")
 
     # Check for scc installation
-    installed = which('scc')
+    installed = which("scc")
     if not installed:
         log.warning("scc binary not found")
         print("\n⚠ Please install scc from https://github.com/boyter/scc")
@@ -222,7 +241,7 @@ def kospex_init(create, verbose, validate):
             print("  Run 'kospex init --create' to create it, or")
             print("  Set the KOSPEX_CODE environment variable to a different location")
 
-    if not init_result['errors']:
+    if not init_result["errors"]:
         log.info("Kospex initialization completed successfully")
         if not verbose:
             print("✓ Kospex initialization complete!")
@@ -232,24 +251,37 @@ def kospex_init(create, verbose, validate):
 
 
 @cli.command("summary")
-@click.option('-out', type=click.STRING,help="filename to write CSV results to.")
-@click.option('-server', type=click.STRING, help="Git server to query.")
-@click.option('-email', type=click.STRING, help="Email of user to query.")
-@click.option('-active', is_flag=True, default=False, help="Find only actively modified (90 days).")
-@click.option('-docker', is_flag=True, default=False, help="Summary of Docker files.")
-@click.option('-dependencies', is_flag=True, default=False, help="Summary of dependencies.")
-@click.option('-email-contains', type=click.STRING, help="Email of user to query.")
-@click.option('-group', type=click.STRING, help="Name of group (of repos) to query with.")
-@click.option('-org', type=click.STRING, help="Name of Org/Team to query with.")
-@click.option('-debug', is_flag=True, default=False, help="Debug mode.")
-@click.option('--verbose', is_flag=True, default=False, help="Verbose output.")
+@click.option("-out", type=click.STRING, help="filename to write CSV results to.")
+@click.option("-server", type=click.STRING, help="Git server to query.")
+@click.option("-email", type=click.STRING, help="Email of user to query.")
+@click.option("-active", is_flag=True, default=False, help="Find only actively modified (90 days).")
+@click.option("-docker", is_flag=True, default=False, help="Summary of Docker files.")
+@click.option("-dependencies", is_flag=True, default=False, help="Summary of dependencies.")
+@click.option("-email-contains", type=click.STRING, help="Email of user to query.")
+@click.option("-group", type=click.STRING, help="Name of group (of repos) to query with.")
+@click.option("-org", type=click.STRING, help="Name of Org/Team to query with.")
+@click.option("-debug", is_flag=True, default=False, help="Debug mode.")
+@click.option("--verbose", is_flag=True, default=False, help="Verbose output.")
 @click.pass_context
-#@click.option('-', type=click.STRING, help="Name of group (of repos) to query with.")
+# @click.option('-', type=click.STRING, help="Name of group (of repos) to query with.")
 # pylint: disable=unused-argument
-def summary(ctx, out,server,email, active, docker, dependencies, email_contains,group,org,debug,verbose):
-    """ Provide a summary of all the known repositories."""
+def summary(
+    ctx,
+    out,
+    server,
+    email,
+    active,
+    docker,
+    dependencies,
+    email_contains,
+    group,
+    org,
+    debug,
+    verbose,
+):
+    """Provide a summary of all the known repositories."""
     # Respect global logging settings from context
-    global_verbose = ctx.obj.get('verbose', False) if ctx.obj else False
+    global_verbose = ctx.obj.get("verbose", False) if ctx.obj else False
     is_verbose = verbose or global_verbose
 
     log.info("Starting repository summary")
@@ -289,14 +321,14 @@ def summary(ctx, out,server,email, active, docker, dependencies, email_contains,
 
         if docker:
             print("Docker file summary")
-            #docker = KospexUtils.count_key_occurrences(results, "docker")
-            #docker_table = KospexUtils.get_status_table(docker)
-            #print(docker_table)
-            #docker_files = KrunnerUtils.find_dockerfiles_in_repos(dirs)
+            # docker = KospexUtils.count_key_occurrences(results, "docker")
+            # docker_table = KospexUtils.get_status_table(docker)
+            # print(docker_table)
+            # docker_files = KrunnerUtils.find_dockerfiles_in_repos(dirs)
 
             docker_files = KrunnerUtils.find_dockerfiles_in_repos(repo_dirs)
             records = KospexUtils.get_git_metadata(docker_files)
-            #print(records)
+            # print(records)
             docker_status = KospexUtils.count_key_occurrences(records, "status")
             docker_status_table = KospexUtils.get_status_table(docker_status)
             print(docker_status_table)
@@ -307,13 +339,12 @@ def summary(ctx, out,server,email, active, docker, dependencies, email_contains,
             for d in repo_dirs:
                 results = kdeps.find_dependency_files(d)
                 deps.extend(results)
-            #results = kdeps.find_dependency_files(directory)
+            # results = kdeps.find_dependency_files(directory)
             records = KospexUtils.get_all_last_commit_info(deps)
-            dep_stats = KospexUtils.repo_stats(records,"author_date")
+            dep_stats = KospexUtils.repo_stats(records, "author_date")
             deps_status_table = KospexUtils.get_status_table(dep_stats)
             print("\nDependencies summary")
             print(deps_status_table)
-
 
         print()
 
@@ -322,6 +353,7 @@ def summary(ctx, out,server,email, active, docker, dependencies, email_contains,
 
     else:
         print("No repositories found in the kospex DB.\n")
+
 
 # @cli.command("sync")
 # @click.option('--no-scc', is_flag=True, default=False, help="Skip scc analysis.")
@@ -339,10 +371,10 @@ def summary(ctx, out,server,email, active, docker, dependencies, email_contains,
 
 #     kospex.sync_repo(repo, no_scc=no_scc)
 
-#@cli.command("sync")
-#@click.option('-previous', type=int, help='# Commits to sync from the oldest in kospex DB.')
-#@click.argument('repo', type=GitRepo())
-#def sync(repo, previous):
+# @cli.command("sync")
+# @click.option('-previous', type=int, help='# Commits to sync from the oldest in kospex DB.')
+# @click.argument('repo', type=GitRepo())
+# def sync(repo, previous):
 #    """Sync a single repo to the kospex DB.
 #
 #    Available switches:
@@ -365,8 +397,9 @@ def summary(ctx, out,server,email, active, docker, dependencies, email_contains,
 #   params['previous'] = previous
 #    kospex.sync_repo(repo, **params)
 
+
 @cli.command("sync-directory")
-@click.argument('directory', type=click.Path(exists=True))
+@click.argument("directory", type=click.Path(exists=True))
 def sync_directory(directory):
     """Sync all Git repos found in the data directory to the kospex DB."""
     # Find all the repos in the directory
@@ -375,15 +408,17 @@ def sync_directory(directory):
         print(f"\nSyncing {repo}")
         kospex.sync_repo(repo)
 
+
 @cli.command("developers")
-@click.option('-repo', type=GitRepo(),
-              help='Git repo directory to assess, confirm sync status')
-@click.option('-days', type=int, default=90, help='Committed in the last X days.')
-@click.option('-org_key', type=click.STRING, help='Format of SERVER~ORG')
-@click.option('-repo_id', type=click.STRING, help="Repo ID to query, in the format SERVER~ORG~REPO.")
-@click.option('-server', type=click.STRING, help="Domain of the git server. E.g. github.com")
-@click.option('-all', is_flag=True, default=False, help="Find all developer history. ")
-@click.option('-out', type=click.Path(), help='filename to write CSV results to.')
+@click.option("-repo", type=GitRepo(), help="Git repo directory to assess, confirm sync status")
+@click.option("-days", type=int, default=90, help="Committed in the last X days.")
+@click.option("-org_key", type=click.STRING, help="Format of SERVER~ORG")
+@click.option(
+    "-repo_id", type=click.STRING, help="Repo ID to query, in the format SERVER~ORG~REPO."
+)
+@click.option("-server", type=click.STRING, help="Domain of the git server. E.g. github.com")
+@click.option("-all", is_flag=True, default=False, help="Find all developer history. ")
+@click.option("-out", type=click.Path(), help="filename to write CSV results to.")
 # pylint: disable=unused-argument
 def devs(repo, days, org_key, repo_id, server, all, out):
     """
@@ -392,9 +427,9 @@ def devs(repo, days, org_key, repo_id, server, all, out):
     params = locals()
 
     if all:
-        click.echo('Finding all developer history')
+        click.echo("Finding all developer history")
     else:
-        click.echo(f'Searching for active developers (last {days} days)')
+        click.echo(f"Searching for active developers (last {days} days)")
 
     developers = kospex.active_developers(**params)
 
@@ -406,12 +441,18 @@ def devs(repo, days, org_key, repo_id, server, all, out):
 
 
 @cli.command("list-repos")
-@click.option('-db', is_flag=True, default=False, help="List repos sync'ed to db.")
-@click.option('-repo_id', is_flag=True, default=False, help="Include repo_id in output.")
-@click.option('-server', type=click.STRING, help="Domain of the git server. E.g. github.com")
-@click.option('-email', type=click.STRING, help="Email of user to query.")
-@click.argument('directory', required=False, type=click.Path(exists=True))
-def list_repos(db,repo_id,server,email,directory,):
+@click.option("-db", is_flag=True, default=False, help="List repos sync'ed to db.")
+@click.option("-repo_id", is_flag=True, default=False, help="Include repo_id in output.")
+@click.option("-server", type=click.STRING, help="Domain of the git server. E.g. github.com")
+@click.option("-email", type=click.STRING, help="Email of user to query.")
+@click.argument("directory", required=False, type=click.Path(exists=True))
+def list_repos(
+    db,
+    repo_id,
+    server,
+    email,
+    directory,
+):
     """
     List all git repositories found in either:
     - the given directory or
@@ -425,17 +466,19 @@ def list_repos(db,repo_id,server,email,directory,):
         print("Please specify either a directory or use the -db flag.")
         exit(1)
 
-    kospex.list_repos(directory,db=db,repo_id=repo_id,server=server,email=email)
+    kospex.list_repos(directory, db=db, repo_id=repo_id, server=server, email=email)
 
     if directory and email:
         print("\nWARNING! email search ONLY works with the -db flag.\n")
 
+
 @cli.command("tech-landscape")
-@click.option('-repo', type=GitRepo())
-@click.option('-repo_id', type=click.STRING)
+@click.option("-repo", type=GitRepo())
+@click.option("-repo_id", type=click.STRING)
 @click.option("-days", type=int, default=90, help="Committed in the last X days.")
-@click.option("-metadata", is_flag=True, default=False,
-              help="Use file metadata, NOT Git committed filenames.")
+@click.option(
+    "-metadata", is_flag=True, default=False, help="Use file metadata, NOT Git committed filenames."
+)
 # pylint: disable=unused-argument
 def tech_landscape(repo, repo_id, days, metadata):
     """
@@ -444,12 +487,13 @@ def tech_landscape(repo, repo_id, days, metadata):
     kwargs = locals()
     kospex.tech_landscape(**kwargs)
 
+
 @cli.command("sync-metadata")
-@click.option('-repo', type=GitRepo())
-@click.option('-directory', type=click.Path(exists=True))
-@click.option('-no_scc', is_flag=True, default=False, help="Don't use scc for stats.")
-@click.option('-force', is_flag=True, default=False, help="Force a new metadata scan.")
-def sync_metadata(repo,directory,no_scc,force):
+@click.option("-repo", type=GitRepo())
+@click.option("-directory", type=click.Path(exists=True))
+@click.option("-no_scc", is_flag=True, default=False, help="Don't use scc for stats.")
+@click.option("-force", is_flag=True, default=False, help="Force a new metadata scan.")
+def sync_metadata(repo, directory, no_scc, force):
     """
     Sync file metadata for either a 'repo' or 'directory' of repos.
     """
@@ -458,14 +502,15 @@ def sync_metadata(repo,directory,no_scc,force):
     elif directory:
         kospex.sync_metadata(directory)
     elif repo:
-        data = kospex.file_metadata(repo,force=force)
+        data = kospex.file_metadata(repo, force=force)
         print(data)
     else:
         print("Please specify either a '-repo' or a '-directory'.")
 
+
 @cli.command("hotspot")
-@click.option('-repo', type=GitRepo())
-@click.option('-repo_id', type=click.Path())
+@click.option("-repo", type=GitRepo())
+@click.option("-repo_id", type=click.Path())
 @click.option("-by_file", is_flag=True, default=False, help="Calculate hotspot per file.")
 # pylint: disable=unused-argument
 def hotspot(repo, repo_id, by_file):
@@ -477,16 +522,17 @@ def hotspot(repo, repo_id, by_file):
     else:
         print("Please specify either a '-repo' or a '-repo_id'.")
 
+
 @cli.command("health-check")
-@click.argument('directory', required=False, type=click.Path(exists=True))
+@click.argument("directory", required=False, type=click.Path(exists=True))
 def health_check(directory):
-    """ Run a health check on a git repository."""
+    """Run a health check on a git repository."""
 
     warning_message = "\nWARNING: This is an experimental WIP feature."
     print(warning_message)
     print()
     if not directory:
-        #directory = os.getcwd()
+        # directory = os.getcwd()
         directory = "."
         print("No directory specified, using current directory.")
 
@@ -504,47 +550,51 @@ def health_check(directory):
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
     results = kdeps.find_dependency_files(directory)
     records = KospexUtils.get_all_last_commit_info(results)
-    stats = KospexUtils.repo_stats(records,"author_date")
+    stats = KospexUtils.repo_stats(records, "author_date")
     print(stats)
 
-    details['dependency_files'] = len(results)
+    details["dependency_files"] = len(results)
     print(f"Found {len(results)} dependency files.")
-    active_dep_files = stats.get("Active",0)
+    active_dep_files = stats.get("Active", 0)
     if active_dep_files > 0:
         active_dep_files_percent = (active_dep_files / len(results)) * 100
-        details['active_dependency_files'] = f"{active_dep_files_percent:.2f}%"
+        details["active_dependency_files"] = f"{active_dep_files_percent:.2f}%"
     else:
-        details['active_dependency_files'] = "0%"
+        details["active_dependency_files"] = "0%"
 
     # Get the number of total dependencies
     # Get the status label
     print(f"{warning_message}\n")
     print(KospexUtils.get_keyvalue_table(details))
 
+
 @cli.command("deps")
-@click.option('-repo', type=GitRepo(), help="File path to git repo.")
-@click.option('-file', type=click.Path(exists=True), help="Package file to assess.")
-@click.option('-directory', type=click.Path(), help="Directory to search for dependency files.")
-@click.option('-dev', is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL.")
-@click.option('-out', type=click.STRING, help="filename to write CSV results to.")
+@click.option("-repo", type=GitRepo(), help="File path to git repo.")
+@click.option("-file", type=click.Path(exists=True), help="Package file to assess.")
+@click.option("-directory", type=click.Path(), help="Directory to search for dependency files.")
+@click.option(
+    "-dev", is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL."
+)
+@click.option("-out", type=click.STRING, help="filename to write CSV results to.")
 def deps(repo, file, directory, out, dev):
     """Find dependency files or assess a specific file."""
     kquery = KospexQuery()
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
 
     if directory:
-
         results = kdeps.find_dependency_files(directory)
         records = []
 
         if results:
-
             records = KospexUtils.get_all_last_commit_info(results)
 
-            repos = [data.get('repo','Unknown') for data in records]
+            repos = [data.get("repo", "Unknown") for data in records]
             unique_repos = list(set(repos))
             stats_dict = {key: KospexUtils.init_repo_stats() for key in unique_repos}
-            repo_activity_stats = {key: KospexUtils.init_repo_stats() for key in KospexUtils.get_development_status_options()}
+            repo_activity_stats = {
+                key: KospexUtils.init_repo_stats()
+                for key in KospexUtils.get_development_status_options()
+            }
             # This will hold a Git url : status mapping
             # E.g. repos_status['https://github.com/kospex/kospex'] = 'Active'
             repo_status = {}
@@ -554,26 +604,30 @@ def deps(repo, file, directory, out, dev):
                 print(table)
 
                 for r in records:
-                    repo = r.get('repo','Unknown')
-                    file_path = r.get('file_path')
+                    repo = r.get("repo", "Unknown")
+                    file_path = r.get("file_path")
                     git_base = KospexUtils.find_git_base(file_path)
                     get_last_commit_info = KospexUtils.get_last_commit_info(git_base)
-                    repo_status[repo] = get_last_commit_info.get('status')
+                    repo_status[repo] = get_last_commit_info.get("status")
 
                     if repo:
-                        stats_dict[repo] = KospexUtils.add_status(stats_dict[repo], r.get('status'))
-                        repo_activity_stats[repo_status[repo]] = KospexUtils.add_status(repo_activity_stats[repo_status[repo]], r.get('status'))
+                        stats_dict[repo] = KospexUtils.add_status(stats_dict[repo], r.get("status"))
+                        repo_activity_stats[repo_status[repo]] = KospexUtils.add_status(
+                            repo_activity_stats[repo_status[repo]], r.get("status")
+                        )
 
                     # Get repo status
 
             print(repo_status)
 
-            activity_table = KospexUtils.get_repo_stats_table(stats=repo_activity_stats,fieldname="Repo Status")
+            activity_table = KospexUtils.get_repo_stats_table(
+                stats=repo_activity_stats, fieldname="Repo Status"
+            )
 
             if out:
-                KospexUtils.list_dict_2_csv(records,out)
+                KospexUtils.list_dict_2_csv(records, out)
 
-            stats = KospexUtils.repo_stats(records,"author_date")
+            stats = KospexUtils.repo_stats(records, "author_date")
             print("\nOverall Summary of dependency files found")
             print(stats)
             status_table = KospexUtils.get_status_table(stats)
@@ -592,7 +646,6 @@ def deps(repo, file, directory, out, dev):
             print("No package/dependency manager files found.")
 
     elif repo:
-
         results = kdeps.find_dependency_files(repo)
 
         if results:
@@ -605,22 +658,21 @@ def deps(repo, file, directory, out, dev):
             print("No package/dependency manager files found.")
 
     elif file:
-
         file_path = os.path.abspath(file)
         repo_info = kospex.file_repo_details(file)
         repo_authors = 0
         if repo_info:
-            results = kquery.authors_by_repo(repo_info['_repo_id'])
+            results = kquery.authors_by_repo(repo_info["_repo_id"])
             if results:
                 repo_authors = len(results)
 
         params = {}
-        params['dev_deps'] = dev
-        params['repo_info'] = repo_info
-        params['print_table'] = True
-        params['results_file'] = out
+        params["dev_deps"] = dev
+        params["repo_info"] = repo_info
+        params["print_table"] = True
+        params["results_file"] = out
 
-        #records = kdeps.assess(file_path, results_file=out, repo_info=repo_info,
+        # records = kdeps.assess(file_path, results_file=out, repo_info=repo_info,
         #                       print_table=True)
         records = kdeps.assess(file_path, **params)
         # TODO - refactor this into a function
@@ -629,23 +681,23 @@ def deps(repo, file, directory, out, dev):
         author_count = 0
         repos_observerd = []
         for record in records:
-            if 'versions_behind' in record and record['versions_behind'] > 2:
+            if "versions_behind" in record and record["versions_behind"] > 2:
                 count += 1
-            if 'authors' in record and record['authors']:
-                if not record.get('source_repo') in repos_observerd:
-                    repos_observerd.append(record.get('source_repo'))
-                    author_count += record['authors']
+            if "authors" in record and record["authors"]:
+                if not record.get("source_repo") in repos_observerd:
+                    repos_observerd.append(record.get("source_repo"))
+                    author_count += record["authors"]
 
         if total:
             print(f"Total dependencies: {total} | Outdated(>2): {count}")
-            print(f"Non Compliant: {count/total*100:.2f}%")
-            print(f"Compliant: {(total-count)/total*100:.2f}%")
+            print(f"Non Compliant: {count / total * 100:.2f}%")
+            print(f"Compliant: {(total - count) / total * 100:.2f}%")
             print()
             print(f"# Dependency Authors: {author_count}")
             if repo_authors:
                 print(f"# Repo Authors: {repo_authors}")
             if author_count and repo_authors:
-                print(f"Dependency:Repo Author Ratio: {(repo_authors/author_count)*100:.5f}%")
+                print(f"Dependency:Repo Author Ratio: {(repo_authors / author_count) * 100:.5f}%")
         else:
             print("No dependencies found.")
 
@@ -654,13 +706,16 @@ def deps(repo, file, directory, out, dev):
     else:
         print("Please specify either a '-repo', '-directory' or a '-file'.")
 
+
 @cli.command("sca")
-@click.option('-repo', type=GitRepo(), help="NOT IMPLEMENTED - File path to git repo.")
-@click.option('-dev', is_flag=True, default=True, help="Include dev/test dependencies. EXPERIMENTAL.")
-@click.option('-save', is_flag=False, default=True, help="Save results to kospex DB.")
-@click.option('-malware', is_flag=True, default=False, help="Check for malware in dependencies.")
-@click.option('-out', type=click.STRING, help="filename to write CSV results to.")
-@click.argument('file_path', required=False, type=click.Path(exists=True))
+@click.option("-repo", type=GitRepo(), help="NOT IMPLEMENTED - File path to git repo.")
+@click.option(
+    "-dev", is_flag=True, default=True, help="Include dev/test dependencies. EXPERIMENTAL."
+)
+@click.option("-save", is_flag=False, default=True, help="Save results to kospex DB.")
+@click.option("-malware", is_flag=True, default=False, help="Check for malware in dependencies.")
+@click.option("-out", type=click.STRING, help="filename to write CSV results to.")
+@click.argument("file_path", required=False, type=click.Path(exists=True))
 def sca(repo, dev, save, malware, out, file_path):
     """
     Run a lightweight software composition analysis (SCA) task
@@ -669,7 +724,7 @@ def sca(repo, dev, save, malware, out, file_path):
     Your API_MAT needs to be set in the environment variable API_MAT
     """
     params = locals()
-    api_mat = os.environ.get('API_MAT')
+    api_mat = os.environ.get("API_MAT")
 
     if repo:
         print("NOT implemented")
@@ -677,40 +732,50 @@ def sca(repo, dev, save, malware, out, file_path):
 
     if file_path:
         # Handle a dependency file (e.g. package.json, requirements.txt) and check dependencies
-        results = kospex.dependencies.assess(file_path,**params)
+        results = kospex.dependencies.assess(file_path, **params)
+
+        if results is None:
+            console.print(f"\n{file_path} is not a supported pacakge manager\n", style="red")
+            exit(1)
 
         import pprint
+
         pprint.PrettyPrinter(indent=4).pprint(results)
 
         if malware:
             print("Checking packages for malware on maliciouspackages.com")
             if not api_mat:
-                 print("API_MAT environment variable not set. Please set it to your maliciouspackages.com API key.")
-                 exit(1)
+                print(
+                    "API_MAT environment variable not set. Please set it to your maliciouspackages.com API key."
+                )
+                exit(1)
 
             for result in results:
-                package_type = result.get('package_type')
-                package_name = result.get('package_name')
+                package_type = result.get("package_type")
+                package_name = result.get("package_name")
 
                 if package_type and package_name:
                     print(f"Checking {package_type} package: {package_name}")
-                    is_malware = kospex.dependencies.check_malware(package_type, package_name,api_mat)
-                    result['malware'] = is_malware
+                    is_malware = kospex.dependencies.check_malware(
+                        package_type, package_name, api_mat
+                    )
+                    result["malware"] = is_malware
                 else:
-                    print(f"Skipping package with missing type '{package_type}' or name '{package_name}'")
+                    print(
+                        f"Skipping package with missing type '{package_type}' or name '{package_name}'"
+                    )
 
-        kospex.dependencies.print_dependencies_table(results,malware=True)
-
+        kospex.dependencies.print_dependencies_table(results, malware=True)
 
     else:
         print("Either -repo REPO or file_path is required.\n")
 
 
 @cli.command("author-tech")
-@click.option('-author_email', type=click.STRING)
-@click.option('-repo_id', type=click.STRING)
+@click.option("-author_email", type=click.STRING)
+@click.option("-repo_id", type=click.STRING)
 # pylint: disable=unused-argument
-def author_tech(author_email,repo_id):
+def author_tech(author_email, repo_id):
     """Show the tech landscape for a given author."""
     kwargs = locals()
     print(kwargs)
@@ -718,10 +783,11 @@ def author_tech(author_email,repo_id):
     table = kospex.author_tech_pretty_table(results)
     print(table)
 
+
 @cli.command("key-person")
-@click.option('-top', type=int, default=4, help='The number of top authors to assess.')
-@click.argument('directory', required=False, type=GitRepo())
-def key_person(directory,top):
+@click.option("-top", type=int, default=4, help="The number of top authors to assess.")
+@click.argument("directory", required=False, type=GitRepo())
+def key_person(directory, top):
     """
     Identify the key people for a repo based on number of commits.
 
@@ -745,7 +811,7 @@ def key_person(directory,top):
     table = KospexUtils.key_person_prettytable()
     headers = table.field_names
 
-    authors = kquery.key_person(repo_id=kgit.get_repo_id(),top=top)
+    authors = kquery.key_person(repo_id=kgit.get_repo_id(), top=top)
     console.print(authors)
 
     for a in authors:
@@ -754,6 +820,7 @@ def key_person(directory,top):
     print()
     print(table)
     print()
+
 
 @cli.command("orgs")
 def orgs():
@@ -765,12 +832,15 @@ def orgs():
         table.add_row(KospexUtils.get_values_by_keys(o, table.field_names))
     print(table)
 
+
 @cli.command("sync-dependencies")
-@click.option('-file', type=click.Path(exists=True), help="The dependency file to sync.")
-@click.option('-repo', type=GitRepo())
-@click.option('--dev', is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL.")
-def sync_dependencies(repo,file,dev):
-    """ Clone and sync the dependencies for a repo/dependency file."""
+@click.option("-file", type=click.Path(exists=True), help="The dependency file to sync.")
+@click.option("-repo", type=GitRepo())
+@click.option(
+    "--dev", is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL."
+)
+def sync_dependencies(repo, file, dev):
+    """Clone and sync the dependencies for a repo/dependency file."""
     kquery = KospexQuery()
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
 
@@ -780,13 +850,11 @@ def sync_dependencies(repo,file,dev):
             file_path = os.path.abspath(file)
             print(f"Syncing dependencies for file: {file}")
             repo_info = kospex.file_repo_details(file)
-            records = kdeps.assess(file_path, repo_info=repo_info,
-                                   print_table=True,dev_deps=dev)
+            records = kdeps.assess(file_path, repo_info=repo_info, print_table=True, dev_deps=dev)
 
             for rec in records:
-
                 if rec.get("source_repo"):
-                    print(f'About to clone and sync {rec["source_repo"]}')
+                    print(f"About to clone and sync {rec['source_repo']}")
                     repo_path = kospex.git.clone_repo(rec["source_repo"])
                     if repo_path:
                         kospex.sync_repo(repo_path)
@@ -850,17 +918,18 @@ def sync_dependencies(repo,file,dev):
 #     ext_dif = KospexUtils.merge_dicts(ar1, ar2)
 #     print(ext_dif)
 
+
 @cli.command("groups")
-@click.option('-name', type=click.STRING, help="Name of the group")
-@click.option('-add', is_flag=True, default=False, help="Add items to a group.")
-@click.option('-remove', is_flag=True, default=False, help="Remove items from a group.")
-@click.option('-delete', is_flag=True, default=False, help="Delete ALL items in a group.")
-@click.option('-show', is_flag=True, default=False, help="List the items in a group.")
-@click.option('-file', type=click.Path(), help="The group file to sync.")
-@click.option('-value', type=click.STRING, help="Value to add or remove from the group.")
-@click.option('-email', is_flag=True, default=False, help="Specify the values are emails.")
-@click.option('-repo', is_flag=True, default=False, help="Specify the values are repo URLs.")
-def groups(name,add,remove,delete,show,file,value,email,repo):
+@click.option("-name", type=click.STRING, help="Name of the group")
+@click.option("-add", is_flag=True, default=False, help="Add items to a group.")
+@click.option("-remove", is_flag=True, default=False, help="Remove items from a group.")
+@click.option("-delete", is_flag=True, default=False, help="Delete ALL items in a group.")
+@click.option("-show", is_flag=True, default=False, help="List the items in a group.")
+@click.option("-file", type=click.Path(), help="The group file to sync.")
+@click.option("-value", type=click.STRING, help="Value to add or remove from the group.")
+@click.option("-email", is_flag=True, default=False, help="Specify the values are emails.")
+@click.option("-repo", is_flag=True, default=False, help="Specify the values are repo URLs.")
+def groups(name, add, remove, delete, show, file, value, email, repo):
     """
     List all the groups in the database.
     """
@@ -869,7 +938,7 @@ def groups(name,add,remove,delete,show,file,value,email,repo):
 
     actions = [add, remove, delete, show]
     types = [email, repo]
-    input_type = [file,value]
+    input_type = [file, value]
 
     # By default, if there are no action parameters and we'll display the groups and exit
     if sum(actions) == 0:
@@ -887,21 +956,19 @@ def groups(name,add,remove,delete,show,file,value,email,repo):
         print("Please specify a group name.")
         exit(1)
 
-    KospexUtils.validate_only_one(actions,
-                                  "Please specify either -add, -list, -remove or -delete.")
+    KospexUtils.validate_only_one(actions, "Please specify either -add, -list, -remove or -delete.")
 
     if remove:
         print("Not implemented yet.")
         exit(1)
 
     if add:
-        KospexUtils.validate_only_one(types,
-                                      "Please specify either -email or -repo.")
+        KospexUtils.validate_only_one(types, "Please specify either -email or -repo.")
 
     lines = []
 
     if file:
-        with open(file, 'r') as content:
+        with open(file, "r") as content:
             lines = content.readlines()
         # Remove any trailing newlines
         lines = [line.strip() for line in lines]
@@ -918,20 +985,22 @@ def groups(name,add,remove,delete,show,file,value,email,repo):
 
         for l in lines:
             record = {}
-            record['group_name'] = name
+            record["group_name"] = name
             record[data_keyname] = l
-            record['_repo_id'] = ""
-            record['email'] = ""
+            record["_repo_id"] = ""
+            record["email"] = ""
             if repo:
                 kgit.set_remote_url(l)
-                #record['_repo_id'] = KospexUtils.git_url_to_repo_id(l)
-                record['_repo_id'] = kgit.get_repo_id()
+                # record['_repo_id'] = KospexUtils.git_url_to_repo_id(l)
+                record["_repo_id"] = kgit.get_repo_id()
                 print(f"Repo ID: {record['_repo_id']}")
 
-            record['data_type'] = data_keyname
+            record["data_type"] = data_keyname
             records.append(record)
 
-        kospex.kospex_db.table(KospexSchema.TBL_GROUPS).upsert_all(records,pk=['group_name', '_repo_id', 'email'])
+        kospex.kospex_db.table(KospexSchema.TBL_GROUPS).upsert_all(
+            records, pk=["group_name", "_repo_id", "email"]
+        )
 
     elif show:
         print(f"Listing the values in the group '{name}'")
@@ -951,13 +1020,19 @@ def groups(name,add,remove,delete,show,file,value,email,repo):
 
     print(lines)
 
+
 @cli.command("orphans")
-@click.option('-days', type=int, default=90, help='Committed in X days is considered active.(default 90)')
-@click.option('-window', type=int, default=365, help='Days to consider for orphaned repos. (default 365)')
-@click.option('-server', type=click.STRING, help="Git server to query.")
-@click.option('-target-list', type=click.Path(exists=True),
-    help="A file containing repos to check.")
-def orphans(days,window,server,target_list):
+@click.option(
+    "-days", type=int, default=90, help="Committed in X days is considered active.(default 90)"
+)
+@click.option(
+    "-window", type=int, default=365, help="Days to consider for orphaned repos. (default 365)"
+)
+@click.option("-server", type=click.STRING, help="Git server to query.")
+@click.option(
+    "-target-list", type=click.Path(exists=True), help="A file containing repos to check."
+)
+def orphans(days, window, server, target_list):
     """
     Find orphaned repos.
 
@@ -971,22 +1046,22 @@ def orphans(days,window,server,target_list):
     params = locals()
 
     active_devs = kospex.active_developers(**params)
-    active_set = set(map(lambda item: item['author'], active_devs))
+    active_set = set(map(lambda item: item["author"], active_devs))
 
     # repos will contain an array of dicts, we need the _repo_id
     repos = []
 
     if target_list:
         # Process the file
-        with open(target_list, 'r') as file:
-                    for line in file:
-                        # Skip empty lines
-                        kospex.git.set_remote_url(line)
-                        repo_id = kospex.git.repo_id
-                        if repo_id:
-                            # Create dict with _repo_id key and add to repos array
-                            repo_dict = {"_repo_id": repo_id}
-                            repos.append(repo_dict)
+        with open(target_list, "r") as file:
+            for line in file:
+                # Skip empty lines
+                kospex.git.set_remote_url(line)
+                repo_id = kospex.git.repo_id
+                if repo_id:
+                    # Create dict with _repo_id key and add to repos array
+                    repo_dict = {"_repo_id": repo_id}
+                    repos.append(repo_dict)
     else:
         # Find all the repos in the database
         repos = kospex.kospex_query.repos(server=server)
@@ -1005,10 +1080,10 @@ def orphans(days,window,server,target_list):
         row.append(r["_repo_id"])
         print(f"repo_id: {r['_repo_id']}")
         commits = kospex.kospex_query.commits(
-            repo_id=r["_repo_id"],
-            after=from_date.strftime("%Y-%m-%dT%H:%M:%S%z"))
+            repo_id=r["_repo_id"], after=from_date.strftime("%Y-%m-%dT%H:%M:%S%z")
+        )
 
-        committers = set([c['committer_email'] for c in commits])
+        committers = set([c["committer_email"] for c in commits])
         row.append(len(committers))
 
         intersection_count = len(committers.intersection(active_set))
@@ -1028,7 +1103,7 @@ def orphans(days,window,server,target_list):
         else:
             print("Working knowledge exists")
             row.append(False)
-            row.append(f"{intersection_count/len(committers)*100:.2f}%")
+            row.append(f"{intersection_count / len(committers) * 100:.2f}%")
             working_knowledge += 1
 
         table.add_row(row)
@@ -1037,15 +1112,18 @@ def orphans(days,window,server,target_list):
     print()
     print(table)
     print(f"\nOrphaned: {orphaned} | Working Knowledge: {working_knowledge} | Total: {len(repos)}")
-    print(f"Orphaned: {orphaned/len(repos)*100:.2f}% | Working Knowledge: {working_knowledge/len(repos)*100:.2f}%\n")
+    print(
+        f"Orphaned: {orphaned / len(repos) * 100:.2f}% | Working Knowledge: {working_knowledge / len(repos) * 100:.2f}%\n"
+    )
 
     print()
 
+
 @cli.command("metadata")
-@click.option('-file_type', type=click.STRING, help="Only returns files of this file type.")
-@click.option('-repo_id', type=click.STRING, help="repo_id to query kospex DB for metadata.")
-@click.option('-sync', type=click.BOOL, help="Sync metadata to kospex DB.")
-def metadata(file_type,repo_id,sync):
+@click.option("-file_type", type=click.STRING, help="Only returns files of this file type.")
+@click.option("-repo_id", type=click.STRING, help="repo_id to query kospex DB for metadata.")
+@click.option("-sync", type=click.BOOL, help="Sync metadata to kospex DB.")
+def metadata(file_type, repo_id, sync):
     """
     Find file metadata and tags.
     """
@@ -1068,16 +1146,18 @@ def metadata(file_type,repo_id,sync):
         print("Can only sync on a directory, with no file_type specified.")
         exit(1)
 
-    table = kospex.cli_file_metadata(repo_dir=dir, file_type=file_type,
-       repo_id=repo_id, sync=sync)
+    table = kospex.cli_file_metadata(repo_dir=dir, file_type=file_type, repo_id=repo_id, sync=sync)
 
     print(table)
 
     if table:
         print(f"Files: {len(table.rows)}")
 
+
 @cli.command("upgrade-db")
-@click.option('-apply', is_flag=True, default=False, help="Confirm and apply upgrades kospex DB schema.")
+@click.option(
+    "-apply", is_flag=True, default=False, help="Confirm and apply upgrades kospex DB schema."
+)
 def upgrade_db(apply):
     """
     Perform an upgrade and apply DB changes for new versions.
@@ -1101,7 +1181,7 @@ def upgrade_db(apply):
         #     # Set to 0, meaning we're in an unknown state, but we'll try an upgrade
         #     invalid_version = True
         version = data
-        #print(f"INVALID kospex db version '{data}'.\nSetting to 0 for need of an upgrade")
+        # print(f"INVALID kospex db version '{data}'.\nSetting to 0 for need of an upgrade")
         print(f"kospex db version: {version}")
     else:
         print("We don't have a kospex db version, either deleted, or an older database version")
@@ -1115,15 +1195,17 @@ def upgrade_db(apply):
 
     alter_db_changes = []
 
-    rows = kospex.kospex_db.query("SELECT sql, tbl_name FROM sqlite_master where type = 'table'", [])
+    rows = kospex.kospex_db.query(
+        "SELECT sql, tbl_name FROM sqlite_master where type = 'table'", []
+    )
 
     for r in rows:
         tbl_name = r.get("tbl_name")
         sql = r.get("sql")
         print(f"tbl_name: {tbl_name}")
-        #print(KospexUtils.parse_sql_create_columns(sql))
+        # print(KospexUtils.parse_sql_create_columns(sql))
         if current_create := KospexSchema.DB_CREATE_STATEMENTS.get(tbl_name):
-            alter_commands = KospexSchema.generate_alter_table(sql,current_create,tbl_name)
+            alter_commands = KospexSchema.generate_alter_table(sql, current_create, tbl_name)
             if alter_commands:
                 print(f"Alter commands for table {tbl_name}")
                 print(alter_commands)
@@ -1154,22 +1236,23 @@ def upgrade_db(apply):
                     errors += 1
 
             if errors > 0:
-               print("WARNING: Errors in applying the alter table")
+                print("WARNING: Errors in applying the alter table")
             else:
                 # update db version
                 rec = {
                     "key": KospexSchema.KOSPEX_DB_VERSION_KEY,
                     "value": str(KospexSchema.KOSPEX_DB_VERSION),
                     "format": "INTEGER",
-                    "latest": 1
+                    "latest": 1,
                 }
-                kospex.kospex_db.table(KospexSchema.TBL_KOSPEX_CONFIG).upsert(rec, pk=["key", "latest"])
+                kospex.kospex_db.table(KospexSchema.TBL_KOSPEX_CONFIG).upsert(
+                    rec, pk=["key", "latest"]
+                )
 
                 print("Changes applied.")
 
         else:
-                print("Nothing to apply.")
-
+            print("Nothing to apply.")
 
     elif len(alter_db_changes) > 0:
         print("\nThe above is the dry run of the changes, to apply them:")
@@ -1178,9 +1261,10 @@ def upgrade_db(apply):
     else:
         print("No changes required, up to date.")
 
+
 @cli.command("advisory-history")
-@click.option('-ecosystem', type=click.STRING, help="E.g. npm, pypi")
-@click.option('-package', type=click.STRING, help="Name of package")
+@click.option("-ecosystem", type=click.STRING, help="E.g. npm, pypi")
+@click.option("-package", type=click.STRING, help="Name of package")
 def advisory_history(ecosystem, package):
     """
     Show the advisories for the previous X (default 10) versions of the package
@@ -1192,17 +1276,17 @@ def advisory_history(ecosystem, package):
         kd = kospex.dependencies
 
         import pprint
-        #pprint.PrettyPrinter(indent=4).pprint(data)
+
+        # pprint.PrettyPrinter(indent=4).pprint(data)
         for p in data.get("versions"):
             print(p.get("purl"))
             parts = kd.extract_purl(p.get("purl"))
-            package_info = kd.deps_dev(parts["ecosystem"],
-                parts["package_name"],
-                parts["package_version"]
+            package_info = kd.deps_dev(
+                parts["ecosystem"], parts["package_name"], parts["package_version"]
             )
             pprint.PrettyPrinter(indent=4).pprint(package_info)
             print("\n")
-            #pprint.PrettyPrinter(indent=4).pprint(kd.extract_purl(p.get("purl")))
+            # pprint.PrettyPrinter(indent=4).pprint(kd.extract_purl(p.get("purl")))
     else:
         print("Please provide both ecosystem and package names.")
 
@@ -1227,16 +1311,15 @@ def status():
 
     print("Database table version status\n")
 
-
     print("Installed tool status")
     print("---------------------")
-    installed = which('scc')
+    installed = which("scc")
     if installed:
         print(f"scc:\t{installed}")
     else:
         print("scc:\tNot installed")
 
-    installed = which('git')
+    installed = which("git")
     if installed:
         print(f"git:\t{installed}")
     else:
@@ -1244,8 +1327,40 @@ def status():
 
     print("\n")
 
+
+@cli.command("commit-stats")
+@click.option("-commits", type=int, default=11, help="Time to X commits (default: 11).")
+@click.argument("dev", required=True, type=click.STRING)
+def commit_stats(commits, dev):
+    """
+    Test connectivity to api.deps.dev and check for SSL errors.
+
+    This command attempts to connect to api.deps.dev and reports any SSL certificate errors.
+    Use the -save flag to export the certificate chain to ~/kospex/REQUEST_CA_CERTS.
+    """
+    console.print(f"\nCalculating commit stats for {dev}", style="bright_black")
+    all_commits = kospex.kospex_query.commits(author_email=dev)
+    console.print(f"# of commits: {len(all_commits)}")
+    active_commits = kospex.kospex_query.commits(
+        author_email=dev, after=KospexUtils.days_ago_iso_date(90)
+    )
+    console.print(f"# of active commits: {len(active_commits)}")
+    if len(all_commits) > commits:
+        first_commit = all_commits[-1]
+        x_commit = all_commits[-commits]
+        days_between = KospexUtils.days_between_datetimes(
+            first_commit.get("committer_when"), x_commit.get("committer_when")
+        )
+        console.log(f"days to {commits} commit: {days_between}")
+
+
 @cli.command("connectivity")
-@click.option('-save', is_flag=True, default=False, help="Save root and intermediate CA certificates to ~/kospex/REQUEST_CA_CERTS.")
+@click.option(
+    "-save",
+    is_flag=True,
+    default=False,
+    help="Save root and intermediate CA certificates to ~/kospex/REQUEST_CA_CERTS.",
+)
 def connectivity(save):
     """
     Test connectivity to api.deps.dev and check for SSL errors.
@@ -1306,8 +1421,8 @@ def connectivity(save):
 
                     print(f"\n✓ Retrieved certificate from {hostname}")
                     if cert_dict:
-                        subject = dict(x[0] for x in cert_dict.get('subject', ()))
-                        issuer = dict(x[0] for x in cert_dict.get('issuer', ()))
+                        subject = dict(x[0] for x in cert_dict.get("subject", ()))
+                        issuer = dict(x[0] for x in cert_dict.get("issuer", ()))
                         print(f"  Subject: {subject.get('commonName', 'N/A')}")
                         print(f"  Issuer: {issuer.get('commonName', 'N/A')}")
                         print(f"  Valid from: {cert_dict.get('notBefore', 'N/A')}")
@@ -1322,30 +1437,36 @@ def connectivity(save):
                             # Check if certificate already exists in the file
                             cert_exists = False
                             if os.path.exists(cert_file):
-                                with open(cert_file, 'r') as f:
+                                with open(cert_file, "r") as f:
                                     existing_content = f.read()
                                     # Check if this exact certificate is already in the file
                                     if pem_cert.strip() in existing_content:
                                         cert_exists = True
                                         print(f"\n✓ Certificate already exists in: {cert_file}")
-                                        log.info(f"Certificate for {hostname} already exists in {cert_file}")
+                                        log.info(
+                                            f"Certificate for {hostname} already exists in {cert_file}"
+                                        )
 
                             if not cert_exists:
                                 # Append certificate with header comment
-                                mode = 'a' if os.path.exists(cert_file) else 'w'
+                                mode = "a" if os.path.exists(cert_file) else "w"
                                 with open(cert_file, mode) as f:
                                     # Add header comment for clarity
-                                    if mode == 'a':
+                                    if mode == "a":
                                         f.write("\n")  # Add blank line between certificates
                                     f.write(f"# Certificate for {hostname}\n")
-                                    f.write(f"# Retrieved: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n")
+                                    f.write(
+                                        f"# Retrieved: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+                                    )
                                     f.write(pem_cert)
-                                    if not pem_cert.endswith('\n'):
-                                        f.write('\n')
+                                    if not pem_cert.endswith("\n"):
+                                        f.write("\n")
 
-                                action = "appended to" if mode == 'a' else "saved to"
+                                action = "appended to" if mode == "a" else "saved to"
                                 print(f"\n✓ Certificate {action}: {cert_file}")
-                                print(f"  You can use this file with the REQUESTS_CA_BUNDLE environment variable:")
+                                print(
+                                    f"  You can use this file with the REQUESTS_CA_BUNDLE environment variable:"
+                                )
                                 print(f"  export REQUESTS_CA_BUNDLE={cert_file}")
                                 log.info(f"Certificate for {hostname} {action} {cert_file}")
                         except IOError as e:
@@ -1363,7 +1484,7 @@ def connectivity(save):
             log.error(f"Unexpected error: {str(e)}")
 
     # Summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     if ssl_error:
         print("⚠ WARNING: SSL certificate verification failed!")
         print("\nRecommendations:")
@@ -1373,11 +1494,12 @@ def connectivity(save):
         print("  4. Check if you're behind a corporate proxy")
     else:
         print("✓ Connectivity test completed successfully")
-    print("="*60 + "\n")
+    print("=" * 60 + "\n")
+
 
 #
 # Start of the main program
 #
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     cli()

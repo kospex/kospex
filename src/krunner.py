@@ -3,24 +3,27 @@
 This is the kospex runner tool - run the same command or queries on all repos.
 """
 
-from itertools import count
+import glob
 import os
 import os.path
+import shlex
 import subprocess
 import sys
-import shlex
-import glob
+from itertools import count
+
 import click
-from kospex_core import Kospex
-import kospex_utils as KospexUtils
-from kospex_utils import KospexTimer
-import kospex_schema as KospexSchema
-from kospex_dependencies import KospexDependencies
-from kospex_git import KospexGit
-import krunner_utils as KrunnerUtils
-import kospex_web as KospexWeb
+from click.types import BOOL
 from rich.console import Console
 from rich.table import Table
+
+import kospex_schema as KospexSchema
+import kospex_utils as KospexUtils
+import kospex_web as KospexWeb
+import krunner_utils as KrunnerUtils
+from kospex_core import Kospex
+from kospex_dependencies import KospexDependencies
+from kospex_git import KospexGit
+from kospex_utils import KospexTimer
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
@@ -64,7 +67,8 @@ def load_dependency_memory_db():
     console.log("Loading data to in memory database ...")
     with KospexTimer("Loading data to in memory database") as load_memory:
         memory_kq = kospex.kospex_query.create_memory_kospex_query(
-            ["commit_files", "file_metadata", "repos", "url_cache", "commits"]
+            # ["commit_files", "file_metadata", "repos", "url_cache", "commits"]
+            ["commit_files", "file_metadata", "repos", "url_cache"]
         )
     console.log(f"Loaded tables to memory db {load_memory}")
 
@@ -286,6 +290,56 @@ def repo_size(save, csv, request_id, verbose):
         filename = "repo-sizes.csv"
         console.log(f"Writing {len(results)} repo sizes to {filename}")
         KrunnerUtils.write_dict_to_csv(filename, results)
+
+
+@cli.command("key-person")
+@click.option("-top", type=int, default=4, help="The number of top authors to assess.")
+@click.option(
+    "-overwrite", is_flag=True, default=False, help="Overwrite results CSV file. (Default: False)"
+)
+@click.argument("request_id", required=False, type=click.STRING)
+def key_person(top, overwrite, request_id):
+    """
+    Run a key person analysis (commits based) for the in-scope repos.
+    """
+    key_people = []
+    memory_kq = None
+    filename = KrunnerUtils.generate_krunner_csv_filename("key-people", request_id)
+
+    console.log("Creating memory database ...")
+    with KospexTimer("Loading data to in memory database") as load_memory:
+        memory_kq = kospex.kospex_query.create_memory_kospex_query(["commits"])
+    console.log(f"Loaded tables to memory db {load_memory}")
+
+    console.log("Creating indexes ...")
+    with KospexTimer("creating indexes") as index_timer:
+        memory_kq.kospex_db["commits"].create_index(["author_email"])
+        # memory_kq.kospex_db["commit_files"].create_index(["hash", "committer_when"])
+        # memory_kq.kospex_db["commit_files"].create_index(['committer_when'])
+    console.log(f"{index_timer}")
+
+    repos = get_repos(request_id)
+    for r in repos:
+        console.log(f"{r['_repo_id']}")
+        # Should consider checking if we've got a result for this repo_id and hash
+        repo_id = r["_repo_id"]
+        authors = memory_kq.key_person(repo_id=repo_id, top=top)
+        for dev in authors:
+            dev["repo_id"] = repo_id
+        # console.print(authors)
+        key_people.extend(authors)
+
+    console.print(f"# of Key people: {len(key_people)}, who are top ({top})")
+
+    # TODO add as CLI option
+    # Check if filename exists, exit if it does unless -overwrite is passed
+    csv = True
+    if csv:
+        filename = KrunnerUtils.generate_krunner_csv_filename("key-people", request_id)
+        if request_id:
+            filename = f"key-people-{request_id}.csv"
+        console.log(f"Writing {len(key_people)} people to {filename}")
+        KrunnerUtils.write_dict_to_csv(filename, key_people)
 
 
 @cli.command("developer-tech")
