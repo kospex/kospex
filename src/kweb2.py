@@ -2,36 +2,36 @@
 """FastAPI Kospex web server."""
 
 import csv
-import sys
 import os
+import sys
 from datetime import datetime
 from io import StringIO
-from typing import Optional
 from pathlib import Path
+from typing import Optional
 
-from fastapi import FastAPI, Request, HTTPException, UploadFile, File
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, Response, FileResponse
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import (
     http_exception_handler,
     request_validation_exception_handler,
 )
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from requests.models import LocationParseError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from kospex_query import KospexQuery
-import kospex_web as KospexWeb
-import kospex_utils as KospexUtils
 import kospex_stats as KospexStats
-from kospex_utils import KospexTimer
-from kospex_request_cache import RequestCache
-from kweb_help_service import HelpService
-from kweb_graph_service import GraphService
-from kospex_core import Kospex
+import kospex_utils as KospexUtils
+import kospex_web as KospexWeb
 from api_routes import router as api_router
+from kospex_core import Kospex
+from kospex_query import KospexQuery
+from kospex_request_cache import RequestCache
+from kospex_utils import KospexTimer
+from kweb_graph_service import GraphService
+from kweb_help_service import HelpService
 
 # Initialize Kospex environment
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
@@ -736,7 +736,8 @@ async def landscape(request: Request, id: Optional[str] = None):
 
 
 @app.get("/developers/", response_class=HTMLResponse)
-async def developers(request: Request):
+@app.get("/developers/{id}", response_class=HTMLResponse)
+async def developers(request: Request, id: Optional[str] = None):
     """Developer info page"""
     try:
         logger.info("Developers page requested")
@@ -1191,9 +1192,9 @@ async def package_check(request: Request):
 async def package_check_upload(file: UploadFile = File(...)):
     """Handle file upload and analyze dependencies"""
     try:
-        import tempfile
         import os
         import pprint
+        import tempfile
 
         logger.info(f"Package upload requested for file: {file.filename}")
 
