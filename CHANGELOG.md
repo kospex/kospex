@@ -2,6 +2,15 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.36 - 2025-12-XX
+
+### Fixed
+- 
+
+### Changed
+- Bumped python version in the Dockerfiles to 3.12
+
+
 ## 0.0.35 - 2025-11-26
 
 ### Fixed

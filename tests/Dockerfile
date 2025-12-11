@@ -7,15 +7,15 @@ FROM rockylinux:9
 # Update the system and install necessary packages
 RUN dnf -y update && dnf -y upgrade && \
     dnf -y install \
-    python3.11 \
-    python3.11-pip \
+    python3.12 \
+    python3.12-pip \
     which \
     git \
     && dnf clean all
 
-# Set default to 3.11 versions of python and pip
-RUN ln -s /usr/bin/pip-3.11 /usr/bin/pip
-RUN ln -s /usr/bin/python3.11 /usr/bin/python
+# Set default to 3.12 versions of python and pip
+RUN ln -s /usr/bin/pip-3.12 /usr/bin/pip
+RUN ln -s /usr/bin/python3.12 /usr/bin/python
 
 # Upgrade pip
 RUN pip install --upgrade pip
