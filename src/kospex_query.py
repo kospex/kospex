@@ -1,17 +1,20 @@
-""" Use case queries for the kospex DB"""
-import time
-import re
-from typing import Optional
-from collections import defaultdict
-from datetime import datetime, timezone, timedelta
+"""Use case queries for the kospex DB"""
+
 import json
-from sqlite_utils import Database
-import kospex_utils as KospexUtils
-from kospex_utils import KospexTimer
-import kospex_schema as KospexSchema
-import requests
-from kospex_observation import Observation
+import re
+import time
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
 import panopticas as Panopticas
+import requests
+from sqlite_utils import Database
+
+import kospex_schema as KospexSchema
+import kospex_utils as KospexUtils
+from kospex_observation import Observation
+from kospex_utils import KospexTimer
 
 
 class KospexQuery:
@@ -26,12 +29,14 @@ class KospexQuery:
         """
         Return the KOSPEX_DB_VERSION stored in the KOSPEX_CONFIG table
         """
-        version_sql = f"SELECT value FROM {KospexSchema.TBL_KOSPEX_CONFIG} where key = ? AND latest = 1"
+        version_sql = (
+            f"SELECT value FROM {KospexSchema.TBL_KOSPEX_CONFIG} where key = ? AND latest = 1"
+        )
         data = next(self.kospex_db.query(version_sql, [KospexSchema.KOSPEX_DB_VERSION_KEY]), None)
         version = None
         if data:
             try:
-                version = int(data['value'])
+                version = int(data["value"])
             except (ValueError, TypeError):
                 version = 0
 
@@ -43,12 +48,12 @@ class KospexQuery:
         """
         # Used to hold the date value calculated from days
         from_date = None
-        data = {} # Hold the data, should be a list of authors, commiters, total orgs
+        data = {}  # Hold the data, should be a list of authors, commiters, total orgs
 
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
         kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
-        kd.select_as("count(*)",'commits')
+        kd.select_as("count(*)", "commits")
         kd.select_raw("COUNT(DISTINCT(LOWER(author_email))) as authors")
         kd.select_raw("COUNT(DISTINCT(LOWER(committer_email))) as committers")
         kd.select_raw("COUNT(DISTINCT(_git_server)) as servers")
@@ -58,7 +63,7 @@ class KospexQuery:
             kd.where("committer_when", ">", from_date)
 
         if repo_id:
-            kd.where('_repo_id', "=", repo_id)
+            kd.where("_repo_id", "=", repo_id)
 
         if org_key:
             kd.where_org_key(org_key)
@@ -70,7 +75,7 @@ class KospexQuery:
         # TODO - need to add params to orgs
         orgs = self.orgs()
         if results:
-            data['orgs'] = len(orgs)
+            data["orgs"] = len(orgs)
 
         return data
 
@@ -100,7 +105,7 @@ class KospexQuery:
         return KospexQuery(kospex_db=memory_db)
 
     def repo_summary(self, repo_id):
-        """ Provide a summary of the known repositories."""
+        """Provide a summary of the known repositories."""
         summary_sql = """SELECT count(distinct(_repo_id)) 'repos', count(*) 'commits',
         count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers'
         FROM commits
@@ -109,7 +114,7 @@ class KospexQuery:
         data = next(self.kospex_db.query(summary_sql, [repo_id]), None)
         return data
 
-    def server_summary(self,id=None):
+    def server_summary(self, id=None):
         """
         Provide a summary of the known servers.
         """
@@ -129,12 +134,12 @@ class KospexQuery:
         print(summary_sql)
         print(params)
         data = []
-        for row in self.kospex_db.query(summary_sql,params):
+        for row in self.kospex_db.query(summary_sql, params):
             data.append(row)
         return data
 
-    def tech_landscape(self, repo_id=None,org_key=None):
-        """ Calculate the technology landscape."""
+    def tech_landscape(self, repo_id=None, org_key=None):
+        """Calculate the technology landscape."""
 
         where_clause = ""
         params = []
@@ -144,7 +149,7 @@ class KospexQuery:
 
         # TODO - clean this up and make more generic for use in other queries
         if org_key:
-            parts = org_key.split('~')
+            parts = org_key.split("~")
             if len(parts) != 2:
                 raise ValueError("org_key must be of the form <server>~<owner>")
             params.append(parts[0])
@@ -160,17 +165,17 @@ class KospexQuery:
 
         data = []
 
-        #if repo_id:
+        # if repo_id:
         #    for row in self.kospex_db.query(summary_sql, params):
         #        data.append(row)
-        #else:
+        # else:
         for row in self.kospex_db.query(summary_sql, params):
             data.append(row)
 
         return data
 
     def repos_with_tech(self, tech):
-        """ Find repos with the given technology."""
+        """Find repos with the given technology."""
 
         params = []
         params.append(tech)
@@ -189,7 +194,7 @@ class KospexQuery:
         return data
 
     def repo_files(self, tech=None, repo_id=None):
-        """ Grab files by metadata type for a given repo_id."""
+        """Grab files by metadata type for a given repo_id."""
 
         where_clause = ""
 
@@ -214,7 +219,7 @@ class KospexQuery:
 
         return data
 
-    def get_last_commit_file(self,repo_id,file_path):
+    def get_last_commit_file(self, repo_id, file_path):
         """
         Get the last commit for a given file path in a repository.
         """
@@ -229,7 +234,7 @@ class KospexQuery:
 
         return data
 
-    def get_dependency_files(self,request_id=None):
+    def get_dependency_files(self, request_id=None):
         """
         Get the dependency for the given scope.
         """
@@ -239,11 +244,11 @@ class KospexQuery:
         kd.where("latest", "=", 1)
         if request_id:
             if repo_id := request_id.get("repo_id"):
-                kd.where("_repo_id","=",repo_id)
+                kd.where("_repo_id", "=", repo_id)
             elif org_key := request_id.get("org_key"):
                 kd.where_org_key(org_key)
             elif server := request_id.get("server"):
-                kd.where("_git_server","=",server)
+                kd.where("_git_server", "=", server)
             else:
                 print(f"ERROR: can't identify {request_id}")
 
@@ -253,22 +258,22 @@ class KospexQuery:
 
         return results
 
-    def get_dependencies(self,request_id=None):
+    def get_dependencies(self, request_id=None):
         """
         Get the individual dependencies for the given scope.
         """
 
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_DEPENDENCY_DATA)
-        #kd.where("latest", "=", 1)
+        # kd.where("latest", "=", 1)
 
         if request_id:
             if repo_id := request_id.get("repo_id"):
-                kd.where("_repo_id","=",repo_id)
+                kd.where("_repo_id", "=", repo_id)
             elif org_key := request_id.get("org_key"):
                 kd.where_org_key(org_key)
             elif server := request_id.get("server"):
-                kd.where("_git_server","=",server)
+                kd.where("_git_server", "=", server)
             else:
                 print(f"ERROR: can't identify {request_id}")
 
@@ -285,17 +290,16 @@ class KospexQuery:
         kd.from_table(KospexSchema.TBL_EMAIL_MAP)
 
         if alias:
-            kd.where("alias_email","=",alias)
+            kd.where("alias_email", "=", alias)
 
         if email:
-            kd.where("main_email","=",email)
+            kd.where("main_email", "=", email)
 
         results = kd.execute()
 
         return results
 
-
-    def get_orphans(self,id=None):
+    def get_orphans(self, id=None):
         """
         Get the orphaned repos for the given scope.
         """
@@ -305,7 +309,7 @@ class KospexQuery:
         kd.set_params_by_id(id)
 
         active_devs = self.developers(days=90)
-        active_set = set(map(lambda item: item['author'], active_devs))
+        active_set = set(map(lambda item: item["author"], active_devs))
 
         print(active_set)
 
@@ -325,13 +329,13 @@ class KospexQuery:
             row["_git_repo"] = r["_git_repo"]
 
             commits = self.commits(
-                repo_id=r["_repo_id"],
-                after=from_date.strftime("%Y-%m-%dT%H:%M:%S%z"))
+                repo_id=r["_repo_id"], after=from_date.strftime("%Y-%m-%dT%H:%M:%S%z")
+            )
 
-            #commits = self.commits(
+            # commits = self.commits(
             #    repo_id=r["_repo_id"] )
 
-            committers = set([c['author_email'] for c in commits])
+            committers = set([c["author_email"] for c in commits])
             row["committers"] = len(committers)
             print("\n")
             print(f"committers: {committers}\n\n")
@@ -348,24 +352,24 @@ class KospexQuery:
                 print("Orphaned")
                 row["orphaned"] = True
                 row["percentage"] = 0
-                #orphaned += 1
+                # orphaned += 1
             else:
                 print("Working knowledge exists")
                 row["orphaned"] = False
-                row["percentage"] = f"{intersection_count/len(committers)*100:.2f}"
-                #row.append(f"{intersection_count/len(committers)*100:.2f}%")
-                #working_knowledge += 1
+                row["percentage"] = f"{intersection_count / len(committers) * 100:.2f}"
+                # row.append(f"{intersection_count/len(committers)*100:.2f}%")
+                # working_knowledge += 1
 
             results.append(row)
-            #table.add_row(row)
-            #print()
+            # table.add_row(row)
+            # print()
 
-        #results = kd.execute()
+        # results = kd.execute()
 
         return results
 
     def repos_by_author(self, author_email):
-        """ Find repos for the given author_email."""
+        """Find repos for the given author_email."""
 
         summary_sql = """SELECT _repo_id, count(*) 'commits', MAX(committer_when) 'last_commit', MIN(committer_when) 'first_commit'
         FROM commits
@@ -376,12 +380,14 @@ class KospexQuery:
         data = []
 
         for row in self.kospex_db.query(summary_sql, [author_email.lower()]):
-            row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
-            days_between = KospexUtils.days_between_datetimes(row['first_commit'], row['last_commit'])
+            row["last_seen"] = KospexUtils.days_ago(row["last_commit"])
+            days_between = KospexUtils.days_between_datetimes(
+                row["first_commit"], row["last_commit"]
+            )
             if days_between > 0:
-                row['years_active'] = f"{days_between / 365:.3f}"
+                row["years_active"] = f"{days_between / 365:.3f}"
             else:
-                row['days_between'] = 0
+                row["days_between"] = 0
             data.append(row)
 
         return data
@@ -393,31 +399,31 @@ class KospexQuery:
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
         kd.select("*")
-        #kd.set_params_by_id(id)
+        # kd.set_params_by_id(id)
         if limit:
             kd.limit(limit)
 
-          # [_repo_id] TEXT,
-          # [_git_server] TEXT,
-          # [_git_owner] TEXT,
-          # [_git_repo] TEXT,
-          # [created_at] DEFAULT CURRENT_TIMESTAMP,
-          # [last_sync] TEXT,  -- date of last kospex sync
-          # [last_seen] TEXT,  -- date of last commit, to be updated by the sync
-          # [first_seen] TEXT, -- date of first commit, to be updated by the sync
-          # [git_remote] TEXT, -- URL of the git repo
-          # [file_path] TEXT,  -- path to the repo on the local filesystem
-          # PRIMARY KEY(_repo_id)
-          #
+        # [_repo_id] TEXT,
+        # [_git_server] TEXT,
+        # [_git_owner] TEXT,
+        # [_git_repo] TEXT,
+        # [created_at] DEFAULT CURRENT_TIMESTAMP,
+        # [last_sync] TEXT,  -- date of last kospex sync
+        # [last_seen] TEXT,  -- date of last commit, to be updated by the sync
+        # [first_seen] TEXT, -- date of first commit, to be updated by the sync
+        # [git_remote] TEXT, -- URL of the git repo
+        # [file_path] TEXT,  -- path to the repo on the local filesystem
+        # PRIMARY KEY(_repo_id)
+        #
         results = kd.execute()
 
         for row in results:
-            row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
-            row['status'] = KospexUtils.development_status(row['last_commit'])
+            row["days_ago"] = KospexUtils.days_ago(row["last_commit"])
+            row["status"] = KospexUtils.development_status(row["last_commit"])
 
         return results
 
-    def repos2(self,id=None):
+    def repos2(self, id=None):
         """
         Provide a summary of the known repositories.
         """
@@ -442,19 +448,19 @@ class KospexQuery:
         results = kd.execute()
 
         for row in results:
-            row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
-            row['status'] = KospexUtils.development_status(row['last_commit'])
+            row["days_ago"] = KospexUtils.days_ago(row["last_commit"])
+            row["status"] = KospexUtils.development_status(row["last_commit"])
 
         return results
 
-    def repos(self,org_key=None,server=None,repo_id=None,id=None):
-        """ Provide a summary of the known repositories."""
+    def repos(self, org_key=None, server=None, repo_id=None, id=None):
+        """Provide a summary of the known repositories."""
         params = []
         where = ""
 
         # TODO - clean this up and make more generic for use in other queries
         if org_key:
-            parts = org_key.split('~')
+            parts = org_key.split("~")
             if len(parts) != 2:
                 raise ValueError("org_key must be of the form <server>~<owner>")
             params.append(parts[0])
@@ -480,14 +486,13 @@ class KospexQuery:
             data.append(row)
 
         for row in data:
-            row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
-            row["status"] = KospexUtils.development_status(row['last_commit'])
-
+            row["days_ago"] = KospexUtils.days_ago(row["last_commit"])
+            row["status"] = KospexUtils.development_status(row["last_commit"])
 
         return data
 
     def orgs(self):
-        """ Provide a summary of the known orgs."""
+        """Provide a summary of the known orgs."""
         summary_sql = """SELECT _git_server, _git_owner, count(*) 'commits',
         COUNT(DISTINCT(_git_repo)) AS repos,
         COUNT(DISTINCT(LOWER(author_email))) 'authors', COUNT(DISTINCT(LOWER(committer_email))) 'committers',
@@ -498,14 +503,14 @@ class KospexQuery:
         """
         data = []
         for row in self.kospex_db.query(summary_sql):
-            row['org'] = row['_git_owner']
-            row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
+            row["org"] = row["_git_owner"]
+            row["days_ago"] = KospexUtils.days_ago(row["last_commit"])
             data.append(row)
 
         return data
 
     def commit(self, repo_id, commit_hash):
-        """ Get a specific commit by repo_id and commit hash."""
+        """Get a specific commit by repo_id and commit hash."""
         summary_sql = """SELECT _repo_id as repo_id, hash, author_when, author_name,
         author_email, committer_when, committer_name, committer_email, _cycle_time, _files as files
         FROM commits
@@ -515,7 +520,7 @@ class KospexQuery:
         return data
 
     def commit_files(self, repo_id, commit_hash):
-        """ Get the files for a specific commit by repo_id and commit hash."""
+        """Get the files for a specific commit by repo_id and commit hash."""
         summary_sql = """SELECT _repo_id as repo_id, hash, file_path, additions, deletions
         FROM commit_files
         WHERE _repo_id = ? AND hash = ?
@@ -526,7 +531,7 @@ class KospexQuery:
 
         return data
 
-    def get_commit_files(self,repo_id=None):
+    def get_commit_files(self, repo_id=None):
         """
         Get all commit files based on criteria
         """
@@ -556,9 +561,17 @@ class KospexQuery:
 
         return results
 
-    def commits(self, repo_id=None, before=None, after=None, limit=None,
-                hash=None, author_email=None, committer_email=None):
-        """ Provide a summary of the known repositories."""
+    def commits(
+        self,
+        repo_id=None,
+        before=None,
+        after=None,
+        limit=None,
+        hash=None,
+        author_email=None,
+        committer_email=None,
+    ):
+        """Provide a summary of the known repositories."""
         summary_sql = """SELECT _repo_id, hash, author_when, author_name,
         author_email, committer_when, committer_name, committer_email, _files
         FROM commits
@@ -587,13 +600,13 @@ class KospexQuery:
             summary_sql += " AND author_email = ?"
             # TODO - space to + replacement is due to Github giving 123+gh-username@users...
             # Need to think of a more elegant solution
-            params.append(author_email.replace(' ', '+'))
+            params.append(author_email.replace(" ", "+"))
 
         if committer_email:
             summary_sql += " AND committer_email = ?"
             # TODO - space to + replacement is due to Github giving 123+gh-username@users...
             # Need to think of a more elegant solution
-            params.append(committer_email.replace(' ', '+'))
+            params.append(committer_email.replace(" ", "+"))
 
         summary_sql += " ORDER BY committer_when DESC"
 
@@ -601,7 +614,7 @@ class KospexQuery:
             summary_sql += " LIMIT ?"
             params.append(limit)
 
-        #print(f"SQL: {summary_sql}")
+        # print(f"SQL: {summary_sql}")
 
         data = []
         for row in self.kospex_db.query(summary_sql, params):
@@ -609,8 +622,47 @@ class KospexQuery:
 
         return data
 
+    def commit_history(self, repo_id: str, group_by: str = 'year'):
+        """
+        Get commit counts grouped by year or month for a repository.
+
+        Args:
+            repo_id: Repository identifier
+            group_by: 'year' or 'month' for grouping (default: 'year')
+
+        Returns:
+            List of dictionaries with time period and commit count
+
+        Example:
+            >>> kq = KospexQuery()
+            >>> kq.commit_history('github.com~owner~repo', 'year')
+            [{'year': '2023', 'commit_count': 145}, {'year': '2024', 'commit_count': 203}]
+        """
+        if group_by == 'month':
+            time_format = '%Y-%m'
+            time_field = 'month'
+        else:  # year
+            time_format = '%Y'
+            time_field = 'year'
+
+        sql = f"""
+            SELECT
+                strftime('{time_format}', committer_when) AS {time_field},
+                COUNT(*) AS commit_count
+            FROM commits
+            WHERE _repo_id = ?
+            GROUP BY {time_field}
+            ORDER BY {time_field}
+        """
+
+        data = []
+        for row in self.kospex_db.query(sql, [repo_id]):
+            data.append(row)
+
+        return data
+
     def active_devs(self, days=90, org=False, org_key=None):
-        """ Look for distinct developers in the last 'days' """
+        """Look for distinct developers in the last 'days'"""
         from_date = KospexUtils.days_ago_iso_date(days)
         repos = {}
         # TODO implement org_key
@@ -632,14 +684,16 @@ class KospexQuery:
         data = self.kospex_db.query(summary_sql, (from_date,))
         for row in data:
             if org:
-                repos[row['org_key']] = row['devs']
+                repos[row["org_key"]] = row["devs"]
             else:
-                repos[row['_repo_id']] = row['devs']
+                repos[row["_repo_id"]] = row["devs"]
 
         return repos
 
     @KospexUtils.timer()
-    def developers(self, org_key=None,repo_id=None,server=None,days=None,to_date=None,from_date=None):
+    def developers(
+        self, org_key=None, repo_id=None, server=None, days=None, to_date=None, from_date=None
+    ):
         """
 
         days means commits in the last 'X' days, based on the committer_when
@@ -657,12 +711,12 @@ class KospexQuery:
 
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
-        #kd.select_as("DISTINCT(author_email)", "author")
-        #kd.select_as("DISTINCT(LOWER(author_email))", "author")
+        # kd.select_as("DISTINCT(author_email)", "author")
+        # kd.select_as("DISTINCT(LOWER(author_email))", "author")
         kd.select_raw("DISTINCT(LOWER(author_email)) as author")
         kd.select_as("MIN(committer_when)", "first_commit")
         kd.select_as("MAX(committer_when)", "last_commit")
-        kd.select_as("count(*)",'commits')
+        kd.select_as("count(*)", "commits")
 
         kd.group_by("author")
 
@@ -689,20 +743,19 @@ class KospexQuery:
             print(f"Server: {server}")
             kd.where("_git_server", "=", server)
 
-        results =  kd.execute()
+        results = kd.execute()
 
         for i in results:
-
-            i["status"] = KospexUtils.development_status(i['last_commit'])
-            i['tenure'] = KospexUtils.days_between_datetimes(i['first_commit'],
-                i['last_commit'],min_one=True)
-            i['years_active'] = round(i['tenure'] / 365,2) if i['tenure'] else 0
-
+            i["status"] = KospexUtils.development_status(i["last_commit"])
+            i["tenure"] = KospexUtils.days_between_datetimes(
+                i["first_commit"], i["last_commit"], min_one=True
+            )
+            i["years_active"] = round(i["tenure"] / 365, 2) if i["tenure"] else 0
 
         return results
 
     def active_developer_set(self, days=90):
-        """ Look for distinct developers in the last 'days' """
+        """Look for distinct developers in the last 'days'"""
         from_date = KospexUtils.days_ago_iso_date(days)
         devs = set()
         summary_sql = """SELECT distinct(author_email)
@@ -711,30 +764,30 @@ class KospexQuery:
         """
         data = self.kospex_db.query(summary_sql, (from_date,))
         for row in data:
-            devs.add(row['author_email'])
+            devs.add(row["author_email"])
 
         return set(devs)
 
-    def get_collabs(self,repo_id=None):
+    def get_collabs(self, repo_id=None):
         """
         Get the author committer states dependencies for the given repo_id.
         """
 
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
-        #kd.select_raw("DISTINCT(author_email) as author_email")
-        #kd.select_raw("DISTINCT(committer_email) as committer_email")
+        # kd.select_raw("DISTINCT(author_email) as author_email")
+        # kd.select_raw("DISTINCT(committer_email) as committer_email")
         kd.select("author_email")
         kd.select("committer_email")
-        kd.select_as("count(*)",'commits')
-        kd.where("_repo_id","=",repo_id)
+        kd.select_as("count(*)", "commits")
+        kd.where("_repo_id", "=", repo_id)
         kd.group_by("author_email")
         kd.group_by("committer_email")
         results = kd.execute()
 
         return results
 
-    def get_activity_stats(self,params=None):
+    def get_activity_stats(self, params=None):
         """
         Return stats about all, server, org or repos
             first_commit,
@@ -749,7 +802,7 @@ class KospexQuery:
         print()
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
-        kd.select_as("count(*)",'commits')
+        kd.select_as("count(*)", "commits")
         kd.select_as("MIN(committer_when)", "first_commit")
         kd.select_as("MAX(committer_when)", "last_commit")
         kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
@@ -766,14 +819,15 @@ class KospexQuery:
 
         if kresults:
             data = kresults[0]
-            data['days_active'] = KospexUtils.days_between_datetimes(
-                data['first_commit'], data['last_commit'],min_one=True)
-            data['years_active'] = round(data['days_active'] / 365,2)
+            data["days_active"] = KospexUtils.days_between_datetimes(
+                data["first_commit"], data["last_commit"], min_one=True
+            )
+            data["years_active"] = round(data["days_active"] / 365, 2)
 
         return data
 
     @KospexUtils.timer()
-    def authors(self, days=None, org_key=None):
+    def authors(self, days=None, org_key=None, request_id=None):
         """
         Provide a summary of authors in the known repositories.
         days: Number of days ago to query from, e.g. 90 is last 90 days
@@ -786,11 +840,11 @@ class KospexQuery:
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
         kd.select_raw("DISTINCT(LOWER(author_email)) as author_email")
-        kd.select_as("count(*)",'commits')
+        kd.select_as("count(*)", "commits")
         kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
         kd.select_as("MIN(committer_when)", "first_commit")
         kd.select_as("MAX(committer_when)", "last_commit")
-        #kd.group_by("author_email",lower=True)
+        # kd.group_by("author_email",lower=True)
         kd.group_by("author_email")
 
         if days:
@@ -802,12 +856,12 @@ class KospexQuery:
 
         kresults = kd.execute()
         for row in kresults:
-            row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
+            row["last_seen"] = KospexUtils.days_ago(row["last_commit"])
 
         return kresults
 
     def active_devs_by_repo(self, repo_id, days=90):
-        """ Look for distinct developers in the last X 'days' """
+        """Look for distinct developers in the last X 'days'"""
         from_date = KospexUtils.days_ago_iso_date(days)
         summary_sql = """SELECT distinct(LOWER(author_email)) AS 'author_email', count(*) AS 'commits',
         MAX(committer_when) AS 'last_commit', count(distinct(_repo_id)) AS 'repos'
@@ -819,14 +873,14 @@ class KospexQuery:
         results = []
         data = self.kospex_db.query(summary_sql, (from_date, repo_id))
         for row in data:
-            row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
-            row['last_seen'] = row['days_ago']
+            row["days_ago"] = KospexUtils.days_ago(row["last_commit"])
+            row["last_seen"] = row["days_ago"]
             results.append(row)
-        #return data[0]['devs']
+        # return data[0]['devs']
         return results
 
     def authors_by_repo(self, repo_id):
-        """ Provide a summary of authors in the provided repo."""
+        """Provide a summary of authors in the provided repo."""
         summary_sql = """SELECT LOWER(author_email) as author_email, count(*) 'commits', MIN(author_when) 'first_commit',
         MAX(author_when) 'last_commit'
         FROM commits
@@ -838,19 +892,19 @@ class KospexQuery:
         results = {}
 
         for row in data:
-            if row['last_commit']:
-                row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
-            #row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
-            results[row['author_email']] = row
+            if row["last_commit"]:
+                row["days_ago"] = KospexUtils.days_ago(row["last_commit"])
+            # row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
+            results[row["author_email"]] = row
 
         return results
 
     def commit_ranges2(self, repo_id=None, org_key=None):
-        """ Get the range of commits for a repo """
+        """Get the range of commits for a repo"""
 
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
-        kd.select_as("DISTINCT(_repo_id)","repo")
+        kd.select_as("DISTINCT(_repo_id)", "repo")
         kd.select_as("MAX(committer_when)", "last_commit")
         kd.select_as("MIN(committer_when)", "first_commit")
         kd.group_by("_repo_id")
@@ -869,27 +923,23 @@ class KospexQuery:
         #     kd.where("_git_server", "=", parts[0])
         #     kd.where("_git_owner", "=", parts[1])
 
-        results =  kd.execute()
+        results = kd.execute()
 
-        ages = {
-            'Active': 0,
-            'Aging': 0,
-            'Stale': 0,
-            'Unmaintained': 0
-        }
+        ages = {"Active": 0, "Aging": 0, "Stale": 0, "Unmaintained": 0}
 
         for i in results:
-            i['status'] = KospexUtils.development_status(i['last_commit'])
-            i['days_active'] = KospexUtils.days_between_datetimes(
-                i['first_commit'], i['last_commit'],min_one=True)
-            ages[i['status']] += 1
+            i["status"] = KospexUtils.development_status(i["last_commit"])
+            i["days_active"] = KospexUtils.days_between_datetimes(
+                i["first_commit"], i["last_commit"], min_one=True
+            )
+            ages[i["status"]] += 1
 
         return ages
 
-#        return results
+    #        return results
 
     def commit_ranges(self, repo_id=None, org_key=None):
-        """ Get the range of commits for a repo """
+        """Get the range of commits for a repo"""
         where_clause = ""
 
         # this boolean lets us know if we have set a where yet
@@ -902,7 +952,7 @@ class KospexQuery:
             params.append(repo_id)
 
         if org_key:
-            parts = org_key.split('~')
+            parts = org_key.split("~")
             if len(parts) != 2:
                 print("org_key must be of the form <server>~<owner>")
                 return None
@@ -915,7 +965,7 @@ class KospexQuery:
                 where = True
                 where_clause = "WHERE _git_server = ? AND _git_owner = ?"
 
-            #where_clause += "AND _git_server = ? AND _git_owner = ?"
+            # where_clause += "AND _git_server = ? AND _git_owner = ?"
 
         sql = f"""
         WITH DateCategories AS (
@@ -936,20 +986,15 @@ class KospexQuery:
         FROM DateCategories
         GROUP BY date_category;"""
 
-        ages = {
-            'active': 0,
-            'aging': 0,
-            'stale': 0,
-            'unmaintained': 0
-        }
+        ages = {"active": 0, "aging": 0, "stale": 0, "unmaintained": 0}
 
         data = self.kospex_db.query(sql, params)
         for row in data:
-            ages[row['date_category']] = row['row_count']
+            ages[row["date_category"]] = row["row_count"]
         return ages
 
     def author_summary(self, repo_id):
-        """ Provide a summary of authors for repositories."""
+        """Provide a summary of authors for repositories."""
         summary_sql = """SELECT author_email, count(*) 'commits', MIN(author_when) 'first_commit',
         MAX(author_when) 'last_commit'
         FROM commits
@@ -961,15 +1006,15 @@ class KospexQuery:
         results = []
 
         for row in data:
-            if row['last_commit']:
-                row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
-            #row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
+            if row["last_commit"]:
+                row["days_ago"] = KospexUtils.days_ago(row["last_commit"])
+            # row['days_ago'] = KospexUtils.days_ago(row['last_commit'])
             results.append(row)
 
         return results
 
     def email_domains(self, repo_id=None, days=None):
-        """ Provide a summary of email domains for repositories."""
+        """Provide a summary of email domains for repositories."""
         where_clause = ""
         params = []
 
@@ -1001,7 +1046,7 @@ class KospexQuery:
         return results
 
     def file_metadata(self, repo_id):
-        """ Provide a summary of file metadata for repositories."""
+        """Provide a summary of file metadata for repositories."""
         params = []
         params.append(repo_id)
 
@@ -1012,12 +1057,12 @@ class KospexQuery:
         metadata = {}
         data = self.kospex_db.query(sql, params)
         for row in data:
-            metadata[row['Provider']] = row
+            metadata[row["Provider"]] = row
 
         return metadata
 
     def hotspots(self, repo_id):
-        """ Provide hotspot analysis for a repo."""
+        """Provide hotspot analysis for a repo."""
         params = []
         params.append(repo_id)
 
@@ -1040,32 +1085,32 @@ class KospexQuery:
         results = []
 
         for row in data:
-            meta = metadata.get(row['file_path'], {})
+            meta = metadata.get(row["file_path"], {})
             if meta:
-                print(row['file_path'])
-                row['Lines'] = meta.get('Lines',0)
-                row['Complexity'] = meta.get('Complexity',0)
-                row['Language'] = meta.get('Language',0)
+                print(row["file_path"])
+                row["Lines"] = meta.get("Lines", 0)
+                row["Complexity"] = meta.get("Complexity", 0)
+                row["Language"] = meta.get("Language", 0)
                 print(meta)
             else:
-                print("No meta for ", row['file_path'])
-            #row['lines'] = metadata[row['file_path']]['Lines']
+                print("No meta for ", row["file_path"])
+            # row['lines'] = metadata[row['file_path']]['Lines']
             results.append(row)
 
         return results
 
     def url_request(self, url, cache=3600, timeout=10, headers=None):
-        """ Make a request to a URL, and use the cached version is less than [cache] seconds"""
+        """Make a request to a URL, and use the cached version is less than [cache] seconds"""
         # Set default cache to 1 hour (60mins * 60secs)
 
         # Check the cache first
-        cache_sql = f'''SELECT content, timestamp FROM {KospexSchema.TBL_URL_CACHE} WHERE url = ?'''
+        cache_sql = f"""SELECT content, timestamp FROM {KospexSchema.TBL_URL_CACHE} WHERE url = ?"""
         data = self.kospex_db.query(cache_sql, (url,))
         result = next(data, None)
 
-        if result and (time.time() - result['timestamp']) < cache:
+        if result and (time.time() - result["timestamp"]) < cache:
             # Cache is valid
-            content = result['content']
+            content = result["content"]
         else:
             # Fetch new content and update the cache
             try:
@@ -1074,8 +1119,8 @@ class KospexQuery:
                 content = response.text
 
                 # Insert or update the cache
-                url_cache = {'url': url, 'content': content, 'timestamp': int(time.time())}
-                self.kospex_db.table(KospexSchema.TBL_URL_CACHE).upsert(url_cache, pk=['url'])
+                url_cache = {"url": url, "content": content, "timestamp": int(time.time())}
+                self.kospex_db.table(KospexSchema.TBL_URL_CACHE).upsert(url_cache, pk=["url"])
 
             except requests.RequestException as e:
                 print(f"Error fetching URL content: {e}")
@@ -1092,12 +1137,12 @@ class KospexQuery:
         data = self.kospex_db.query(sql, [])
         results = []
         for row in data:
-            results.append(row['_repo_id'])
+            results.append(row["_repo_id"])
 
         return results
 
     def author_tech(self, author_email=None, repo_id=None):
-        """ Return the tech stack for an author """
+        """Return the tech stack for an author"""
 
         results = []
         params = []
@@ -1115,11 +1160,11 @@ class KospexQuery:
 
         kd.where_join("commits", "hash", "commit_files", "hash")
         kd.where_join("commits", "_repo_id", "commit_files", "_repo_id")
-        #kd.where_join("commit_files", "file_path", "file_metadata", "Provider")
-        #kd.where_join("commit_files", "_repo_id", "file_metadata", "_repo_id")
-        #kd.where_join("commit_files", "hash", "file_metadata", "hash")
+        # kd.where_join("commit_files", "file_path", "file_metadata", "Provider")
+        # kd.where_join("commit_files", "_repo_id", "file_metadata", "_repo_id")
+        # kd.where_join("commit_files", "hash", "file_metadata", "hash")
 
-        kd.group_by("author_email","_ext")
+        kd.group_by("author_email", "_ext")
         kd.order_by("commits", "DESC")
 
         author_where = ""
@@ -1147,16 +1192,16 @@ class KospexQuery:
         GROUP BY author_email, _ext
         ORDER BY commits DESC
         """
-        #print(sql)
+        # print(sql)
 
-        #data = self.kospex_db.query(sql, params)
+        # data = self.kospex_db.query(sql, params)
         data = self.kospex_db.query(kd.generate_sql(), kd.params)
         for row in data:
-            row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
-            row['first_seen'] = KospexUtils.days_ago(row['first_commit'])
-            row['days_active'] = int(row.get('first_seen',0)) - int(row.get('last_seen',0))
-            #row['years_active'] = round(row['days_active'] / 365,2)
-            row['years_active'] = f"{row['days_active'] / 365:.3f}"
+            row["last_seen"] = KospexUtils.days_ago(row["last_commit"])
+            row["first_seen"] = KospexUtils.days_ago(row["first_commit"])
+            row["days_active"] = int(row.get("first_seen", 0)) - int(row.get("last_seen", 0))
+            # row['years_active'] = round(row['days_active'] / 365,2)
+            row["years_active"] = f"{row['days_active'] / 365:.3f}"
             results.append(row)
 
         return results
@@ -1205,34 +1250,30 @@ class KospexQuery:
 
     def summarise_dev_commits(self, commits):
         """
-           Summarize commits by author_email and language.
+        Summarize commits by author_email and language.
 
-           Args:
-               commits: List of dicts with commit information
+        Args:
+            commits: List of dicts with commit information
 
-           Returns:
-               List of dicts with summarized information
-           """
+        Returns:
+            List of dicts with summarized information
+        """
         # Group by (author_email, language)
-        grouped = defaultdict(lambda: {
-            'commits': [],
-            'repo_ids': set(),
-            'file_paths': set()
-        })
+        grouped = defaultdict(lambda: {"commits": [], "repo_ids": set(), "file_paths": set()})
 
         for commit in commits:
-            key = (commit['author_email'], commit['language'])
-            grouped[key]['commits'].append(commit['committer_when'])
-            if '_repo_id' in commit:
-                grouped[key]['repo_ids'].add(commit['_repo_id'])
-            if 'file_path' in commit:
-                grouped[key]['file_paths'].add(commit['file_path'])
+            key = (commit["author_email"], commit["language"])
+            grouped[key]["commits"].append(commit["committer_when"])
+            if "_repo_id" in commit:
+                grouped[key]["repo_ids"].add(commit["_repo_id"])
+            if "file_path" in commit:
+                grouped[key]["file_paths"].add(commit["file_path"])
 
         # Build summary list
         summary = []
         for (author_email, language), data in grouped.items():
             # Sort commits to get first and last
-            commit_dates = sorted(data['commits'])
+            commit_dates = sorted(data["commits"])
 
             years_active = 0
 
@@ -1249,23 +1290,25 @@ class KospexQuery:
             first_commit = commit_dates[0]
             last_commit = commit_dates[-1]
             if "T" in first_commit:
-                first_commit = first_commit.split('T')[0]
+                first_commit = first_commit.split("T")[0]
             if "T" in last_commit:
-                last_commit = last_commit.split('T')[0]
+                last_commit = last_commit.split("T")[0]
 
-            summary.append({
-                'author_email': author_email,
-                'first_commit': first_commit,
-                'last_commit': last_commit,
-                'language': language,
-                'commits': len(commit_dates),
-                'repos': len(data['repo_ids']),
-                'files': len(data['file_paths']),
-                'years_active': years_active
-            })
+            summary.append(
+                {
+                    "author_email": author_email,
+                    "first_commit": first_commit,
+                    "last_commit": last_commit,
+                    "language": language,
+                    "commits": len(commit_dates),
+                    "repos": len(data["repo_ids"]),
+                    "files": len(data["file_paths"]),
+                    "years_active": years_active,
+                }
+            )
 
         # Sort by author_email, then language for consistent output
-        summary.sort(key=lambda x: (x['author_email'], x['language']))
+        summary.sort(key=lambda x: (x["author_email"], x["language"]))
 
         return summary
 
@@ -1281,25 +1324,21 @@ class KospexQuery:
             List of dicts with summarized information by language
         """
         # Group by language only
-        grouped = defaultdict(lambda: {
-            'commits': [],
-            'repo_ids': set(),
-            'file_paths': set()
-        })
+        grouped = defaultdict(lambda: {"commits": [], "repo_ids": set(), "file_paths": set()})
 
         for commit in commits:
-            language = commit['language']
-            grouped[language]['commits'].append(commit['committer_when'])
-            if '_repo_id' in commit:
-                grouped[language]['repo_ids'].add(commit['_repo_id'])
-            if 'file_path' in commit:
-                grouped[language]['file_paths'].add(commit['file_path'])
+            language = commit["language"]
+            grouped[language]["commits"].append(commit["committer_when"])
+            if "_repo_id" in commit:
+                grouped[language]["repo_ids"].add(commit["_repo_id"])
+            if "file_path" in commit:
+                grouped[language]["file_paths"].add(commit["file_path"])
 
         # Build summary list
         summary = []
         for language, data in grouped.items():
             # Sort commits to get first and last
-            commit_dates = sorted(data['commits'])
+            commit_dates = sorted(data["commits"])
             years_active = 0
 
             last_seen = KospexUtils.days_ago(commit_dates[-1])
@@ -1315,23 +1354,24 @@ class KospexQuery:
             first_commit = commit_dates[0]
             last_commit = commit_dates[-1]
             if "T" in first_commit:
-                first_commit = first_commit.split('T')[0]
+                first_commit = first_commit.split("T")[0]
             if "T" in last_commit:
-                last_commit = last_commit.split('T')[0]
+                last_commit = last_commit.split("T")[0]
 
-
-            summary.append({
-                'language': language,
-                'first_commit': first_commit,
-                'last_commit': last_commit,
-                'commits': len(commit_dates),
-                'repos': len(data['repo_ids']),
-                'files': len(data['file_paths']),
-                'years_active': years_active
-            })
+            summary.append(
+                {
+                    "language": language,
+                    "first_commit": first_commit,
+                    "last_commit": last_commit,
+                    "commits": len(commit_dates),
+                    "repos": len(data["repo_ids"]),
+                    "files": len(data["file_paths"]),
+                    "years_active": years_active,
+                }
+            )
 
         # Sort by language for consistent output
-        summary.sort(key=lambda x: x['language'])
+        summary.sort(key=lambda x: x["language"])
 
         return summary
 
@@ -1342,12 +1382,11 @@ class KospexQuery:
         """
 
         sql = f"""SELECT * FROM {KospexSchema.TBL_REPOS} ORDER BY last_sync DESC LIMIT 1"""
-        data = self.kospex_db.query(sql,[])
+        data = self.kospex_db.query(sql, [])
         record = next(data, None)
         if record:
-            return record['last_sync']
+            return record["last_sync"]
         return None
-
 
     def get_file_authors(self, file_name=None, repo_id=None):
         """
@@ -1361,17 +1400,17 @@ class KospexQuery:
         kd.select("file_path")
         kd.select_as("count(*)", "commits")
         kd.select_as("MAX(commit_files.committer_when)", "committer_when")
-        kd.where("commits._repo_id","=",repo_id)
-        kd.where("file_path","=",file_name)
+        kd.where("commits._repo_id", "=", repo_id)
+        kd.where("file_path", "=", file_name)
 
         kd.where_join("commits", "hash", "commit_files", "hash")
 
-        kd.group_by("author_email","file_path")
+        kd.group_by("author_email", "file_path")
         kd.order_by("committer_when", "DESC")
 
         data = self.kospex_db.query(kd.generate_sql(), kd.params)
         for row in data:
-            row['_repo_id'] = repo_id
+            row["_repo_id"] = repo_id
             results.append(row)
 
         return results
@@ -1389,30 +1428,28 @@ class KospexQuery:
         kd = KospexData(self.kospex_db)
         kd.from_table("commit_files", "commits")
 
-
-
-        #kd.select_raw("DISTINCT(LOWER(author_email)) as author_email")
+        # kd.select_raw("DISTINCT(LOWER(author_email)) as author_email")
         kd.select_raw("LOWER(author_email) as author_email")
-        #kd.select_as("DISTINCT(author_email)", "author_email")
+        # kd.select_as("DISTINCT(author_email)", "author_email")
         kd.select("_ext", "file_path", "commits.committer_when", "commits._repo_id")
-        #kd.select_as("count(*)", "commits")
+        # kd.select_as("count(*)", "commits")
 
         # We need to do the following on the language when we've extracted it
-        #kd.select_as("MAX(author_when)", "last_commit")
-        #kd.select_as("MIN(author_when)", "first_commit")
+        # kd.select_as("MAX(author_when)", "last_commit")
+        # kd.select_as("MIN(author_when)", "first_commit")
 
         # TODO - fix parsing of multiple SQL functions
-        #kd.select_raw("COUNT(DISTINCT(commits._repo_id)) as repos")
+        # kd.select_raw("COUNT(DISTINCT(commits._repo_id)) as repos")
 
         kd.where_join("commits", "hash", "commit_files", "hash")
-        #kd.where_join("commits", "_repo_id", "commit_files", "_repo_id")
-        #kd.where_join("commit_files", "file_path", "file_metadata", "Provider")
-        #kd.where_join("commit_files", "_repo_id", "file_metadata", "_repo_id")
-        #kd.where_join("commit_files", "hash", "file_metadata", "hash")
+        # kd.where_join("commits", "_repo_id", "commit_files", "_repo_id")
+        # kd.where_join("commit_files", "file_path", "file_metadata", "Provider")
+        # kd.where_join("commit_files", "_repo_id", "file_metadata", "_repo_id")
+        # kd.where_join("commit_files", "hash", "file_metadata", "hash")
 
-        #kd.group_by("author_email")
-        #kd.group_by("author_email","_ext")
-        #kd.order_by("commits", "DESC")
+        # kd.group_by("author_email")
+        # kd.group_by("author_email","_ext")
+        # kd.order_by("commits", "DESC")
 
         if author_email:
             params.append(author_email)
@@ -1437,27 +1474,26 @@ class KospexQuery:
 
         data = self.kospex_db.query(kd.generate_sql(), kd.params)
         for row in data:
-        #     row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
-        #     row['first_seen'] = KospexUtils.days_ago(row['first_commit'])
-        #     row['days_active'] = int(row.get('first_seen',0)) - int(row.get('last_seen',0))
-        #     row['years_active'] = f"{row['days_active'] / 365:.3f}"
-            row['language'] = Panopticas.get_language(row['file_path'], skip_shebang=True)
+            #     row['last_seen'] = KospexUtils.days_ago(row['last_commit'])
+            #     row['first_seen'] = KospexUtils.days_ago(row['first_commit'])
+            #     row['days_active'] = int(row.get('first_seen',0)) - int(row.get('last_seen',0))
+            #     row['years_active'] = f"{row['days_active'] / 365:.3f}"
+            row["language"] = Panopticas.get_language(row["file_path"], skip_shebang=True)
             results.append(row)
 
         # summarise the results
-        #summary = self.summarise_dev_commits2(results)
+        # summary = self.summarise_dev_commits2(results)
         summary = []
         if developers or author_email:
             summary = self.summarise_dev_commits(results)
         else:
             summary = self.summarize_by_language(results)
 
-        #return results
+        # return results
         return summary
 
-
     def tech_commits(self, author_email=None, repo_id=None):
-        """" Return a KospexData object with tables joined"""
+        """ " Return a KospexData object with tables joined"""
         kd = KospexData()
         kd.from_table("commits", "commit_files")
         kd.select("_ext")
@@ -1472,7 +1508,7 @@ class KospexQuery:
         return kd
 
     def observations_summary(self, repo_id=None, observation_key=None):
-        """ Return a summary of # observations per repo """
+        """Return a summary of # observations per repo"""
         sql = """SELECT _repo_id, count(*) as observations
         FROM observations
         GROUP BY _repo_id
@@ -1499,9 +1535,9 @@ class KospexQuery:
         print(data)
         return data
 
-        #return kd.execute()
+        # return kd.execute()
 
-    def get_repos(self,**kwargs):
+    def get_repos(self, **kwargs):
         """
         Return a list of repos.
         Parameters:
@@ -1531,35 +1567,35 @@ class KospexQuery:
             kd_email.select_as("DISTINCT(_repo_id)", "_repo_id")
             kd_email.where("author_email", "=", email)
             author_repos = kd_email.execute()
-            author_set = set([r['_repo_id'] for r in author_repos])
+            author_set = set([r["_repo_id"] for r in author_repos])
             author_results = []
             for repo in repos:
-                if repo['_repo_id'] in author_set:
+                if repo["_repo_id"] in author_set:
                     author_results.append(repo)
             repos = author_results
 
         for repo in repos:
-            repo['years_active'] = "Unknown"
-            #print(f"Repo ID: {repo['_repo_id']}, First Seen: {repo['first_seen']}, Last Seen: {repo['last_seen']}")
-            if repo['first_seen'] and repo['last_seen']:
-                if "\n" in repo['first_seen']:
-                    #print("First seen date is invalid")
-                    dates = repo['first_seen'].split("\n")
-                    repo['first_seen'] = dates[0]
+            repo["years_active"] = "Unknown"
+            # print(f"Repo ID: {repo['_repo_id']}, First Seen: {repo['first_seen']}, Last Seen: {repo['last_seen']}")
+            if repo["first_seen"] and repo["last_seen"]:
+                if "\n" in repo["first_seen"]:
+                    # print("First seen date is invalid")
+                    dates = repo["first_seen"].split("\n")
+                    repo["first_seen"] = dates[0]
 
-                if "\n" in repo['last_seen']:
-                    #print("Last seen date is invalid")
-                    dates = repo['last_seen'].split("\n")
-                    repo['last_seen'] = dates[0]
+                if "\n" in repo["last_seen"]:
+                    # print("Last seen date is invalid")
+                    dates = repo["last_seen"].split("\n")
+                    repo["last_seen"] = dates[0]
 
-                days = KospexUtils.days_between_datetimes(repo['first_seen'], repo['last_seen'])
-                #print(f"Repo ID: {repo['_repo_id']}, Days Active: {days}")
+                days = KospexUtils.days_between_datetimes(repo["first_seen"], repo["last_seen"])
+                # print(f"Repo ID: {repo['_repo_id']}, Days Active: {days}")
 
-                repo['days_active'] = days
+                repo["days_active"] = days
                 if days > 0:
-                    repo['years_active'] = f"{days / 365:.2f}"
+                    repo["years_active"] = f"{days / 365:.2f}"
                 else:
-                    repo['years_active'] = 0
+                    repo["years_active"] = 0
                 ##self.get_repo_last_sync(repo['_repo_id'])
 
         return repos
@@ -1581,7 +1617,7 @@ class KospexQuery:
         return kd.execute()
 
     def get_observations(self, repo_id=None, observation_key=None):
-        """ Return a list of observations for a repo_id and observation_key """
+        """Return a list of observations for a repo_id and observation_key"""
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(KospexSchema.TBL_OBSERVATIONS)
         kd.select("*")
@@ -1593,9 +1629,10 @@ class KospexQuery:
 
         return kd.execute()
 
-    def get_single_observation(self, repo_id=None, observation_key=None, hash=None,
-    file_path = None, uuid=None):
-        """ Return a single observation for a repo_id and observation_key """
+    def get_single_observation(
+        self, repo_id=None, observation_key=None, hash=None, file_path=None, uuid=None
+    ):
+        """Return a single observation for a repo_id and observation_key"""
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(KospexSchema.TBL_OBSERVATIONS)
         kd.select("*")
@@ -1628,28 +1665,34 @@ class KospexQuery:
         # Reset "last" flags to false
         reset_last_sql = f"""UPDATE {KospexSchema.TBL_OBSERVATIONS} SET LATEST = 0
         WHERE _repo_id = ? AND hash = ? AND file_path = ? AND observation_key = ? and latest = 1"""
-        self.kospex_db.execute(reset_last_sql, [ observation['_repo_id'], observation['hash'],
-                                observation['file_path'], observation['observation_key']])
+        self.kospex_db.execute(
+            reset_last_sql,
+            [
+                observation["_repo_id"],
+                observation["hash"],
+                observation["file_path"],
+                observation["observation_key"],
+            ],
+        )
 
-        self.kospex_db.table(
-            KospexSchema.TBL_OBSERVATIONS).insert(
-                observation,pk=["_repo_id","hash","file_path","observation_key", "latest"])
-        #self.kospex_db.table(KospexSchema.TBL_OBSERVATIONS).insert_all(observations)
+        self.kospex_db.table(KospexSchema.TBL_OBSERVATIONS).insert(
+            observation, pk=["_repo_id", "hash", "file_path", "observation_key", "latest"]
+        )
+        # self.kospex_db.table(KospexSchema.TBL_OBSERVATIONS).insert_all(observations)
 
-# TODO - this is copilot generated code, needs refactoring to a kdata object
-#    def get_observations_summary(self, repo_id=None, observation_key=None):
-#        """ Return a list of observations for a repo_id and observation_key """
-#        sql = f"""SELECT observation_key, count(*) as count FROM {KospexSchema.TBL_OBSERVATIONS} WHERE _repo_id = ? GROUP BY observation_key"""
-#        params = [repo_id]
-#        data = self.kospex_db.query(sql, params)
-#        results = []
-#        for row in data:
-#            results.append(row)
-#        return results
-
+    # TODO - this is copilot generated code, needs refactoring to a kdata object
+    #    def get_observations_summary(self, repo_id=None, observation_key=None):
+    #        """ Return a list of observations for a repo_id and observation_key """
+    #        sql = f"""SELECT observation_key, count(*) as count FROM {KospexSchema.TBL_OBSERVATIONS} WHERE _repo_id = ? GROUP BY observation_key"""
+    #        params = [repo_id]
+    #        data = self.kospex_db.query(sql, params)
+    #        results = []
+    #        for row in data:
+    #            results.append(row)
+    #        return results
 
     def get_observations_summary(self, repo_id=None, observation_key=None):
-        """ Return a list of observations for a repo_id and observation_key """
+        """Return a list of observations for a repo_id and observation_key"""
         sql = f"""SELECT observation_key, count(*) as count FROM {KospexSchema.TBL_OBSERVATIONS} WHERE _repo_id = ? GROUP BY observation_key"""
         params = [repo_id]
         data = self.kospex_db.query(sql, params)
@@ -1658,23 +1701,22 @@ class KospexQuery:
             results.append(row)
         return results
 
-
     def git_servers(self):
-        """ Return a list of git servers """
+        """Return a list of git servers"""
         sql = f"""SELECT DISTINCT(server) FROM {KospexSchema.TBL_REPOS}"""
         data = self.kospex_db.query(sql)
         results = []
         for row in data:
-            results.append(row['server'])
+            results.append(row["server"])
         return results
 
     def commit_stats(self, days=None, repo_id=None):
-        """ Return stats about commits. """
+        """Return stats about commits."""
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
         kd.select_as("DISTINCT(author_email)", "author")
-        kd.select_as("MIN(author_when)",'first_commit')
-        kd.select_as("MAX(author_when)", 'last_commit')
+        kd.select_as("MIN(author_when)", "first_commit")
+        kd.select_as("MAX(author_when)", "last_commit")
         kd.select_as("COUNT(*)", "commits")
         kd.group_by("author")
         kd.order_by("commits", "DESC")
@@ -1688,14 +1730,14 @@ class KospexQuery:
 
         return kd.execute()
 
-    def key_person(self, days=None, repo_id=None,top=None):
+    def key_person(self, days=None, repo_id=None, top=None):
         """
         Return a high level key person based on commits
         Top is the number of "top" authors to return
         Days is the number of preceding days to consider "active"for the key person default is 90 days
         """
 
-        active = self.commit_stats(repo_id=repo_id,days=90)
+        active = self.commit_stats(repo_id=repo_id, days=90)
         active_dict = {d["author"]: d for d in active}
         key = "commits"
         total_active_commits = sum(item[key] for item in active if key in item)
@@ -1705,22 +1747,24 @@ class KospexQuery:
         total_commits = sum(item[key] for item in authors if key in item)
 
         for a in authors:
-            a['active_commits'] = active_dict.get(a['author'],{}).get('commits',0)
-            a['% commits'] = f"{a['commits'] / total_commits * 100:.1f}%"
+            a["active_commits"] = active_dict.get(a["author"], {}).get("commits", 0)
+            a["% commits"] = f"{a['commits'] / total_commits * 100:.1f}%"
 
             # TODO - We only want to do this if we're printing the table, modify if we're dumping to CSV
-            a['last_commit'] = KospexUtils.extract_db_date(a['last_commit'])
-            a['first_commit'] = KospexUtils.extract_db_date(a['first_commit'])
+            a["last_commit"] = KospexUtils.extract_db_date(a["last_commit"])
+            a["first_commit"] = KospexUtils.extract_db_date(a["first_commit"])
 
             if total_active_commits > 0:
-                a['% active'] = f"{a['active_commits'] / total_active_commits * 100:.1f}%"
+                a["% active"] = f"{a['active_commits'] / total_active_commits * 100:.1f}%"
             else:
-                a['% active'] = "0%"
+                a["% active"] = "0%"
 
-            days = KospexUtils.days_between_datetimes(a['first_commit'], a['last_commit'],min_one=True)
+            days = KospexUtils.days_between_datetimes(
+                a["first_commit"], a["last_commit"], min_one=True
+            )
             tenure = f"{days / 354:.3f}"
 
-            a['tenure'] = tenure
+            a["tenure"] = tenure
 
         authors_dict = {d["author"]: d for d in authors}
 
@@ -1730,20 +1774,19 @@ class KospexQuery:
             return authors
 
         else:
-
             top_list = authors[:top]
             top_authors_dict = {d["author"]: d for d in authors[:top]}
 
             for a in active[:top]:
-                a_dict = top_authors_dict.get(a['author'])
+                a_dict = top_authors_dict.get(a["author"])
                 if not a_dict:
-                    a_dict = authors_dict[a['author']]
+                    a_dict = authors_dict[a["author"]]
                     top_list.append(a_dict)
 
             return top_list
 
     def groups(self, params=None):
-        """ Return a list of groups """
+        """Return a list of groups"""
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(KospexSchema.TBL_GROUPS)
 
@@ -1761,7 +1804,7 @@ class KospexQuery:
         return kd.execute()
 
     def get_repo_by_id(self, repo_id):
-        """ Return a repo by id """
+        """Return a repo by id"""
         sql = f"""SELECT * FROM {KospexSchema.TBL_REPOS} WHERE _repo_id = ?"""
         data = self.kospex_db.query(sql, [repo_id])
         return next(data, None)
@@ -1774,20 +1817,21 @@ class KospexQuery:
         data = self.kospex_db.query(sql)
         results = {}
         for row in data:
-            #print(row)
-            results[row['_repo_id']] = row
+            # print(row)
+            results[row["_repo_id"]] = row
         return results
 
     # TODO - refactor to one repos query using KospexData
-    #def repos(self,  **kwargs):
+    # def repos(self,  **kwargs):
     #    """ Return a list of repos """
     #    kd = KospexData(kospex_db=self.kospex_db)
     #    kd.from_table(KospexSchema.TBL_REPOS)
     #    kd.select("*")
     #    return kd.execute()
 
-    def get_graph_info(self, org_key=None, author_email=None,
-        repo_id=None, git_server=None, by_repo=None):
+    def get_graph_info(
+        self, org_key=None, author_email=None, repo_id=None, git_server=None, by_repo=None
+    ):
         """
         Return a list of repos and developers for graphing
         If by_repo is True, group by repo and NOT the author
@@ -1798,8 +1842,8 @@ class KospexQuery:
         server = None
 
         if org_key:
-            org = org_key.split('~')[1]
-            server = org_key.split('~')[0]
+            org = org_key.split("~")[1]
+            server = org_key.split("~")[0]
 
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
@@ -1807,13 +1851,13 @@ class KospexQuery:
             kd.select("_repo_id")
             kd.select_as("LOWER(author_email)", "author")
         else:
-            #kd.select_as("DISTINCT(author_email)", "author")
+            # kd.select_as("DISTINCT(author_email)", "author")
             kd.select_raw("DISTINCT(LOWER(author_email)) as author")
             kd.select("_repo_id")
 
         kd.select_as("COUNT(*)", "commits")
         kd.select_as("MAX(committer_when)", "last_commit")
-        #kd.select_as("_git_repo", "repo")
+        # kd.select_as("_git_repo", "repo")
         kd.select("_git_repo")
 
         if org_key:
@@ -1832,7 +1876,7 @@ class KospexQuery:
         if by_repo:
             kd.group_by("_repo_id")
         else:
-            kd.group_by("author","_repo_id")
+            kd.group_by("author", "_repo_id")
 
         return kd.execute()
 
@@ -1848,13 +1892,15 @@ class KospexQuery:
         kd.select("file_path")
         kd.select_as("COUNT(*)", "commits")
         kd.where("commits._repo_id", "=", repo_id)
-        kd.where_join(KospexSchema.TBL_COMMITS, "_repo_id", KospexSchema.TBL_COMMIT_FILES, "_repo_id")
+        kd.where_join(
+            KospexSchema.TBL_COMMITS, "_repo_id", KospexSchema.TBL_COMMIT_FILES, "_repo_id"
+        )
         kd.where_join(KospexSchema.TBL_COMMITS, "hash", KospexSchema.TBL_COMMIT_FILES, "hash")
-        kd.group_by("author","file_path")
+        kd.group_by("author", "file_path")
 
         return kd.execute()
 
-    def get_metadata_files(self, filename=None, tag=None,repo_id=None):
+    def get_metadata_files(self, filename=None, tag=None, repo_id=None):
         """
         Return a list of active metadata files by filename
         and not the full path
@@ -1871,7 +1917,7 @@ class KospexQuery:
         if tag:
             kd.where_tag(tag)
 
-        print("Executing query:", kd.generate_sql(),kd.params)
+        print("Executing query:", kd.generate_sql(), kd.params)
 
         return kd.execute()
 
@@ -1932,7 +1978,6 @@ class KospexQuery:
     #                                              "repos": 1 }
     #         else:
     #             dev_lookup[element['author']]['repos'] += 1
-
 
     #         if repo_id and not focus:
     #             # We're handling files not repos
@@ -1995,8 +2040,6 @@ class KospexQuery:
     #     return data
 
 
-
-
 class KospexData:
     """
     Data wrangling DSL like functions for Kospex database schema
@@ -2014,11 +2057,11 @@ class KospexData:
         self.limit_clause = None
 
     def get_bind_parameters(self):
-        """ Return the bind parameters for the query """
+        """Return the bind parameters for the query"""
         return self.params
 
     def where_join(self, table, column, join_table, join_column):
-        """ Join two tables on a column """
+        """Join two tables on a column"""
         # Check the table are valid in our schema
         for t in (table, join_table):
             if t not in KospexSchema.KOSPEX_TABLES:
@@ -2032,10 +2075,9 @@ class KospexData:
         # Add the join to the query
         self.where_clause.append(f"{table}.{column} = {join_table}.{join_column}")
 
-
     def where(self, column, operator, value):
-        """ Add a where clause to the query """
-        ops = [ "=", "<>", ">", "<", ">=", "<=", "LIKE", "NOT LIKE" ]
+        """Add a where clause to the query"""
+        ops = ["=", "<>", ">", "<", ">=", "<=", "LIKE", "NOT LIKE"]
         if operator not in ops:
             raise ValueError(f"Operator '{column}' is not a valid operator in\n{', '.join(ops)}")
 
@@ -2046,13 +2088,13 @@ class KospexData:
         self.params.append(value)
 
     def limit(self, limit: Optional[int] = None):
-        """ Add a limit clause to the query """
+        """Add a limit clause to the query"""
         if limit is not None:
             self.limit_clause = f"LIMIT {limit}"
 
     def where_dependency(self):
-        """ HACK to add the tech_type  """
-        #self.where_clause.append("tech_type LIKE '%dependency%'")
+        """HACK to add the tech_type"""
+        # self.where_clause.append("tech_type LIKE '%dependency%'")
         self.where_clause.append("tech_type LIKE '%|dependencies|%'")
 
     def where_tag(self, tag):
@@ -2061,17 +2103,17 @@ class KospexData:
         """
         # We have to check this is a strict format of only allowing
         # letters and a dash, otherwise raise a ValueError
-        if not re.match(r'^[a-zA-Z-]+$', tag):
+        if not re.match(r"^[a-zA-Z-]+$", tag):
             raise ValueError(f"Tag '{tag}' is not a valid format")
 
         self.where_clause.append(f"tech_type LIKE '%|{tag}|%'")
 
-    def where_org_key(self,org_key):
-        """ Use parse the org_key and set the required where fields
-            _git_server  and _git_owner"""
+    def where_org_key(self, org_key):
+        """Use parse the org_key and set the required where fields
+        _git_server  and _git_owner"""
 
         if "~" in org_key:
-            parts = org_key.split('~')
+            parts = org_key.split("~")
             if len(parts) != 2:
                 raise ValueError("org_key must be of the form <server>~<owner>")
             self.where("_git_server", "=", parts[0])
@@ -2093,7 +2135,7 @@ class KospexData:
         self.params.append(file_path)
 
     def from_table(self, *tables):
-        """ Add a table to the query """
+        """Add a table to the query"""
         for table in tables:
             if table not in KospexSchema.KOSPEX_TABLES:
                 raise ValueError(f"Table '{table}' not in KospexSchema.KOSPEX_TABLES")
@@ -2101,36 +2143,36 @@ class KospexData:
                 self.from_tables.append(table)
 
     def valid_table_prefix_select(self, col):
-        """ Check if a column name has a table prefix """
+        """Check if a column name has a table prefix"""
         if "." in col:
             parts = col.split(".")
 
             if len(parts) != 2:
-                #raise ValueError(f"Invalid column name: {col}")
+                # raise ValueError(f"Invalid column name: {col}")
                 return False
 
             if parts[0] not in KospexSchema.KOSPEX_TABLES:
-                #raise ValueError(f"Table '{parts[0]}' not in KospexSchema.KOSPEX_TABLES")
+                # raise ValueError(f"Table '{parts[0]}' not in KospexSchema.KOSPEX_TABLES")
                 return False
 
             if not self.is_valid_sql_name(parts[1]):
-                #raise ValueError(f"Column '{parts[1]}' is not a valid SQL name")
+                # raise ValueError(f"Column '{parts[1]}' is not a valid SQL name")
                 return False
 
             # If we've got here, we're good to add this select column
-            #self.select_columns.append(col)
+            # self.select_columns.append(col)
             return True
         else:
             return False
 
     def delete(self):
-        """ Set the query to delete data """
+        """Set the query to delete data"""
         self.delete_statement = True
         if self.select_columns:
             raise ValueError("Cannot delete and select columns in the same query")
 
     def select(self, *columns):
-        """ Add a column to the query """
+        """Add a column to the query"""
         if self.delete_statement:
             raise ValueError("Cannot delete and select columns in the same query")
 
@@ -2141,11 +2183,11 @@ class KospexData:
                 raise ValueError(f"Column '{col}' is not a valid SQL name")
 
     def select_raw(self, raw_column):
-        """ HACK - add a raw column to the query """
+        """HACK - add a raw column to the query"""
         self.select_columns.append(raw_column)
 
-    def extract_select_function_parts(self,sql_string):
-        """ Regular expression pattern to match SQL function and its argument """
+    def extract_select_function_parts(self, sql_string):
+        """Regular expression pattern to match SQL function and its argument"""
         pattern = r"^(\w+)\(([^)]+)\)$"
 
         # Find matches using the regular expression
@@ -2156,16 +2198,16 @@ class KospexData:
             return function_name, argument
 
         # Return None if no match is found
-        #return None
+        # return None
         # this may not match, and possibly this is just a column rename
         return sql_string, None
 
     def allowed_sql_function(self, function_name):
-        """ Check if a function is allowed """
+        """Check if a function is allowed"""
         return function_name.upper() in ("DISTINCT", "COUNT", "SUM", "MIN", "MAX", "AVG", "LOWER")
 
     def select_as(self, column_query, alias):
-        """ Add a column, including aggregate functions to the query as an alias """
+        """Add a column, including aggregate functions to the query as an alias"""
         # TODO - handing only one function at the moment
         function_name, argument = self.extract_select_function_parts(column_query)
 
@@ -2187,7 +2229,6 @@ class KospexData:
         self.select("_git_owner")
         self.select("_git_repo")
 
-
     def has_parentheses(self, string):
         """
         Check if a string has a pair of parentheses.
@@ -2196,9 +2237,9 @@ class KospexData:
         :return: True if the string contains a pair of parentheses, False otherwise.
         """
         # Check for the presence of both opening and closing parentheses
-        return '(' in string and ')' in string
+        return "(" in string and ")" in string
 
-    def parse_expression_with_regex_exact(self,expression):
+    def parse_expression_with_regex_exact(self, expression):
         """
         Parse an expression using regular expressions and return the values of the functions,
         including the exact match of the arguments with parentheses.
@@ -2208,15 +2249,15 @@ class KospexData:
         """
 
         # Regular expression pattern to capture functions and their arguments, including parentheses
-        #pattern = r'(\w+)\(((?:[^()]|\([^)]*\))*)\)'
-        pattern = r'^([^()]*)\(((?:[^()]|\([^)]*\))*)\)'
+        # pattern = r'(\w+)\(((?:[^()]|\([^)]*\))*)\)'
+        pattern = r"^([^()]*)\(((?:[^()]|\([^)]*\))*)\)"
 
         # Find the first match in the expression (assuming there's only one main function to parse)
         match = re.search(pattern, expression)
 
         # Convert match to a dictionary
         if match:
-            parsed_function = {'function': match.group(1), 'value': match.group(2)}
+            parsed_function = {"function": match.group(1), "value": match.group(2)}
         else:
             parsed_function = {}
 
@@ -2232,30 +2273,29 @@ class KospexData:
         sql = s
 
         while self.has_parentheses(sql):
-
-            #res = parse_expression_with_regex_exact(sql)
+            # res = parse_expression_with_regex_exact(sql)
             result = self.parse_expression_with_regex_exact(sql)
             function = result.get("function")
             value = result.get("value")
 
             # Check if the function name is allowed
             if function and not self.allowed_sql_function(function):
-                #print(f"Invalid function: {function}")
+                # print(f"Invalid function: {function}")
                 return False
 
-            #if self.has_parentheses(res["value"]):
+            # if self.has_parentheses(res["value"]):
             if self.has_parentheses(value):
-                #print(f"valid nested expression {value}")
+                # print(f"valid nested expression {value}")
                 sql = value
             else:
-                #print(f"Checking if {value} is a valid sql name")
+                # print(f"Checking if {value} is a valid sql name")
                 if self.is_valid_sql_name(value):
                     break
 
         return True
 
     def group_by(self, *columns, lower=None):
-        """ Add a column to the query """
+        """Add a column to the query"""
         for col in columns:
             if self.is_valid_sql_name(col):
                 if lower:
@@ -2264,19 +2304,29 @@ class KospexData:
                     self.group_by_columns.append(col)
 
     def order_by(self, column, direction="DESC"):
-        """ Add a column to the query """
+        """Add a column to the query"""
         direction = direction.upper()
         if direction not in ("ASC", "DESC"):
             raise ValueError(f"Invalid direction: '{direction}' must be ASC or DESC")
         if self.is_valid_sql_name(column):
             self.order_by_columns.append(f"{column} {direction}")
 
-    def is_valid_sql_name(self,name):
-        """ Check if a name is a valid SQL name for table or column names"""
+    def is_valid_sql_name(self, name):
+        """Check if a name is a valid SQL name for table or column names"""
 
         # List of simplified SQL reserved keywords
-        reserved_keywords = {"SELECT", "UNION", "FROM", "WHERE", "DROP",
-                             "INSERT", "UPDATE", "DELETE", "TABLE", "COLUMN"}
+        reserved_keywords = {
+            "SELECT",
+            "UNION",
+            "FROM",
+            "WHERE",
+            "DROP",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "TABLE",
+            "COLUMN",
+        }
 
         # Check if the name is a wildcard
         if name == "*":
@@ -2288,31 +2338,31 @@ class KospexData:
 
         # Check if the name is a reserved keyword
         if name.upper() in reserved_keywords:
-            #raise ValueError(f"Invalid name: '{name}' is a reserved SQL keyword.")
+            # raise ValueError(f"Invalid name: '{name}' is a reserved SQL keyword.")
             # TODO - log this instead of print
             print(f"Invalid name: '{name}' is a reserved SQL keyword.")
             return False
 
         # Regular expression for valid SQL table/column names
         # Starts with a letter or underscore, followed by letters, digits, or underscores
-        if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', name):
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name):
             # TODO .. check for valid table prefix and return an error for that
             # We can get this error for a NOT_EXIST_TBL.col
             # TODO - log this instead of print
-            #raise ValueError(f"Invalid name: '{name}' does not match SQL naming conventions.")
+            # raise ValueError(f"Invalid name: '{name}' does not match SQL naming conventions.")
             print(f"Invalid name: '{name}' does not match SQL naming conventions.")
             return False
 
         # Optional: Check for length limits (default: 64 characters)
         if len(name) > 64:
-            #raise ValueError(f"Invalid name: '{name}' exceeds the maximum allowed length.")
+            # raise ValueError(f"Invalid name: '{name}' exceeds the maximum allowed length.")
             # TODO - log this instead of print
             print(f"Invalid name: '{name}' exceeds the maximum allowed length.")
             return False
 
         return True
 
-    def set_params_by_id(self,id_params):
+    def set_params_by_id(self, id_params):
         """
         Set common where clauses from params hash:
         repo_id
@@ -2321,22 +2371,18 @@ class KospexData:
         """
 
         if repo_id := id_params.get("repo_id"):
-            self.where("_repo_id","=",repo_id)
+            self.where("_repo_id", "=", repo_id)
         elif org_key := id_params.get("org_key"):
             self.where_org_key(org_key)
         elif server := id_params.get("server"):
-            self.where("_git_server","=",server)
+            self.where("_git_server", "=", server)
         else:
             print(f"ERROR: can't identify {id_params}")
 
-
-
-
-
     def group_name_where_subselect(self, group_name):
-        """ Add a subselect where clause to the query """
+        """Add a subselect where clause to the query"""
 
-        #if not self.is_valid_sql_name(column):
+        # if not self.is_valid_sql_name(column):
         #    raise ValueError(f"Column '{column}' is not a valid SQL name")
 
         subselect_where = f""" _repo_id IN ( SELECT _repo_id FROM {KospexSchema.TBL_GROUPS} WHERE group_name = ? )"""
@@ -2344,8 +2390,8 @@ class KospexData:
         self.where_clause.append(subselect_where)
         self.params.append(group_name)
 
-    def generate_sql(self,line=None):
-        """ Generate the SQL for the query """
+    def generate_sql(self, line=None):
+        """Generate the SQL for the query"""
         # The line will be used to add an extra carriage return if we want to print things.
         line_end = " "
         if line:
@@ -2388,7 +2434,7 @@ class KospexData:
         return sql
 
     def execute(self):
-        """ Execute the query """
+        """Execute the query"""
         if not self.kospex_db:
             raise ValueError("No KospexDB object set")
 

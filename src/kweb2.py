@@ -1137,6 +1137,39 @@ async def commits(request: Request, repo_id: Optional[str] = None):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/history/{repo_id}", response_class=HTMLResponse)
+async def commit_history(request: Request, repo_id: str):
+    """Display commit history chart for a repository"""
+    try:
+        logger.info(f"Commit history page requested for repo: {repo_id}")
+
+        # Get year data (always show)
+        year_data = KospexQuery().commit_history(repo_id, group_by='year')
+
+        # Get month data (optional, based on query param)
+        show_monthly = request.query_params.get("monthly", "false") == "true"
+        month_data = KospexQuery().commit_history(repo_id, group_by='month') if show_monthly else []
+
+        # Get repo metadata for display
+        repo_info = KospexQuery().repos(repo_id=repo_id)
+        repo_name = repo_info[0].get('_git_repo', repo_id) if repo_info else repo_id
+
+        return templates.TemplateResponse(
+            "commit_history.html",
+            {
+                "request": request,
+                "repo_id": repo_id,
+                "repo_name": repo_name,
+                "year_data": year_data,
+                "month_data": month_data,
+                "show_monthly": show_monthly
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error in commit_history endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.get("/dependencies/", response_class=HTMLResponse)
 @app.get("/dependencies/{id}", response_class=HTMLResponse)
 async def dependencies(request: Request, id: Optional[str] = None):
