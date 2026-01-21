@@ -2,14 +2,16 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.36 - 2025-12-XX
+## 0.0.36 - 2026-01-XX
 
 ### Fixed
-- 
+- [Remove PyGithub dependency](https://github.com/kospex/kospex/issues/83)
 
 ### Changed
 - Bumped python version in the Dockerfiles to 3.12
+- Updated git import to lowercase the author_email and committer_email 
 
+# 2025 Releases 
 
 ## 0.0.35 - 2025-11-26
 
@@ -276,6 +278,7 @@ Refactored from [Flask to FastAPI](https://github.com/kospex/kospex/issues/33)
   - commented out the experimental graph-api which broke the workflow build, kweb kospex_query
   - Link to GitHub from the developer page when we know their GitHub handle [16](https://github.com/kospex/kospex/issues/16)
 
+# 2024 Releases
 
 ## 0.0.12 - 2024-12-01
 

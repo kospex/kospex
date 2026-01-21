@@ -245,9 +245,9 @@ class Kospex:
                         "author_when": author_datetime,
                         "committer_when": committer_datetime,
                         "author_name": author_name,
-                        "author_email": author_email,
+                        "author_email": author_email.lower(),
                         "committer_name": committer_name,
-                        "committer_email": committer_email,
+                        "committer_email": committer_email.lower(),
                         "filenames": [],
                     }
 
