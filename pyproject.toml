@@ -10,7 +10,8 @@ authors = [{ name = "Peter Freiberg", email = "peter.freiberg@gmail.com" }]
 license = { file = "LICENSE" }
 
 dependencies = [
-    "Click",
+    "click==8.3.1",
+    "duckdb==1.4.3",
     "flask",
     "prettytable",
     "dateutils",
@@ -45,7 +46,7 @@ include-package-data = true
 
 [project.scripts]
 kgit = "kgit:cli"
-kospex = "kospex:cli"
+kospex = "kospex_cli:cli"
 kospex-agent = "kospex_agent:cli"
 krunner = "krunner:cli"
 kreaper = "kreaper:cli"
