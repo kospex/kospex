@@ -12,6 +12,7 @@ from importlib.metadata import version, PackageNotFoundError
 # Import new classes and functions to expose at package level
 from .git_ingest import GitIngest
 from .git_duckdb import GitDuckDB
+from .habitat_config import HabitatConfig
 
 try:
     __version__ = version("kospex")
@@ -22,5 +23,6 @@ except PackageNotFoundError:
 __all__ = [
     "GitIngest",
     "GitDuckDB",
+    "HabitatConfig",
     "__version__",
 ]

@@ -7,7 +7,9 @@ and syncing it to a DuckDB database.
 
 import os
 import sys
+import time
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
@@ -15,7 +17,11 @@ from typing import Dict, List, Tuple, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from kospex_git import KospexGit
-from kospex.git_duckdb import GitDuckDB
+from kospex.git_duckdb import GitDuckDB, SyncProgressTracker
+from kospex_utils import get_kospex_logger
+
+# Module logger
+logger = get_kospex_logger('git_ingest')
 
 
 # ============================================================================
@@ -58,6 +64,44 @@ class GitIngest:
         self.kgit = KospexGit()
         self.kgit.set_repo(self.repo_path)
         self.repo_id = self.kgit.get_repo_id()
+
+    def _get_head_hash(self) -> Optional[str]:
+        """Get the current HEAD commit hash.
+
+        Returns:
+            HEAD commit hash, or None if not available
+        """
+        if not self.repo_path:
+            return None
+
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                cwd=self.repo_path,
+                check=True
+            )
+            return result.stdout.strip()
+        except subprocess.CalledProcessError:
+            return None
+
+    def _calculate_cycle_time(self, author_when: str, committer_when: str) -> int:
+        """Calculate cycle time in seconds between author and committer timestamps.
+
+        Args:
+            author_when: ISO 8601 datetime when code was authored
+            committer_when: ISO 8601 datetime when code was committed
+
+        Returns:
+            Cycle time in seconds (committer - author). Returns 0 if parsing fails.
+        """
+        try:
+            author_dt = datetime.fromisoformat(author_when)
+            committer_dt = datetime.fromisoformat(committer_when)
+            return int((committer_dt - author_dt).total_seconds())
+        except (ValueError, TypeError):
+            return 0
 
     def _get_branch_info(self, verbose: bool = False) -> Dict[str, List[str]]:
         """Get branch information for all commits.
@@ -118,7 +162,8 @@ class GitIngest:
         self,
         commit_branches: Dict,
         since_date: Optional[str] = None,
-        verbose: bool = False
+        verbose: bool = False,
+        tracker: Optional[SyncProgressTracker] = None
     ) -> Tuple[List[Dict], List[Dict]]:
         """Extract commit history with parent information.
 
@@ -126,6 +171,7 @@ class GitIngest:
             commit_branches: Dict mapping commit hash to list of branches
             since_date: Optional ISO datetime string - extract commits AFTER this date
             verbose: Enable verbose output
+            tracker: Optional progress tracker for encoding error recording
 
         Returns:
             Tuple of (commits list, commit_files list)
@@ -153,16 +199,32 @@ class GitIngest:
         result = subprocess.run(
             cmd,
             capture_output=True,
-            text=True,
             cwd=self.repo_path,
             check=True
         )
+
+        # Decode with error handling for non-UTF-8 characters in old commits
+        # Some repositories (e.g., Linux kernel) have commits with Latin-1 or other encodings
+        try:
+            output = result.stdout.decode('utf-8')
+        except UnicodeDecodeError as e:
+            error_msg = str(e)
+            logger.warning(
+                f"Encoding errors in git log output for {self.repo_id}: {error_msg}. "
+                "Some characters will be replaced. This is common in repositories "
+                "with old commits using legacy encodings (e.g., Latin-1)."
+            )
+            # Record encoding error to progress tracker
+            if tracker:
+                tracker.record_encoding_error(error_msg)
+            output = result.stdout.decode('utf-8', errors='replace')
 
         commits = []
         commit_files = []
         commit = {}
 
-        for line_num, line in enumerate(result.stdout.split("\n")):
+        # Process commit
+        for line_num, line in enumerate(output.split("\n")):
             if verbose and line_num % 1000 == 0 and line_num > 0:
                 print(f"  Processed {line_num} lines...")
 
@@ -224,8 +286,8 @@ class GitIngest:
                             "hash": hash_value,
                             "parents": ",".join(parent_list),
                             "parent_count": parent_count,
-                            "branches": "|".join(branches),
-                            "branch_count": len(branches),
+                            #"branches": "|".join(branches),
+                            #"branch_count": len(branches),
                             "author_when": author_datetime,
                             "committer_when": committer_datetime,
                             "author_name": author_name,
@@ -238,7 +300,7 @@ class GitIngest:
                             "_git_owner": "",
                             "_git_repo": "",
                             "_repo_id": "",
-                            "_cycle_time": 0
+                            "_cycle_time": self._calculate_cycle_time(author_datetime, committer_datetime)
                         }
             else:
                 # Empty line - end of a commit block
@@ -287,7 +349,8 @@ class GitIngest:
         last_commit: Optional[str] = None,
         verbose: bool = False,
         log_replacements: bool = True,
-        auto_optimize: bool = True
+        auto_optimize: bool = True,
+        track_progress: bool = True
     ) -> Dict:
         """Sync git repository to DuckDB.
 
@@ -297,15 +360,20 @@ class GitIngest:
             verbose: Enable detailed output
             log_replacements: If True, log when existing records are replaced (adds overhead)
             auto_optimize: If True, automatically disable logging for initial syncs (recommended)
+            track_progress: If True, track sync progress in database for monitoring
 
         Returns:
             Dict with stats: {
                 'commits_added': int,
                 'files_added': int,
                 'repo_id': str,
-                'incremental': bool
+                'incremental': bool,
+                'sync_id': str (if track_progress enabled)
             }
         """
+        # Record start time for duration output
+        start_time = time.time()
+
         # 1. Set repository and get repo_id
         self._set_repo(repo_directory)
 
@@ -331,28 +399,79 @@ class GitIngest:
         incremental = last_commit is not None
         since_date = last_commit  # Will be used in git log --since filter
 
-        # 4. Extract data
-        commit_branches = self._get_branch_info(verbose)
-        commits, commit_files = self._extract_commits(commit_branches, since_date, verbose)
+        # 4. Initialize progress tracker
+        tracker = None
+        if track_progress:
+            sync_type = 'incremental' if incremental else 'full'
+            tracker = SyncProgressTracker(self.db.conn, self.repo_id, sync_type)
+            head_hash = self._get_head_hash()
+            tracker.start_sync(since_date=since_date, head_hash=head_hash)
 
-        # 5. Add repo metadata
-        for commit in commits:
-            commit['_repo_id'] = self.repo_id
+        try:
+            # 5. Extract data with progress tracking
+            if tracker:
+                tracker.update_phase('branches')
+            commit_branches = self._get_branch_info(verbose)
+            branch_count = len(set(b for branches in commit_branches.values() for b in branches))
 
-        for file_change in commit_files:
-            file_change['_repo_id'] = self.repo_id
+            if tracker:
+                tracker.update_phase('extraction')
+            commits, commit_files = self._extract_commits(
+                commit_branches, since_date, verbose, tracker=tracker
+            )
 
-        # 6. Insert to database (using optimized log_replacements setting)
-        self.db.insert_commits_batch(commits, batch_size=1000, verbose=verbose, log_replacements=effective_log_replacements)
-        self.db.insert_commit_files_batch(commit_files, batch_size=1000, verbose=verbose, log_replacements=effective_log_replacements)
+            # 6. Add repo metadata
+            for commit in commits:
+                commit['_repo_id'] = self.repo_id
 
-        # 7. Return stats
-        return {
-            'commits_added': len(commits),
-            'files_added': len(commit_files),
-            'repo_id': self.repo_id,
-            'incremental': incremental
-        }
+            for file_change in commit_files:
+                file_change['_repo_id'] = self.repo_id
+
+            # 7. Insert to database with progress tracking
+            if tracker:
+                tracker.update_phase('commit_insert', total_items=len(commits))
+            self.db.insert_commits_batch(
+                commits, batch_size=1000, verbose=verbose,
+                log_replacements=effective_log_replacements,
+                progress_tracker=tracker
+            )
+
+            if tracker:
+                tracker.update_phase('file_insert', total_items=len(commit_files))
+            self.db.insert_commit_files_batch(
+                commit_files, batch_size=1000, verbose=verbose,
+                log_replacements=effective_log_replacements,
+                progress_tracker=tracker
+            )
+
+            # 8. Complete progress tracking
+            if tracker:
+                tracker.complete_sync(
+                    commits_inserted=len(commits),
+                    files_inserted=len(commit_files),
+                    commits_extracted=len(commits),
+                    branch_count=branch_count
+                )
+
+            # 9. Output duration and return stats
+            duration = time.time() - start_time
+            print(f"Sync completed in {duration:.1f} seconds")
+
+            result = {
+                'commits_added': len(commits),
+                'files_added': len(commit_files),
+                'repo_id': self.repo_id,
+                'incremental': incremental
+            }
+            if tracker:
+                result['sync_id'] = tracker.sync_id
+            return result
+
+        except Exception as e:
+            # Record failure in progress tracker
+            if tracker:
+                tracker.fail_sync(str(e))
+            raise
 
     def clone_repo(self, repo_url: str):
         """Clone a repository using KospexGit.

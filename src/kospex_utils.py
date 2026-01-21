@@ -306,28 +306,41 @@ def get_all_config():
     return details
 
 def get_kospex_config():
-    """ Get the kospex config """
-    return os.getenv("KOSPEX_CONFIG",os.path.expanduser("~/kospex/kospex.env"))
+    """ Get the kospex config file path.
+
+    Returns:
+        str: Path to the kospex.env configuration file.
+    """
+    from kospex.habitat_config import HabitatConfig
+    return str(HabitatConfig.get_instance().config_file)
 
 def get_kospex_code_path():
-    """ Get the kospex code directory """
-    return os.getenv("KOSPEX_CODE",os.path.expanduser("~/code"))
+    """ Get the kospex code directory.
+
+    Returns:
+        str: Path to the KOSPEX_CODE directory for git repositories.
+    """
+    from kospex.habitat_config import HabitatConfig
+    return str(HabitatConfig.get_instance().code_dir)
 
 def get_kospex_db_path():
-    """ Get the kospex database """
+    """ Get the kospex database path.
 
-    kospex_path = os.path.expanduser("~/kospex/")
-    kospex_home = os.getenv("KOSPEX_HOME",kospex_path)
+    Returns:
+        str: Path to the kospex SQLite database file.
 
-    kospex_home = kospex_home.rstrip("/") # Removing trailing slash if it's there
+    Note:
+        This function now delegates to HabitatConfig for path resolution.
+        Directory creation is handled by HabitatConfig.ensure_directories().
+    """
+    from kospex.habitat_config import HabitatConfig
+    config = HabitatConfig.get_instance()
 
-    # TODO - Check if we need to create the directory, as we're doing it in init
-    if not os.path.exists(kospex_home):
-        os.makedirs(kospex_home)
+    # Ensure home directory exists for backward compatibility
+    if not config.home.exists():
+        config.home.mkdir(parents=True, exist_ok=True)
 
-    default_kospex_db = f"{kospex_home}/{KOSPEX_DB_FILENAME}"
-
-    return os.getenv("KOSPEX_DB",default_kospex_db)
+    return str(config.db_path)
 
 def load_config(config_file):
     """ Load the config file """
@@ -1236,13 +1249,13 @@ def file_metadata_prettytable():
     return table
 
 def get_krunner_directory():
-    """ Return the krunner directory. """
+    """ Return the krunner directory.
 
-    user_kospex_home = os.path.expanduser("~/kospex")
-    kospex_home = os.getenv("KOSPEX_HOME",user_kospex_home)
-    krunner_path = f"{kospex_home}/krunner"
-
-    return krunner_path
+    Returns:
+        str: Path to the krunner directory for batch processing.
+    """
+    from kospex.habitat_config import HabitatConfig
+    return str(HabitatConfig.get_instance().krunner_dir)
 
 def orgs_prettytable():
     """ Return a prettytable object for the orgs query."""
