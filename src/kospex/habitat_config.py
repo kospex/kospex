@@ -54,6 +54,7 @@ class HabitatConfig:
         'KOSPEX_CONFIG_FILENAME': 'kospex.env',
         'KOSPEX_LOGS_DIRNAME': 'logs',
         'KOSPEX_KRUNNER_DIRNAME': 'krunner',
+        'KOSPEX_STAGING_DIRNAME': '_sync-staging',
     }
 
     def __init__(self) -> None:
@@ -324,6 +325,26 @@ class HabitatConfig:
 
         return self.home / self._get_value('KOSPEX_KRUNNER_DIRNAME')
 
+    @property
+    def staging_dir(self) -> Path:
+        """Path to sync staging directory under KOSPEX_CODE.
+
+        Default: ~/code/_sync-staging
+        Override: Set KOSPEX_STAGING environment variable.
+
+        This directory is used for temporary storage during repository
+        synchronization operations.
+        """
+        staging_override = self._overrides.get('KOSPEX_STAGING')
+        if staging_override:
+            return Path(staging_override).expanduser()
+
+        staging_env = os.getenv('KOSPEX_STAGING')
+        if staging_env:
+            return Path(staging_env).expanduser()
+
+        return self.code_dir / self._get_value('KOSPEX_STAGING_DIRNAME')
+
     # =========================================================================
     # Validation and Directory Management
     # =========================================================================
@@ -342,6 +363,8 @@ class HabitatConfig:
                 - code_dir_readable: bool
                 - logs_dir_exists: bool
                 - config_file_exists: bool
+                - staging_dir_exists: bool
+                - staging_dir_writable: bool
                 - errors: list of error messages
                 - warnings: list of warning messages
         """
@@ -353,6 +376,8 @@ class HabitatConfig:
             'code_dir_readable': False,
             'logs_dir_exists': False,
             'config_file_exists': False,
+            'staging_dir_exists': False,
+            'staging_dir_writable': False,
             'errors': [],
             'warnings': [],
         }
@@ -388,6 +413,15 @@ class HabitatConfig:
         # Check config file
         if self.config_file.exists():
             result['config_file_exists'] = True
+
+        # Check staging directory
+        if self.staging_dir.exists():
+            result['staging_dir_exists'] = True
+            if os.access(self.staging_dir, os.W_OK):
+                result['staging_dir_writable'] = True
+            else:
+                result['warnings'].append(f"Staging directory '{self.staging_dir}' is not writable")
+        # Note: staging_dir not existing is not a warning - it's created on demand
 
         return result
 
@@ -467,6 +501,74 @@ class HabitatConfig:
 
         return result
 
+    def ensure_staging_dir(self, verbose: bool = False) -> Dict[str, Any]:
+        """Ensure the staging directory exists and is writable.
+
+        Creates the staging directory if it doesn't exist. The parent
+        directory (code_dir / KOSPEX_CODE) must already exist.
+
+        Args:
+            verbose: If True, print status messages.
+
+        Returns:
+            Dict with keys:
+                - created: bool indicating if directory was created
+                - already_existed: bool indicating if directory already existed
+                - writable: bool indicating if directory is writable
+                - path: Path to the staging directory
+                - errors: list of error messages
+
+        Raises:
+            FileNotFoundError: If code_dir doesn't exist.
+        """
+        result = {
+            'created': False,
+            'already_existed': False,
+            'writable': False,
+            'path': self.staging_dir,
+            'errors': [],
+        }
+
+        # Check that code_dir exists first
+        if not self.code_dir.exists():
+            raise FileNotFoundError(
+                f"Base directory does not exist: {self.code_dir}"
+            )
+
+        # Create staging directory if needed
+        try:
+            if self.staging_dir.exists():
+                result['already_existed'] = True
+                if verbose:
+                    print(f"✓ Staging directory already exists: {self.staging_dir}")
+            else:
+                self.staging_dir.mkdir(parents=False, mode=0o750)
+                result['created'] = True
+                if verbose:
+                    print(f"✓ Created staging directory: {self.staging_dir}")
+        except PermissionError as e:
+            result['errors'].append(f"Permission denied creating staging directory: {e}")
+            return result
+        except OSError as e:
+            result['errors'].append(f"Failed to create staging directory: {e}")
+            return result
+
+        # Check writability
+        if os.access(self.staging_dir, os.W_OK):
+            result['writable'] = True
+        else:
+            result['errors'].append(f"Staging directory is not writable: {self.staging_dir}")
+
+        return result
+
+    def is_staging_dir_writable(self) -> bool:
+        """Check if the staging directory exists and is writable.
+
+        Returns:
+            True if staging directory exists and is writable, False otherwise.
+        """
+        return self.staging_dir.exists() and os.access(self.staging_dir, os.W_OK)
+
     def get_all_paths(self) -> Dict[str, Path]:
         """Get all configured paths as a dictionary.
 
@@ -481,6 +583,7 @@ class HabitatConfig:
             'logs_dir': self.logs_dir,
             'config_file': self.config_file,
             'krunner_dir': self.krunner_dir,
+            'staging_dir': self.staging_dir,
         }
 
     def __repr__(self) -> str:
