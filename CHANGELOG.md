@@ -6,6 +6,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 - [Remove PyGithub dependency](https://github.com/kospex/kospex/issues/83)
+- Fixed an annoying UI bug on the / or /summary/ page where the Headings didn't align with the repo status bubbles
 
 ### Changed
 - Bumped python version in the Dockerfiles to 3.12
