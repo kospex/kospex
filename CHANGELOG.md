@@ -12,6 +12,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - Bumped python version in the Dockerfiles to 3.12
 - Updated git import to lowercase the author_email and committer_email 
 
+## Removed
+- unused dependencies (Flask, Werkzeug)
+
 # 2025 Releases 
 
 ## 0.0.35 - 2025-11-26
