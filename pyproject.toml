@@ -12,7 +12,6 @@ license = { file = "LICENSE" }
 dependencies = [
     "click==8.3.1",
     "duckdb==1.4.3",
-    "flask",
     "prettytable",
     "dateutils",
     "panopticas>=0.0.14",
