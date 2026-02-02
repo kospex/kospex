@@ -5,9 +5,6 @@ Tests for kweb help functionality.
 import sys
 import os
 import pytest
-from unittest.mock import Mock, patch
-from flask import Flask, render_template
-from jinja2 import TemplateNotFound
 
 # Add src directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -83,81 +80,50 @@ class TestHelpService:
         assert self.help_service.is_valid_help_page("installation") is True
         assert self.help_service.is_valid_help_page("../admin") is False
 
-    @patch("kweb_help_service.render_template")
-    def test_render_help_page_success(self, mock_render):
-        """Test successful help page rendering."""
-        mock_render.return_value = "rendered_content"
-
-        result, status = self.help_service.render_help_page("installation")
-
-        assert result == "rendered_content"
+    def test_get_help_template_response_success(self):
+        """Test successful help page template resolution."""
+        template, status = self.help_service.get_help_template_response("installation")
+        assert template == "help/installation.html"
         assert status == 200
-        mock_render.assert_called_once_with("help/installation.html")
 
-    @patch("kweb_help_service.render_template")
-    def test_render_help_page_not_found(self, mock_render):
-        """Test help page rendering when template not found."""
-        # Mock the first call to raise TemplateNotFound, second call to return 404 page
-        mock_render.side_effect = [TemplateNotFound("help/nonexistent.html"), "404_content"]
+    def test_get_help_template_response_default(self):
+        """Test default help page template resolution."""
+        template, status = self.help_service.get_help_template_response(None)
+        assert template == "help/index.html"
+        assert status == 200
 
-        result, status = self.help_service.render_help_page("nonexistent")
-
-        assert result == "404_content"
+    def test_get_help_template_response_invalid(self):
+        """Test invalid help page returns 404."""
+        template, status = self.help_service.get_help_template_response("../admin")
+        assert template == "404.html"
         assert status == 404
-
-    @patch("kweb_help_service.render_template")
-    def test_render_help_page_invalid_id(self, mock_render):
-        """Test help page rendering with invalid page ID."""
-        mock_render.return_value = "404_content"
-
-        result, status = self.help_service.render_help_page("../admin")
-
-        assert result == "404_content"
-        assert status == 404
-        mock_render.assert_called_once_with("404.html")
 
 
 class TestHelpIntegration:
-    """Integration tests for help functionality."""
+    """Integration tests for help functionality using FastAPI TestClient."""
 
     @pytest.fixture
-    def app(self):
-        """Create test Flask app."""
-        app = Flask(__name__)
-        app.config["TESTING"] = True
-
-        help_service = HelpService()
-
-        @app.route("/help")
-        @app.route("/help/")
-        @app.route("/help/<id>")
-        def help(id=None):
-            return help_service.render_help_page(id)
-
-        return app
-
-    @pytest.fixture
-    def client(self, app):
-        """Create test client."""
-        return app.test_client()
+    def client(self):
+        """Create FastAPI test client."""
+        pytest.importorskip("httpx", reason="httpx required for FastAPI TestClient")
+        from fastapi.testclient import TestClient
+        from kweb2 import app
+        return TestClient(app)
 
     def test_help_default_route(self, client):
         """Test default help route."""
-        with patch("kweb_help_service.render_template") as mock_render:
-            mock_render.return_value = "help_index"
-            response = client.get("/help")
-            assert response.status_code == 200
+        response = client.get("/help/")
+        assert response.status_code == 200
 
     def test_help_valid_page_route(self, client):
-        """Test valid help page route."""
-        with patch("kweb_help_service.render_template") as mock_render:
-            mock_render.return_value = "help_page"
-            response = client.get("/help/installation")
-            assert response.status_code == 200
+        """Test valid help page route - returns 200 even if template falls back to index."""
+        response = client.get("/help/installation")
+        # This will return 200 whether the specific template exists or falls back to index
+        assert response.status_code == 200
 
-    def test_help_invalid_page_route(self, client):
-        """Test invalid help page route."""
-        with patch("kweb_help_service.render_template") as mock_render:
-            mock_render.return_value = "404_page"
-            response = client.get("/help/../admin")
-            assert response.status_code == 404
+    def test_help_path_traversal_blocked(self):
+        """Test that path traversal attempts are handled safely."""
+        # Security validation happens at the HelpService level
+        help_service = HelpService()
+        assert not help_service.is_valid_help_page("../admin")
+        assert help_service.get_help_template_name("../admin") == "404"

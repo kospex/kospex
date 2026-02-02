@@ -43,6 +43,12 @@ include-package-data = true
     "static/**/*"
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "httpx",
+]
+
 [project.scripts]
 kgit = "kgit:cli"
 kospex = "kospex_cli:cli"

@@ -4,10 +4,9 @@ Handles help page routing and template resolution.
 """
 
 from typing import Optional, Tuple
-from flask import render_template, Response
-from jinja2 import TemplateNotFound
 
 from kweb_security import SecurityValidator
+
 
 class HelpService:
     """Service for handling help page requests."""
@@ -26,7 +25,7 @@ class HelpService:
             page_id: The requested help page ID
 
         Returns:
-            Template name to render
+            Template name to render (without .html extension)
         """
         if not page_id:
             return self.DEFAULT_HELP_PAGE
@@ -36,26 +35,22 @@ class HelpService:
 
         return self.ERROR_PAGE
 
-    def render_help_page(self, page_id: Optional[str]) -> Tuple[Response, int]:
+    def get_help_template_response(self, page_id: Optional[str]) -> Tuple[str, int]:
         """
-        Render a help page with appropriate error handling.
+        Get the template name and status code for a help page request.
 
         Args:
             page_id: The requested help page ID
 
         Returns:
-            Tuple of (rendered template, status code)
+            Tuple of (template name with .html extension, status code)
         """
         template_name = self.get_help_template_name(page_id)
 
-        try:
-            if template_name == self.ERROR_PAGE:
-                return render_template('404.html'), 404
-            else:
-                return render_template(f'{template_name}.html'), 200
+        if template_name == self.ERROR_PAGE:
+            return "404.html", 404
 
-        except TemplateNotFound:
-            return render_template('404.html'), 404
+        return f"{template_name}.html", 200
 
     def is_valid_help_page(self, page_id: Optional[str]) -> bool:
         """
