@@ -2,20 +2,48 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.36 - 2026-01-XX
+## 0.0.36 - 2026-04-06
 
-### Fixed
-- [Remove PyGithub dependency](https://github.com/kospex/kospex/issues/83)
-- Fixed an annoying UI bug on the / or /summary/ page where the Headings didn't align with the repo status bubbles
+### Added
+- [HabitatConfig centralized configuration class](https://github.com/kospex/kospex/issues/85) — new singleton in kospex namespace for all paths, config, and directory management, with 40+ unit tests
+- [DuckDB git ingestion MVP](https://github.com/kospex/kospex/issues/86) — new GitDuckDB and GitIngest modules for scalable git commit and file storage
+- [Commit history endpoint /history/](https://github.com/kospex/kospex/issues/84) — new web page for browsing commit history per repo
+- `kospex stats REPO_ID` command — developer stats with Rich table output for key person analysis (#88)
+- `developer_stats` database table for precomputed per-developer commit/file statistics with percentage columns
+- `file_hotspots` database table schema
+- `/summary2/` endpoint with horizontal stacked bar visualization (experimental)
+- Developer with ID endpoint in kweb2
+- [Assessments directory and assessment types](https://github.com/kospex/kospex/issues/87) — standardized output filenames and ~/kospex/assessments/ directory
+- `kgit sync-repo` command for DuckDB sync (experimental, no UI available)
+- Data schemas documentation (docs/data-schemas.md) for SQLite and DuckDB
 
 ### Changed
-- Bumped python version in the Dockerfiles to 3.12
-- Updated git import to lowercase the author_email and committer_email 
+- [Upgraded FastAPI to 0.135.3, Starlette to 1.0.0, uvicorn to 0.43.0](https://github.com/kospex/kospex/issues/89) — migrated all 47 TemplateResponse calls to new Starlette 1.0.0 signature
+- [Replaced PyGitHub with direct REST API calls](https://github.com/kospex/kospex/issues/83) — fewer dependencies, same functionality
+- Renamed `kospex.py` to `kospex_cli.py` to avoid package namespace clash with the kospex package
+- Bumped Python version to 3.12 in CI workflow and Docker
+- Updated git import to lowercase `author_email` and `committer_email` for consistency
+- Pinned `click==8.3.1`, `duckdb==1.4.3`, `prettytable==3.17.0`, `PyYAML==6.0.3` dependencies
+- Auto-update developer stats after sync (`sync_repo`, `kgit clone`, `sync-directory`)
+- Enhanced `KospexData.set_params_by_id()` to accept `request_id` string directly
+- Added `@timer()` decorators on GitHub API methods for performance tracking
+- Updated npm dependencies: chart.js 4.5.1, tailwindcss 3.4.19
+- Updated `requirements.txt` from clean Docker install
+- Added ChangeLog to `project.urls` in pyproject.toml
 
-## Removed
-- unused dependencies (Flask, Werkzeug)
+### Fixed
+- Fixed UI bug on /summary/ page where headings didn't align with repo status bubbles
+- Updated vulnerable version of urllib3
+- Pinned `requests==2.33.0` to fix security vulnerability (GitHub Dependabot)
+- [Removed accidental claude-code npm dependency and fixed npm audit vulnerabilities](https://github.com/kospex/kospex/issues/91)
+- Fixed TemplateResponse breaking change with Starlette 1.0.0 — fresh installs would get 500 errors on all template-rendering endpoints
 
-# 2025 Releases 
+### Removed
+- Flask and Werkzeug dependencies — completed FastAPI migration
+- PyGitHub dependency — replaced with direct REST API
+- Unused dependencies cleaned up
+
+# 2025 Releases
 
 ## 0.0.35 - 2025-11-26
 

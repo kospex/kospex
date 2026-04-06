@@ -2,7 +2,6 @@
 
 For the best setup experience, we recommend using Homebrew to install the required dependencies on macOS:
 
-
 ```bash
 # Install Git (if not already installed)
 brew install git
@@ -13,7 +12,6 @@ brew install git-credential-manager
 # Install scc for code complexity analysis
 brew install scc
 ```
-
 
 On other platforms:
 - **Git**: Follow instructions at [https://git-scm.com/downloads](https://git-scm.com/downloads)

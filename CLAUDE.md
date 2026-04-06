@@ -100,9 +100,11 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 ### Core Operations
 - `kospex sync PATH/TO/REPO` - Sync repository data to database
 - `kgit clone https://github.com/owner/repo` - Clone with kospex structure
+- `kgit sync-repo REPO` - Sync repo to DuckDB (experimental, not used in reporting or web UI)
 - `kospex developers -repo PATH/TO/REPO` - Show active developers
 - `kospex tech-landscape -metadata` - Show technology stack overview
 - `kospex summary` - Overview of all synced repositories
+- `kospex stats REPO_ID` - Show developer stats for a repo (key person analysis, Rich table)
 
 ### Logging Control (Global Options)
 - `kospex --debug COMMAND` - Enable debug-level logging for detailed troubleshooting
