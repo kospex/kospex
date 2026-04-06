@@ -3,6 +3,7 @@ import json
 import os
 from typing import Optional, List, Dict, Any
 import requests
+from kospex_utils import timer
 
 class KospexGithub:
     """
@@ -171,9 +172,11 @@ class KospexGithub:
             url = f'{self.base_url}/users/{username}/repos'
             params = {'type': 'all'}
 
+
         for repo in self._paginate(url, params):
             yield repo
 
+    @timer()
     def _get_org_repos(self, org, repo_type='all'):
         """
         Get repositories for an organization.
@@ -191,6 +194,7 @@ class KospexGithub:
         for repo in self._paginate(url, params):
             yield repo
 
+    @timer()
     def _get_repo_details(self, owner, repo):
         """
         Get detailed information about a specific repository.
@@ -242,6 +246,7 @@ class KospexGithub:
 
         return api_url
 
+    @timer()
     def get_repos(self, username_or_org: str, no_auth: Optional[bool] = False) -> List[Dict[str, Any]]:
         """
         Get the repos for a user or organization.
