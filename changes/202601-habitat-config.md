@@ -38,6 +38,7 @@ A centralized singleton class that:
   - `config_file` - kospex.env config file path
   - `krunner_dir` - Krunner batch processing directory
   - `staging_dir` - Staging directory for sync operations
+  - `assessments_dir` - Assessments output directory (default: ~/kospex/assessments)
 - **Validation** via `validate()` method
 - **Directory creation** via `ensure_directories()` method
 - **Lazy loading** of config file on first access
@@ -66,7 +67,7 @@ For improved sync work with large repositories, HabitatConfig now includes stagi
 | `src/kospex/habitat_config.py` | **Created** - New HabitatConfig class |
 | `src/kospex/__init__.py` | **Modified** - Added HabitatConfig export |
 | `src/kospex_utils.py` | **Modified** - Delegated helpers to HabitatConfig |
-| `tests/test_habitat_config.py` | **Created** - 40 unit tests |
+| `tests/test_habitat_config.py` | **Created** - 43 unit tests |
 
 ## Usage
 
@@ -77,11 +78,12 @@ from kospex import HabitatConfig
 config = HabitatConfig.get_instance()
 
 # Access paths
-print(config.home)        # Path('~/kospex')
-print(config.code_dir)    # Path('~/code')
-print(config.db_path)     # Path('~/kospex/kospex.db')
-print(config.duckdb_path) # Path('~/kospex/kospex-git.duckdb')
-print(config.staging_dir) # Path('~/code/_sync-staging')
+print(config.home)           # Path('~/kospex')
+print(config.code_dir)       # Path('~/code')
+print(config.db_path)        # Path('~/kospex/kospex.db')
+print(config.duckdb_path)    # Path('~/kospex/kospex-git.duckdb')
+print(config.staging_dir)    # Path('~/code/_sync-staging')
+print(config.assessments_dir)# Path('~/kospex/assessments')
 
 # Validate setup
 result = config.validate()
@@ -140,4 +142,4 @@ pytest tests/test_habitat_config.py -v
 pytest tests/ -v
 ```
 
-All 99 tests pass including 40 new HabitatConfig tests.
+All tests pass including 43 HabitatConfig tests.
