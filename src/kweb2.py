@@ -121,7 +121,7 @@ def download_csv_fastapi(dict_data, filename=None):
 async def custom_404_handler(request: Request, exc: HTTPException):
     """Custom 404 error handler that serves the 404.html template"""
     try:
-        return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
+        return templates.TemplateResponse(request, "404.html", status_code=404)
     except Exception as e:
         # Fallback to basic 404 if template fails
         logger.error(f"Error rendering 404 template: {e}")
@@ -198,9 +198,9 @@ async def summary(request: Request, id: Optional[str] = None):
             repo_sizes[name] = round(100 * (percentage / 100)) + 40
 
         return templates.TemplateResponse(
+            request,
             "summary.html",
             {
-                "request": request,
                 "developers": dev_stats,
                 "data_size": result,
                 "repos": repo_stats,
@@ -213,6 +213,70 @@ async def summary(request: Request, id: Optional[str] = None):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/summary2/", response_class=HTMLResponse)
+@app.get("/summary2/{id}", response_class=HTMLResponse)
+async def summary2(request: Request, id: Optional[str] = None):
+    """Serve up the summary home page with horizontal stacked bar visualization"""
+    try:
+        logger.info(f"Summary2 page requested with id: {id}")
+
+        params = KospexWeb.get_id_params(id)
+
+        devs = None
+        with KospexTimer("Loading load_developers") as dev_load:
+            if data := request_cache.get(
+                "summary:developers", KospexQuery().get_last_sync_datetime()
+            ):
+                print("Cache found")
+                devs = data
+            else:
+                devs = KospexQuery().developers(**params)
+                request_cache.set("summary:developers", devs)
+
+        print(dev_load)
+
+        dev_stats = KospexUtils.count_key_occurrences(devs, "status")
+        dev_percentages = KospexUtils.convert_to_percentage(dev_stats)
+
+        total = sum(dev_stats.values())
+        dev_stats["total"] = total
+
+        result = {}
+        for name, percentage in dev_percentages.items():
+            if percentage:
+                dev_stats[f"{name}_percentage"] = round(percentage)
+            result[name] = round(100 * (percentage / 100)) + 40
+
+        repos = KospexQuery().repos(**params)
+        repo_stats = KospexUtils.count_key_occurrences(repos, "status")
+
+        repo_sizes = {}
+        repo_percentages = KospexUtils.convert_to_percentage(repo_stats)
+        # Do the total after percentages are calculated
+        total = sum(repo_stats.values())
+        repo_stats["total"] = total
+
+        for name, percentage in repo_percentages.items():
+            if percentage:
+                repo_stats[f"{name}_percentage"] = round(percentage)
+            repo_sizes[name] = round(100 * (percentage / 100)) + 40
+
+        return templates.TemplateResponse(
+            request,
+            "summary2.html",
+            {
+                "developers": dev_stats,
+                "data_size": result,
+                "repos": repo_stats,
+                "repo_sizes": repo_sizes,
+                "id": params,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Error in summary2 endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.get("/help/", response_class=HTMLResponse)
 @app.get("/help/{id}", response_class=HTMLResponse)
 async def help_page(request: Request, id: Optional[str] = None):
@@ -221,15 +285,15 @@ async def help_page(request: Request, id: Optional[str] = None):
         logger.info(f"Help page requested with id: {id}")
 
         if id is None:
-            return templates.TemplateResponse("help/index.html", {"request": request})
+            return templates.TemplateResponse(request, "help/index.html")
         else:
             # Try to serve the specific help page
             try:
-                return templates.TemplateResponse(f"help/{id}.html", {"request": request})
+                return templates.TemplateResponse(request, f"help/{id}.html")
             except Exception:
                 # If specific page doesn't exist, fall back to index
                 logger.warning(f"Help page help/{id}.html not found, falling back to index")
-                return templates.TemplateResponse("help/index.html", {"request": request})
+                return templates.TemplateResponse(request, "help/index.html")
     except Exception as e:
         logger.error(f"Error in help endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -245,7 +309,7 @@ async def active_developers(request: Request, repo_id: str):
         results = KospexQuery().active_devs_by_repo(repo_id)
 
         return templates.TemplateResponse(
-            "developers.html", {"request": request, "data": data, "authors": results}
+            request, "developers.html", {"data": data, "authors": results}
         )
     except Exception as e:
         logger.error(f"Error in active_developers endpoint: {e}")
@@ -285,7 +349,7 @@ async def servers(request: Request):
         kquery = KospexQuery()
         data = kquery.server_summary()
 
-        return templates.TemplateResponse("servers.html", {"request": request, "data": data})
+        return templates.TemplateResponse(request, "servers.html", {"data": data})
     except Exception as e:
         logger.error(f"Error in servers endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -312,7 +376,7 @@ async def metadata(request: Request):
 
         # data = KospexQuery().summary()
 
-        return templates.TemplateResponse("metadata.html", {"request": request, **data})
+        return templates.TemplateResponse(request, "metadata.html", {**data})
     except Exception as e:
         logger.error(f"Error in metadata endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -338,7 +402,7 @@ async def metadata_repos(request: Request, id: Optional[str] = None):
             repos = [repo for repo in repos if repo.get("_repo_id") == id]
 
         return templates.TemplateResponse(
-            "metadata_repos.html", {"request": request, "repos": repos, "repo_id": id}
+            request, "metadata_repos.html", {"repos": repos, "repo_id": id}
         )
     except Exception as e:
         logger.error(f"Error in metadata repos endpoint: {e}")
@@ -355,7 +419,7 @@ async def orphans(request: Request, id: Optional[str] = None):
         params = KospexWeb.get_id_params(id)
         data = KospexQuery().get_orphans(id=params)
 
-        return templates.TemplateResponse("orphans.html", {"request": request, "data": data})
+        return templates.TemplateResponse(request, "orphans.html", {"data": data})
     except Exception as e:
         logger.error(f"Error in orphans endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -401,8 +465,8 @@ async def bubble_treemap(request: Request, id: str):
         html_template = f"{template}.html"
 
         return templates.TemplateResponse(
-            html_template,
-            {"request": request, "link_url": link_url, "template": template, "id": id},
+            request, html_template,
+            {"link_url": link_url, "template": template, "id": id},
         )
     except Exception as e:
         logger.error(f"Error in bubble/treemap endpoint: {e}")
@@ -428,9 +492,8 @@ async def osi(request: Request, id: Optional[str] = None):
         filenames = KospexUtils.filenames_by_repo_id(deps)
 
         return templates.TemplateResponse(
-            "osi.html",
+            request, "osi.html",
             {
-                "request": request,
                 "data": deps,
                 "file_number": file_number,
                 "dep_files": filenames,
@@ -453,7 +516,7 @@ async def collab(request: Request, repo_id: str):
         collabs = kquery.get_collabs(repo_id=repo_id)
 
         return templates.TemplateResponse(
-            "collab.html", {"request": request, "repo_id": repo_id, "collabs": collabs}
+            request, "collab.html", {"repo_id": repo_id, "collabs": collabs}
         )
     except Exception as e:
         logger.error(f"Error in collab endpoint: {e}")
@@ -467,7 +530,7 @@ async def collab_graph(request: Request, repo_id: str):
         logger.info(f"Collaboration graph page requested for repo: {repo_id}")
 
         return templates.TemplateResponse(
-            "collab_graph.html", {"request": request, "repo_id": repo_id}
+            request, "collab_graph.html", {"repo_id": repo_id}
         )
     except Exception as e:
         logger.error(f"Error in collab_graph endpoint: {e}")
@@ -506,9 +569,8 @@ async def file_collaboration(request: Request, repo_id: str):
         collaborators = kquery.get_file_collaborators(repo_id=repo_id, file_path=file_path)
 
         return templates.TemplateResponse(
-            "file_collaboration.html",
+            request, "file_collaboration.html",
             {
-                "request": request,
                 "collaborators": collaborators,
                 "repo_id": repo_id,
                 "file_path": file_path,
@@ -536,7 +598,7 @@ async def orgs(request: Request, server: Optional[str] = None):
         for row in git_orgs:
             row["active_devs"] = active_devs.get(row["org_key"], 0)
 
-        return templates.TemplateResponse("orgs.html", {"request": request, "data": git_orgs})
+        return templates.TemplateResponse(request, "orgs.html", {"data": git_orgs})
     except Exception as e:
         logger.error(f"Error in orgs endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -554,8 +616,8 @@ async def recent_syncs(request: Request):
         data = []  # Placeholder for recent sync data
 
         return templates.TemplateResponse(
-            "recent-syncs.html",
-            {"request": request, "data": data, "page": {"title": "Recent Syncs"}},
+            request, "recent-syncs.html",
+            {"data": data, "page": {"title": "Recent Syncs"}},
         )
     except Exception as e:
         logger.error(f"Error in recent syncs endpoint: {e}")
@@ -613,9 +675,8 @@ async def repos(request: Request, id: Optional[str] = None):
                 repo["years_active"] = r.get("years_active")
 
         return templates.TemplateResponse(
-            "repos.html",
+            request, "repos.html",
             {
-                "request": request,
                 "data": data,
                 "page": page,
                 "ranges": ranges,
@@ -655,9 +716,8 @@ async def repo(request: Request, repo_id: str):
                 break
 
         return templates.TemplateResponse(
-            "repo_view.html",
+            request, "repo_view.html",
             {
-                "request": request,
                 "repo_id": repo_id,
                 "ranges": commit_ranges,
                 "email_domains": email_domains,
@@ -692,9 +752,8 @@ async def key_person(request: Request, repo_id: str):
         key_people = kospex.key_person(repo_id=repo_id, top=5)
 
         return templates.TemplateResponse(
-            "key_person.html",
+            request, "key_person.html",
             {
-                "request": request,
                 "repo_id": repo_id,
                 "ranges": commit_ranges,
                 "developer_status": developer_status,
@@ -727,8 +786,8 @@ async def landscape(request: Request, id: Optional[str] = None):
             return download_csv_fastapi(data, "tech_landscape.csv")
         else:
             return templates.TemplateResponse(
-                "landscape.html",
-                {"request": request, "data": data, "org_key": org_key, "id": id},
+                request, "landscape.html",
+                {"data": data, "org_key": org_key, "id": id},
             )
     except Exception as e:
         logger.error(f"Error in landscape endpoint: {e}")
@@ -771,9 +830,8 @@ async def developers(request: Request, id: Optional[str] = None):
                     break
 
             return templates.TemplateResponse(
-                "developer_view.html",
+                request, "developer_view.html",
                 {
-                    "request": request,
                     "repos": repo_list,
                     "tech": techs,
                     "author_email": author_email,
@@ -788,7 +846,7 @@ async def developers(request: Request, id: Optional[str] = None):
         else:
             data = KospexQuery().summary(days=days, org_key=org_key)
             return templates.TemplateResponse(
-                "developers.html", {"request": request, "authors": devs, "data": data}
+                request, "developers.html", {"authors": devs, "data": data}
             )
     except Exception as e:
         logger.error(f"Error in developers endpoint: {e}")
@@ -817,7 +875,7 @@ async def graph(request: Request, org_key: Optional[str] = None):
             org_key = f"?author_email={author_email}"
 
         return templates.TemplateResponse(
-            "graph.html", {"request": request, "org_key": org_key, "focus": focus}
+            request, "graph.html", {"org_key": org_key, "focus": focus}
         )
     except Exception as e:
         logger.error(f"Error in graph endpoint: {e}")
@@ -894,9 +952,8 @@ async def tenure(request: Request, id: Optional[str] = None):
         active_d = KospexUtils.get_status_distribution(active_devs)
 
         return templates.TemplateResponse(
-            "tenure.html",
+            request, "tenure.html",
             {
-                "request": request,
                 "data": data,
                 "active_data": active_data,
                 "distribution": distribution,
@@ -929,8 +986,8 @@ async def author_domains(request: Request):
         email_domains = kospex.email_domains(days=days)
 
         return templates.TemplateResponse(
-            "meta-author-domains.html",
-            {"request": request, "days": days, "email_domains": email_domains},
+            request, "meta-author-domains.html",
+            {"days": days, "email_domains": email_domains},
         )
     except Exception as e:
         logger.error(f"Error in author_domains endpoint: {e}")
@@ -946,7 +1003,7 @@ async def tech_change(request: Request):
         labels = ["Java", "Go", "JavaScript", "Python", "Kotlin"]
 
         return templates.TemplateResponse(
-            "tech-change.html", {"request": request, "labels": labels}
+            request, "tech-change.html", {"labels": labels}
         )
     except Exception as e:
         logger.error(f"Error in tech_change endpoint: {e}")
@@ -970,8 +1027,8 @@ async def repo_with_tech(request: Request, tech: str):
             repos_with_tech = kospex.repos_with_tech(tech)
 
         return templates.TemplateResponse(
-            template,
-            {"request": request, "data": repos_with_tech, "tech": tech, "page": {}},
+            request, template,
+            {"data": repos_with_tech, "tech": tech, "page": {}},
         )
     except Exception as e:
         logger.error(f"Error in repo_with_tech endpoint: {e}")
@@ -995,9 +1052,8 @@ async def developer_view(request: Request, id: Optional[str] = None):
         if author_email is None:
             logger.error("No email passed to Developer view")
             return templates.TemplateResponse(
-                "404.html",
+                request, "404.html",
                 {
-                    "request": request,
                     "error": "No email passed to Developer view",
                 },
             )
@@ -1020,9 +1076,8 @@ async def developer_view(request: Request, id: Optional[str] = None):
                 break
 
         return templates.TemplateResponse(
-            "developer_view.html",
+            request, "developer_view.html",
             {
-                "request": request,
                 "repos": repo_list,
                 "tech": techs,
                 "author_email": author_email,
@@ -1048,9 +1103,8 @@ async def observation(request: Request, uuid: str):
         observation = kquery.get_single_observation(uuid=uuid)
 
         return templates.TemplateResponse(
-            "observation.html",
+            request, "observation.html",
             {
-                "request": request,
                 "observation": observation,
             },
         )
@@ -1073,9 +1127,8 @@ async def observations(request: Request):
             # We should have an observation key and a repo_id for this to work
             logger.info(f"Observation key: {observation_key}")
             return templates.TemplateResponse(
-                "observations_repo_key.html",
+                request, "observations_repo_key.html",
                 {
-                    "request": request,
                     "data": kquery.observations_summary(
                         repo_id=repo_id, observation_key=observation_key
                     ),
@@ -1087,17 +1140,16 @@ async def observations(request: Request):
         elif repo_id:
             logger.info(f"Repo ID: {repo_id}")
             return templates.TemplateResponse(
-                "observations_repo.html",
+                request, "observations_repo.html",
                 {
-                    "request": request,
                     "data": kquery.observations_summary(repo_id=repo_id),
                     "repo_id": repo_id,
                 },
             )
         else:
             return templates.TemplateResponse(
-                "observations.html",
-                {"request": request, "data": kquery.observations_summary()},
+                request, "observations.html",
+                {"data": kquery.observations_summary()},
             )
     except Exception as e:
         logger.error(f"Error in observations endpoint: {e}")
@@ -1130,7 +1182,7 @@ async def commits(request: Request, repo_id: Optional[str] = None):
         )
 
         return templates.TemplateResponse(
-            "commits.html", {"request": request, "commits": data, "repo_id": repo_id}
+            request, "commits.html", {"commits": data, "repo_id": repo_id}
         )
     except Exception as e:
         logger.error(f"Error in commits endpoint: {e}")
@@ -1155,9 +1207,8 @@ async def commit_history(request: Request, repo_id: str):
         repo_name = repo_info[0].get('_git_repo', repo_id) if repo_info else repo_id
 
         return templates.TemplateResponse(
-            "commit_history.html",
+            request, "commit_history.html",
             {
-                "request": request,
                 "repo_id": repo_id,
                 "repo_name": repo_name,
                 "year_data": year_data,
@@ -1180,7 +1231,7 @@ async def dependencies(request: Request, id: Optional[str] = None):
         params = KospexWeb.get_id_params(id)
         data = KospexQuery().get_dependencies(request_id=params)
 
-        return templates.TemplateResponse("dependencies.html", {"request": request, "data": data})
+        return templates.TemplateResponse(request, "dependencies.html", {"data": data})
     except Exception as e:
         logger.error(f"Error in dependencies endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1197,9 +1248,8 @@ async def commit(request: Request, repo_id: str, commit_hash: str):
         files = KospexQuery().commit_files(repo_id=repo_id, commit_hash=commit_hash)
 
         return templates.TemplateResponse(
-            "commit.html",
+            request, "commit.html",
             {
-                "request": request,
                 "commit": data,
                 "files": files,
             },
@@ -1215,7 +1265,7 @@ async def package_check(request: Request):
     try:
         logger.info("Package check page requested")
 
-        return templates.TemplateResponse("package_check.html", {"request": request})
+        return templates.TemplateResponse(request, "package_check.html")
     except Exception as e:
         logger.error(f"Error in package_check endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1293,7 +1343,7 @@ async def hotspots(request: Request, repo_id: str):
 
         data = KospexQuery().hotspots(repo_id=repo_id)
 
-        return templates.TemplateResponse("hotspots.html", {"request": request, "data": data})
+        return templates.TemplateResponse(request, "hotspots.html", {"data": data})
     except Exception as e:
         logger.error(f"Error in hotspots endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1310,7 +1360,7 @@ async def repo_files(request: Request, repo_id: Optional[str] = None):
         if repo_id:
             data = KospexQuery().repo_files(repo_id=repo_id)
 
-        return templates.TemplateResponse("files.html", {"request": request, "data": data})
+        return templates.TemplateResponse(request, "files.html", {"data": data})
     except Exception as e:
         logger.error(f"Error in repo_files endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1338,7 +1388,7 @@ async def supply_chain(request: Request):
         # If no package parameter, show the search form
         if not package:
             logger.info("Showing supply chain search form")
-            return templates.TemplateResponse("supply_chain_search.html", {"request": request})
+            return templates.TemplateResponse(request, "supply_chain_search.html")
 
         # Package parameter exists, show visualization
         logger.info(f"Supply chain visualization requested for package: {package}")
@@ -1362,9 +1412,8 @@ async def supply_chain(request: Request):
             logger.warning(f"Invalid package format: {package} - {e}")
             # Return to search form with error and prefilled data
             return templates.TemplateResponse(
-                "supply_chain_search.html",
+                request, "supply_chain_search.html",
                 {
-                    "request": request,
                     "error": f"Invalid package format. {str(e)}",
                     "ecosystem": ecosystem if ecosystem else "",
                     "package_name": package_name if package_name else "",
@@ -1389,9 +1438,8 @@ async def supply_chain(request: Request):
             logger.error(f"Error retrieving package dependencies for {package}: {e}")
             # Return to search form with error and prefilled data
             return templates.TemplateResponse(
-                "supply_chain_search.html",
+                request, "supply_chain_search.html",
                 {
-                    "request": request,
                     "error": f"Error retrieving package data: {str(e)}. Please check the package details and try again.",
                     "ecosystem": ecosystem,
                     "package_name": package_name,
@@ -1404,9 +1452,8 @@ async def supply_chain(request: Request):
             logger.warning(f"No dependency data found for package: {package}")
             # Return to search form with "not found" error and prefilled data
             return templates.TemplateResponse(
-                "supply_chain_search.html",
+                request, "supply_chain_search.html",
                 {
-                    "request": request,
                     "error": f"Package '{ecosystem}:{package_name}:{package_version}' not found. Please check the package details and try again.",
                     "ecosystem": ecosystem,
                     "package_name": package_name,
@@ -1423,9 +1470,8 @@ async def supply_chain(request: Request):
         logger.info(f"Added ecosystem '{ecosystem}' to {len(data.get('nodes', []))} nodes")
 
         return templates.TemplateResponse(
-            "supply_chain.html",
+            request, "supply_chain.html",
             {
-                "request": request,
                 "data": data,
                 "package": package,
                 "ecosystem": ecosystem,
