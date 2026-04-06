@@ -406,5 +406,112 @@ def bitbucket(workspace, out_repo_list, test_auth, out_raw):
             raw_file.write(json.dumps(repos))
 
 
+@cli.command("sync-repo")
+@click.option('-verbose', is_flag=True, default=False, help="Show detailed sync output")
+@click.option('-force-full', is_flag=True, default=False, help="Force full sync even if already synced")
+@click.argument('repo', type=click.STRING, required=True)
+def sync_repo(verbose, force_full, repo):
+    """
+    Sync a git repository to the DuckDB database.
+
+    REPO can be either:
+    - A git URL (https://github.com/owner/repo) - will clone if needed
+    - A local path to an existing git repository
+
+    Examples:
+        kgit sync-repo https://github.com/kospex/kospex
+        kgit sync-repo /path/to/local/repo
+        kgit sync-repo -verbose https://github.com/owner/repo
+        kgit sync-repo -force-full /path/to/repo
+
+    The command will:
+    1. Verify DuckDB database exists (suggest 'kospex init-duckdb' if not)
+    2. Clone the repository if a URL is provided and repo doesn't exist
+    3. Perform full sync if never synced, incremental sync otherwise
+    """
+    console.print("[bold yellow]Warning:[/bold yellow] sync-repo (DuckDB) is experimental, no UI available")
+    log.info(f"Starting sync-repo for: {repo}")
+
+    # Import DuckDB components (deferred to avoid requiring duckdb for other commands)
+    from kospex import GitIngest, GitDuckDB
+
+    # Step 1: Check DuckDB database exists
+    db = GitDuckDB()
+    try:
+        db.connect(create_new=False, verbose=verbose)
+    except FileNotFoundError:
+        log.error("DuckDB database not found")
+        console.print("[bold red]Error:[/bold red] DuckDB database does not exist.")
+        console.print("\nTo initialize the DuckDB database, run:")
+        console.print("  [cyan]kospex init-duckdb[/cyan]")
+        exit(1)
+
+    # Step 2: Determine if repo is URL or local path
+    repo_path = None
+    if repo.startswith(('http://', 'https://', 'git@')):
+        # It's a URL - clone if needed
+        log.info(f"Repository URL detected: {repo}")
+        repo_path = kgit.clone_repo(repo)
+        if not repo_path:
+            log.error(f"Failed to clone repository: {repo}")
+            console.print(f"[bold red]Error:[/bold red] Failed to clone {repo}")
+            db.close()
+            exit(1)
+        console.print(f"Repository cloned/updated: {repo_path}")
+    else:
+        # It's a local path
+        repo_path = os.path.abspath(repo)
+        if not os.path.isdir(repo_path):
+            log.error(f"Directory does not exist: {repo_path}")
+            console.print(f"[bold red]Error:[/bold red] Directory does not exist: {repo_path}")
+            db.close()
+            exit(1)
+        if not KospexUtils.is_git(repo_path):
+            log.error(f"Not a git repository: {repo_path}")
+            console.print(f"[bold red]Error:[/bold red] Not a git repository: {repo_path}")
+            db.close()
+            exit(1)
+
+    # Step 3: Check if repo has been synced before
+    ingest = GitIngest(db)
+
+    # Use KospexGit to extract repo_id from the path
+    kg = KospexGit()
+    kg.set_repo(repo_path)
+    repo_id = kg.repo_id
+
+    last_sync_date = db.get_latest_commit_date(repo_id)
+
+    # Step 4: Perform sync
+    if last_sync_date and not force_full:
+        # Incremental sync
+        log.info(f"Performing incremental sync since {last_sync_date}")
+        console.print(f"[blue]Incremental sync[/blue] (last sync: {last_sync_date})")
+        stats = ingest.sync(
+            repo_directory=repo_path,
+            last_commit=last_sync_date,
+            verbose=verbose
+        )
+    else:
+        # Full sync
+        sync_type = "Full sync (forced)" if force_full else "Full sync (first time)"
+        log.info(f"Performing full sync for {repo_id}")
+        console.print(f"[blue]{sync_type}[/blue]")
+        stats = ingest.sync(
+            repo_directory=repo_path,
+            verbose=verbose
+        )
+
+    # Step 5: Report results
+    log.info(f"Sync complete: {stats}")
+    console.print(f"\n[bold green]Sync complete![/bold green]")
+    console.print(f"  Repository: {stats.get('repo_id', repo_id)}")
+    console.print(f"  Commits added: {stats.get('commits_added', 0)}")
+    console.print(f"  Files processed: {stats.get('files_added', 0)}")
+    console.print(f"  Sync type: {'Incremental' if stats.get('incremental') else 'Full'}")
+
+    db.close()
+
+
 if __name__ == '__main__':
     cli()
