@@ -1785,6 +1785,128 @@ class KospexQuery:
 
             return top_list
 
+    def update_developer_stats(self, repo_id):
+        """
+        Populate or refresh the developer_stats table for a given repo.
+        Aggregates commit data from the commits table to compute per-developer
+        stats for key person analysis. Sets stat_type to ALL_TIME.
+        """
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        days_90_ago = KospexUtils.days_ago_iso_date(90)
+
+        # Get repo metadata for the git_server/owner/repo fields
+        repo = self.get_repo_by_id(repo_id)
+        git_server = repo.get("_git_server", "") if repo else ""
+        git_owner = repo.get("_git_owner", "") if repo else ""
+        git_repo = repo.get("_git_repo", "") if repo else ""
+
+        # Single query to get all developer stats including conditional 90-day count
+        sql = f"""
+            SELECT
+                author_email,
+                COUNT(*) as total_commits,
+                MIN(author_when) as first_commit,
+                MAX(author_when) as last_commit,
+                SUM(CASE WHEN committer_when > ? THEN 1 ELSE 0 END) as commits_last_90_days
+            FROM {KospexSchema.TBL_COMMITS}
+            WHERE _repo_id = ?
+            GROUP BY author_email
+        """
+        rows = list(self.kospex_db.execute(sql, [days_90_ago, repo_id]).fetchall())
+
+        # Delete existing ALL_TIME stats for this repo and insert fresh
+        self.kospex_db.execute(
+            f"DELETE FROM {KospexSchema.TBL_DEVELOPER_STATS} WHERE _repo_id = ? AND (stat_type = 'ALL_TIME' OR stat_type IS NULL)",
+            [repo_id]
+        )
+
+        for row in rows:
+            self.kospex_db.execute(
+                f"""INSERT INTO {KospexSchema.TBL_DEVELOPER_STATS}
+                    (author_email, total_commits, first_commit, last_commit,
+                     commits_last_90_days, last_update, stat_type,
+                     _git_server, _git_owner, _git_repo, _repo_id)
+                    VALUES (?, ?, ?, ?, ?, ?, 'ALL_TIME', ?, ?, ?, ?)""",
+                [row[0], row[1], row[2], row[3], row[4], now,
+                 git_server, git_owner, git_repo, repo_id]
+            )
+
+        # Calculate repo totals and update per-developer percentages
+        total_all_time = sum(row[1] for row in rows)
+        total_90_days = sum(row[4] for row in rows)
+
+        if total_all_time > 0:
+            pct_sql = f"""
+                UPDATE {KospexSchema.TBL_DEVELOPER_STATS}
+                SET pct_all_time = ROUND(100.0 * total_commits / ?, 2),
+                    pct_90_days = CASE WHEN ? > 0
+                        THEN ROUND(100.0 * commits_last_90_days / ?, 2)
+                        ELSE 0 END
+                WHERE _repo_id = ? AND stat_type = 'ALL_TIME'
+            """
+            self.kospex_db.execute(pct_sql, [total_all_time, total_90_days, total_90_days, repo_id])
+
+        self.kospex_db.conn.commit()
+        return len(rows)
+
+    def update_developer_file_stats(self, repo_id):
+        """
+        Update the developer_stats rows for a repo with file-level stats
+        (additions, deletions, unique_files) by joining commits to commit_files.
+        Must be called after update_developer_stats which creates the rows.
+        """
+        days_90_ago = KospexUtils.days_ago_iso_date(90)
+
+        sql = f"""
+            SELECT
+                c.author_email,
+                SUM(cf.additions) as additions,
+                SUM(cf.deletions) as deletions,
+                COUNT(DISTINCT cf.file_path) as unique_files,
+                SUM(CASE WHEN c.committer_when > ? THEN cf.additions ELSE 0 END) as additions_90_days,
+                SUM(CASE WHEN c.committer_when > ? THEN cf.deletions ELSE 0 END) as deletions_90_days,
+                COUNT(DISTINCT CASE WHEN c.committer_when > ? THEN cf.file_path END) as unique_files_90_days
+            FROM {KospexSchema.TBL_COMMITS} c
+            JOIN {KospexSchema.TBL_COMMIT_FILES} cf
+                ON c.hash = cf.hash AND c._repo_id = cf._repo_id
+            WHERE c._repo_id = ?
+            GROUP BY c.author_email
+        """
+        rows = list(self.kospex_db.execute(
+            sql, [days_90_ago, days_90_ago, days_90_ago, repo_id]
+        ).fetchall())
+
+        update_sql = f"""
+            UPDATE {KospexSchema.TBL_DEVELOPER_STATS}
+            SET additions = ?, deletions = ?, unique_files = ?,
+                additions_90_days = ?, deletions_90_days = ?, unique_files_90_days = ?
+            WHERE _repo_id = ? AND author_email = ?
+        """
+        for row in rows:
+            self.kospex_db.execute(
+                update_sql,
+                [row[1], row[2], row[3], row[4], row[5], row[6], repo_id, row[0]]
+            )
+
+        self.kospex_db.conn.commit()
+        return len(rows)
+
+    def has_developer_stats(self, repo_id):
+        """Check if developer_stats exist for a given repo."""
+        sql = f"SELECT COUNT(*) FROM {KospexSchema.TBL_DEVELOPER_STATS} WHERE _repo_id = ?"
+        result = self.kospex_db.execute(sql, [repo_id]).fetchone()
+        return result[0] > 0 if result else False
+
+    def get_developer_stats(self, repo_id=None):
+        """Return developer stats rows, optionally filtered by repo_id."""
+        kd = KospexData(kospex_db=self.kospex_db)
+        kd.from_table(KospexSchema.TBL_DEVELOPER_STATS)
+        kd.select("*")
+        kd.order_by("total_commits", "DESC")
+        if repo_id:
+            kd.where("_repo_id", "=", repo_id)
+        return kd.execute()
+
     def groups(self, params=None):
         """Return a list of groups"""
         kd = KospexData(kospex_db=self.kospex_db)
@@ -2362,13 +2484,26 @@ class KospexData:
 
         return True
 
-    def set_params_by_id(self, id_params):
+    def set_params_by_id(self, id_params=None, request_id=None):
         """
-        Set common where clauses from params hash:
-        repo_id
-        org_key
-        server
+        Set common where clauses from a request_id string or params dict.
+
+        Args:
+            id_params: Dict with keys like repo_id, org_key, or server
+            request_id: String that will be parsed using KospexWeb.get_id_params()
+
+        If request_id is provided, it takes precedence and is parsed first.
+        Falls back to id_params dict if request_id is not provided.
         """
+        # If request_id string is provided, parse it to get params
+        if request_id:
+            from kospex_web import get_id_params
+            id_params = get_id_params(request_id)
+
+        # If we still don't have params, nothing to do
+        if not id_params:
+            print("ERROR: no id_params or request_id provided")
+            return
 
         if repo_id := id_params.get("repo_id"):
             self.where("_repo_id", "=", repo_id)

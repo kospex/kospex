@@ -308,6 +308,13 @@ class Kospex:
         if use_scc:
             metadata_files = self.file_metadata(directory, skip_last_commit=True)
 
+        # Update developer stats for key person analysis
+        repo_id = self.git.get_repo_id()
+        if repo_id:
+            print("Updating developer stats...")
+            self.kospex_query.update_developer_stats(repo_id)
+            self.kospex_query.update_developer_file_stats(repo_id)
+
         self.chdir_original()
 
         return results

@@ -13,6 +13,7 @@ from shutil import which
 import click
 import requests
 from rich.console import Console
+from rich.table import Table
 
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
@@ -820,6 +821,58 @@ def key_person(directory, top):
     print()
     print(table)
     print()
+
+
+@cli.command("stats")
+@click.argument("repo_id", required=True, type=click.STRING)
+def developer_stats(repo_id):
+    """Show developer stats for a repository (key person analysis).
+
+    REPO_ID is the normalised repo identifier (e.g. github.com~owner~repo).
+    """
+    kquery = KospexQuery()
+
+    stats = kquery.get_developer_stats(repo_id=repo_id)
+    if not stats:
+        console.print(f"No developer stats found for [bold]{repo_id}[/bold].")
+        console.print("Run 'kgit sync' on the repo first to populate stats.")
+        return
+
+    table = Table(title=f"Developer Stats: {repo_id}")
+    table.add_column("Author", style="cyan")
+    table.add_column("Commits", justify="right")
+    table.add_column("Additions", justify="right")
+    table.add_column("Deletions", justify="right")
+    table.add_column("Files", justify="right")
+    table.add_column("90d Commits", justify="right")
+    table.add_column("90d Adds", justify="right")
+    table.add_column("90d Dels", justify="right")
+    table.add_column("90d Files", justify="right")
+    table.add_column("% All Time", justify="right")
+    table.add_column("% 90 Days", justify="right")
+    table.add_column("First Commit")
+    table.add_column("Last Commit")
+
+    for row in stats:
+        table.add_row(
+            str(row.get("author_email", "")),
+            str(row.get("total_commits", 0)),
+            str(row.get("additions") or ""),
+            str(row.get("deletions") or ""),
+            str(row.get("unique_files") or ""),
+            str(row.get("commits_last_90_days", 0)),
+            str(row.get("additions_90_days") or ""),
+            str(row.get("deletions_90_days") or ""),
+            str(row.get("unique_files_90_days") or ""),
+            f"{row.get('pct_all_time', 0):.1f}%" if row.get("pct_all_time") else "",
+            f"{row.get('pct_90_days', 0):.1f}%" if row.get("pct_90_days") else "",
+            KospexUtils.extract_db_date(row.get("first_commit", "")),
+            KospexUtils.extract_db_date(row.get("last_commit", "")),
+        )
+
+    console.print()
+    console.print(table)
+    console.print()
 
 
 @cli.command("orgs")

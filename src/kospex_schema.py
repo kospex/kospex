@@ -14,6 +14,7 @@ TBL_COMMIT_METADATA = "commit_metadata"
 TBL_EMAIL_MAP = "email_map"
 TBL_FILE_METADATA = "file_metadata"
 TBL_REPO_HOTSPOTS = "repo_hotspots"
+TBL_FILE_HOTSPOTS = "file_hotspots"
 TBL_DEPENDENCY_DATA = "dependency_data"
 TBL_URL_CACHE = "url_cache"
 TBL_KRUNNER = "krunner"
@@ -23,18 +24,19 @@ TBL_REPOS = "repos"
 TBL_KOSPEX_META = "kospex_meta"
 TBL_GROUPS = "kospex_groups"
 TBL_KOSPEX_CONFIG = "kospex_config"
+TBL_DEVELOPER_STATS = "developer_stats"
 # Not yet implemented
 TBL_MAILMAP = "mailmaps"
 
 KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE, TBL_KRUNNER,
                 TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META, TBL_GROUPS, TBL_KOSPEX_CONFIG,
-                TBL_EMAIL_MAP]
+                TBL_EMAIL_MAP, TBL_DEVELOPER_STATS]
 
 # The following are tables with a repo_id
 REPO_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
                 TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS,
-                TBL_GROUPS, TBL_BRANCHES, TBL_BRANCH_HISTORY ]
+                TBL_GROUPS, TBL_BRANCHES, TBL_BRANCH_HISTORY, TBL_DEVELOPER_STATS ]
 
 # Mapping of table name to create statement is below the create statement definitions in:
 # DB_CREATE_STATEMENTS
@@ -140,6 +142,34 @@ SQL_CREATE_REPO_HOTSPOTS = f'''CREATE TABLE IF NOT EXISTS [{TBL_REPO_HOTSPOTS}] 
         [_repo_id] TEXT,
         PRIMARY KEY(_repo_id,hash)
         )'''
+
+SQL_CREATE_FILE_HOTSPOTS = f'''CREATE TABLE IF NOT EXISTS [{TBL_FILE_HOTSPOTS}] (
+    [file_path] TEXT,      -- file path in the repo
+    [loc] INTEGER,         -- lines of code (total)
+    [commits] INTEGER,     -- number of commits
+    [authors] INTEGER,     -- number of authors who've committed
+    [hash] TEXT,           -- hash of the commit
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [_repo_id] TEXT,
+    PRIMARY KEY(file_path,_repo_id,hash)
+    )'''
+
+#SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE IF NOT EXISTS [{TBL_OBSERVATIONS}] (
+#    [file_path] TEXT,      -- file path in the repo
+#    [data] TEXT,           -- Data / output from the command, or line details
+#    [line_number] INTEGER, -- line number of the observation, if applicable
+#    [observed_at] TEXT,    -- date and time the observation was made
+#    [source] TEXT,         -- what tool/function was used to get the metadata,
+#    [hash] TEXT,
+#    [_git_server] TEXT,
+#    [_git_owner] TEXT,
+#    [_git_repo] TEXT,
+#    [_repo_id] TEXT,
+#    PRIMARY KEY(file_path,_repo_id,hash)
+#    )'''
+
 
 # TODO - revist parsing of scc output, and required schema changes
 # As of version 3.3.3, the output is:
@@ -330,6 +360,33 @@ SQL_CREATE_EMAIL_MAP = f'''CREATE TABLE IF NOT EXISTS [{TBL_EMAIL_MAP}] (
     [source] TEXT -- Where did we get this, CLI, local filesystem, mailmap URL
     )'''
 
+SQL_CREATE_DEVELOPER_STATS = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEVELOPER_STATS}] (
+    [author_email] TEXT,        -- developer email (from git commits)
+    [total_commits] INTEGER,    -- total commits all time for this repo
+    [additions] INTEGER,        -- additions all time
+    [deletions] INTEGER,        -- deletions all time
+    [unique_files] INTEGER,     -- unique files changed all time
+    [pct_all_time] REAL,       -- percentage of total commits all time
+    [first_commit] TEXT,        -- date of first commit in this repo
+    [last_commit] TEXT,         -- date of most recent commit in this repo
+    [commits_last_90_days] INTEGER, -- commits in the last 90 days at time of update
+    [additions_90_days] INTEGER, -- additions in the last 90 days at time of update
+    [deletions_90_days] INTEGER, -- deletions in the last 90 days at time of update
+    [unique_files_90_days] INTEGER,   -- unique files changed in the last 90 days at time of update
+    [pct_90_days] REAL,        -- percentage of total commits in the last 90 days at time of update
+    [last_update] TEXT,         -- when this row was last computed (sync time)
+    [stat_type] TEXT,           -- type of stats (e.g. "ALL_TIME",'daily', 'weekly', 'monthly')
+    [from_date] TEXT,           -- date range start for this stat (e.g. "2023-01-01")
+    [to_date] TEXT,             -- date range end for this stat (e.g. "2023-01-31")
+    [_git_server] TEXT,
+    [_git_owner] TEXT,
+    [_git_repo] TEXT,
+    [_repo_id] TEXT,
+    PRIMARY KEY(_repo_id, author_email)
+    )'''
+
+
+
 SQL_CREATE_COMMITS_VIEW = f'''
 CREATE VIEW IF NOT EXISTS {TBL_COMMITS_VIEW} AS
 SELECT
@@ -357,6 +414,7 @@ DB_CREATE_STATEMENTS = {
     TBL_BRANCH_HISTORY: SQL_CREATE_BRANCH_HISTORY,
     TBL_COMMITS_VIEW: SQL_CREATE_COMMITS_VIEW,
     TBL_EMAIL_MAP: SQL_CREATE_EMAIL_MAP,
+    TBL_DEVELOPER_STATS: SQL_CREATE_DEVELOPER_STATS,
 }
 
 # Functions for SQLite stuff
@@ -398,6 +456,7 @@ def connect_or_create_kospex_db():
 
     kospex_db.execute(SQL_CREATE_EMAIL_MAP)
     kospex_db.execute(SQL_CREATE_COMMITS_VIEW)
+    kospex_db.execute(SQL_CREATE_DEVELOPER_STATS)
 
     # TODO - look at moving all table creates to "create if not exits"
 
