@@ -36,7 +36,6 @@ PyYAML==6.0.3
 pyyaml_env_tag==1.1
 requests==2.33.0
 rich==14.3.3
-setuptools==68.2.2
 six==1.17.0
 sqlite-fts4==1.0.3
 sqlite-utils==3.39
