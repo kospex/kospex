@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Kospex Web - Summary</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    </head>
+
+    <body class="bg-white">
+        {% include '_header.html' %}
+
+        <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            {% import '_id_header_macro.html' as header %}
+
+            <!-- Pie Charts Side by Side -->
+            <div class="flex flex-row justify-center items-start gap-8 mb-12">
+
+                <!-- Developers Pie Chart -->
+                <div class="bg-white rounded-lg p-6 w-80">
+                    {% set id = 'developers' %}
+                    {{ header.id_headings(id) if id }}
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2 text-center">
+                        Developers
+                    </h2>
+                    <p class="text-gray-700 mb-4 text-center">
+                        Total:
+                        <a
+                            href="/developers/"
+                            class="text-blue-600 hover:text-blue-800 underline font-semibold"
+                            >{{ developers.total }}</a
+                        >
+                    </p>
+                    <div class="relative" style="height: 280px;">
+                        <canvas id="developersPieChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Repos Pie Chart -->
+                <div class="bg-white rounded-lg p-6 w-80">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2 text-center">
+                        Repositories
+                    </h2>
+                    <p class="text-gray-700 mb-4 text-center">
+                        Total:
+                        <a
+                            href="/repos/"
+                            class="text-blue-600 hover:text-blue-800 underline font-semibold"
+                            >{{ repos.total }}</a
+                        >
+                    </p>
+                    <div class="relative" style="height: 280px;">
+                        <canvas id="reposPieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Legend -->
+            <div class="bg-white rounded-lg">
+                <div class="p-6">
+                    <div class="flex justify-center items-center gap-6 flex-wrap">
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 bg-green-500 rounded"></div>
+                            <span class="text-sm text-gray-700">Active</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 bg-yellow-400 rounded"></div>
+                            <span class="text-sm text-gray-700">Aging</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 bg-orange-400 rounded"></div>
+                            <span class="text-sm text-gray-700">Stale</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 bg-gray-400 rounded"></div>
+                            <span class="text-sm text-gray-700">Dormant</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %}
+
+        <script>
+            // Color palette matching the legend
+            const colors = {
+                Active: '#22c55e',      // green-500
+                Aging: '#facc15',       // yellow-400
+                Stale: '#fb923c',       // orange-400
+                Unmaintained: '#9ca3af' // gray-400
+            };
+
+            const labels = ['Active', 'Aging', 'Stale', 'Dormant'];
+
+            // Developers data
+            const developersData = {
+                Active: {{ developers.get('Active', 0) }},
+                Aging: {{ developers.get('Aging', 0) }},
+                Stale: {{ developers.get('Stale', 0) }},
+                Unmaintained: {{ developers.get('Unmaintained', 0) }}
+            };
+
+            // Repos data
+            const reposData = {
+                Active: {{ repos.get('Active', 0) }},
+                Aging: {{ repos.get('Aging', 0) }},
+                Stale: {{ repos.get('Stale', 0) }},
+                Unmaintained: {{ repos.get('Unmaintained', 0) }}
+            };
+
+            // URLs for click navigation
+            const developerUrls = {
+                Active: '/developers/?status=Active',
+                Aging: '/developers/?status=Aging',
+                Stale: '/developers/?status=Stale',
+                Unmaintained: '/developers/?status=Unmaintained'
+            };
+
+            const repoUrls = {
+                Active: '/repos/?status=Active',
+                Aging: '/repos/?status=Aging',
+                Stale: '/repos/?status=Stale',
+                Unmaintained: '/repos/?status=Unmaintained'
+            };
+
+            // Chart configuration
+            const chartConfig = {
+                type: 'pie',
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false  // Using custom legend below
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                    return `${context.label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Create Developers pie chart
+            const devCtx = document.getElementById('developersPieChart').getContext('2d');
+            const devChart = new Chart(devCtx, {
+                ...chartConfig,
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: [developersData.Active, developersData.Aging, developersData.Stale, developersData.Unmaintained],
+                        backgroundColor: [colors.Active, colors.Aging, colors.Stale, colors.Unmaintained],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                }
+            });
+
+            // Create Repos pie chart
+            const repoCtx = document.getElementById('reposPieChart').getContext('2d');
+            const repoChart = new Chart(repoCtx, {
+                ...chartConfig,
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: [reposData.Active, reposData.Aging, reposData.Stale, reposData.Unmaintained],
+                        backgroundColor: [colors.Active, colors.Aging, colors.Stale, colors.Unmaintained],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                }
+            });
+
+            // Add click handlers for navigation
+            document.getElementById('developersPieChart').addEventListener('click', function(evt) {
+                const points = devChart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+                if (points.length) {
+                    const index = points[0].index;
+                    const keys = ['Active', 'Aging', 'Stale', 'Unmaintained'];
+                    window.location.href = developerUrls[keys[index]];
+                }
+            });
+
+            document.getElementById('reposPieChart').addEventListener('click', function(evt) {
+                const points = repoChart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+                if (points.length) {
+                    const index = points[0].index;
+                    const keys = ['Active', 'Aging', 'Stale', 'Unmaintained'];
+                    window.location.href = repoUrls[keys[index]];
+                }
+            });
+
+            // Add pointer cursor on hover
+            ['developersPieChart', 'reposPieChart'].forEach(id => {
+                const canvas = document.getElementById(id);
+                const chart = id === 'developersPieChart' ? devChart : repoChart;
+                canvas.addEventListener('mousemove', function(evt) {
+                    const points = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, true);
+                    canvas.style.cursor = points.length ? 'pointer' : 'default';
+                });
+            });
+        </script>
+    </body>
+</html>
