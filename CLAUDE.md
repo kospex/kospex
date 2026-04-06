@@ -151,8 +151,14 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 4. Run `kospex init --create` to set up directories
 5. Install frontend dependencies: `npm install`
 
+### Change Documentation
+- Each feature or significant change should have a markdown file in `/changes/`
+- Naming convention: `YYYYMM-short-description.md` (e.g. `202604-developer-stats-table.md`)
+- Include: overview, files changed, usage, and implementation notes
+- These docs serve as context for future development and release planning
+
 ### Code Style & Standards
-- Use Python 3.11+ features
+- Use Python 3.12+ features
 - Follow existing patterns in codebase
 - Use Click for CLI commands with proper help text
 - Database operations through kospex_core and kospex_query abstractions 

@@ -12,7 +12,6 @@ ghp-import==2.1.0
 h11==0.16.0
 idna==3.11
 Jinja2==3.1.6
--e git+https://github.com/kospex/kospex.git@edb5e408c4510da90d4201507ebe5819f64100d4#egg=kospex
 Markdown==3.10.2
 markdown-it-py==4.0.0
 MarkupSafe==3.0.3
