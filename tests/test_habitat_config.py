@@ -69,6 +69,13 @@ class TestHabitatConfigDefaults:
             assert config.krunner_dir.name == 'krunner'
             assert config.krunner_dir.parent == config.home
 
+    def test_default_assessments_dirname(self):
+        """Test default assessments directory is assessments under KOSPEX_HOME."""
+        config = HabitatConfig.get_instance()
+        with config.with_overrides(KOSPEX_HOME='~/kospex'):
+            assert config.assessments_dir.name == 'assessments'
+            assert config.assessments_dir.parent == config.home
+
 
 class TestHabitatConfigOverrides:
     """Test configuration overrides via with_overrides context manager."""
@@ -122,6 +129,12 @@ class TestHabitatConfigOverrides:
         config = HabitatConfig.get_instance()
         with config.with_overrides(KOSPEX_KRUNNER='/custom/krunner'):
             assert config.krunner_dir == Path('/custom/krunner')
+
+    def test_override_assessments_dir(self):
+        """Test overriding KOSPEX_ASSESSMENTS via with_overrides."""
+        config = HabitatConfig.get_instance()
+        with config.with_overrides(KOSPEX_ASSESSMENTS='/custom/assessments'):
+            assert config.assessments_dir == Path('/custom/assessments')
 
     def test_multiple_overrides(self):
         """Test multiple overrides at once."""
@@ -276,6 +289,17 @@ class TestHabitatConfigEnsureDirectories:
                 assert str(krunner_dir) in result['created']
                 assert krunner_dir.exists()
 
+    def test_ensure_directories_creates_assessments(self):
+        """Test that ensure_directories creates assessments directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            new_home = Path(tmpdir) / 'kospex_test'
+            config = HabitatConfig.get_instance()
+            with config.with_overrides(KOSPEX_HOME=str(new_home)):
+                result = config.ensure_directories()
+                assessments_dir = new_home / 'assessments'
+                assert str(assessments_dir) in result['created']
+                assert assessments_dir.exists()
+
     def test_ensure_directories_creates_config_file(self):
         """Test that ensure_directories creates default config file."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -397,7 +421,8 @@ class TestHabitatConfigGetAllPaths:
 
         expected_keys = [
             'home', 'code_dir', 'db_path', 'duckdb_path',
-            'logs_dir', 'config_file', 'krunner_dir'
+            'logs_dir', 'config_file', 'krunner_dir', 'staging_dir',
+            'assessments_dir'
         ]
         for key in expected_keys:
             assert key in paths

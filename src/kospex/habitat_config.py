@@ -55,6 +55,7 @@ class HabitatConfig:
         'KOSPEX_LOGS_DIRNAME': 'logs',
         'KOSPEX_KRUNNER_DIRNAME': 'krunner',
         'KOSPEX_STAGING_DIRNAME': '_sync-staging',
+        'KOSPEX_ASSESSMENTS_DIRNAME': 'assessments',
     }
 
     def __init__(self) -> None:
@@ -345,6 +346,23 @@ class HabitatConfig:
 
         return self.code_dir / self._get_value('KOSPEX_STAGING_DIRNAME')
 
+    @property
+    def assessments_dir(self) -> Path:
+        """Path to assessments directory for assessment outputs.
+
+        Default: ~/kospex/assessments
+        Override: Set KOSPEX_ASSESSMENTS environment variable.
+        """
+        assessments_override = self._overrides.get('KOSPEX_ASSESSMENTS')
+        if assessments_override:
+            return Path(assessments_override).expanduser()
+
+        assessments_env = os.getenv('KOSPEX_ASSESSMENTS')
+        if assessments_env:
+            return Path(assessments_env).expanduser()
+
+        return self.home / self._get_value('KOSPEX_ASSESSMENTS_DIRNAME')
+
     # =========================================================================
     # Validation and Directory Management
     # =========================================================================
@@ -378,6 +396,7 @@ class HabitatConfig:
             'config_file_exists': False,
             'staging_dir_exists': False,
             'staging_dir_writable': False,
+            'assessments_dir_exists': False,
             'errors': [],
             'warnings': [],
         }
@@ -422,6 +441,12 @@ class HabitatConfig:
             else:
                 result['warnings'].append(f"Staging directory '{self.staging_dir}' is not writable")
         # Note: staging_dir not existing is not a warning - it's created on demand
+
+        # Check assessments directory
+        if self.assessments_dir.exists():
+            result['assessments_dir_exists'] = True
+        else:
+            result['warnings'].append(f"Assessments directory '{self.assessments_dir}' does not exist")
 
         return result
 
@@ -482,6 +507,18 @@ class HabitatConfig:
                 result['already_existed'].append(str(self.krunner_dir))
         except OSError as e:
             result['errors'].append(f"Failed to create krunner directory: {e}")
+
+        # Create assessments directory
+        try:
+            if not self.assessments_dir.exists():
+                self.assessments_dir.mkdir(parents=True, mode=0o750)
+                result['created'].append(str(self.assessments_dir))
+                if verbose:
+                    print(f"✓ Created assessments directory: {self.assessments_dir}")
+            else:
+                result['already_existed'].append(str(self.assessments_dir))
+        except OSError as e:
+            result['errors'].append(f"Failed to create assessments directory: {e}")
 
         # Create default config file
         if create_config and not self.config_file.exists():
@@ -584,6 +621,7 @@ class HabitatConfig:
             'config_file': self.config_file,
             'krunner_dir': self.krunner_dir,
             'staging_dir': self.staging_dir,
+            'assessments_dir': self.assessments_dir,
         }
 
     def __repr__(self) -> str:

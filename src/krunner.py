@@ -21,9 +21,11 @@ import kospex_utils as KospexUtils
 import kospex_web as KospexWeb
 import krunner_utils as KrunnerUtils
 from kospex_core import Kospex
+from kospex_query import KospexQuery
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
 from kospex_utils import KospexTimer
+from kospex.assessment_types import AssessmentTypes
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
@@ -421,11 +423,35 @@ def developer_tech(csv, verbose, developers, year, dev):
         console.log("use -csv to export\n", style="red")
 
     if csv:
-        filename = "dev-tech.csv"
+        # Determine scope
+        scope = "all"
         if year:
-            filename = f"dev-tech-{year}.csv"
+            scope = f"all-{year}"
+
+        # Choose assessment type based on output content
+        if developers or dev:
+            assessment_type = AssessmentTypes.TECH_LANDSCAPE_DEV
+        else:
+            assessment_type = AssessmentTypes.TECH_LANDSCAPE
+
+        # Generate filename and write to current directory
+        filename = AssessmentTypes.generate_filename(assessment_type, scope)
         console.log(f"Writing technology to {filename}")
         KrunnerUtils.write_dict_to_csv(filename, results)
+
+        # Write to assessments directory ONLY for org-wide reports (not individual developer)
+        if dev:
+            # Individual developer - warn that assessments directory is skipped
+            console.log(
+                "Individual developer report - not saving to assessments directory",
+                style="yellow",
+            )
+        else:
+            # Org-wide or all-developers - save to assessments
+            AssessmentTypes.ensure_assessments_dir()
+            assessments_path = AssessmentTypes.get_assessments_path(assessment_type, scope)
+            console.log(f"Writing technology to {assessments_path}")
+            KrunnerUtils.write_dict_to_csv(str(assessments_path), results)
 
 
 @cli.command("dependencies")
@@ -551,6 +577,15 @@ def osi(all, request_id):
         )
         sys.exit(1)
 
+    # Before we load all the data, let's check if the request_id is valid
+    repos = KospexQuery().get_repos(request_id=request_id)
+    console.print(repos)
+
+    # Check if the request_id is valid
+    if not repos:
+        console.log(f"No results found for: '{request_id}', have you sync'ed repositories for this scope?")
+        sys.exit(1)
+
     memory_kq = load_dependency_memory_db()
     params = {}
     if request_id:
@@ -624,15 +659,28 @@ def osi(all, request_id):
         else:
             d["published_at"] = "Unknown"
 
-    csv = True
     if not results or len(results) == 0:
         console.print("No results", style="red")
         sys.exit(1)
 
-    if csv:
-        filename = "krunner-osi.csv"
-        console.log(f"Writing dependencies to {filename}")
-        KrunnerUtils.write_dict_to_csv(filename, results)
+    # Determine scope based on -all flag or request_id
+    if all:
+        scope = "all"
+    else:
+        scope = request_id
+
+    # Generate filename using assessment type
+    filename = AssessmentTypes.generate_filename(AssessmentTypes.OSI, scope)
+
+    # Write to current directory
+    console.log(f"Writing dependencies to {filename}")
+    KrunnerUtils.write_dict_to_csv(filename, results)
+
+    # Write to assessments directory
+    AssessmentTypes.ensure_assessments_dir()
+    assessments_path = AssessmentTypes.get_assessments_path(AssessmentTypes.OSI, scope)
+    console.log(f"Writing dependencies to {assessments_path}")
+    KrunnerUtils.write_dict_to_csv(str(assessments_path), results)
 
 
 @cli.command("devs-by-tag")
