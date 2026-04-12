@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+from importlib.metadata import PackageNotFoundError, version
 from shutil import which
 
 import click
@@ -43,7 +44,11 @@ class Kospex:
     kospex core functionality
     """
 
-    VERSION = "0.0.35"  # This value should align with the pyproject.toml version for pip
+    try:
+        VERSION = version("kospex")
+    except PackageNotFoundError:
+        # Fallback if kospex is not installed as a package (e.g. running from source without install)
+        VERSION = "unknown"
 
     def __init__(self):
         self.original_cwd = None
