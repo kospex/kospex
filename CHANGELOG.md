@@ -2,6 +2,11 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.37 - Unreleased
+
+### Fixed
+- [Replaced hardcoded `VERSION` in `kospex_core.py` with `importlib.metadata`](https://github.com/kospex/kospex/issues/92) — `pyproject.toml` is now the single source of truth for the version, preventing future release version mismatches
+
 ## 0.0.36 - 2026-04-06
 
 ### Added
