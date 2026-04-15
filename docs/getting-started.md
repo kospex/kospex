@@ -32,16 +32,16 @@ You can configure your git CLI (which kospex wraps) using the GitHub CLI _gh_
 If you're organisation is using SAML / Single Sign On (e.g. Office365), we've tested that with kospex given the following steps:
 - Create a classic token (gh requires repo, read:org and workflow permissions)
 - Authorise the token for your organisation in the web ui
-- If you haven't done it in the GH WebUI, When doing gh auth (running through the steps to use a token), it will ask you to authorisate the token
+- If you haven't done it in the GH WebUI, When doing gh auth (running through the steps to use a token), it will ask you to authorise the token
 
 confirm you can clone a repo using
 ```bash
-gh repo clone ORG/REPO
+> gh repo clone ORG/REPO
 ```
 If this works, you can configure your git using gh
-'''bash
-gh auth setup-git
-'''
+```bash
+> gh auth setup-git
+```
 
 the kgit clone commands will now work with GitHub and your org SSO account that _gh_ uses. 
 
