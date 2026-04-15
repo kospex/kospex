@@ -570,8 +570,15 @@ class KospexQuery:
         hash=None,
         author_email=None,
         committer_email=None,
+        request_id=None,
     ):
-        """Provide a summary of the known repositories."""
+        """Provide a summary of the known repositories.
+
+        request_id scopes the query by tilde count:
+            - 0 tildes (e.g. 'github.com')           → server
+            - 1 tilde  (e.g. 'github.com~kospex')    → org_key
+            - 2 tildes (e.g. 'github.com~kospex~kospex') → full repo_id
+        """
         summary_sql = """SELECT _repo_id, hash, author_when, author_name,
         author_email, committer_when, committer_name, committer_email, _files
         FROM commits
@@ -583,6 +590,18 @@ class KospexQuery:
         if repo_id:
             summary_sql += " AND _repo_id = ?"
             params.append(repo_id)
+
+        if request_id:
+            tildes = request_id.count("~")
+            if tildes == 0:
+                summary_sql += " AND _git_server = ?"
+                params.append(request_id)
+            elif tildes == 1:
+                summary_sql += " AND (_git_server || '~' || _git_owner) = ?"
+                params.append(request_id)
+            else:
+                summary_sql += " AND _repo_id = ?"
+                params.append(request_id)
 
         if before:
             summary_sql += " AND committer_when < ?"

@@ -1383,28 +1383,60 @@ def status():
 
 @cli.command("commit-stats")
 @click.option("-commits", type=int, default=11, help="Time to X commits (default: 11).")
+@click.option(
+    "-request_id",
+    type=click.STRING,
+    default=None,
+    help="Scope by repo_id, org_key (server~owner), or server (e.g. github.com).",
+)
 @click.argument("dev", required=True, type=click.STRING)
-def commit_stats(commits, dev):
+def commit_stats(commits, request_id, dev):
     """
-    Test connectivity to api.deps.dev and check for SSL errors.
+    Show commit stats for a given developer email.
 
-    This command attempts to connect to api.deps.dev and reports any SSL certificate errors.
-    Use the -save flag to export the certificate chain to ~/kospex/REQUEST_CA_CERTS.
+    Reports all-time commits, commits in the last 90 days, tenure (years),
+    and the number of days taken to reach the Xth commit (default 11) as an
+    onboarding indicator. Optionally scope to a repo, org, or git server via
+    -request_id.
     """
-    console.print(f"\nCalculating commit stats for {dev}", style="bright_black")
-    all_commits = kospex.kospex_query.commits(author_email=dev)
-    console.print(f"# of commits: {len(all_commits)}")
+    scope = request_id if request_id else "all"
+
+    all_commits = kospex.kospex_query.commits(author_email=dev, request_id=request_id)
     active_commits = kospex.kospex_query.commits(
-        author_email=dev, after=KospexUtils.days_ago_iso_date(90)
+        author_email=dev,
+        request_id=request_id,
+        after=KospexUtils.days_ago_iso_date(90),
     )
-    console.print(f"# of active commits: {len(active_commits)}")
-    if len(all_commits) > commits:
-        first_commit = all_commits[-1]
-        x_commit = all_commits[-commits]
-        days_between = KospexUtils.days_between_datetimes(
-            first_commit.get("committer_when"), x_commit.get("committer_when")
+
+    tenure_years = "-"
+    if all_commits:
+        tenure_days = KospexUtils.days_between_datetimes(
+            all_commits[-1].get("committer_when"),
+            all_commits[0].get("committer_when"),
         )
-        console.log(f"days to {commits} commit: {days_between}")
+        tenure_years = round(tenure_days / 365.25, 1)
+
+    if len(all_commits) >= commits:
+        days_to_x = round(
+            KospexUtils.days_between_datetimes(
+                all_commits[-1].get("committer_when"),
+                all_commits[-commits].get("committer_when"),
+            )
+        )
+    else:
+        days_to_x = f"N/A (< {commits} commits)"
+
+    table = Table(title=f"Commit Stats: {dev}  (scope: {scope})")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", justify="right")
+    table.add_row("Total commits", str(len(all_commits)))
+    table.add_row("Commits (last 90d)", str(len(active_commits)))
+    table.add_row("Tenure (years)", str(tenure_years))
+    table.add_row(f"Days to {commits}th commit", str(days_to_x))
+
+    console.print()
+    console.print(table)
+    console.print()
 
 
 @cli.command("init-duckdb")
