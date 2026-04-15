@@ -7,6 +7,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Added
 - [`kospex commit-stats EMAIL` command](https://github.com/kospex/kospex/issues/78) — per-developer onboarding indicator reporting total commits, 90-day commits, tenure (years), and days to the Xth commit (default 11). Supports `-request_id` to scope by full `repo_id`, `org_key` (`server~owner`), or git server. Output rendered as a Rich table.
 - `request_id` parameter on `KospexQuery.commits()` that dispatches to server / org_key / repo_id filters by tilde count, keeping scope filtering out of the CLI layer.
+- [`-csv PATH` option on `kospex orphans`](https://github.com/kospex/kospex/issues/67) — writes orphaned repo results to a CSV file in addition to the existing on-screen PrettyTable output.
 
 ### Fixed
 - [Replaced hardcoded `VERSION` in `kospex_core.py` with `importlib.metadata`](https://github.com/kospex/kospex/issues/92) — `pyproject.toml` is now the single source of truth for the version, preventing future release version mismatches

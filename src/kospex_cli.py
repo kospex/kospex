@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """This is the kospex command line tool."""
 
+import csv
 import json
 import logging
 import os
@@ -1085,7 +1086,13 @@ def groups(name, add, remove, delete, show, file, value, email, repo):
 @click.option(
     "-target-list", type=click.Path(exists=True), help="A file containing repos to check."
 )
-def orphans(days, window, server, target_list):
+@click.option(
+    "-csv",
+    "csv_path",
+    type=click.Path(dir_okay=False, writable=True),
+    help="Write results to this CSV file.",
+)
+def orphans(days, window, server, target_list, csv_path):
     """
     Find orphaned repos.
 
@@ -1096,7 +1103,7 @@ def orphans(days, window, server, target_list):
 
     """
     print("Experimental - Work in Progress.")
-    params = locals()
+    params = {k: v for k, v in locals().items() if k != "csv_path"}
 
     active_devs = kospex.active_developers(**params)
     active_set = set(map(lambda item: item["author"], active_devs))
@@ -1123,6 +1130,8 @@ def orphans(days, window, server, target_list):
     from_date = now_utc - timedelta(days=window)
 
     table = KospexUtils.orphan_prettytable()
+    csv_headers = ["_repo_id", "committers", "active", "Orphaned", "% Here"]
+    csv_rows = []
     orphaned = 0
     working_knowledge = 0
 
@@ -1160,6 +1169,7 @@ def orphans(days, window, server, target_list):
             working_knowledge += 1
 
         table.add_row(row)
+        csv_rows.append(row)
         print()
 
     print()
@@ -1168,6 +1178,13 @@ def orphans(days, window, server, target_list):
     print(
         f"Orphaned: {orphaned / len(repos) * 100:.2f}% | Working Knowledge: {working_knowledge / len(repos) * 100:.2f}%\n"
     )
+
+    if csv_path:
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(csv_headers)
+            writer.writerows(csv_rows)
+        print(f"Wrote {len(csv_rows)} rows to {csv_path}\n")
 
     print()
 
