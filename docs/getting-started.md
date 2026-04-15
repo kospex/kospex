@@ -6,7 +6,7 @@ For the best setup experience, we recommend using Homebrew to install the requir
 # Install Git (if not already installed)
 brew install git
 
-# Install Git Credential Manager for secure authentication
+# Install Git Credential Manager for secure authentication (macOS only)
 brew install git-credential-manager
 
 # Install scc for code complexity analysis
@@ -17,6 +17,33 @@ On other platforms:
 - **Git**: Follow instructions at [https://git-scm.com/downloads](https://git-scm.com/downloads)
 - **Git Credential Manager**: Follow instructions at [https://github.com/git-ecosystem/git-credential-manager](https://github.com/git-ecosystem/git-credential-manager)
 - **scc**: Follow instructions at [https://github.com/boyter/scc](https://github.com/boyter/scc)
+
+### Linux (Ubuntu tested)
+
+We've tested on ubuntu, you'll need:
+- git (apt install git)
+- homebrew (see instructions above)
+- If you're using Github Only (Organisations with the same credentials, or SAML/SSO) - See below on using the Github CLI
+
+### Using the GitHub CLI, classic tokens and SAML
+
+You can configure your git CLI (which kospex wraps) using the GitHub CLI _gh_
+
+If you're organisation is using SAML / Single Sign On (e.g. Office365), we've tested that with kospex given the following steps:
+- Create a classic token (gh requires repo, read:org and workflow permissions)
+- Authorise the token for your organisation in the web ui
+- If you haven't done it in the GH WebUI, When doing gh auth (running through the steps to use a token), it will ask you to authorisate the token
+
+confirm you can clone a repo using
+```bash
+gh repo clone ORG/REPO
+```
+If this works, you can configure your git using gh
+'''bash
+gh auth setup-git
+'''
+
+the kgit clone commands will now work with GitHub and your org SSO account that _gh_ uses. 
 
 ## Step 1: Installation, setup and usage
 
@@ -44,9 +71,6 @@ If you are ok to use the ~/code directory for cloned repos, then run:
 See section "Git code layout for running analysis" below for more details.
 
 ### Step 3: sync some data and play with some commands
-
-For an existing repo on disk:
-> kospex sync [GIT_REPO]
 
 You can also use the _kgit_ command to clone and sync a repo you have access to
 
