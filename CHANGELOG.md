@@ -8,10 +8,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - [`kospex commit-stats EMAIL` command](https://github.com/kospex/kospex/issues/78) — per-developer onboarding indicator reporting total commits, 90-day commits, tenure (years), and days to the Xth commit (default 11). Supports `-request_id` to scope by full `repo_id`, `org_key` (`server~owner`), or git server. Output rendered as a Rich table.
 - `request_id` parameter on `KospexQuery.commits()` that dispatches to server / org_key / repo_id filters by tilde count, keeping scope filtering out of the CLI layer.
 - [`-csv PATH` option on `kospex orphans`](https://github.com/kospex/kospex/issues/67) — writes orphaned repo results to a CSV file in addition to the existing on-screen PrettyTable output.
+- [`krunner find-actions` command](https://github.com/kospex/kospex/issues/95) — extracts every `uses:` reference (step actions and job-level reusable workflows) from GitHub Actions workflow YAML across the repos kospex has metadata for. Outputs CSV with classification (`action_owner`, `action_name`, `pinned_version`, `pin_type` — `HASH`/`TAG`/`NONE`, and `github_action` — `yes` for `actions/*` and `github/*` owners). Useful for supply-chain audit. Introduces the new `kospex.extractors` package — first occupant of a planned family of file-type extractors.
 
 ### Fixed
 - [Replaced hardcoded `VERSION` in `kospex_core.py` with `importlib.metadata`](https://github.com/kospex/kospex/issues/92) — `pyproject.toml` is now the single source of truth for the version, preventing future release version mismatches
 - `kospex commit-stats` docstring was stale (copied from the deps.dev connectivity command) and now correctly describes the command.
+- `krunner osi -all` no longer crashes on malformed `package.json` files (e.g. babel test fixtures) — the parser error is logged and the file skipped, letting the run complete and write `OSI-all.csv`. Also removed a spurious `ERROR: can't identify {'request_id': None}` message that appeared on startup. See `changes/20260420-krunner-osi-all-fix.md`.
 
 ## 0.0.36 - 2026-04-06
 
