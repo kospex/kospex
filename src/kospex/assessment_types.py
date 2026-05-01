@@ -33,6 +33,8 @@ class AssessmentTypes:
     Assessment Types:
         OSI: Open Source Inventory - lists all open source dependencies
              with version information and security advisories.
+        GH_ACTIONS: GitHub Actions inventory - lists every ``uses:``
+             reference found in workflow files across the scope.
 
     Future assessment types can be added as class constants.
     """
@@ -41,6 +43,7 @@ class AssessmentTypes:
     OSI = "OSI"  # Open Source Inventory
     TECH_LANDSCAPE = "TECH-LANDSCAPE"  # Organization/repo tech landscape (by language)
     TECH_LANDSCAPE_DEV = "TECH-LANDSCAPE-DEV"  # Developer-specific tech landscape (by author + language)
+    GH_ACTIONS = "GH-ACTIONS"  # GitHub Actions inventory (workflow `uses:` references)
 
     # Future assessment types can be added here:
     # KEY_PERSON = "KEY-PERSON"

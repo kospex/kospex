@@ -4,6 +4,7 @@ This is the kospex runner tool - run the same command or queries on all repos.
 """
 
 import glob
+import json
 import os
 import os.path
 import shlex
@@ -26,6 +27,7 @@ from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
 from kospex_utils import KospexTimer
 from kospex.assessment_types import AssessmentTypes
+from kospex.extractors.workflows import extract_workflow_actions
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
@@ -630,7 +632,14 @@ def osi(all, request_id):
 
             elif "package.json" in d["Provider"]:
                 console.print(f"Should parse package.json {d['Provider']}", style="blue")
-                reqs = kdeps.parse_package_json(file_path=full_path)
+                try:
+                    reqs = kdeps.parse_package_json(file_path=full_path)
+                except (json.JSONDecodeError, OSError) as e:
+                    console.print(
+                        f"Skipping malformed package.json {d['Provider']}: {e}",
+                        style="yellow",
+                    )
+                    continue
                 for req in reqs:
                     req["_repo_id"] = r["_repo_id"]
                     req["file_path"] = d["Provider"]
@@ -942,6 +951,105 @@ def find_docker(directory, out, images):
         print(registries)
         print(KospexUtils.get_keyvalue_table(registries))
         print()
+
+
+@cli.command("find-actions")
+@click.option(
+    "-repo",
+    "repo_id",
+    type=click.STRING,
+    default=None,
+    help="Filter to a specific repo (format: server~org~repo)",
+)
+def find_actions(repo_id):
+    """
+    Find all GitHub Actions referenced in workflow files across repos.
+
+    Queries kospex metadata for files panopticas tagged as "workflow",
+    parses each YAML, and extracts every `uses:` reference (step actions
+    and job-level reusable workflows). Results are displayed as a table
+    and written to CSV in the current directory and the assessments
+    directory.
+
+    Without -repo, scopes to all repos in the database.
+    """
+    kq = KospexQuery()
+
+    repo_paths = kq.get_repo_file_paths(repo_id=repo_id)
+    if not repo_paths:
+        if repo_id:
+            console.log(
+                f"[red]No local file_path for repo '{repo_id}' "
+                f"(or repo not found in the database).[/red]"
+            )
+        else:
+            console.log("[red]No repos with local file paths in the database.[/red]")
+        sys.exit(1)
+
+    console.log(f"Found {len(repo_paths)} repo(s) with local paths")
+
+    workflow_files = kq.get_metadata_files(tag="workflow", repo_id=repo_id)
+    console.log(f"Found {len(workflow_files)} workflow file(s) in metadata")
+
+    if not workflow_files:
+        console.log("[yellow]No workflow files found.[/yellow]")
+        return
+
+    records = []
+    skipped = 0
+
+    for wf in workflow_files:
+        wf_repo_id = wf["_repo_id"]
+        provider = wf["Provider"]
+        repo_path = repo_paths.get(wf_repo_id)
+        if not repo_path:
+            skipped += 1
+            continue
+
+        full_path = os.path.join(repo_path, provider)
+        actions = extract_workflow_actions(full_path)
+
+        for action in actions:
+            records.append({
+                "_repo_id": wf_repo_id,
+                "Provider": provider,
+                "action": action["action"],
+                "action_owner": action["action_owner"],
+                "action_name": action["action_name"],
+                "pinned_version": action["pinned_version"],
+                "pin_type": action["pin_type"],
+                "github_action": action["github_action"],
+            })
+
+    if skipped:
+        console.log(
+            f"[yellow]Skipped {skipped} workflow file(s) — repo not found locally[/yellow]"
+        )
+
+    table = Table(title="GitHub Actions Found", show_lines=False)
+    table.add_column("Repo ID", style="bright_black", no_wrap=True, max_width=40)
+    table.add_column("Workflow File", style="magenta", no_wrap=True)
+    table.add_column("Action", style="cyan", no_wrap=True)
+
+    for r in records:
+        table.add_row(r["_repo_id"], r["Provider"], r["action"])
+
+    console.print(table)
+    console.print(f"\nTotal actions found: {len(records)}")
+
+    if not records:
+        return
+
+    scope = repo_id if repo_id else "all"
+
+    filename = AssessmentTypes.generate_filename(AssessmentTypes.GH_ACTIONS, scope)
+    console.log(f"Writing actions to {filename}")
+    KrunnerUtils.write_dict_to_csv(filename, records)
+
+    AssessmentTypes.ensure_assessments_dir()
+    assessments_path = AssessmentTypes.get_assessments_path(AssessmentTypes.GH_ACTIONS, scope)
+    console.log(f"Writing actions to {assessments_path}")
+    KrunnerUtils.write_dict_to_csv(str(assessments_path), records)
 
 
 @cli.command("find-repos")

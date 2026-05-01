@@ -1571,7 +1571,8 @@ class KospexQuery:
         kd.from_table(KospexSchema.TBL_REPOS)
         kd.select("*")
 
-        kd.set_params_by_id(kwargs)
+        request_id = kwargs.pop("request_id", None)
+        kd.set_params_by_id(kwargs, request_id=request_id)
 
         if server := kwargs.get("server"):
             kd.where("_git_server", "=", server)
@@ -1961,6 +1962,24 @@ class KospexQuery:
             # print(row)
             results[row["_repo_id"]] = row
         return results
+
+    def get_repo_file_paths(self, repo_id=None):
+        """Return a ``{_repo_id: file_path}`` lookup for repos with a
+        local clone path set.
+
+        Args:
+            repo_id: Optional ``server~org~repo`` filter. ``None``
+                returns all repos.
+
+        Returns:
+            dict: ``{_repo_id: file_path}``. Empty when no matching repo
+            has a ``file_path``.
+        """
+        return {
+            r["_repo_id"]: r["file_path"]
+            for r in self.get_repos(request_id=repo_id)
+            if r.get("file_path")
+        }
 
     # TODO - refactor to one repos query using KospexData
     # def repos(self,  **kwargs):
@@ -2519,9 +2538,8 @@ class KospexData:
             from kospex_web import get_id_params
             id_params = get_id_params(request_id)
 
-        # If we still don't have params, nothing to do
+        # If we still don't have params, nothing to do (caller wants "all scope")
         if not id_params:
-            print("ERROR: no id_params or request_id provided")
             return
 
         if repo_id := id_params.get("repo_id"):
@@ -2530,6 +2548,9 @@ class KospexData:
             self.where_org_key(org_key)
         elif server := id_params.get("server"):
             self.where("_git_server", "=", server)
+        elif not any(id_params.values()):
+            # All keys present but values are None/empty → treat as "all scope"
+            return
         else:
             print(f"ERROR: can't identify {id_params}")
 
