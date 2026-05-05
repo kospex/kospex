@@ -14,6 +14,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - [Replaced hardcoded `VERSION` in `kospex_core.py` with `importlib.metadata`](https://github.com/kospex/kospex/issues/92) — `pyproject.toml` is now the single source of truth for the version, preventing future release version mismatches
 - `kospex commit-stats` docstring was stale (copied from the deps.dev connectivity command) and now correctly describes the command.
 - `krunner osi -all` no longer crashes on malformed `package.json` files (e.g. babel test fixtures) — the parser error is logged and the file skipped, letting the run complete and write `OSI-all.csv`. Also removed a spurious `ERROR: can't identify {'request_id': None}` message that appeared on startup. See `changes/20260420-krunner-osi-all-fix.md`.
+- [`krunner osi` no longer crashes on malformed `pyproject.toml` files](https://github.com/kospex/kospex/issues/97) (repro: `github.com~pypa~build`, which ships `tests/packages/test-bad-syntax/pyproject.toml` as a deliberately broken fixture). `KospexDependencies.parse_pyproject_file` now catches `tomllib.TOMLDecodeError`, `OSError`, and `packaging.requirements.InvalidRequirement`, logs a warning, and returns `[]` so the run continues with the next file. See `changes/20260505-pyproject-parser-error-handling.md`.
 
 ## 0.0.36 - 2026-04-06
 

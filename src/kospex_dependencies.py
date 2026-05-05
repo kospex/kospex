@@ -18,12 +18,14 @@ from xml.etree import ElementTree as ET
 
 import dateutil.parser
 import requests
-from packaging.requirements import Requirement
+from packaging.requirements import InvalidRequirement, Requirement
 from prettytable import PrettyTable
 
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
+
+log = KospexUtils.get_kospex_logger("kospex_dependencies")
 
 
 class KospexDependencies:
@@ -761,69 +763,54 @@ class KospexDependencies:
 
     def parse_pyproject_file(self, file_path):
         """
-        Parse a pyproject.toml file and return a list of packages
+        Parse a pyproject.toml file and return a list of packages.
+
+        Returns an empty list and logs a warning if the file is malformed
+        or unreadable, so batch callers (e.g. ``krunner osi``) can continue
+        processing other files.
         """
 
-        with open(file_path, "rb") as f:
-            pyproject = tomllib.load(f)
+        try:
+            with open(file_path, "rb") as f:
+                pyproject = tomllib.load(f)
+        except (tomllib.TOMLDecodeError, OSError) as e:
+            log.warning("Skipping malformed pyproject.toml %s: %s", file_path, e)
+            return []
 
-        print(pyproject)
-
-        # result = {
-        #     "dependencies": [],
-        #     "optional": {}
-        # }
         results = []
 
-        # Main dependencies
-        # deps = pyproject.get("project", {}).get("dependencies", [])
-        # for dep in deps:
-        #     req = Requirement(dep)
-        #     result["dependencies"].append({
-        #         "name": req.name,
-        #         "version": str(req.specifier),
-        #         "extras": list(req.extras),
-        #         "requirements_type": "direct"
-        #     })
         deps = pyproject.get("project", {}).get("dependencies", [])
         for dep in deps:
-            req = Requirement(dep)
+            try:
+                req = Requirement(dep)
+            except InvalidRequirement as e:
+                log.warning(
+                    "Skipping invalid requirement %r in %s: %s", dep, file_path, e
+                )
+                continue
             p = self.get_package_template()
             p["package_name"] = req.name
             p["package_version"] = str(req.specifier)
-            # p["extras"] = list(req.extras)
             p["ecosystem"] = "PyPi"
             p["requirements_type"] = "direct"
             results.append(p)
 
-            # results.append(
-            #     {
-            #         "package_name": req.name,
-            #         "package_version": str(req.specifier),
-            #         "extras": list(req.extras),
-            #         "requirements_type": "direct",
-            #     }
-            # )
-
         optional = pyproject.get("project", {}).get("optional-dependencies", {})
         for group, deps in optional.items():
-            # results["optional"][group] = []
             for dep in deps:
-                req = Requirement(dep)
+                try:
+                    req = Requirement(dep)
+                except InvalidRequirement as e:
+                    log.warning(
+                        "Skipping invalid requirement %r in %s: %s", dep, file_path, e
+                    )
+                    continue
                 p = self.get_package_template()
                 p["package_name"] = req.name
                 p["package_version"] = str(req.specifier)
-                # p["extras"] = list(req.extras)
                 p["ecosystem"] = "PyPi"
                 p["requirements_type"] = "optional"
                 results.append(p)
-                # results.append(
-                #     {
-                #         "package_name": req.name,
-                #         "package_version": str(req.specifier),
-                #         "requirements_type": "direct",
-                #     }
-                # )
 
         return results
 
