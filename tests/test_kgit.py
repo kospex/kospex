@@ -33,6 +33,12 @@ def test_repo_id():
     # HTTPS
     kg.set_remote_url("https://bitbucket.org/gildas_cherruel/bb.git")
     assert "bitbucket.org~gildas_cherruel~bb" == kg.repo_id
+    # HTTPS with embedded username — Bitbucket's REST API returns clone
+    # URLs personalised with the authenticated user's Bitbucket username
+    # (e.g. https://USERNAME@bitbucket.org/...), so the parser must strip
+    # the username prefix to keep repo_id stable.
+    kg.set_remote_url("https://USERNAME@bitbucket.org/gildas_cherruel/bb.git")
+    assert "bitbucket.org~gildas_cherruel~bb" == kg.repo_id
     # SSH
     # git@bitbucket.org:gildas_cherruel/bb.git
     kg.set_remote_url("git@bitbucket.org:gildas_cherruel/bb.git")

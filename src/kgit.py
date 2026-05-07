@@ -13,7 +13,14 @@ from rich.console import Console
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 from kospex_github import KospexGithub
-from kospex_bitbucket import KospexBitbucket
+from kospex_bitbucket import (
+    KospexBitbucket,
+    MODE_TOKEN,
+    MODE_LEGACY,
+    MODE_CONFIG_ERROR,
+    MODE_NONE,
+    REQUIRED_SCOPES,
+)
 from rich.table import Table
 
 # Initialize Kospex environment with logging
@@ -348,32 +355,100 @@ def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
 @click.option('-out-raw', type=click.Path(), help="Output raw JSON results to the specified filename")
 def bitbucket(workspace, out_repo_list, test_auth, out_raw):
     """
-    Interact with the BitBucket API to query repos in a workspace.
+    Interact with the Bitbucket API to query repos in a workspace.
 
-    This command requires the following environment variables to be set:
-    BITBUCKET_USERNAME and
-    BITBUCKET_APP_PASSWORD
+    \b
+    Authentication (preferred — Bitbucket API token):
+      Set BITBUCKET_API_TOKEN, plus one of (mutually exclusive):
+        BITBUCKET_EMAIL    — recommended for REST API calls
+        BITBUCKET_USERNAME — also works for REST; required for git
+      One of these is effectively required — Atlassian's static
+      "x-bitbucket-api-token-auth" fallback is accepted as a last resort
+      but has been observed to 401 against some REST endpoints.
 
-    The bitbucket username is in the "account settings" section of your bitbucket account.
-    This is NOT your email address.
+    Two Atlassian token types work with this command:
 
+    \b
+    * Atlassian account API token (id.atlassian.com → Security → API tokens):
+      no scopes required, account-wide across Atlassian products.
+    * Bitbucket-scoped API token (Bitbucket settings → API tokens): must
+      include ALL of these scopes:
+        - read:project:bitbucket
+        - read:repository:bitbucket
+        - read:workspace:bitbucket
+
+    \b
+    Authentication (legacy — being retired by Atlassian):
+      BITBUCKET_USERNAME + BITBUCKET_APP_PASSWORD. The Bitbucket username
+      is in "account settings" — NOT your email.
+      Atlassian disables ALL existing app passwords on 2026-06-09.
+      Migrate to BITBUCKET_API_TOKEN before then.
+
+    \b
+    Docs:
+      https://support.atlassian.com/bitbucket-cloud/docs/api-tokens
+      https://support.atlassian.com/bitbucket-cloud/docs/using-api-tokens/
     """
 
     bb = KospexBitbucket()
     click.echo()
-    if bb.get_env_credentials():
-        print("Found bitbucket credentials in the environment.")
-    else:
-        print("Could not find bitbucket credentials in the environment.")
-        print("Please set BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD.\n")
+    mode, reason = bb.get_env_credentials()
+
+    if mode == MODE_TOKEN:
+        print("Found Bitbucket API token credentials in the environment.")
+        if os.getenv("BITBUCKET_APP_PASSWORD"):
+            click.echo(
+                "Note: BITBUCKET_APP_PASSWORD is also set but is being "
+                "ignored — the API token wins. Unset BITBUCKET_API_TOKEN "
+                "to use the legacy path.",
+                err=True,
+            )
+    elif mode == MODE_LEGACY:
+        print("Found Bitbucket app password credentials in the environment.")
+        click.echo(f"WARNING: {reason}", err=True)
+    elif mode == MODE_CONFIG_ERROR:
+        click.echo(f"ERROR: {reason}\n", err=True)
+        exit(1)
+    else:  # MODE_NONE
+        print("Could not find Bitbucket credentials in the environment.")
+        print("Set BITBUCKET_API_TOKEN (and optionally BITBUCKET_EMAIL or "
+              "BITBUCKET_USERNAME),")
+        print("or the legacy BITBUCKET_USERNAME + BITBUCKET_APP_PASSWORD.")
+        print("See `kgit bitbucket --help` for details.\n")
         exit(1)
 
     if test_auth:
-        if bb.test_auth():
+        if not workspace:
+            click.echo(
+                "\nERROR: -test-auth requires -workspace so we can verify "
+                "auth against the same endpoint get_repos uses "
+                "(/2.0/repositories/{workspace}). Pass any workspace you "
+                "have access to.\n",
+                err=True,
+            )
+            exit(1)
+        ok, status = bb.test_auth(workspace_id=workspace)
+        if ok:
             print("Authentication successful.\n")
+        elif status == 401:
+            print("\nAuthentication FAILED (HTTP 401 — bad credentials).")
+            print("Check your BITBUCKET_API_TOKEN (and BITBUCKET_EMAIL or "
+                  "BITBUCKET_USERNAME), or for the legacy path your "
+                  "BITBUCKET_USERNAME + BITBUCKET_APP_PASSWORD.\n")
+        elif status == 403:
+            print("\nAuthentication FAILED (HTTP 403 — token is missing "
+                  "required scopes).")
+            print("If you are using a Bitbucket-scoped API token, it must "
+                  "carry all of:")
+            for scope in REQUIRED_SCOPES:
+                print(f"    {scope}")
+            print("Alternatively, use an unscoped Atlassian account API "
+                  "token (id.atlassian.com).\n")
+        elif status == 404:
+            print(f"\nAuthentication ok, but workspace '{workspace}' was "
+                  "not found (HTTP 404). Check the workspace name.\n")
         else:
-            print("\nAuthentication FAILED!.",
-                  "\nCheck your BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD\n")
+            print(f"\nAuthentication FAILED (HTTP {status}).\n")
         exit(0)
 
     if not workspace:
@@ -395,6 +470,7 @@ def bitbucket(workspace, out_repo_list, test_auth, out_raw):
         table.add_row([r.get("slug"), bb.get_https_clone_url(r), r.get("is_private")])
 
     print(table)
+    print(f"\nFound {len(repos)} repo(s) in workspace '{workspace}'.\n")
 
     if out_repo_list:
         with open(out_repo_list, "w", encoding='utf-8') as file:
