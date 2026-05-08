@@ -11,6 +11,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - [`-csv PATH` option on `kospex orphans`](https://github.com/kospex/kospex/issues/67) — writes orphaned repo results to a CSV file in addition to the existing on-screen PrettyTable output.
 - [`krunner find-actions` command](https://github.com/kospex/kospex/issues/95) — extracts every `uses:` reference (step actions and job-level reusable workflows) from GitHub Actions workflow YAML across the repos kospex has metadata for. Outputs CSV with classification (`action_owner`, `action_name`, `pinned_version`, `pin_type` — `HASH`/`TAG`/`NONE`, and `github_action` — `yes` for `actions/*` and `github/*` owners). Useful for supply-chain audit. Introduces the new `kospex.extractors` package — first occupant of a planned family of file-type extractors.
 
+### Changed
+- `kospex orgs` output now renders as a Rich table (titled "Organizations") instead of PrettyTable, matching the style of `kospex stats`. The unused `KospexUtils.orgs_prettytable()` helper has been removed. See `changes/202605-orgs-rich-table.md`.
+
 ### Fixed
 - [Replaced hardcoded `VERSION` in `kospex_core.py` with `importlib.metadata`](https://github.com/kospex/kospex/issues/92) — `pyproject.toml` is now the single source of truth for the version, preventing future release version mismatches
 - `kospex commit-stats` docstring was stale (copied from the deps.dev connectivity command) and now correctly describes the command.

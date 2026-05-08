@@ -1257,23 +1257,6 @@ def get_krunner_directory():
     from kospex.habitat_config import HabitatConfig
     return str(HabitatConfig.get_instance().krunner_dir)
 
-def orgs_prettytable():
-    """ Return a prettytable object for the orgs query."""
-
-    table = PrettyTable()
-    table.field_names = ["org_key", "org", "commits", "repos", "authors",
-                         "committers", "days_ago", "last_commit"]
-    table.align["org_key"] = "l"
-    table.align["org"] = "l"
-    table.align["commits"] = "r"
-    table.align["repos"] = "r"
-    table.align["authors"] = "r"
-    table.align["committers"] = "r"
-    table.align["days_ago"] = "r"
-    table.align["last_commit"] = "r"
-
-    return table
-
 def get_keyvalue_table(details=None):
     """ Return a prettytable object for the keyvalue query."""
 

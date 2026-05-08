@@ -881,10 +881,32 @@ def orgs():
     """List all the organizations in the database."""
     kquery = KospexQuery()
     orgs_list = kquery.orgs()
-    table = KospexUtils.orgs_prettytable()
+
+    table = Table(title="Organizations")
+    table.add_column("org_key", style="cyan")
+    table.add_column("org")
+    table.add_column("commits", justify="right")
+    table.add_column("repos", justify="right")
+    table.add_column("authors", justify="right")
+    table.add_column("committers", justify="right")
+    table.add_column("days_ago", justify="right")
+    table.add_column("last_commit", justify="right")
+
     for o in orgs_list:
-        table.add_row(KospexUtils.get_values_by_keys(o, table.field_names))
-    print(table)
+        table.add_row(
+            str(o.get("org_key", "")),
+            str(o.get("org", "")),
+            str(o.get("commits", "")),
+            str(o.get("repos", "")),
+            str(o.get("authors", "")),
+            str(o.get("committers", "")),
+            str(o.get("days_ago", "")),
+            str(o.get("last_commit", "")),
+        )
+
+    console.print()
+    console.print(table)
+    console.print()
 
 
 @cli.command("sync-dependencies")
