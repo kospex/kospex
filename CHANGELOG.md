@@ -2,7 +2,9 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## 0.0.37 - Unreleased
+## 0.0.38 - Unreleased
+
+## 0.0.37 - 2026-05-09
 
 ### Added
 - [`kgit bitbucket` Bitbucket API token support](https://github.com/kospex/kospex/issues/90) — new `BITBUCKET_API_TOKEN` env var (with optional `BITBUCKET_EMAIL` or existing `BITBUCKET_USERNAME`, mutually exclusive) ahead of Atlassian's app-password sunset. Atlassian disables all existing app passwords on **2026-06-09**; migrate before then. Accepts both unscoped Atlassian account API tokens and Bitbucket-scoped tokens (the latter need `read:project:bitbucket`, `read:repository:bitbucket`, `read:workspace:bitbucket`). See [Atlassian token management](https://support.atlassian.com/bitbucket-cloud/docs/api-tokens) and [auth recipes](https://support.atlassian.com/bitbucket-cloud/docs/using-api-tokens/). Legacy `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` still works with a stderr deprecation warning naming the cutoff; legacy code is scheduled for removal shortly after 2026-06-09. See `changes/20260507-bitbucket-api-token-support.md`.
@@ -13,6 +15,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 - `kospex orgs` output now renders as a Rich table (titled "Organizations") instead of PrettyTable, matching the style of `kospex stats`. The unused `KospexUtils.orgs_prettytable()` helper has been removed. See `changes/202605-orgs-rich-table.md`.
+- Pinned `panopticas==0.0.15` (was `panopticas>=0.0.14`) — locks to a known-good release to prevent unexpected breakage from upstream changes.
 
 ### Fixed
 - [Replaced hardcoded `VERSION` in `kospex_core.py` with `importlib.metadata`](https://github.com/kospex/kospex/issues/92) — `pyproject.toml` is now the single source of truth for the version, preventing future release version mismatches

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kospex"
-version = "0.0.36"
+version = "0.0.37"
 description = "kospex - Code and Developer Analytics."
 authors = [{ name = "Peter Freiberg", email = "peter.freiberg@gmail.com" }]
 license = { file = "LICENSE" }
@@ -14,7 +14,7 @@ dependencies = [
     "duckdb==1.4.3",
     "prettytable==3.17.0",
     "dateutils",
-    "panopticas>=0.0.14",
+    "panopticas==0.0.15",
     "python-dotenv",
     "sqlite-utils",
     "requests==2.33.0",
