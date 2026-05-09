@@ -18,6 +18,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - Pinned `panopticas==0.0.15` (was `panopticas>=0.0.14`) — locks to a known-good release to prevent unexpected breakage from upstream changes.
 
 ### Fixed
+- npm: bumped `postcss` to fix moderate XSS advisory [GHSA-qx2v-qp2m-jg93](https://github.com/advisories/GHSA-qx2v-qp2m-jg93) (was 8.5.8, transitive via tailwindcss).
 - [Replaced hardcoded `VERSION` in `kospex_core.py` with `importlib.metadata`](https://github.com/kospex/kospex/issues/92) — `pyproject.toml` is now the single source of truth for the version, preventing future release version mismatches
 - `kospex commit-stats` docstring was stale (copied from the deps.dev connectivity command) and now correctly describes the command.
 - `krunner osi -all` no longer crashes on malformed `package.json` files (e.g. babel test fixtures) — the parser error is logged and the file skipped, letting the run complete and write `OSI-all.csv`. Also removed a spurious `ERROR: can't identify {'request_id': None}` message that appeared on startup. See `changes/20260420-krunner-osi-all-fix.md`.
