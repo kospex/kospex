@@ -31,9 +31,105 @@ Use `kospex orgs` as the canonical reference:
 - Inline the table in the command — drop helper factories that are only
   called once.
 
-Caveat: Rich auto-truncates with `…` on narrow terminals. Acceptable for
-most tables; if a specific report needs full values, use
-`console.print(table, soft_wrap=True)` or `no_wrap=False` on the column.
+## Truncation behavior
+
+Rich diverges from PrettyTable here: when the rendered table is wider
+than the terminal, Rich proportionally shrinks columns and truncates
+cell values with `…`. PrettyTable instead lets the table extend past
+the terminal width and relies on the terminal to wrap or scroll.
+
+Observed in the `kospex orgs` migration on a standard ~100-column
+terminal:
+
+```
+┃ org_key ┃ org     ┃ commits ┃ ... ┃ last_c… ┃
+┡━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━╇━━━━━━━━━┩
+│ github… │ apache  │   18625 │ ... │ 2026-0… │
+```
+
+`github.com~apache` shows as `github…`; full ISO timestamps become
+`2026-0…`. Acceptable for browsing, problematic when a user needs to
+copy/grep an identifier or pipe the output to another tool.
+
+### Tables most affected
+
+Any table whose columns hold:
+
+- `repo_id` (`server~owner~repo`, typically 30-60 chars) or `org_key`
+  (`server~owner`, typically 15-30 chars).
+- File paths.
+- Author / committer emails.
+- Raw ISO datetime strings (`last_commit`, `first_commit`,
+  `committer_when`, `author_when`).
+
+### Mitigation options
+
+In rough order of preference:
+
+1. **Render shorter values to begin with.** For dates, use
+   `KospexUtils.extract_db_date()` — `kospex stats` already does this
+   and its `First Commit` / `Last Commit` columns stay narrow as a
+   result. Cleanest fix; no Rich-specific knobs to tune.
+
+2. **`no_wrap=True` on the column.** Tells Rich not to wrap that
+   column's text. Combined with default ellipsis overflow, the column
+   either fits or truncates — but it won't shrink mid-word. Useful for
+   identifier columns where partial values are useless.
+
+   ```python
+   table.add_column("repo_id", no_wrap=True)
+   ```
+
+3. **`overflow="fold"` on the column.** Wraps long values onto extra
+   lines within the cell instead of truncating. Use for free-text
+   columns (messages, descriptions) where multi-line cells are
+   acceptable.
+
+   ```python
+   table.add_column("message", overflow="fold")
+   ```
+
+4. **Force a wider `Console`.** Bypasses terminal autodetection. Useful
+   when a specific report is intended for redirection to a file, or
+   when running in a context where horizontal scrolling is expected.
+
+   ```python
+   wide = Console(width=200)
+   wide.print(table)
+   ```
+
+5. **Accept truncation.** For browse-only summary tables where the
+   truncated text is incidental (e.g. the count columns dominate and
+   the org name is recognizable from a few characters), leave defaults.
+   The `orgs` migration shipped this way.
+
+### Per-migration guidance
+
+When converting a table:
+
+- Identify which columns hold identifiers (must be exact) vs counts
+  (numeric, narrow by nature) vs free text (can wrap).
+- For identifier columns the user will likely want to copy, grep, or
+  pipe (`repo_id`, `org_key`, file paths, emails), prefer option 1
+  (shorten upstream) or option 2 (`no_wrap=True`).
+- Eyeball the resulting table at 80, 120, and 160 columns before
+  committing — 80 is the constraining case.
+- Note the truncation choice in the commit message so it's an
+  intentional decision, not an oversight. If you accept truncation,
+  say so explicitly.
+
+### Follow-up for `orgs`
+
+`kospex orgs` shipped with default Rich truncation; both `org_key` and
+`last_commit` are commonly truncated on narrow terminals. Worth
+revisiting:
+
+- `org_key` — apply `no_wrap=True`, since `github~…` alone is useless.
+- `last_commit` — pipe through `KospexUtils.extract_db_date()` like
+  `stats` does, dropping it to `YYYY-MM-DD` so the column is narrow by
+  design.
+
+Tracked here rather than as a separate change.
 
 ## Inventory
 
