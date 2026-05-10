@@ -4,7 +4,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## 0.0.38 - Unreleased
 
-## 0.0.37 - 2026-05-09
+## 0.0.37 - 2026-05-10
 
 ### Added
 - [`kgit bitbucket` Bitbucket API token support](https://github.com/kospex/kospex/issues/90) — new `BITBUCKET_API_TOKEN` env var (with optional `BITBUCKET_EMAIL` or existing `BITBUCKET_USERNAME`, mutually exclusive) ahead of Atlassian's app-password sunset. Atlassian disables all existing app passwords on **2026-06-09**; migrate before then. Accepts both unscoped Atlassian account API tokens and Bitbucket-scoped tokens (the latter need `read:project:bitbucket`, `read:repository:bitbucket`, `read:workspace:bitbucket`). See [Atlassian token management](https://support.atlassian.com/bitbucket-cloud/docs/api-tokens) and [auth recipes](https://support.atlassian.com/bitbucket-cloud/docs/using-api-tokens/). Legacy `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` still works with a stderr deprecation warning naming the cutoff; legacy code is scheduled for removal shortly after 2026-06-09. See `changes/20260507-bitbucket-api-token-support.md`.
