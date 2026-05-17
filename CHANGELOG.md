@@ -4,6 +4,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## 0.0.38 - Unreleased
 
+### Added
+- New `/org/{org_key}` organisation view mirroring the repo view — org Commit Summary, Developer Status, Technology Landscape, and a Repositories table linking back to each `/repo/{repo_id}`. See `changes/202605-repo-org-header-redesign.md`.
+
+### Changed
+- Repo view (`/repo/{repo_id}`) header is now a `server / org / repo` breadcrumb with a bold title and entity label instead of the raw `repo_id`; the server and org segments are links (server → existing `/orgs/{server}`, org → the new org view). Malformed `repo_id`/`org_key` now return HTTP 404 instead of a generic 500. See `changes/202605-repo-org-header-redesign.md`.
+
 ## 0.0.37 - 2026-05-10
 
 ### Added
