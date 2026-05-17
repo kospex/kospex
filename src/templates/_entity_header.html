@@ -1,0 +1,15 @@
+{# Shared entity header. Context: git_server, org, org_key, entity_type;
+   optional: repo (present => repo page, absent => org page). #}
+<nav class="text-sm text-gray-500 mb-2" aria-label="Breadcrumb">
+    <a href="/orgs/{{ git_server }}" class="text-blue-600 hover:text-blue-800 underline">{{ git_server }}</a>
+    <span class="mx-2 text-gray-300">/</span>
+    {% if repo %}
+    <a href="/org/{{ org_key }}" class="text-blue-600 hover:text-blue-800 underline">{{ org }}</a>
+    <span class="mx-2 text-gray-300">/</span>
+    <span class="font-semibold text-gray-900" aria-current="page">{{ repo }}</span>
+    {% else %}
+    <span class="font-semibold text-gray-900" aria-current="page">{{ org }}</span>
+    {% endif %}
+</nav>
+<h1 class="text-3xl font-bold text-gray-900">{{ repo if repo else org }}</h1>
+<div class="mt-1 mb-6 text-xs font-semibold uppercase tracking-wider text-gray-500">{{ entity_type }}</div>

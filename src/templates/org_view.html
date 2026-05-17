@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Organisation View - Kospex Web</title>
+        <link rel="stylesheet" href="/static/css/tailwind.css" />
+        <style>
+            .dataTables_wrapper .dataTables_length select,
+            .dataTables_wrapper .dataTables_filter input {
+                @apply border border-gray-300 rounded px-3 py-2 text-sm;
+            }
+            .dataTables_wrapper .dataTables_length,
+            .dataTables_wrapper .dataTables_filter,
+            .dataTables_wrapper .dataTables_info,
+            .dataTables_wrapper .dataTables_paginate {
+                @apply text-sm text-gray-700;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button {
+                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
+            }
+            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+                @apply bg-blue-600 text-white border-blue-600;
+            }
+        </style>
+    </head>
+    <body class="bg-white">
+        {% include '_header.html' %}
+
+        <div class="container mx-auto px-4 mt-12">
+            <!-- Organisation Header -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    {% include '_entity_header.html' %}
+
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                        Commit Summary
+                    </h2>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="commits_table">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Aging</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stale</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Unmaintained</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges['active'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges['aging'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges['stale'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ ranges['unmaintained'] }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Developer Status -->
+            {% if developer_status %}
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Developer Status</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="developer_status_table">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Aging</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Stale</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Unmaintained</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Active') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Aging') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Stale') }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">{{ developer_status.get('Unmaintained') }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %} {% import '_radar_macro.html' as radar %}
+
+            <!-- Technology Landscape -->
+            {% if landscape %}
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Technology Landscape</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="tech_table">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Technology</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Files</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in landscape %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <a href="/tech/{{ row['Language'] | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['Language'] }}</a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['count'] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-6">
+                        {{ radar.render_radar("radarChartOrg", labels, datapoints) }}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6 text-center">
+                    <p class="text-lg font-semibold text-gray-900">No Technology Landscape found for organisation</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Repositories in this organisation -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Repositories</h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="org_repos_table">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repo</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Authors</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Committers</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Commits</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen (days)</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Active Devs</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in repos %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <a href="/repo/{{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['_git_repo'] }}</a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['authors'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['committers'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['commits'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['days_ago'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                        <a href="/developers/active/{{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['active_devs'] }}</a>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ row['status'] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %} {% include '_datatable_scripts.html' %}
+
+        <script>
+            $(document).ready(function () {
+                $("#tech_table").DataTable({
+                    order: [[1, "desc"]],
+                    responsive: true,
+                    pageLength: 25,
+                    lengthMenu: [
+                        [10, 25, 50, 100, -1],
+                        [10, 25, 50, 100, "All"],
+                    ],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
+                });
+                $("#org_repos_table").DataTable({
+                    order: [[3, "desc"]],
+                    responsive: true,
+                    pageLength: 25,
+                    lengthMenu: [
+                        [10, 25, 50, 100, -1],
+                        [10, 25, 50, 100, "All"],
+                    ],
+                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
+                });
+            });
+        </script>
+    </body>
+</html>
