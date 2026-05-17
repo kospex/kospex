@@ -6,9 +6,9 @@
     {% if repo %}
     <a href="/org/{{ org_key }}" class="text-blue-600 hover:text-blue-800 underline">{{ org }}</a>
     <span class="mx-2 text-gray-300">/</span>
-    <span class="font-semibold text-gray-900">{{ repo }}</span>
+    <span class="font-semibold text-gray-900" aria-current="page">{{ repo }}</span>
     {% else %}
-    <span class="font-semibold text-gray-900">{{ org }}</span>
+    <span class="font-semibold text-gray-900" aria-current="page">{{ org }}</span>
     {% endif %}
 </nav>
 <h1 class="text-3xl font-bold text-gray-900">{{ repo if repo else org }}</h1>

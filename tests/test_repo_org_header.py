@@ -2,13 +2,16 @@
 from pathlib import Path
 
 import pytest
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "src" / "templates"
 
 
 def render_entity_header(**ctx):
-    env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
+    env = Environment(
+        loader=FileSystemLoader(str(TEMPLATES_DIR)),
+        autoescape=select_autoescape(["html"]),
+    )
     return env.get_template("_entity_header.html").render(**ctx)
 
 
