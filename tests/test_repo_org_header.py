@@ -46,3 +46,17 @@ def test_entity_header_org_mode_org_is_current_segment():
     assert "Organisation" in html
     # In org mode the org is the current (non-link) segment
     assert 'href="/org/github.com~apache"' not in html
+
+
+@pytest.fixture(scope="module")
+def client():
+    pytest.importorskip("httpx", reason="httpx required for FastAPI TestClient")
+    from fastapi.testclient import TestClient
+    from kweb2 import app
+
+    return TestClient(app)
+
+
+def test_repo_route_404_on_malformed_id(client):
+    resp = client.get("/repo/notavalidrepoid")
+    assert resp.status_code == 404

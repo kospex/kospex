@@ -695,6 +695,10 @@ async def repo(request: Request, repo_id: str):
     try:
         logger.info(f"Repository view requested for repo: {repo_id}")
 
+        parsed = KospexUtils.parse_repo_id(repo_id)
+        if not parsed:
+            raise HTTPException(status_code=404, detail=f"Invalid repo_id: {repo_id}")
+
         kospex = KospexQuery()
         commit_ranges = kospex.commit_ranges(repo_id)
         email_domains = kospex.email_domains(repo_id=repo_id)
@@ -719,6 +723,11 @@ async def repo(request: Request, repo_id: str):
             request, "repo_view.html",
             {
                 "repo_id": repo_id,
+                "git_server": parsed["git_server"],
+                "org": parsed["org"],
+                "org_key": parsed["org_key"],
+                "repo": parsed["repo"],
+                "entity_type": "Repository",
                 "ranges": commit_ranges,
                 "email_domains": email_domains,
                 "landscape": techs,
@@ -728,6 +737,8 @@ async def repo(request: Request, repo_id: str):
                 "summary": summary,
             },
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in repo endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
