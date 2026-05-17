@@ -62,6 +62,10 @@ def test_repo_route_404_on_malformed_id(client):
     assert resp.status_code == 404
 
 
-def test_org_route_404_on_malformed_key(client):
+def test_org_route_registered_and_404_on_malformed_key(client):
+    # Route must actually exist (distinguishes guard-fired from route-absent)
+    from kweb2 import app
+
+    assert "/org/{org_key}" in {getattr(r, "path", None) for r in app.routes}
     resp = client.get("/org/notavalidorgkey")
     assert resp.status_code == 404
