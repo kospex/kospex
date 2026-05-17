@@ -1,7 +1,7 @@
 # Repo header redesign + new org view
 
 **Date:** 2026-05-17
-**Status:** Design / spec (no code yet)
+**Status:** Implemented (see changes/202605-repo-org-header-redesign-plan.md)
 **Type:** Web UI + new route
 
 ## Overview
