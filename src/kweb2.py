@@ -697,7 +697,7 @@ async def repo(request: Request, repo_id: str):
 
         parsed = KospexUtils.parse_repo_id(repo_id)
         if not parsed:
-            raise HTTPException(status_code=404, detail=f"Invalid repo_id: {repo_id}")
+            raise HTTPException(status_code=404, detail="Repository not found")
 
         kospex = KospexQuery()
         commit_ranges = kospex.commit_ranges(repo_id)
