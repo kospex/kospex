@@ -744,6 +744,61 @@ async def repo(request: Request, repo_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/org/{org_key}", response_class=HTMLResponse)
+async def org_view(request: Request, org_key: str):
+    """Display individual organisation information (mirrors the repo view)."""
+    try:
+        logger.info(f"Organisation view requested for org_key: {org_key}")
+
+        parsed = KospexUtils.parse_org_key(org_key)
+        if not parsed:
+            raise HTTPException(status_code=404, detail="Organisation not found")
+
+        kospex = KospexQuery()
+        commit_ranges = kospex.commit_ranges(org_key=org_key)
+        techs = kospex.tech_landscape(org_key=org_key)
+
+        developers = kospex.developers(org_key=org_key)
+        developer_status = KospexUtils.repo_stats(developers, "last_commit")
+
+        org_repos = kospex.repos(org_key=org_key)
+        active_devs = kospex.active_devs()
+        for row in org_repos:
+            row["active_devs"] = active_devs.get(row["_repo_id"], 0)
+
+        # TODO - make generic function for radar graph (in repo/developer views too)
+        labels = []
+        datapoints = []
+        count = 0
+        for tech in techs:
+            labels.append(tech["Language"])
+            datapoints.append(tech["count"])
+            count += 1
+            if count > 10:
+                break
+
+        return templates.TemplateResponse(
+            request, "org_view.html",
+            {
+                "org_key": org_key,
+                "git_server": parsed["git_server"],
+                "org": parsed["org"],
+                "entity_type": "Organisation",
+                "ranges": commit_ranges,
+                "landscape": techs,
+                "developer_status": developer_status,
+                "labels": labels,
+                "datapoints": datapoints,
+                "repos": org_repos,
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in org_view endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.get("/key-person/{repo_id}", response_class=HTMLResponse)
 async def key_person(request: Request, repo_id: str):
     """Display key person analysis for a repository"""

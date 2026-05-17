@@ -60,3 +60,8 @@ def client():
 def test_repo_route_404_on_malformed_id(client):
     resp = client.get("/repo/notavalidrepoid")
     assert resp.status_code == 404
+
+
+def test_org_route_404_on_malformed_key(client):
+    resp = client.get("/org/notavalidorgkey")
+    assert resp.status_code == 404
