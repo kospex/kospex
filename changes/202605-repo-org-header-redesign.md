@@ -176,3 +176,4 @@ Follow existing `tests/` pytest patterns:
    (`TBL_DEVELOPER_STATS`) across the org's repos and surface on the org page.
 3. Optional: a dedicated server detail page (today the Server link reuses
    `/orgs/{server}`).
+4. Org-scoped technology filtering — add `org_key` support to the `/tech/{tech}` route so the org view's Technology Landscape links can filter to the organisation (currently they link to the global `/tech/{tech}` view).
