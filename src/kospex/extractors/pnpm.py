@@ -83,8 +83,29 @@ def _split_v5_key(key):
 
 
 def _collect_direct_dev(doc):
-    """Stub — implemented in 3.3."""
-    raise NotImplementedError
+    """Return (direct_names, dev_names) sets.
+
+    Scans every importer's dep blocks (workspace/v9) plus top-level dep
+    blocks (non-workspace/v5). Works whether a block maps name→scalar
+    (v5) or name→{specifier, version} (v6/v9) — only the keys matter.
+    """
+    direct, dev = set(), set()
+
+    def _names(block):
+        return set(block.keys()) if isinstance(block, dict) else set()
+
+    sources = []
+    importers = doc.get("importers")
+    if isinstance(importers, dict):
+        sources.extend(v for v in importers.values() if isinstance(v, dict))
+    sources.append(doc)
+
+    for src in sources:
+        direct |= _names(src.get("dependencies"))
+        direct |= _names(src.get("optionalDependencies"))
+        dev |= _names(src.get("devDependencies"))
+
+    return direct, dev
 
 
 def extract_pnpm_lock(path):

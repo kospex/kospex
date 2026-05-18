@@ -71,3 +71,37 @@ class TestSplitHelpers:
 
     def test_v5_garbage_returns_none(self):
         assert _split_v5_key("nosuchslash") == (None, None)
+
+
+class TestCollectDirectDev:
+    """direct/dev name sets from importers + top-level dep blocks."""
+
+    def test_v6_importer_root_dependencies(self):
+        doc = {
+            "importers": {
+                ".": {
+                    "dependencies": {"lodash": {"specifier": "^4", "version": "4.17.21"}},
+                    "devDependencies": {"jest": {"specifier": "^29", "version": "29.0.0"}},
+                }
+            }
+        }
+        direct, dev = _collect_direct_dev(doc)
+        assert direct == {"lodash"}
+        assert dev == {"jest"}
+
+    def test_v5_top_level_scalar_deps(self):
+        doc = {
+            "dependencies": {"lodash": "4.17.21"},
+            "devDependencies": {"jest": "29.0.0"},
+        }
+        direct, dev = _collect_direct_dev(doc)
+        assert direct == {"lodash"}
+        assert dev == {"jest"}
+
+    def test_optional_deps_count_as_direct(self):
+        doc = {"optionalDependencies": {"fsevents": "2.3.2"}}
+        direct, dev = _collect_direct_dev(doc)
+        assert direct == {"fsevents"}
+
+    def test_missing_blocks_yield_empty_sets(self):
+        assert _collect_direct_dev({}) == (set(), set())
