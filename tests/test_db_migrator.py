@@ -401,3 +401,39 @@ def test_verify_checksums_detects_missing_file(tmp_path):
     assert len(issues) == 1
     assert issues[0]["id"] == "0003_a"
     assert issues[0]["reason"] == "file_missing"
+
+
+import io
+
+
+def test_print_status_no_pending(tmp_path, capsys):
+    from kospex.db.migrator import Migrator
+    db = _baseline_db(tmp_path)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+
+    Migrator(db, migrations_dir=migrations_dir).print_status()
+
+    out = capsys.readouterr().out
+    assert "no migrations" in out.lower() or "0 pending" in out.lower()
+
+
+def test_print_status_lists_applied_and_pending(tmp_path, capsys):
+    from kospex.db.migrator import Migrator
+    db = _baseline_db(tmp_path)
+    _add_config_table(db)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_done.sql", "CREATE TABLE done (id INTEGER);")
+    _write(migrations_dir / "0004_pending.sql", "CREATE TABLE pending (id INTEGER);")
+
+    migrator = Migrator(db, migrations_dir=migrations_dir)
+    migrator.apply(migrator.discover()[0])  # apply just 0003
+
+    migrator.print_status()
+
+    out = capsys.readouterr().out
+    assert "0003_done" in out
+    assert "0004_pending" in out
+    assert "Applied" in out or "applied" in out
+    assert "Pending" in out or "pending" in out

@@ -245,6 +245,64 @@ class Migrator:
 
         return issues
 
+    def print_status(self) -> None:
+        """Write a human-readable status summary to stdout."""
+        import sqlite3
+        import kospex_schema as KospexSchema
+
+        try:
+            discovered = self.discover()
+        except FileNotFoundError:
+            discovered = []
+
+        applied_ids = set(self.applied())
+        applied = [m for m in discovered if m.id in applied_ids]
+        pending = [m for m in discovered if m.id not in applied_ids]
+
+        # Resolve current version int (kospex_config may not exist on baseline DB)
+        try:
+            version_row = list(self.db.execute(
+                "SELECT value FROM kospex_config WHERE key=? AND latest=1",
+                [KospexSchema.KOSPEX_DB_VERSION_KEY],
+            ).fetchall())
+            version = version_row[0][0] if version_row else "unknown"
+        except sqlite3.OperationalError:
+            version = "unknown"
+
+        db_path = self.db.conn.execute("PRAGMA database_list").fetchone()[2]
+
+        print(f"Kospex DB version: {version}")
+        print(f"Database: {db_path}")
+        print()
+
+        if not discovered:
+            print("No migrations on disk.")
+            return
+
+        if applied:
+            print(f"Applied migrations ({len(applied)}):")
+            # Pull applied_at from the table for nicer output
+            applied_meta = {
+                r[0]: (r[1], r[2]) for r in self.db.execute(
+                    "SELECT id, applied_at, duration_ms FROM schema_migrations"
+                ).fetchall()
+            }
+            for m in applied:
+                ts, dur = applied_meta.get(m.id, ("?", 0))
+                print(f"  {m.id:40s} applied {ts}  ({dur}ms)")
+            print()
+
+        if pending:
+            print(f"Pending migrations ({len(pending)}):")
+            for m in pending:
+                kind = "sql + python" if m.py_path else "sql"
+                print(f"  {m.id:40s} {kind}")
+            print()
+            print("Run with -apply to execute pending migrations.")
+            print("WARNING: backup your database before applying.")
+        else:
+            print(f"No pending migrations. DB is at version {version}.")
+
     def _update_version_int(self) -> None:
         """Set KOSPEX_DB_VERSION_KEY in kospex_config to max(baseline, max(sequence))."""
         import kospex_schema as KospexSchema
