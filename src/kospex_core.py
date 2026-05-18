@@ -19,6 +19,7 @@ from sqlite_utils import Database
 
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
+from kospex.db.introspect import get_kospex_tables
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit, MissingGitDirectory
 from kospex_query import KospexData, KospexQuery
@@ -1240,7 +1241,7 @@ class Kospex:
         table.align["Rows"] = "r"
         # table.align["commits"] = "r"
 
-        for db_table in KospexSchema.KOSPEX_TABLES:
+        for db_table in get_kospex_tables(self.kospex_db):
             if display_progress:
                 print(f"Checking {db_table} table")
 
@@ -1271,7 +1272,7 @@ class Kospex:
         """
         Remove all rows in a table for the given repo_id
         """
-        if table not in KospexSchema.KOSPEX_TABLES:
+        if table not in get_kospex_tables(self.kospex_db):
             raise ValueError(f"table: {table} is not a Kospex table")
 
         kd = KospexData(kospex_db=self.kospex_db)
