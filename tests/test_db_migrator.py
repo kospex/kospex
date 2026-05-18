@@ -253,3 +253,97 @@ def up(db):
     # No row recorded
     rows = list(db.execute("SELECT id FROM schema_migrations").fetchall())
     assert rows == []
+
+
+def _add_config_table(db):
+    db.execute("""CREATE TABLE [kospex_config] (
+        [format] TEXT, [key] TEXT, [value] TEXT,
+        [latest] INTEGER, [created_at] TEXT, [updated_at] TEXT,
+        PRIMARY KEY(key, latest)
+    )""")
+
+
+def test_applied_returns_recorded_ids(tmp_path):
+    from kospex.db.migrator import Migrator
+    db = _baseline_db(tmp_path)
+    db["schema_migrations"].insert({
+        "id": "0003_a", "sequence": 3, "checksum": "x:",
+        "applied_at": "2026-05-18T00:00:00Z", "duration_ms": 1, "has_python": 0,
+    })
+
+    assert Migrator(db, migrations_dir=tmp_path).applied() == ["0003_a"]
+
+
+def test_pending_returns_discovered_minus_applied(tmp_path):
+    from kospex.db.migrator import Migrator
+    db = _baseline_db(tmp_path)
+    db["schema_migrations"].insert({
+        "id": "0003_a", "sequence": 3, "checksum": "x:",
+        "applied_at": "2026-05-18T00:00:00Z", "duration_ms": 1, "has_python": 0,
+    })
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_a.sql", "SELECT 1;")
+    _write(migrations_dir / "0004_b.sql", "CREATE TABLE b (id INTEGER);")
+
+    pending = Migrator(db, migrations_dir=migrations_dir).pending()
+    assert [m.id for m in pending] == ["0004_b"]
+
+
+def test_apply_pending_runs_all_pending_in_order(tmp_path):
+    from kospex.db.migrator import Migrator
+    db = _baseline_db(tmp_path)
+    _add_config_table(db)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_a.sql", "CREATE TABLE a (id INTEGER);")
+    _write(migrations_dir / "0004_b.sql", "CREATE TABLE b (id INTEGER);")
+
+    Migrator(db, migrations_dir=migrations_dir).apply_pending()
+
+    applied = [r[0] for r in db.execute(
+        "SELECT id FROM schema_migrations ORDER BY sequence"
+    ).fetchall()]
+    assert applied == ["0003_a", "0004_b"]
+
+
+def test_apply_pending_stops_on_first_failure(tmp_path):
+    from kospex.db.migrator import Migrator
+    db = _baseline_db(tmp_path)
+    _add_config_table(db)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_good.sql", "CREATE TABLE good (id INTEGER);")
+    _write(migrations_dir / "0004_broken.sql", "NOT VALID SQL;")
+    _write(migrations_dir / "0005_later.sql", "CREATE TABLE later (id INTEGER);")
+
+    with pytest.raises(Exception):
+        Migrator(db, migrations_dir=migrations_dir).apply_pending()
+
+    applied = [r[0] for r in db.execute(
+        "SELECT id FROM schema_migrations ORDER BY sequence"
+    ).fetchall()]
+    assert applied == ["0003_good"]   # earlier success preserved
+    # 0004 rolled back, 0005 never attempted
+
+
+def test_apply_pending_updates_version_int(tmp_path):
+    from kospex.db.migrator import Migrator
+    db = _baseline_db(tmp_path)
+    _add_config_table(db)
+    # Seed baseline version int
+    db["kospex_config"].insert(
+        {"key": "KOSPEX_DB_VERSION_KEY", "value": "2", "format": "INTEGER", "latest": 1},
+        pk=["key", "latest"],
+    )
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_a.sql", "CREATE TABLE a (id INTEGER);")
+    _write(migrations_dir / "0004_b.sql", "CREATE TABLE b (id INTEGER);")
+
+    Migrator(db, migrations_dir=migrations_dir).apply_pending()
+
+    row = list(db.execute(
+        "SELECT value FROM kospex_config WHERE key='KOSPEX_DB_VERSION_KEY' AND latest=1"
+    ).fetchall())
+    assert row == [("4",)]

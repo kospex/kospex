@@ -191,6 +191,58 @@ class Migrator:
             conn.execute("ROLLBACK")
             raise
 
+    def discover(self) -> list[Migration]:
+        migrations = discover_migrations(self.migrations_dir)
+        validate_migrations(migrations, migrations_dir=self.migrations_dir)
+        return migrations
+
+    def applied(self) -> list[str]:
+        rows = self.db.execute(
+            "SELECT id FROM schema_migrations ORDER BY sequence"
+        ).fetchall()
+        return [r[0] for r in rows]
+
+    def pending(self) -> list[Migration]:
+        applied = set(self.applied())
+        return [m for m in self.discover() if m.id not in applied]
+
+    def apply_pending(self) -> list[Migration]:
+        """Apply all pending migrations in order. Stop and re-raise on first failure.
+
+        Returns the list of migrations actually applied in this run.
+        """
+        from kospex.db.introspect import invalidate_cache
+
+        ran: list[Migration] = []
+        for migration in self.pending():
+            self.apply(migration)
+            ran.append(migration)
+            invalidate_cache(self.db)
+
+        if ran:
+            self._update_version_int()
+        return ran
+
+    def _update_version_int(self) -> None:
+        """Set KOSPEX_DB_VERSION_KEY in kospex_config to max(baseline, max(sequence))."""
+        import kospex_schema as KospexSchema
+
+        max_row = list(self.db.execute(
+            "SELECT MAX(sequence) FROM schema_migrations"
+        ).fetchall())
+        max_seq = max_row[0][0] if max_row and max_row[0][0] is not None else 0
+        version = max(KospexSchema.KOSPEX_DB_VERSION, max_seq)
+
+        self.db["kospex_config"].upsert(
+            {
+                "key": KospexSchema.KOSPEX_DB_VERSION_KEY,
+                "value": str(version),
+                "format": "INTEGER",
+                "latest": 1,
+            },
+            pk=["key", "latest"],
+        )
+
 
 def _default_migrations_dir() -> Path:
     """Locate the migrations directory shipped with this package."""
