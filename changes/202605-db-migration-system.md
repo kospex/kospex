@@ -410,7 +410,7 @@ The `TBL_*` string constants in `kospex_schema.py` stay — they serve a differe
 
 **Modify:**
 
-- `drop_table(table)` (line 472-479) — switch `KOSPEX_TABLES` check to `get_kospex_tables(db)`.
+- `drop_table(table)` (line 472-479) — switch `KOSPEX_TABLES` check to `get_kospex_tables(db)`. Also rewrite the line 479 print: `f"Invalid table '{table}', was not in KOSPEX_TABLES"` → `f"Invalid table '{table}', not a known Kospex table"` (the old message names a constant that no longer exists).
 - `KOSPEX_DB_VERSION = 2` stays at 2 (baseline). No longer manually bumped.
 
 **Add:**
@@ -430,6 +430,7 @@ The `TBL_*` string constants in `kospex_schema.py` stay — they serve a differe
 
 - Line 1243: `for db_table in KospexSchema.KOSPEX_TABLES:` → `for db_table in get_kospex_tables(self.kospex_db):`
 - Line 1274: `if table not in KospexSchema.KOSPEX_TABLES:` → `if table not in get_kospex_tables(self.kospex_db):`
+- Line 1275 error message — already generic (`"table: {table} is not a Kospex table"`), no rewrite needed.
 - Add import: `from kospex.db.introspect import get_kospex_tables`
 
 ### `kospex_cli.py`
@@ -444,8 +445,11 @@ The `TBL_*` string constants in `kospex_schema.py` stay — they serve a differe
 **Modify:**
 
 - Line 2227 (`KospexData.where_join`): `KospexSchema.KOSPEX_TABLES` → `get_kospex_tables(self.kospex_db)`
-- Line 2300 (`KospexData.from_table`): same
-- Line 2314 (`KospexData.valid_table_prefix_select`): same
+- Line 2228: rewrite error message — `f"Table '{t}' not in KospexSchema.KOSPEX_TABLES"` → `f"Table '{t}' is not a known Kospex table"` (the old message names a constant that no longer exists).
+- Line 2300 (`KospexData.from_table`): same membership change
+- Line 2301: rewrite error message — same fix as line 2228.
+- Line 2314 (`KospexData.valid_table_prefix_select`): same membership change.
+- Line 2315: commented-out error string referencing `KospexSchema.KOSPEX_TABLES` — delete the comment outright (dead reference once the constant is gone).
 - Add import: `from kospex.db.introspect import get_kospex_tables`
 
 All `kd.from_table(KospexSchema.TBL_COMMITS)` call sites and other `TBL_*` symbolic references stay unchanged.
@@ -503,6 +507,8 @@ After all the above, grep should return zero hits in `src/` (other than introspe
 - `validate_square_brackets`
 
 Same for `tests/`. Anything left is dead and should be removed.
+
+**User-facing strings:** also scan with `grep -rn "KOSPEX_TABLES" src/` *before* deleting the constants — any error message, print statement, or comment that name-drops `KOSPEX_TABLES` / `REPO_TABLES` must be reworded (the constant no longer exists). Known spots covered above are `kospex_query.py:2228,2301,2315` and `kospex_schema.py:479`; verify nothing else slipped in since this spec was written.
 
 ## Implementation Sequencing
 
