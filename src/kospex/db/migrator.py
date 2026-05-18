@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -138,3 +140,39 @@ def _load_python_module(py_path: Path, migration_id: str):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class Migrator:
+    def __init__(self, db, migrations_dir: Optional[Path] = None):
+        self.db = db
+        self.migrations_dir = migrations_dir or _default_migrations_dir()
+
+    def apply(self, migration: Migration) -> None:
+        """Apply one migration in a single transaction. Raises on failure."""
+        started = time.monotonic()
+        with self.db.conn:  # sqlite3 transaction context
+            sql = migration.sql_path.read_text()
+            self.db.conn.executescript(sql)
+
+            if migration.py_path is not None:
+                mod = _load_python_module(migration.py_path, migration.id)
+                mod.up(self.db)
+
+            self.db["schema_migrations"].insert({
+                "id": migration.id,
+                "sequence": migration.sequence,
+                "checksum": migration.checksum(),
+                "applied_at": _utcnow_iso(),
+                "duration_ms": int((time.monotonic() - started) * 1000),
+                "has_python": 1 if migration.py_path else 0,
+            })
+
+
+def _default_migrations_dir() -> Path:
+    """Locate the migrations directory shipped with this package."""
+    import importlib.resources
+    return Path(str(importlib.resources.files("kospex.db") / "migrations"))

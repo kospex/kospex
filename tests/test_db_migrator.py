@@ -152,3 +152,53 @@ def test_validate_clean_set_passes(tmp_path):
 
     # Should not raise
     validate_migrations(discover_migrations(tmp_path), migrations_dir=tmp_path)
+
+
+import sqlite_utils
+
+
+def _baseline_db(tmp_path):
+    """A fresh kospex-shaped DB with the schema_migrations table only."""
+    db = sqlite_utils.Database(tmp_path / "kospex.db")
+    db.execute("""CREATE TABLE [schema_migrations] (
+        [id] TEXT PRIMARY KEY,
+        [sequence] INTEGER NOT NULL,
+        [checksum] TEXT NOT NULL,
+        [applied_at] TEXT NOT NULL,
+        [duration_ms] INTEGER,
+        [has_python] INTEGER NOT NULL
+    )""")
+    return db
+
+
+def test_apply_sql_only_creates_table(tmp_path):
+    from kospex.db.migrator import Migrator, discover_migrations
+    db = _baseline_db(tmp_path)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_widgets.sql",
+           "CREATE TABLE widgets (id INTEGER PRIMARY KEY, name TEXT);")
+
+    migrator = Migrator(db, migrations_dir=migrations_dir)
+    migrations = discover_migrations(migrations_dir)
+    migrator.apply(migrations[0])
+
+    tables = {r[0] for r in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    assert "widgets" in tables
+
+
+def test_apply_records_in_schema_migrations(tmp_path):
+    from kospex.db.migrator import Migrator, discover_migrations
+    db = _baseline_db(tmp_path)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_widgets.sql", "CREATE TABLE widgets (id INTEGER);")
+
+    migrator = Migrator(db, migrations_dir=migrations_dir)
+    migrations = discover_migrations(migrations_dir)
+    migrator.apply(migrations[0])
+
+    rows = list(db.execute("SELECT id, sequence, has_python FROM schema_migrations").fetchall())
+    assert rows == [("0003_widgets", 3, 0)]
