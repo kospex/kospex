@@ -347,3 +347,57 @@ def test_apply_pending_updates_version_int(tmp_path):
         "SELECT value FROM kospex_config WHERE key='KOSPEX_DB_VERSION_KEY' AND latest=1"
     ).fetchall())
     assert row == [("4",)]
+
+
+def test_verify_checksums_clean(tmp_path):
+    from kospex.db.migrator import Migrator
+    db = _baseline_db(tmp_path)
+    _add_config_table(db)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_a.sql", "CREATE TABLE a (id INTEGER);")
+
+    migrator = Migrator(db, migrations_dir=migrations_dir)
+    migrator.apply_pending()
+
+    issues = migrator.verify_checksums()
+
+    assert issues == []
+
+
+def test_verify_checksums_detects_modified_file(tmp_path):
+    from kospex.db.migrator import Migrator
+    db = _baseline_db(tmp_path)
+    _add_config_table(db)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    sql = _write(migrations_dir / "0003_a.sql", "CREATE TABLE a (id INTEGER);")
+
+    migrator = Migrator(db, migrations_dir=migrations_dir)
+    migrator.apply_pending()
+
+    sql.write_text("CREATE TABLE a (id INTEGER, extra TEXT);")
+    issues = migrator.verify_checksums()
+
+    assert len(issues) == 1
+    assert issues[0]["id"] == "0003_a"
+    assert issues[0]["reason"] == "checksum_mismatch"
+
+
+def test_verify_checksums_detects_missing_file(tmp_path):
+    from kospex.db.migrator import Migrator
+    db = _baseline_db(tmp_path)
+    _add_config_table(db)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    sql = _write(migrations_dir / "0003_a.sql", "CREATE TABLE a (id INTEGER);")
+
+    migrator = Migrator(db, migrations_dir=migrations_dir)
+    migrator.apply_pending()
+
+    sql.unlink()
+    issues = migrator.verify_checksums()
+
+    assert len(issues) == 1
+    assert issues[0]["id"] == "0003_a"
+    assert issues[0]["reason"] == "file_missing"

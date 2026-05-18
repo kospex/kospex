@@ -223,6 +223,28 @@ class Migrator:
             self._update_version_int()
         return ran
 
+    def verify_checksums(self) -> list[dict]:
+        """Check applied migrations against on-disk files. Returns a list of issues.
+
+        Each issue is {"id": str, "reason": "file_missing" | "checksum_mismatch"}.
+        Warnings only — caller decides whether to print/log/abort.
+        """
+        issues: list[dict] = []
+        on_disk = {m.id: m for m in discover_migrations(self.migrations_dir)}
+
+        rows = self.db.execute(
+            "SELECT id, checksum FROM schema_migrations"
+        ).fetchall()
+        for migration_id, stored_checksum in rows:
+            if migration_id not in on_disk:
+                issues.append({"id": migration_id, "reason": "file_missing"})
+                continue
+            actual = on_disk[migration_id].checksum()
+            if actual != stored_checksum:
+                issues.append({"id": migration_id, "reason": "checksum_mismatch"})
+
+        return issues
+
     def _update_version_int(self) -> None:
         """Set KOSPEX_DB_VERSION_KEY in kospex_config to max(baseline, max(sequence))."""
         import kospex_schema as KospexSchema
