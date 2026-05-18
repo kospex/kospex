@@ -202,3 +202,25 @@ def test_apply_records_in_schema_migrations(tmp_path):
 
     rows = list(db.execute("SELECT id, sequence, has_python FROM schema_migrations").fetchall())
     assert rows == [("0003_widgets", 3, 0)]
+
+
+def test_apply_runs_python_up_after_sql(tmp_path):
+    from kospex.db.migrator import Migrator, discover_migrations
+    db = _baseline_db(tmp_path)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_widgets.sql",
+           "CREATE TABLE widgets (id INTEGER PRIMARY KEY, name TEXT);")
+    _write(migrations_dir / "0003_widgets.py", """
+def up(db):
+    db["widgets"].insert({"id": 1, "name": "backfilled"})
+""")
+
+    migrator = Migrator(db, migrations_dir=migrations_dir)
+    migrator.apply(discover_migrations(migrations_dir)[0])
+
+    rows = list(db.execute("SELECT id, name FROM widgets").fetchall())
+    assert rows == [(1, "backfilled")]
+
+    schema_rows = list(db.execute("SELECT has_python FROM schema_migrations").fetchall())
+    assert schema_rows == [(1,)]
