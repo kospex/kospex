@@ -29,3 +29,16 @@ def test_get_kospex_tables_excludes_sqlite_internals(tmp_path):
 
     assert not any(t.startswith("sqlite_") for t in tables)
     assert "auto" in tables
+
+
+def test_get_repo_tables_filters_by_repo_id_column(tmp_path):
+    from kospex.db.introspect import get_repo_tables
+    db = Database(tmp_path / "test.db")
+    db.execute("CREATE TABLE [repos] (_repo_id TEXT, name TEXT)")
+    db.execute("CREATE TABLE [commits] (_repo_id TEXT, hash TEXT)")
+    db.execute("CREATE TABLE [kospex_config] (key TEXT, value TEXT)")  # no _repo_id
+
+    tables = get_repo_tables(db)
+
+    assert tables == {"repos", "commits"}
+    assert "kospex_config" not in tables

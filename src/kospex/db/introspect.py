@@ -7,6 +7,7 @@ automatically.
 """
 
 _TABLE_CACHE: dict[str, set[str]] = {}
+_REPO_TABLE_CACHE: dict[str, set[str]] = {}
 
 
 def _db_key(db) -> str:
@@ -32,9 +33,25 @@ def get_kospex_tables(db) -> set[str]:
     return _TABLE_CACHE[key]
 
 
+def get_repo_tables(db) -> set[str]:
+    """Return tables that have a _repo_id column (auto-detected via PRAGMA)."""
+    key = _db_key(db)
+    if key not in _REPO_TABLE_CACHE:
+        out = set()
+        for t in get_kospex_tables(db):
+            cols = [c[1] for c in db.execute(f"PRAGMA table_info([{t}])").fetchall()]
+            if "_repo_id" in cols:
+                out.add(t)
+        _REPO_TABLE_CACHE[key] = out
+    return _REPO_TABLE_CACHE[key]
+
+
 def invalidate_cache(db=None) -> None:
     """Clear cached table lists. Call after applying migrations."""
     if db is None:
         _TABLE_CACHE.clear()
+        _REPO_TABLE_CACHE.clear()
     else:
-        _TABLE_CACHE.pop(_db_key(db), None)
+        key = _db_key(db)
+        _TABLE_CACHE.pop(key, None)
+        _REPO_TABLE_CACHE.pop(key, None)
