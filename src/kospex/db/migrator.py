@@ -45,3 +45,31 @@ class Migration:
             else ""
         )
         return f"{sql_hash}:{py_hash}"
+
+
+def discover_migrations(migrations_dir: Path) -> list[Migration]:
+    """Scan a directory for migration files and return them sorted by sequence."""
+    if not migrations_dir.exists():
+        return []
+
+    sql_files: dict[str, Path] = {}   # id -> path
+    py_files: dict[str, Path] = {}    # id -> path
+
+    for path in sorted(migrations_dir.iterdir()):
+        m = FILE_RE.match(path.name)
+        if not m:
+            continue
+        seq, slug, ext = m.groups()
+        migration_id = f"{seq}_{slug}"
+        if ext == "sql":
+            sql_files[migration_id] = path
+        elif ext == "py":
+            py_files[migration_id] = path
+
+    migrations = []
+    for migration_id, sql_path in sql_files.items():
+        py_path = py_files.get(migration_id)
+        migrations.append(Migration.from_paths(sql_path=sql_path, py_path=py_path))
+
+    migrations.sort(key=lambda m: m.sequence)
+    return migrations

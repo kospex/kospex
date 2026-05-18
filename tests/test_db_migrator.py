@@ -54,3 +54,44 @@ def test_checksum_sql_only_has_trailing_colon(tmp_path):
     m = Migration.from_paths(sql_path=sql, py_path=None)
 
     assert m.checksum() == hashlib.sha256(sql.read_bytes()).hexdigest() + ":"
+
+
+def test_discover_empty_dir(tmp_path):
+    from kospex.db.migrator import discover_migrations
+    assert discover_migrations(tmp_path) == []
+
+
+def test_discover_returns_sorted_by_sequence(tmp_path):
+    from kospex.db.migrator import discover_migrations
+    _write(tmp_path / "0005_e.sql", "SELECT 1;")
+    _write(tmp_path / "0003_c.sql", "SELECT 1;")
+    _write(tmp_path / "0004_d.sql", "SELECT 1;")
+
+    migrations = discover_migrations(tmp_path)
+
+    assert [m.id for m in migrations] == ["0003_c", "0004_d", "0005_e"]
+
+
+def test_discover_pairs_sql_with_matching_python(tmp_path):
+    from kospex.db.migrator import discover_migrations
+    _write(tmp_path / "0003_x.sql", "SELECT 1;")
+    _write(tmp_path / "0003_x.py", "def up(db): pass\n")
+    _write(tmp_path / "0004_y.sql", "SELECT 1;")
+
+    migrations = discover_migrations(tmp_path)
+
+    by_id = {m.id: m for m in migrations}
+    assert by_id["0003_x"].py_path is not None
+    assert by_id["0004_y"].py_path is None
+
+
+def test_discover_ignores_unrelated_files(tmp_path):
+    from kospex.db.migrator import discover_migrations
+    _write(tmp_path / "0003_x.sql", "SELECT 1;")
+    _write(tmp_path / "README.md", "docs")
+    _write(tmp_path / "__init__.py", "")
+    _write(tmp_path / "not_a_migration.sql", "SELECT 1;")
+
+    migrations = discover_migrations(tmp_path)
+
+    assert [m.id for m in migrations] == ["0003_x"]
