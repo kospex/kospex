@@ -2,6 +2,7 @@
 import os
 from sqlite_utils import Database
 import kospex_utils as KospexUtils
+from kospex.db.introspect import get_kospex_tables
 
 # Definitions of the kospex DB tables
 TBL_BRANCHES = "branches"
@@ -27,16 +28,6 @@ TBL_KOSPEX_CONFIG = "kospex_config"
 TBL_DEVELOPER_STATS = "developer_stats"
 # Not yet implemented
 TBL_MAILMAP = "mailmaps"
-
-KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
-                TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE, TBL_KRUNNER,
-                TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META, TBL_GROUPS, TBL_KOSPEX_CONFIG,
-                TBL_EMAIL_MAP, TBL_DEVELOPER_STATS]
-
-# The following are tables with a repo_id
-REPO_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
-                TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS,
-                TBL_GROUPS, TBL_BRANCHES, TBL_BRANCH_HISTORY, TBL_DEVELOPER_STATS ]
 
 # Mapping of table name to create statement is below the create statement definitions in:
 # DB_CREATE_STATEMENTS
@@ -472,11 +463,11 @@ def connect_or_create_kospex_db():
 def drop_table(table):
     """ Drop a table from the DB """
     db = connect_or_create_kospex_db()
-    if table in KOSPEX_TABLES:
+    if table in get_kospex_tables(db):
         db.execute(f"DROP TABLE IF EXISTS [{table}]")
         print(f"Dropped table '{table}', if it existed")
     else:
-        print(f"Invalid table '{table}', was not in KOSPEX_TABLES")
+        print(f"Invalid table '{table}', not a known Kospex table")
 
 
 def array_to_db_tags(tags):
