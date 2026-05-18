@@ -909,44 +909,6 @@ def orgs():
     console.print()
 
 
-@cli.command("sync-dependencies")
-@click.option("-file", type=click.Path(exists=True), help="The dependency file to sync.")
-@click.option("-repo", type=GitRepo())
-@click.option(
-    "--dev", is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL."
-)
-def sync_dependencies(repo, file, dev):
-    """Clone and sync the dependencies for a repo/dependency file."""
-    kquery = KospexQuery()
-    kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
-
-    if file or repo:
-        # We need one of these
-        if file:
-            file_path = os.path.abspath(file)
-            print(f"Syncing dependencies for file: {file}")
-            repo_info = kospex.file_repo_details(file)
-            records = kdeps.assess(file_path, repo_info=repo_info, print_table=True, dev_deps=dev)
-
-            for rec in records:
-                if rec.get("source_repo"):
-                    print(f"About to clone and sync {rec['source_repo']}")
-                    repo_path = kospex.git.clone_repo(rec["source_repo"])
-                    if repo_path:
-                        kospex.sync_repo(repo_path)
-                    else:
-                        print("No source repo URL for this dependency.")
-                else:
-                    print(f"No source repo URL for this dependency {rec.get('package_name')}")
-
-        if repo:
-            print(f"Syncing dependencies for repo: {repo}")
-            print("NOT IMPLEMENTED!")
-
-    else:
-        print("Please specify either a '-repo' or a '-file'.")
-
-
 # @cli.command("know")
 # @click.argument('email',  type=click.STRING)
 # def knol(email):
