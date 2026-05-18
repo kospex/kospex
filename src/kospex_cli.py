@@ -19,6 +19,7 @@ from rich.table import Table
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
+from kospex.db import Migrator
 from kospex_core import GitRepo, Kospex
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
@@ -1210,110 +1211,29 @@ def metadata(file_type, repo_id, sync):
 
 @cli.command("upgrade-db")
 @click.option(
-    "-apply", is_flag=True, default=False, help="Confirm and apply upgrades kospex DB schema."
+    "-apply", is_flag=True, default=False,
+    help="Apply pending migrations. Without this flag, runs in status/preview mode."
 )
 def upgrade_db(apply):
     """
-    Perform an upgrade and apply DB changes for new versions.
-    Run without options, it inspects the database and current kospex schema and detects changes
-    -apply will execute the alter table commands and update the db.
+    Show the kospex DB migration status, or apply pending migrations.
+
+    Without options: prints current version, applied migrations, pending migrations.
+    With -apply: runs each pending migration in sequence (one transaction each).
     """
     click.echo(f"Kospex CLI version {Kospex.VERSION}")
-    # WARN about backups first
-    print("\nWARNING: backup your database before performing ANY upgrade.\nJust in case ...\n")
-    # Check versions
-    # run the db diff
-    # apply db diff
-    # output status
+    click.echo("\nWARNING: backup your database before performing ANY upgrade.\n")
 
-    data = kospex.kospex_query.get_kospex_db_version()
-    version = 0
-    if data is not None:
-        # try:
-        #     version = int(data)
-        # except (ValueError, TypeError):
-        #     # Set to 0, meaning we're in an unknown state, but we'll try an upgrade
-        #     invalid_version = True
-        version = data
-        # print(f"INVALID kospex db version '{data}'.\nSetting to 0 for need of an upgrade")
-        print(f"kospex db version: {version}")
-    else:
-        print("We don't have a kospex db version, either deleted, or an older database version")
-        print("Setting to 0 for need of an upgrade")
-
-    if version < KospexSchema.KOSPEX_DB_VERSION:
-        versions_behind = KospexSchema.KOSPEX_DB_VERSION - version
-        print(f"database is {versions_behind} versions behind.")
-
-    print()
-
-    alter_db_changes = []
-
-    rows = kospex.kospex_db.query(
-        "SELECT sql, tbl_name FROM sqlite_master where type = 'table'", []
-    )
-
-    for r in rows:
-        tbl_name = r.get("tbl_name")
-        sql = r.get("sql")
-        print(f"tbl_name: {tbl_name}")
-        # print(KospexUtils.parse_sql_create_columns(sql))
-        if current_create := KospexSchema.DB_CREATE_STATEMENTS.get(tbl_name):
-            alter_commands = KospexSchema.generate_alter_table(sql, current_create, tbl_name)
-            if alter_commands:
-                print(f"Alter commands for table {tbl_name}")
-                print(alter_commands)
-                if alter_commands:
-                    alter_db_changes.extend(alter_commands)
-                    print("Adding to list of changes")
-            else:
-                print(f"No changes for table {tbl_name}")
-
-        else:
-            print("WARNING: table '{tbl_name}' is NOT a kospex databse table")
-
-        print()
-
-    print(f"Changes required: {len(alter_db_changes)}")
-    for change in alter_db_changes:
-        print(change)
+    migrator = Migrator(kospex.kospex_db)
 
     if apply:
-        # Make the changes
-        print("Starting alter tables")
-        if len(alter_db_changes) > 0:
-            results = kospex.apply_alter_table_commands(alter_db_changes)
-            errors = 0
-            for item in results:
-                if item.get("error"):
-                    print(f"error: {item.get('error')} - message: {item.get('error')}")
-                    errors += 1
-
-            if errors > 0:
-                print("WARNING: Errors in applying the alter table")
-            else:
-                # update db version
-                rec = {
-                    "key": KospexSchema.KOSPEX_DB_VERSION_KEY,
-                    "value": str(KospexSchema.KOSPEX_DB_VERSION),
-                    "format": "INTEGER",
-                    "latest": 1,
-                }
-                kospex.kospex_db.table(KospexSchema.TBL_KOSPEX_CONFIG).upsert(
-                    rec, pk=["key", "latest"]
-                )
-
-                print("Changes applied.")
-
+        ran = migrator.apply_pending()
+        if ran:
+            click.echo(f"\nApplied {len(ran)} migration(s).")
         else:
-            print("Nothing to apply.")
-
-    elif len(alter_db_changes) > 0:
-        print("\nThe above is the dry run of the changes, to apply them:")
-        print("> kospex upgrade-db -apply\n")
-        print("\nWARNING: BACKUP YOUR DATABASE FIRST!\n")
+            click.echo("\nNothing to apply.")
     else:
-        print("No changes required, up to date.")
+        migrator.print_status()
 
 
 @cli.command("advisory-history")
