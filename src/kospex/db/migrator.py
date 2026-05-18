@@ -152,24 +152,44 @@ class Migrator:
         self.migrations_dir = migrations_dir or _default_migrations_dir()
 
     def apply(self, migration: Migration) -> None:
-        """Apply one migration in a single transaction. Raises on failure."""
+        """Apply one migration in a single transaction. Raises on failure.
+
+        Uses explicit BEGIN / COMMIT / ROLLBACK instead of sqlite3's `with conn:`
+        context because `Connection.executescript()` issues an implicit COMMIT
+        before running, which would defeat rollback when the Python step fails.
+        We also avoid `db["table"].insert()` here because sqlite_utils commits
+        its own transaction internally, which would close ours mid-flight.
+        """
         started = time.monotonic()
-        with self.db.conn:  # sqlite3 transaction context
-            sql = migration.sql_path.read_text()
-            self.db.conn.executescript(sql)
+        conn = self.db.conn
+        sql = migration.sql_path.read_text()
+        try:
+            conn.execute("BEGIN")
+            # Split on `;` and execute each non-empty statement so DDL stays in tx
+            for stmt in [s.strip() for s in sql.split(";") if s.strip()]:
+                conn.execute(stmt)
 
             if migration.py_path is not None:
                 mod = _load_python_module(migration.py_path, migration.id)
                 mod.up(self.db)
 
-            self.db["schema_migrations"].insert({
-                "id": migration.id,
-                "sequence": migration.sequence,
-                "checksum": migration.checksum(),
-                "applied_at": _utcnow_iso(),
-                "duration_ms": int((time.monotonic() - started) * 1000),
-                "has_python": 1 if migration.py_path else 0,
-            })
+            conn.execute(
+                "INSERT INTO schema_migrations "
+                "(id, sequence, checksum, applied_at, duration_ms, has_python) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    migration.id,
+                    migration.sequence,
+                    migration.checksum(),
+                    _utcnow_iso(),
+                    int((time.monotonic() - started) * 1000),
+                    1 if migration.py_path else 0,
+                ),
+            )
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
 
 
 def _default_migrations_dir() -> Path:

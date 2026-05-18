@@ -224,3 +224,32 @@ def up(db):
 
     schema_rows = list(db.execute("SELECT has_python FROM schema_migrations").fetchall())
     assert schema_rows == [(1,)]
+
+
+def test_apply_rolls_back_when_python_raises(tmp_path):
+    from kospex.db.migrator import Migrator, discover_migrations
+    db = _baseline_db(tmp_path)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_widgets.sql",
+           "CREATE TABLE widgets (id INTEGER PRIMARY KEY);")
+    _write(migrations_dir / "0003_widgets.py", """
+def up(db):
+    raise RuntimeError("boom")
+""")
+
+    migrator = Migrator(db, migrations_dir=migrations_dir)
+    migration = discover_migrations(migrations_dir)[0]
+
+    with pytest.raises(RuntimeError, match="boom"):
+        migrator.apply(migration)
+
+    # SQL change should be rolled back
+    tables = {r[0] for r in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    assert "widgets" not in tables
+
+    # No row recorded
+    rows = list(db.execute("SELECT id FROM schema_migrations").fetchall())
+    assert rows == []
