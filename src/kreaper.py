@@ -6,6 +6,7 @@ import click
 from kospex_core import Kospex
 import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
+from kospex.db.introspect import get_kospex_tables, get_repo_tables
 
 kospex = Kospex()
 
@@ -33,7 +34,7 @@ def delete_repo(repo_id,table,yes):
     print("Warning : This function only implements table!")
 
     if table:
-        if table in KospexSchema.KOSPEX_TABLES:
+        if table in get_kospex_tables(kospex.kospex_db):
             print(f"table {table} is a valid table name.")
             if not yes:
                 print("Please specify -yes to confirm deletion.")
@@ -48,7 +49,7 @@ def delete_repo(repo_id,table,yes):
         else:
             print(f"table {table} is NOT a valid table name.")
             print("Here's a list of valid tables:")
-            for table in KospexSchema.KOSPEX_TABLES:
+            for table in sorted(get_kospex_tables(kospex.kospex_db)):
                 print(table)
 
     elif repo_id:
@@ -57,7 +58,7 @@ def delete_repo(repo_id,table,yes):
             print("Please specify -yes to confirm deletion.")
             return
 
-        for table in KospexSchema.REPO_TABLES:
+        for table in sorted(get_repo_tables(kospex.kospex_db)):
             print(table)
             results = kospex.delete_repo_id_from_table(table,repo_id)
             print(f"{results} rows deleted.\n")
@@ -73,7 +74,7 @@ def delete_repo(repo_id,table,yes):
 @click.option('-table', type=click.STRING)
 def drop_table(table,yes):
     """ Drop a table from the kospex DB."""
-    if table and table in KospexSchema.KOSPEX_TABLES:
+    if table and table in get_kospex_tables(kospex.kospex_db):
         print(f"Found a valid table '{table}' to drop.")
         if yes:
             # We have permission to drop the table
@@ -83,7 +84,7 @@ def drop_table(table,yes):
             return
     else:
         print("Please specify a valid table to drop from the following options:\n")
-        for table in KospexSchema.KOSPEX_TABLES:
+        for table in sorted(get_kospex_tables(kospex.kospex_db)):
             print(table)
         print()
         #return
