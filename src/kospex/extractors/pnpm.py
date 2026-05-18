@@ -53,13 +53,33 @@ def _template():
 
 
 def _split_at_key(key):
-    """Stub — implemented in 3.2."""
-    raise NotImplementedError
+    """v6/v9 ``packages:`` key → (name, version).
+
+    Handles the v6 leading ``/``, the v9 no-slash form, scoped names
+    (``@scope/name`` — the ``@`` that is *not* the version separator),
+    and the ``(peer@x)`` peer-dependency suffix.
+    """
+    key = key.lstrip("/")
+    key = key.split("(", 1)[0]
+    name, sep, version = key.rpartition("@")
+    if not sep or not name:
+        return None, None
+    return name, version
 
 
 def _split_v5_key(key):
-    """Stub — implemented in 3.2."""
-    raise NotImplementedError
+    """v5.x ``packages:`` key → (name, version).
+
+    v5 separates name and version with ``/`` (not ``@``); scoped names
+    keep their ``@scope/`` prefix. Peer suffix is ``_peer@x`` on the
+    version segment.
+    """
+    key = key.lstrip("/")
+    name, sep, version = key.rpartition("/")
+    if not sep or not name:
+        return None, None
+    version = version.split("_", 1)[0]
+    return name, version
 
 
 def _collect_direct_dev(doc):
