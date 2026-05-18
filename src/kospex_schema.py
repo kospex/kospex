@@ -26,6 +26,7 @@ TBL_KOSPEX_META = "kospex_meta"
 TBL_GROUPS = "kospex_groups"
 TBL_KOSPEX_CONFIG = "kospex_config"
 TBL_DEVELOPER_STATS = "developer_stats"
+TBL_SCHEMA_MIGRATIONS = "schema_migrations"
 # Not yet implemented
 TBL_MAILMAP = "mailmaps"
 
@@ -376,6 +377,15 @@ SQL_CREATE_DEVELOPER_STATS = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEVELOPER_STAT
     PRIMARY KEY(_repo_id, author_email)
     )'''
 
+SQL_CREATE_SCHEMA_MIGRATIONS = f'''CREATE TABLE IF NOT EXISTS [{TBL_SCHEMA_MIGRATIONS}] (
+    [id] TEXT PRIMARY KEY,         -- e.g. '0003_add_repos_size_bytes'
+    [sequence] INTEGER NOT NULL,   -- 3 (extracted from prefix)
+    [checksum] TEXT NOT NULL,      -- sha256(sql)[:sha256(py)]
+    [applied_at] TEXT NOT NULL,    -- ISO 8601 UTC
+    [duration_ms] INTEGER,
+    [has_python] INTEGER NOT NULL  -- 0 or 1
+    )'''
+
 
 
 SQL_CREATE_COMMITS_VIEW = f'''
@@ -406,6 +416,7 @@ DB_CREATE_STATEMENTS = {
     TBL_COMMITS_VIEW: SQL_CREATE_COMMITS_VIEW,
     TBL_EMAIL_MAP: SQL_CREATE_EMAIL_MAP,
     TBL_DEVELOPER_STATS: SQL_CREATE_DEVELOPER_STATS,
+    TBL_SCHEMA_MIGRATIONS: SQL_CREATE_SCHEMA_MIGRATIONS,
 }
 
 # Functions for SQLite stuff
@@ -448,6 +459,7 @@ def connect_or_create_kospex_db():
     kospex_db.execute(SQL_CREATE_EMAIL_MAP)
     kospex_db.execute(SQL_CREATE_COMMITS_VIEW)
     kospex_db.execute(SQL_CREATE_DEVELOPER_STATS)
+    kospex_db.execute(SQL_CREATE_SCHEMA_MIGRATIONS)
 
     # TODO - look at moving all table creates to "create if not exits"
 
