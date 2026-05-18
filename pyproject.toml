@@ -42,6 +42,11 @@ include-package-data = true
     "templates/**/*.html",
     "static/**/*"
 ]
+"kospex.db.migrations" = ["*.sql", "*.py", "README.md"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["kospex*"]
 
 [project.optional-dependencies]
 test = [
