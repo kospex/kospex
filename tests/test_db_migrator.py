@@ -95,3 +95,60 @@ def test_discover_ignores_unrelated_files(tmp_path):
     migrations = discover_migrations(tmp_path)
 
     assert [m.id for m in migrations] == ["0003_x"]
+
+
+import pytest
+
+
+def test_validate_duplicate_prefix_raises(tmp_path):
+    from kospex.db.migrator import discover_migrations, validate_migrations
+    # Two .sql files sharing prefix 0003 but different slugs — discovery will
+    # only keep one (dict overwrite), so we have to construct the list manually
+    # to test the validator's duplicate detection.
+    from kospex.db.migrator import Migration
+    sql1 = _write(tmp_path / "0003_foo.sql", "SELECT 1;")
+    sql2 = _write(tmp_path / "0003_bar.sql", "SELECT 1;")
+    migrations = [
+        Migration.from_paths(sql_path=sql1, py_path=None),
+        Migration.from_paths(sql_path=sql2, py_path=None),
+    ]
+
+    with pytest.raises(ValueError, match="Duplicate migration sequence: 3"):
+        validate_migrations(migrations)
+
+
+def test_validate_orphan_python_raises(tmp_path):
+    from kospex.db.migrator import discover_migrations, validate_migrations
+    _write(tmp_path / "0003_foo.py", "def up(db): pass\n")  # no matching .sql
+
+    # discover_migrations only indexes .sql; the orphan .py is invisible to it.
+    # Validator runs against the directory itself for this check.
+    with pytest.raises(ValueError, match="Orphan Python migration file"):
+        validate_migrations(discover_migrations(tmp_path), migrations_dir=tmp_path)
+
+
+def test_validate_empty_sql_raises(tmp_path):
+    from kospex.db.migrator import discover_migrations, validate_migrations
+    _write(tmp_path / "0003_empty.sql", "   -- only a comment\n\n")
+
+    with pytest.raises(ValueError, match="empty"):
+        validate_migrations(discover_migrations(tmp_path))
+
+
+def test_validate_python_missing_up_raises(tmp_path):
+    from kospex.db.migrator import discover_migrations, validate_migrations
+    _write(tmp_path / "0003_no_up.sql", "SELECT 1;")
+    _write(tmp_path / "0003_no_up.py", "x = 1\n")  # no up() function
+
+    with pytest.raises(ValueError, match="missing 'up'"):
+        validate_migrations(discover_migrations(tmp_path))
+
+
+def test_validate_clean_set_passes(tmp_path):
+    from kospex.db.migrator import discover_migrations, validate_migrations
+    _write(tmp_path / "0003_a.sql", "CREATE TABLE a (id INTEGER);")
+    _write(tmp_path / "0004_b.sql", "CREATE TABLE b (id INTEGER);")
+    _write(tmp_path / "0004_b.py", "def up(db): pass\n")
+
+    # Should not raise
+    validate_migrations(discover_migrations(tmp_path), migrations_dir=tmp_path)
