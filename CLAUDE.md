@@ -17,6 +17,9 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - **kospex_utils.py** - Utility functions and configuration management
 - **kospex_query.py** - Database query abstractions
 - **kospex_schema.py** - Database schema definitions
+- **kospex/db/migrator.py** - Script-driven DB migration runner
+- **kospex/db/introspect.py** - Runtime table introspection helpers
+- **kospex/db/migrations/** - Numbered SQL (+ optional Python) migration files
 - **kospex_dependencies.py** - Dependency analysis and SCA functionality
 
 ### Web Interface Components
@@ -138,7 +141,8 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - `npm run dev` - Watch mode for CSS development (equivalent to build-css-watch)
 
 ### Database Operations
-- `kospex upgrade-db` - Apply database schema updates
+- `kospex upgrade-db` - Show DB migration status (dry run by default)
+- `kospex upgrade-db -apply` - Apply pending DB migrations from `src/kospex/db/migrations/`
 - `kospex system-status` - Check system health
 - `kospex list-repos` - List all synced repositories
 
