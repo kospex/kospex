@@ -437,3 +437,33 @@ def test_print_status_lists_applied_and_pending(tmp_path, capsys):
     assert "0004_pending" in out
     assert "Applied" in out or "applied" in out
     assert "Pending" in out or "pending" in out
+
+
+def test_apply_invalidates_cache_so_python_up_sees_new_table(tmp_path):
+    """Python up() must see tables/columns created by the SQL step in the same migration."""
+    from kospex.db.migrator import Migrator, discover_migrations
+    from kospex.db.introspect import get_kospex_tables
+
+    db = _baseline_db(tmp_path)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_widgets.sql",
+           "CREATE TABLE widgets (id INTEGER PRIMARY KEY, name TEXT);")
+    _write(migrations_dir / "0003_widgets.py", """
+from kospex.db.introspect import get_kospex_tables
+
+def up(db):
+    tables = get_kospex_tables(db)
+    if "widgets" not in tables:
+        raise AssertionError(f"widgets not visible to up(); tables={sorted(tables)}")
+    db["widgets"].insert({"id": 1, "name": "ok"})
+""")
+
+    # Prime the cache BEFORE applying so it's stale without the in-migration invalidation
+    get_kospex_tables(db)
+
+    migrator = Migrator(db, migrations_dir=migrations_dir)
+    migrator.apply(discover_migrations(migrations_dir)[0])
+
+    rows = list(db.execute("SELECT id, name FROM widgets").fetchall())
+    assert rows == [(1, "ok")]

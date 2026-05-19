@@ -170,6 +170,9 @@ class Migrator:
                 conn.execute(stmt)
 
             if migration.py_path is not None:
+                # Cache must be cleared so up() sees tables/columns the SQL just created
+                from kospex.db.introspect import invalidate_cache
+                invalidate_cache(self.db)
                 mod = _load_python_module(migration.py_path, migration.id)
                 mod.up(self.db)
 
