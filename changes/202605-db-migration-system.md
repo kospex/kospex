@@ -225,29 +225,47 @@ These are warnings, not errors. They don't block new migrations from running.
 ```python
 def apply(self, migration):
     started = time.monotonic()
-    with self.db.conn:                        # sqlite3 context = transaction
-        self.db.executescript(read(migration.sql_path))
-        if migration.py_path:
-            mod = load_module(migration.py_path)
+    conn = self.db.conn
+    sql = migration.sql_path.read_text()
+    try:
+        conn.execute("BEGIN")
+        # Split on `;` and execute each non-empty statement so DDL stays in tx
+        for stmt in [s.strip() for s in sql.split(";") if s.strip()]:
+            conn.execute(stmt)
+
+        if migration.py_path is not None:
+            # Cache must be cleared so up() sees tables/columns the SQL just created
+            from kospex.db.introspect import invalidate_cache
+            invalidate_cache(self.db)
+            mod = _load_python_module(migration.py_path, migration.id)
             mod.up(self.db)
-        self.db["schema_migrations"].insert({
-            "id": migration.id,
-            "sequence": migration.sequence,
-            "checksum": migration.checksum(),
-            "applied_at": utcnow_iso(),
-            "duration_ms": int((time.monotonic() - started) * 1000),
-            "has_python": 1 if migration.py_path else 0,
-        })
-    # committed on success; exception above rolls back everything
+
+        # Raw INSERT, not db["schema_migrations"].insert() — sqlite_utils' insert
+        # auto-commits and would break the explicit transaction.
+        conn.execute(
+            "INSERT INTO schema_migrations "
+            "(id, sequence, checksum, applied_at, duration_ms, has_python) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [migration.id, migration.sequence, migration.checksum(),
+             _utcnow_iso(), int((time.monotonic() - started) * 1000),
+             1 if migration.py_path else 0],
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    # committed; bump version int outside any open tx
     self._update_version_int()
-    invalidate_table_cache(self.db)           # tables may have changed
 ```
+
+Note: `executescript()` and `sqlite_utils' Table.insert/upsert()` both auto-commit. The explicit `BEGIN`/`COMMIT`/`ROLLBACK` with per-statement `execute()` is necessary for rollback to work; the raw `INSERT` for `schema_migrations` is necessary for the row write to stay inside the transaction. `_update_version_int()` is called AFTER the transaction commits and may use `db.table.upsert()` safely.
 
 ### Transaction guarantees
 
 - One transaction per migration. Includes: SQL execution, Python `up()`, insert into `schema_migrations`.
 - If anything raises, rollback. The row is not inserted, version int is not bumped, next run sees the migration as still-pending.
 - SQLite supports DDL inside transactions, so this works for the typical migration.
+- The `sql.split(";")` statement splitter has known limitations (multi-statement triggers, string literals containing `;`, `/* */` block comments containing `;`). See `src/kospex/db/migrations/README.md` Limitations section for workarounds.
 
 ### Failure handling in `apply_pending`
 
@@ -356,20 +374,34 @@ Replace with runtime helpers in `src/kospex/db/introspect.py`:
 _TABLE_CACHE: dict[str, set[str]] = {}
 _REPO_TABLE_CACHE: dict[str, set[str]] = {}
 
+
+def _db_key(db) -> str:
+    """Stable cache key for a sqlite_utils Database. Uses the underlying file path.
+
+    Falls back to a per-instance key for in-memory databases (where the
+    PRAGMA returns an empty path). sqlite_utils.Database does NOT expose a
+    .path attribute, hence the PRAGMA lookup.
+    """
+    row = db.execute("PRAGMA database_list").fetchone()
+    file_path = row[2] if row else ""
+    return file_path or f"<mem:{id(db)}>"
+
+
 def get_kospex_tables(db) -> set[str]:
-    key = str(db.path)
+    """Return the set of user tables in the kospex database."""
+    key = _db_key(db)
     if key not in _TABLE_CACHE:
-        _TABLE_CACHE[key] = {
-            r[0] for r in db.execute(
-                "SELECT name FROM sqlite_master "
-                "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-            ).fetchall()
-        }
+        rows = db.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+        _TABLE_CACHE[key] = {r[0] for r in rows}
     return _TABLE_CACHE[key]
+
 
 def get_repo_tables(db) -> set[str]:
     """Tables with a _repo_id column — auto-detected via PRAGMA."""
-    key = str(db.path)
+    key = _db_key(db)
     if key not in _REPO_TABLE_CACHE:
         out = set()
         for t in get_kospex_tables(db):
@@ -379,13 +411,14 @@ def get_repo_tables(db) -> set[str]:
         _REPO_TABLE_CACHE[key] = out
     return _REPO_TABLE_CACHE[key]
 
-def invalidate_cache(db=None):
-    """Migrator calls this after applying migrations."""
+
+def invalidate_cache(db=None) -> None:
+    """Clear cached table lists. Call after applying migrations."""
     if db is None:
         _TABLE_CACHE.clear()
         _REPO_TABLE_CACHE.clear()
     else:
-        key = str(db.path)
+        key = _db_key(db)
         _TABLE_CACHE.pop(key, None)
         _REPO_TABLE_CACHE.pop(key, None)
 ```

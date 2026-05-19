@@ -41,6 +41,22 @@
 
 ---
 
+## Implementation Deviations from This Plan
+
+This plan was authored before discovering 4 issues in the original code snippets. The actual implementation diverges from the plan in these specific places — the implementation is correct; the plan snippets shown below are wrong unless updated. The list is kept here so a future reader doesn't have to diff to figure it out:
+
+1. **`str(db.path)` does not work.** `sqlite_utils.Database` has no `.path` attribute. Cache keys use a private `_db_key(db)` helper that runs `PRAGMA database_list` and falls back to `<mem:{id(db)}>` for in-memory DBs. Affected tasks: 2, 3, 4, 17, 18.
+
+2. **`sqlite_utils' Table.insert/upsert` auto-commit.** Inside the explicit transaction in `Migrator.apply()`, the `schema_migrations` row INSERT uses raw `conn.execute("INSERT INTO schema_migrations ...", [...])`, NOT `db["schema_migrations"].insert(...)`. `_update_version_int()` runs outside the tx and may use `upsert` safely. Affected task: 13 (and later refinements).
+
+3. **`executescript()` auto-commits DDL.** `Migrator.apply()` uses explicit `BEGIN`/`COMMIT`/`ROLLBACK` with `sql.split(";")` + per-statement `execute()`, NOT `with self.db.conn:` + `executescript()`. This makes rollback actually work when the Python `up()` step raises. Affected task: 13 (replaced by Task 15's fallback path).
+
+4. **Task 1's `py-modules` step is mandatory, not optional.** Adding `[tool.setuptools.packages.find]` alone disables setuptools' auto-discovery of top-level modules — `kospex_cli.py`, `kgit.py`, etc. silently disappear from the wheel. The actual `pyproject.toml` includes both `packages.find` AND an explicit `py-modules = [...]` list plus `package-dir = {"" = "src"}`. Affected task: 1 (Step 4 is required, not conditional).
+
+A follow-up improvement: the runner's `sql.split(";")` will misbehave on multi-statement triggers, string literals containing `;`, and `/* */` block comments containing `;`. Documented in `src/kospex/db/migrations/README.md` Limitations section. Tracked for future improvement.
+
+---
+
 ## Task 1: Namespace skeleton + packaging
 
 **Files:**
@@ -109,9 +125,9 @@ unzip -l dist/kospex-0.0.37-py3-none-any.whl | grep -E "(kospex/db|kospex_cli)"
 
 Expected: output lists `kospex/db/__init__.py`, `kospex/db/migrations/__init__.py`, AND the existing flat modules like `kospex_cli.py`. If flat modules are missing, the `packages.find` change broke auto-discovery — see step 4.
 
-- [ ] **Step 4: If flat modules missing, add explicit py-modules**
+- [ ] **Step 4: Add explicit py-modules (mandatory)**
 
-Only needed if step 3 showed flat modules disappeared. Add this immediately after the `[tool.setuptools.packages.find]` block:
+Required: adding `packages.find` alone disables setuptools' auto-discovery of top-level modules — `kospex_cli.py`, `kgit.py`, etc. silently disappear from the wheel. Add this block too, immediately after the `[tool.setuptools.packages.find]` block:
 
 ```toml
 [tool.setuptools]
@@ -220,9 +236,21 @@ automatically.
 _TABLE_CACHE: dict[str, set[str]] = {}
 
 
+def _db_key(db) -> str:
+    """Stable cache key for a sqlite_utils Database. Uses the underlying file path.
+
+    Falls back to a per-instance key for in-memory databases (where the
+    PRAGMA returns an empty path). sqlite_utils.Database does NOT expose a
+    .path attribute, hence the PRAGMA lookup.
+    """
+    row = db.execute("PRAGMA database_list").fetchone()
+    file_path = row[2] if row else ""
+    return file_path or f"<mem:{id(db)}>"
+
+
 def get_kospex_tables(db) -> set[str]:
     """Return the set of user tables in the kospex database."""
-    key = str(db.path)
+    key = _db_key(db)
     if key not in _TABLE_CACHE:
         rows = db.execute(
             "SELECT name FROM sqlite_master "
@@ -237,7 +265,7 @@ def invalidate_cache(db=None) -> None:
     if db is None:
         _TABLE_CACHE.clear()
     else:
-        _TABLE_CACHE.pop(str(db.path), None)
+        _TABLE_CACHE.pop(_db_key(db), None)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -291,7 +319,7 @@ _REPO_TABLE_CACHE: dict[str, set[str]] = {}
 
 def get_repo_tables(db) -> set[str]:
     """Return tables that have a _repo_id column (auto-detected via PRAGMA)."""
-    key = str(db.path)
+    key = _db_key(db)
     if key not in _REPO_TABLE_CACHE:
         out = set()
         for t in get_kospex_tables(db):
@@ -310,7 +338,7 @@ def invalidate_cache(db=None) -> None:
         _TABLE_CACHE.clear()
         _REPO_TABLE_CACHE.clear()
     else:
-        key = str(db.path)
+        key = _db_key(db)
         _TABLE_CACHE.pop(key, None)
         _REPO_TABLE_CACHE.pop(key, None)
 ```
@@ -1312,6 +1340,8 @@ def _default_migrations_dir() -> Path:
     return Path(str(importlib.resources.files("kospex.db") / "migrations"))
 ```
 
+> **Note:** This snippet has 3 issues caught during implementation. See the "Implementation Deviations from This Plan" section at the top of this plan. Task 15 below has the correct final shape (explicit `BEGIN`/`COMMIT`/`ROLLBACK` + raw `INSERT`).
+
 - [ ] **Step 4: Run tests**
 
 Run: `pytest tests/test_db_migrator.py -v`
@@ -1437,14 +1467,16 @@ Replace the `apply` body with:
                 mod = _load_python_module(migration.py_path, migration.id)
                 mod.up(self.db)
 
-            self.db["schema_migrations"].insert({
-                "id": migration.id,
-                "sequence": migration.sequence,
-                "checksum": migration.checksum(),
-                "applied_at": _utcnow_iso(),
-                "duration_ms": int((time.monotonic() - started) * 1000),
-                "has_python": 1 if migration.py_path else 0,
-            })
+            # Raw INSERT, not db["schema_migrations"].insert() — sqlite_utils'
+            # insert auto-commits and would break the explicit transaction.
+            conn.execute(
+                "INSERT INTO schema_migrations "
+                "(id, sequence, checksum, applied_at, duration_ms, has_python) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [migration.id, migration.sequence, migration.checksum(),
+                 _utcnow_iso(), int((time.monotonic() - started) * 1000),
+                 1 if migration.py_path else 0],
+            )
             conn.execute("COMMIT")
         except Exception:
             conn.execute("ROLLBACK")
@@ -1827,8 +1859,10 @@ Add to `Migrator`:
         ).fetchall())
         version = version_row[0][0] if version_row else "unknown"
 
+        db_path = self.db.conn.execute("PRAGMA database_list").fetchone()[2]
+
         print(f"Kospex DB version: {version}")
-        print(f"Database: {self.db.path}")
+        print(f"Database: {db_path}")
         print()
 
         if not discovered:
