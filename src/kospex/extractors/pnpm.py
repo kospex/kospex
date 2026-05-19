@@ -109,5 +109,63 @@ def _collect_direct_dev(doc):
 
 
 def extract_pnpm_lock(path):
-    """Stub — implemented in 3.5."""
-    raise NotImplementedError
+    """Parse a pnpm-lock.yaml; return get_package_template-shaped
+    records for the full resolved package closure.
+
+    Args:
+        path: Path to a pnpm-lock.yaml on disk.
+
+    Returns:
+        list[dict]: one record per distinct resolved ``name@version``
+        (no dedup — diamond deps yield one record per version), with
+        ``package_name``, ``package_version``, ``ecosystem="npm"`` and
+        ``requirements_type`` ("direct" / "dev" / "resolved"). Empty
+        list on missing / invalid / unknown-lockfileVersion files.
+    """
+    try:
+        with open(path) as f:
+            doc = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        logger.warning("Error parsing pnpm-lock.yaml %s: %s", path, e)
+        return []
+    except FileNotFoundError:
+        logger.warning("File not found: %s", path)
+        return []
+
+    if not doc or not isinstance(doc, dict):
+        return []
+
+    lv = str(doc.get("lockfileVersion", "")).strip()
+    if lv.startswith("5"):
+        splitter = _split_v5_key
+    elif lv.startswith("6") or lv.startswith("9"):
+        splitter = _split_at_key
+    else:
+        logger.warning("Unknown pnpm lockfileVersion %r in %s", lv, path)
+        return []
+
+    packages = doc.get("packages")
+    if not isinstance(packages, dict):
+        return []
+
+    direct, dev = _collect_direct_dev(doc)
+
+    records = []
+    for key in packages:
+        name, version = splitter(key)
+        if not name or not version:
+            continue
+        if name in direct:
+            req_type = "direct"
+        elif name in dev:
+            req_type = "dev"
+        else:
+            req_type = "resolved"
+        rec = _template()
+        rec["package_name"] = name
+        rec["package_version"] = version
+        rec["ecosystem"] = "npm"
+        rec["requirements_type"] = req_type
+        records.append(rec)
+
+    return records

@@ -105,3 +105,55 @@ class TestCollectDirectDev:
 
     def test_missing_blocks_yield_empty_sets(self):
         assert _collect_direct_dev({}) == (set(), set())
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "pnpm"
+
+
+def _by_name(records):
+    return {(r["package_name"], r["package_version"]): r for r in records}
+
+
+class TestExtractV6:
+    def test_v6_resolved_closure(self):
+        recs = extract_pnpm_lock(str(FIXTURES / "v6-simple.yaml"))
+        idx = _by_name(recs)
+        assert ("lodash", "4.17.21") in idx
+        assert ("jest", "29.0.0") in idx
+        assert ("@babel/core", "7.21.3") in idx
+        assert ("@apideck/better-ajv-errors", "0.3.6") in idx
+        for r in recs:
+            assert r["ecosystem"] == "npm"
+
+    def test_v6_classification(self):
+        idx = _by_name(extract_pnpm_lock(str(FIXTURES / "v6-simple.yaml")))
+        assert idx[("lodash", "4.17.21")]["requirements_type"] == "direct"
+        assert idx[("jest", "29.0.0")]["requirements_type"] == "dev"
+        assert idx[("@babel/core", "7.21.3")]["requirements_type"] == "resolved"
+
+
+class TestExtractV9:
+    def test_v9_resolved_closure_and_dupes(self):
+        idx = _by_name(extract_pnpm_lock(str(FIXTURES / "v9-simple.yaml")))
+        assert ("@alloc/quick-lru", "5.2.0") in idx
+        # same package, two versions → two distinct records, no dedup
+        assert ("@esbuild/aix-ppc64", "0.23.1") in idx
+        assert ("@esbuild/aix-ppc64", "0.27.0") in idx
+
+    def test_v9_classification(self):
+        idx = _by_name(extract_pnpm_lock(str(FIXTURES / "v9-simple.yaml")))
+        assert idx[("lodash", "4.17.21")]["requirements_type"] == "direct"
+        assert idx[("jest", "29.0.0")]["requirements_type"] == "dev"
+
+
+class TestExtractV5:
+    def test_v5_resolved_closure(self):
+        idx = _by_name(extract_pnpm_lock(str(FIXTURES / "v5-simple.yaml")))
+        assert ("lodash", "4.17.21") in idx
+        assert ("@babel/core", "7.12.0") in idx
+        assert ("react-dom", "16.8.0") in idx  # peer suffix stripped
+
+    def test_v5_classification(self):
+        idx = _by_name(extract_pnpm_lock(str(FIXTURES / "v5-simple.yaml")))
+        assert idx[("lodash", "4.17.21")]["requirements_type"] == "direct"
+        assert idx[("jest", "29.0.0")]["requirements_type"] == "dev"
