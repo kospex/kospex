@@ -21,3 +21,24 @@ version 2 (frozen in `kospex_schema.py`), so the next migration starts at `0003`
 - `kospex upgrade-db -apply` — apply pending migrations
 
 See `changes/202605-db-migration-system.md` for the full design.
+
+## Limitations
+
+The runner splits each `.sql` file on `;` to execute statements individually
+inside a single transaction. This means the following constructs are NOT
+currently safe in a migration file:
+
+- **`CREATE TRIGGER ... BEGIN ... END;`** — the inner statements get split.
+  Workaround: do trigger creation in the Python `up(db)` step instead, using
+  `db.execute("CREATE TRIGGER ... BEGIN ...")` as a single string.
+- **String literals containing `;`** — e.g. `INSERT INTO config VALUES ('Hello; world')`
+  gets fractured inside the quotes. Workaround: same as above, or escape via
+  the Python step.
+- **`/* ... */` block comments containing `;`** — split inside the comment.
+  Workaround: use `--` line comments instead.
+
+If you need any of these patterns, do the schema change in `.sql` and the
+nuanced part in the paired `.py` file's `up(db)` function — `up()` runs the
+raw string against the connection and is not subject to splitting.
+
+This is a known limitation; tracked for future improvement.
