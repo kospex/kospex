@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -250,7 +251,6 @@ class Migrator:
 
     def print_status(self) -> None:
         """Write a human-readable status summary to stdout."""
-        import sqlite3
         import kospex_schema as KospexSchema
 
         try:
@@ -258,7 +258,11 @@ class Migrator:
         except FileNotFoundError:
             discovered = []
 
-        applied_ids = set(self.applied())
+        try:
+            applied_ids = set(self.applied())
+        except sqlite3.OperationalError:
+            # schema_migrations table not present yet — treat as nothing applied
+            applied_ids = set()
         applied = [m for m in discovered if m.id in applied_ids]
         pending = [m for m in discovered if m.id not in applied_ids]
 
