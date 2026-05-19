@@ -1,0 +1,30 @@
+lockfileVersion: '6.0'
+
+importers:
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.21
+        version: 4.17.21
+    devDependencies:
+      jest:
+        specifier: ^29.0.0
+        version: 29.0.0
+
+packages:
+
+  /lodash@4.17.21:
+    resolution: {integrity: sha512-abc}
+    dev: false
+
+  /jest@29.0.0:
+    resolution: {integrity: sha512-def}
+    dev: true
+
+  /@babel/core@7.21.3:
+    resolution: {integrity: sha512-ghi}
+    dev: true
+
+  /@apideck/better-ajv-errors@0.3.6(ajv@8.12.0):
+    resolution: {integrity: sha512-jkl}
+    dev: true
