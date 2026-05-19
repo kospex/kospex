@@ -35,6 +35,41 @@ classifiers = ["Programming Language :: Python :: 3"]
 
 [tool.setuptools]
 include-package-data = true
+# Flat top-level modules in src/ that are not part of the `kospex` package.
+# These ship the CLI entry points (kospex_cli, kgit, kreaper, kweb2, etc.) and
+# must be listed explicitly because configuring `packages.find` disables
+# setuptools' auto-discovery of py-modules.
+py-modules = [
+    "api_routes",
+    "kgit",
+    "kospex_agent",
+    "kospex_bitbucket",
+    "kospex_cli",
+    "kospex_core",
+    "kospex_dependencies",
+    "kospex_email",
+    "kospex_git",
+    "kospex_github",
+    "kospex_logging",
+    "kospex_mergestat",
+    "kospex_observation",
+    "kospex_query",
+    "kospex_request_cache",
+    "kospex_schema",
+    "kospex_stats",
+    "kospex_utils",
+    "kospex_web",
+    "kreaper",
+    "krunner",
+    "krunner_utils",
+    "kweb_graph_service",
+    "kweb_help_service",
+    "kweb_security",
+    "kweb2",
+]
+
+[tool.setuptools.package-dir]
+"" = "src"
 
 [tool.setuptools.package-data]
 "*" = [
