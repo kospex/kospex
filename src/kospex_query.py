@@ -2207,6 +2207,11 @@ class KospexData:
     """
 
     def __init__(self, kospex_db=None):
+        if kospex_db is None:
+            raise ValueError(
+                "KospexData requires a kospex_db argument; "
+                "pass the Database from KospexQuery.kospex_db"
+            )
         self.kospex_db = kospex_db
         self.params = []
         self.from_tables = []
