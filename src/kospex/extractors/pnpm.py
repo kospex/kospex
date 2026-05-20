@@ -136,9 +136,14 @@ def extract_pnpm_lock(path):
         return []
 
     lv = str(doc.get("lockfileVersion", "")).strip()
-    if lv.startswith("5"):
+    # v5.x: "5", "5.0", "5.1", "5.2", "5.3", "5.4" etc.
+    # v6.x: "6.0" etc.
+    # v9.x: "9.0" etc.
+    # Distinguish by major version only — split on "." and check first digit.
+    lv_major = lv.split(".")[0]
+    if lv_major == "5":
         splitter = _split_v5_key
-    elif lv.startswith("6") or lv.startswith("9"):
+    elif lv_major in ("6", "9"):
         splitter = _split_at_key
     else:
         logger.warning("Unknown pnpm lockfileVersion %r in %s", lv, path)

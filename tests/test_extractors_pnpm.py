@@ -157,3 +157,25 @@ class TestExtractV5:
         idx = _by_name(extract_pnpm_lock(str(FIXTURES / "v5-simple.yaml")))
         assert idx[("lodash", "4.17.21")]["requirements_type"] == "direct"
         assert idx[("jest", "29.0.0")]["requirements_type"] == "dev"
+
+
+class TestErrorHandling:
+    def test_missing_file_returns_empty(self, tmp_path):
+        assert extract_pnpm_lock(str(tmp_path / "nope.yaml")) == []
+
+    def test_invalid_yaml_returns_empty(self):
+        assert extract_pnpm_lock(str(FIXTURES / "malformed.yaml")) == []
+
+    def test_unknown_lockfile_version_returns_empty(self):
+        assert extract_pnpm_lock(str(FIXTURES / "unknown-version.yaml")) == []
+
+    def test_no_packages_section_returns_empty(self):
+        assert extract_pnpm_lock(str(FIXTURES / "no-packages.yaml")) == []
+
+    def test_empty_file_returns_empty(self, tmp_path):
+        p = _write(tmp_path, "empty.yaml", "")
+        assert extract_pnpm_lock(p) == []
+
+    def test_non_dict_root_returns_empty(self, tmp_path):
+        p = _write(tmp_path, "list.yaml", "- a\n- b\n")
+        assert extract_pnpm_lock(p) == []
