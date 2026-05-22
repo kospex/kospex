@@ -1306,8 +1306,9 @@ def get_status_legend():
 
 def get_status_table(status):
     """
-    Return a prettytable object for the status results ("Active", "Aging", "Stale", "Unmaintained").
-    The raw numbers are shown in the first row and the percentages in the second row.
+    Return a rich Table for the status results
+    ("Active", "Aging", "Stale", "Unmaintained").
+    Row 1 = raw counts, row 2 = percentages.
     """
 
     total = sum(status.values())
@@ -1315,18 +1316,15 @@ def get_status_table(status):
     # Need to run convert first, or the generic function
     # will include the percentage values in the calculation
     status["Total"] = total
-
     status_percentage["Total"] = 100
 
-    table = PrettyTable()
-    table.field_names = ["Active", "Aging", "Stale", "Unmaintained", "Total"]
-    values = [status.get(key,0) for key in table.field_names]
+    headers = ["Active", "Aging", "Stale", "Unmaintained", "Total"]
+    table = RichTable()
+    for header in headers:
+        table.add_column(header, justify="right")
 
-    table.add_row(values)
-
-    status_percentage["Total"] = 100
-    values = [ f"{status_percentage.get(key,0)}%" for key in table.field_names]
-    table.add_row(values)
+    table.add_row(*[str(status.get(key, 0)) for key in headers])
+    table.add_row(*[f"{status_percentage.get(key, 0)}%" for key in headers])
 
     return table
 

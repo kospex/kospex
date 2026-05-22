@@ -41,3 +41,21 @@ def test_get_status_legend():
     assert "90" in text
     assert "180" in text
     assert "365" in text
+
+def test_get_status_table_rich():
+    """get_status_table returns a rich Table with counts and percentages."""
+    from rich.table import Table
+    from rich.console import Console
+
+    status = {"Active": 3, "Aging": 1, "Stale": 0, "Unmaintained": 1}
+    table = KospexUtils.get_status_table(status)
+    assert isinstance(table, Table)
+
+    console = Console(width=120)
+    with console.capture() as capture:
+        console.print(table)
+    text = capture.get()
+    for header in ["Active", "Aging", "Stale", "Unmaintained", "Total"]:
+        assert header in text
+    assert "5" in text       # total count
+    assert "%" in text       # percentage row present
