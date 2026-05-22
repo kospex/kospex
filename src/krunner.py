@@ -28,6 +28,7 @@ from kospex_git import KospexGit
 from kospex_utils import KospexTimer
 from kospex.assessment_types import AssessmentTypes
 from kospex.extractors.workflows import extract_workflow_actions
+from kospex.extractors.pnpm import extract_pnpm_lock
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
@@ -640,6 +641,16 @@ def osi(all, request_id):
                         style="yellow",
                     )
                     continue
+                for req in reqs:
+                    req["_repo_id"] = r["_repo_id"]
+                    req["file_path"] = d["Provider"]
+                    req["ecosystem"] = "NPM"
+                    results.append(req)
+                console.log(reqs)
+
+            elif "pnpm-lock.yaml" in d["Provider"]:
+                console.print(f"Should parse pnpm-lock.yaml {d['Provider']}", style="blue")
+                reqs = extract_pnpm_lock(full_path)
                 for req in reqs:
                     req["_repo_id"] = r["_repo_id"]
                     req["file_path"] = d["Provider"]
