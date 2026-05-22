@@ -15,6 +15,8 @@ import click
 # from kospex_mergestat import KospexMergeStat
 import panopticas
 from prettytable import PrettyTable, from_db_cursor
+from rich.console import Console as RichConsole
+from rich.table import Table as RichTable
 from sqlite_utils import Database
 
 import kospex_schema as KospexSchema
@@ -23,6 +25,8 @@ from kospex.db.introspect import get_kospex_tables
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit, MissingGitDirectory
 from kospex_query import KospexData, KospexQuery
+
+_console = RichConsole()
 
 
 class GitRepo(click.ParamType):
@@ -414,7 +418,6 @@ class Kospex:
         )
         print()
 
-        table = PrettyTable()
         headers = [
             "repo",
             "status",
@@ -427,20 +430,11 @@ class Kospex:
             "commits",
         ]
 
-        # table.field_names = ["repo", "status", "last_commit",
-        #                     "first_commit", "developers", "commits", "active", "present"]
-
-        table.field_names = headers
-        table.align["repo"] = "l"
-        table.align["status"] = "l"
-        table.align["last_commit"] = "r"
-        table.align["first_commit"] = "r"
-        table.align["active_days"] = "r"
-        table.align["developers"] = "r"
-        table.align["commits"] = "r"
-        table.align["active"] = "r"
-        table.align["present"] = "r"
-        table.sortby = "last_commit"
+        left_cols = {"repo", "status"}
+        table = RichTable()
+        for header in headers:
+            justify = "left" if header in left_cols else "right"
+            table.add_column(header, justify=justify)
 
         results = []
 
@@ -503,8 +497,6 @@ class Kospex:
                 row["last_commit"], row["first_commit"]
             )
 
-            table.add_row(KospexUtils.get_values_by_keys(row, headers))
-
             if repo := repoid_lookup.get(row["repo"]):
                 row["git_url"] = repo.get("git_remote")
                 row["file_path"] = repo.get("file_path")
@@ -514,21 +506,19 @@ class Kospex:
 
             results.append(row)
 
+        # rich does not auto-sort; replicate PrettyTable's sortby="last_commit"
+        results.sort(key=lambda r: (r.get("last_commit") is None, r.get("last_commit")))
+        for row in results:
+            table.add_row(
+                *["" if v is None else str(v) for v in KospexUtils.get_values_by_keys(row, headers)]
+            )
+
         if results_file:
             KospexUtils.list_dict_2_csv(results, results_file)
             print("Writing CSV results to file: " + results_file)
 
-        if table.rows:
-            print(table)
-            # print(KospexUtils.count_key_occurrences(results, "status"))
-        #    status = KospexUtils.count_key_occurrences(results, "status")
-        #    status_table = KospexUtils.get_status_table(status)
-        #    print()
-        # print(status_table)
-        #    print()
-
-        # else:
-        #    print("No repositories found in the kospex DB\n")
+        if results:
+            _console.print(table)
 
         return results
 
