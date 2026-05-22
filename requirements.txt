@@ -20,7 +20,7 @@ mergedeep==1.3.4
 mkdocs==1.6.1
 mkdocs-get-deps==0.2.2
 packaging==26.2
-panopticas==0.0.15
+panopticas==0.0.16
 pathspec==1.1.1
 platformdirs==4.9.6
 pluggy==1.6.0

@@ -1,0 +1,33 @@
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.21
+        version: 4.17.21
+    devDependencies:
+      jest:
+        specifier: ^29.0.0
+        version: 29.0.0
+
+packages:
+
+  lodash@4.17.21:
+    resolution: {integrity: sha512-abc}
+
+  jest@29.0.0:
+    resolution: {integrity: sha512-def}
+
+  '@alloc/quick-lru@5.2.0':
+    resolution: {integrity: sha512-ghi}
+
+  '@esbuild/aix-ppc64@0.23.1':
+    resolution: {integrity: sha512-old}
+
+  '@esbuild/aix-ppc64@0.27.0':
+    resolution: {integrity: sha512-new}
+
+snapshots:
+
+  lodash@4.17.21: {}
