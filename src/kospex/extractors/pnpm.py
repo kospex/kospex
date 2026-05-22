@@ -131,6 +131,9 @@ def extract_pnpm_lock(path):
     except FileNotFoundError:
         logger.warning("File not found: %s", path)
         return []
+    except (OSError, UnicodeDecodeError) as e:
+        logger.warning("Could not read pnpm-lock.yaml %s: %s", path, e)
+        return []
 
     if not doc or not isinstance(doc, dict):
         return []

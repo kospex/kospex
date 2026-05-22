@@ -179,3 +179,13 @@ class TestErrorHandling:
     def test_non_dict_root_returns_empty(self, tmp_path):
         p = _write(tmp_path, "list.yaml", "- a\n- b\n")
         assert extract_pnpm_lock(p) == []
+
+    def test_directory_path_returns_empty(self, tmp_path):
+        # opening a directory raises IsADirectoryError (an OSError subclass)
+        assert extract_pnpm_lock(str(tmp_path)) == []
+
+    def test_binary_content_returns_empty(self, tmp_path):
+        # non-UTF-8 bytes under a .yaml name raise UnicodeDecodeError on read
+        p = tmp_path / "binary.yaml"
+        p.write_bytes(b"\xff\xfe\x00\x01\x02\x03")
+        assert extract_pnpm_lock(str(p)) == []
