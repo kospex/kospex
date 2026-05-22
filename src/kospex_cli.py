@@ -305,11 +305,12 @@ def summary(
         print(f"\nSummary of {len(results)} repositories found.\n")
 
         # Print status stats of the repos found
-        print("Repo status summary")
+        console.print("Repo status summary")
         status = KospexUtils.count_key_occurrences(results, "status")
         status_table = KospexUtils.get_status_table(status)
-        print(status_table)
-        print()
+        console.print(status_table)
+        console.print(KospexUtils.get_status_legend())
+        console.print()
 
         unknown = 0
         repo_dirs = []
@@ -334,7 +335,7 @@ def summary(
             # print(records)
             docker_status = KospexUtils.count_key_occurrences(records, "status")
             docker_status_table = KospexUtils.get_status_table(docker_status)
-            print(docker_status_table)
+            console.print(docker_status_table)
 
         if dependencies:
             kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kospex.kospex_query)
@@ -346,8 +347,8 @@ def summary(
             records = KospexUtils.get_all_last_commit_info(deps)
             dep_stats = KospexUtils.repo_stats(records, "author_date")
             deps_status_table = KospexUtils.get_status_table(dep_stats)
-            print("\nDependencies summary")
-            print(deps_status_table)
+            console.print("\nDependencies summary")
+            console.print(deps_status_table)
 
         print()
 
@@ -634,7 +635,7 @@ def deps(repo, file, directory, out, dev):
             print("\nOverall Summary of dependency files found")
             print(stats)
             status_table = KospexUtils.get_status_table(stats)
-            print(status_table)
+            console.print(status_table)
 
             print("\nSummary of dependency files found in the directory by repo\n")
             status_table = KospexUtils.get_repo_stats_table(stats=stats_dict)
