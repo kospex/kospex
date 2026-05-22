@@ -509,7 +509,9 @@ class Kospex:
         # rich does not auto-sort; replicate PrettyTable's sortby="last_commit"
         results.sort(key=lambda r: (r.get("last_commit") is None, r.get("last_commit")))
         for row in results:
-            table.add_row(*[str(v) for v in KospexUtils.get_values_by_keys(row, headers)])
+            table.add_row(
+                *["" if v is None else str(v) for v in KospexUtils.get_values_by_keys(row, headers)]
+            )
 
         if results_file:
             KospexUtils.list_dict_2_csv(results, results_file)

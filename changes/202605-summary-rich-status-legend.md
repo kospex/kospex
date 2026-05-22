@@ -30,8 +30,11 @@ the existing defaults; the legend reflects these.
     `rich.table.Table`. Add a module-level `Console`. Numeric columns
     right-justified, `repo`/`status` left.
   - `PrettyTable` auto-sorts by `last_commit`; `rich` does not, so the
-    `results` list is sorted by `last_commit` before rows are added, preserving
-    current ordering.
+    `results` list is sorted by `last_commit` (ascending) before rows are added,
+    preserving current ordering. The sort key is `None`-safe (rows with a missing
+    `last_commit` sort to the tail).
+  - Cell values are coerced with `"" if v is None else str(v)` so empty cells
+    render blank rather than the literal `"None"`.
   - The other `PrettyTable` usages in this file are left untouched.
 
 - **`src/kospex_utils.py`**
@@ -56,6 +59,11 @@ the existing defaults; the legend reflects these.
 - No data/logic changes — rendering only. Status thresholds, CSV output, and
   returned `results` are unchanged.
 - No colour-coding in this change (plain legend); can be added later.
+- Rendering width: `rich` fits the table to the detected terminal width. In an
+  interactive terminal the full repo table shows; when output is piped to a
+  narrow (80-col) non-tty, `rich` ellipsizes long `repo_id`s and dates (the old
+  `PrettyTable` always emitted full width). Use the `-out` CSV option for
+  machine-consumable output.
 
 ## Testing
 
