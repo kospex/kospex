@@ -161,6 +161,19 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - Include: overview, files changed, usage, and implementation notes
 - These docs serve as context for future development and release planning
 
+### Adding a Database Migration
+
+The kospex DB schema is evolved via numbered migration files under `src/kospex/db/migrations/`. The runner is `src/kospex/db/migrator.py`. See `src/kospex/db/migrations/README.md` for the full conventions and limitations; quick reference:
+
+1. **Pick the next prefix.** Current baseline is version 2 (frozen in `kospex_schema.py`), so the first new migration is `0003`. New migrations always go at the end (next sequential number) — do not renumber.
+2. **Create `NNNN_<short-slug>.sql`** with the schema change. Plain SQL, `--` comments allowed. Do NOT include `BEGIN` / `COMMIT` / `ROLLBACK` — the runner manages the transaction.
+3. **(Optional) Create `NNNN_<short-slug>.py`** with the same prefix and slug for data backfills. Must export `def up(db): ...` — runs after the SQL in the same transaction. Raise to roll back the whole migration.
+4. **Do not edit a migration once committed and shipped.** Write a new forward migration instead. Checksums in `schema_migrations` will warn on tampering.
+5. **Verify locally:** `kospex upgrade-db` (status / dry run), then `kospex upgrade-db -apply` (execute against `~/kospex/kospex.db`). Back up the DB first.
+6. **Watch for SQL parser limitations** (CREATE TRIGGER bodies, string literals with `;`, `/* */` comments with `;`) — see the Limitations section in the migrations README. Workaround: do the nuanced part in the Python `up(db)` step using `db.execute(...)` on the raw string.
+
+Design / spec: `changes/202605-db-migration-system.md`.
+
 ### Code Style & Standards
 - Use Python 3.12+ features
 - Follow existing patterns in codebase
