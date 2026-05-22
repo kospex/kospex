@@ -6,12 +6,15 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 - New `/org/{org_key}` organisation view mirroring the repo view — org Commit Summary, Developer Status, Technology Landscape, and a Repositories table linking back to each `/repo/{repo_id}`. See `changes/202605-repo-org-header-redesign.md`.
+- Script-driven DB migration system at `src/kospex/db/`. Replaces the auto-`ALTER TABLE` `upgrade-db` command with numbered SQL migration files (`0003_<slug>.sql`) plus optional Python `up(db)` backfills, applied transactionally and tracked per-row in a new `schema_migrations` table. CLI: `kospex upgrade-db` (status / dry run) and `kospex upgrade-db -apply`. Framework only — no actual migration files shipped yet. See `changes/202605-db-migration-system.md`.
 
 ### Changed
 - Repo view (`/repo/{repo_id}`) header is now a `server / org / repo` breadcrumb with a bold title and entity label instead of the raw `repo_id`; the server and org segments are links (server → existing `/orgs/{server}`, org → the new org view). Malformed `repo_id`/`org_key` now return HTTP 404 instead of a generic 500. See `changes/202605-repo-org-header-redesign.md`.
+- `KOSPEX_TABLES` / `REPO_TABLES` list constants in `kospex_schema.py` replaced by runtime introspection helpers (`get_kospex_tables(db)`, `get_repo_tables(db)`) in `src/kospex/db/introspect.py`. Eliminates "forgot to update the constant" as a class of bug — `kreaper delete-repo -repo_id` now auto-detects repo tables via PRAGMA. See `changes/202605-db-migration-system.md`.
 
 ### Removed
 - Deprecated `kospex sync-dependencies` command removed — an obsolete CLI-era flow predating the repo-sync/web-UI model. Its `-file` path cloned and synced each dependency's source repo (superseded by `kospex sync` plus the `/osi/` and `/dependencies/` views); its `-repo` path was only a `NOT IMPLEMENTED!` stub. The repo-level dependency walk it gestured at is tracked for a future `kospex deps -repo`. See `changes/202605-osi-dependencies-pipeline.md`.
+- Old auto-alter DB upgrade helpers (`generate_alter_table`, `apply_alter_table_commands`, `validate_square_brackets*`) — superseded by the script-driven migrator. About 250 LOC of dead code removed. See `changes/202605-db-migration-system.md`.
 
 ## 0.0.37 - 2026-05-10
 
