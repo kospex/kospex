@@ -13,6 +13,7 @@ from sqlite_utils import Database
 
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
+from kospex.db.introspect import get_kospex_tables
 from kospex_observation import Observation
 from kospex_utils import KospexTimer
 
@@ -1513,7 +1514,7 @@ class KospexQuery:
 
     def tech_commits(self, author_email=None, repo_id=None):
         """ " Return a KospexData object with tables joined"""
-        kd = KospexData()
+        kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table("commits", "commit_files")
         kd.select("_ext")
         kd.select_as("COUNT(*)", "commits")
@@ -2206,6 +2207,11 @@ class KospexData:
     """
 
     def __init__(self, kospex_db=None):
+        if kospex_db is None:
+            raise ValueError(
+                "KospexData requires a kospex_db argument; "
+                "pass the Database from KospexQuery.kospex_db"
+            )
         self.kospex_db = kospex_db
         self.params = []
         self.from_tables = []
@@ -2222,10 +2228,11 @@ class KospexData:
 
     def where_join(self, table, column, join_table, join_column):
         """Join two tables on a column"""
-        # Check the table are valid in our schema
+        # Check the tables exist in the live schema
+        valid = get_kospex_tables(self.kospex_db)
         for t in (table, join_table):
-            if t not in KospexSchema.KOSPEX_TABLES:
-                raise ValueError(f"Table '{t}' not in KospexSchema.KOSPEX_TABLES")
+            if t not in valid:
+                raise ValueError(f"Table '{t}' is not a known Kospex table")
 
         # Check the columns are valid SQL names
         for col in (column, join_column):
@@ -2296,11 +2303,11 @@ class KospexData:
 
     def from_table(self, *tables):
         """Add a table to the query"""
+        valid = get_kospex_tables(self.kospex_db)
         for table in tables:
-            if table not in KospexSchema.KOSPEX_TABLES:
-                raise ValueError(f"Table '{table}' not in KospexSchema.KOSPEX_TABLES")
-            else:
-                self.from_tables.append(table)
+            if table not in valid:
+                raise ValueError(f"Table '{table}' is not a known Kospex table")
+            self.from_tables.append(table)
 
     def valid_table_prefix_select(self, col):
         """Check if a column name has a table prefix"""
@@ -2311,8 +2318,7 @@ class KospexData:
                 # raise ValueError(f"Invalid column name: {col}")
                 return False
 
-            if parts[0] not in KospexSchema.KOSPEX_TABLES:
-                # raise ValueError(f"Table '{parts[0]}' not in KospexSchema.KOSPEX_TABLES")
+            if parts[0] not in get_kospex_tables(self.kospex_db):
                 return False
 
             if not self.is_valid_sql_name(parts[1]):

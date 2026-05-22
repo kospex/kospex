@@ -10,6 +10,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Changed
 - Repo view (`/repo/{repo_id}`) header is now a `server / org / repo` breadcrumb with a bold title and entity label instead of the raw `repo_id`; the server and org segments are links (server → existing `/orgs/{server}`, org → the new org view). Malformed `repo_id`/`org_key` now return HTTP 404 instead of a generic 500. See `changes/202605-repo-org-header-redesign.md`.
 
+### Removed
+- Deprecated `kospex sync-dependencies` command removed — an obsolete CLI-era flow predating the repo-sync/web-UI model. Its `-file` path cloned and synced each dependency's source repo (superseded by `kospex sync` plus the `/osi/` and `/dependencies/` views); its `-repo` path was only a `NOT IMPLEMENTED!` stub. The repo-level dependency walk it gestured at is tracked for a future `kospex deps -repo`. See `changes/202605-osi-dependencies-pipeline.md`.
+
 ## 0.0.37 - 2026-05-10
 
 ### Added

@@ -19,6 +19,7 @@ from sqlite_utils import Database
 
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
+from kospex.db.introspect import get_kospex_tables
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit, MissingGitDirectory
 from kospex_query import KospexData, KospexQuery
@@ -1240,7 +1241,7 @@ class Kospex:
         table.align["Rows"] = "r"
         # table.align["commits"] = "r"
 
-        for db_table in KospexSchema.KOSPEX_TABLES:
+        for db_table in get_kospex_tables(self.kospex_db):
             if display_progress:
                 print(f"Checking {db_table} table")
 
@@ -1271,7 +1272,7 @@ class Kospex:
         """
         Remove all rows in a table for the given repo_id
         """
-        if table not in KospexSchema.KOSPEX_TABLES:
+        if table not in get_kospex_tables(self.kospex_db):
             raise ValueError(f"table: {table} is not a Kospex table")
 
         kd = KospexData(kospex_db=self.kospex_db)
@@ -1280,33 +1281,3 @@ class Kospex:
         kd.where("_repo_id", "=", repo_id)
         print(kd.generate_sql())
         return kd.execute()
-
-    def apply_alter_table_commands(self, alter_commands):
-        """
-        Applies a list of ALTER TABLE commands to a SQLite database using sqlite-utils.
-
-        :param db_path: Path to the SQLite database file
-        :param alter_commands: List of SQL commands (strings) to execute
-        :return: A list of dictionaries. Each dictionary has:
-                 {
-                   'command': <the SQL string>,
-                   'error': <error message> or None
-                 }
-        """
-        db = self.kospex_db
-        results = []
-        print(alter_commands)
-
-        for command in alter_commands:
-            try:
-                print(command)
-
-                # Execute the ALTER TABLE command
-                db.execute(command)
-                # If execution succeeded, no error
-                results.append({"command": command, "error": None})
-            except Exception as e:
-                # If there's an error, store it along with the command
-                results.append({"command": command, "error": str(e)})
-
-        return results

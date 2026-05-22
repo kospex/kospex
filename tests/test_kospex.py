@@ -71,7 +71,8 @@ def test_days_functions():
 def test_has_complex_sql():
     """ Test validators for more complex SQL expressions """
 
-    kd = KospexData()
+    import sqlite_utils
+    kd = KospexData(kospex_db=sqlite_utils.Database(":memory:"))
     assert kd.is_valid_sql_name("SUM") is True
 
     assert kd.has_parentheses("SUM") is False

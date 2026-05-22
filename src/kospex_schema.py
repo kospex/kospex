@@ -2,6 +2,7 @@
 import os
 from sqlite_utils import Database
 import kospex_utils as KospexUtils
+from kospex.db.introspect import get_kospex_tables
 
 # Definitions of the kospex DB tables
 TBL_BRANCHES = "branches"
@@ -25,18 +26,9 @@ TBL_KOSPEX_META = "kospex_meta"
 TBL_GROUPS = "kospex_groups"
 TBL_KOSPEX_CONFIG = "kospex_config"
 TBL_DEVELOPER_STATS = "developer_stats"
+TBL_SCHEMA_MIGRATIONS = "schema_migrations"
 # Not yet implemented
 TBL_MAILMAP = "mailmaps"
-
-KOSPEX_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
-                TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_URL_CACHE, TBL_KRUNNER,
-                TBL_OBSERVATIONS, TBL_REPOS, TBL_KOSPEX_META, TBL_GROUPS, TBL_KOSPEX_CONFIG,
-                TBL_EMAIL_MAP, TBL_DEVELOPER_STATS]
-
-# The following are tables with a repo_id
-REPO_TABLES = [ TBL_COMMITS, TBL_COMMIT_FILES, TBL_COMMIT_METADATA, TBL_FILE_METADATA,
-                TBL_REPO_HOTSPOTS, TBL_DEPENDENCY_DATA, TBL_KRUNNER, TBL_OBSERVATIONS, TBL_REPOS,
-                TBL_GROUPS, TBL_BRANCHES, TBL_BRANCH_HISTORY, TBL_DEVELOPER_STATS ]
 
 # Mapping of table name to create statement is below the create statement definitions in:
 # DB_CREATE_STATEMENTS
@@ -385,6 +377,15 @@ SQL_CREATE_DEVELOPER_STATS = f'''CREATE TABLE IF NOT EXISTS [{TBL_DEVELOPER_STAT
     PRIMARY KEY(_repo_id, author_email)
     )'''
 
+SQL_CREATE_SCHEMA_MIGRATIONS = f'''CREATE TABLE IF NOT EXISTS [{TBL_SCHEMA_MIGRATIONS}] (
+    [id] TEXT PRIMARY KEY,         -- e.g. '0003_add_repos_size_bytes'
+    [sequence] INTEGER NOT NULL,   -- 3 (extracted from prefix)
+    [checksum] TEXT NOT NULL,      -- sha256(sql)[:sha256(py)]
+    [applied_at] TEXT NOT NULL,    -- ISO 8601 UTC
+    [duration_ms] INTEGER,
+    [has_python] INTEGER NOT NULL  -- 0 or 1
+    )'''
+
 
 
 SQL_CREATE_COMMITS_VIEW = f'''
@@ -415,6 +416,7 @@ DB_CREATE_STATEMENTS = {
     TBL_COMMITS_VIEW: SQL_CREATE_COMMITS_VIEW,
     TBL_EMAIL_MAP: SQL_CREATE_EMAIL_MAP,
     TBL_DEVELOPER_STATS: SQL_CREATE_DEVELOPER_STATS,
+    TBL_SCHEMA_MIGRATIONS: SQL_CREATE_SCHEMA_MIGRATIONS,
 }
 
 # Functions for SQLite stuff
@@ -457,6 +459,7 @@ def connect_or_create_kospex_db():
     kospex_db.execute(SQL_CREATE_EMAIL_MAP)
     kospex_db.execute(SQL_CREATE_COMMITS_VIEW)
     kospex_db.execute(SQL_CREATE_DEVELOPER_STATS)
+    kospex_db.execute(SQL_CREATE_SCHEMA_MIGRATIONS)
 
     # TODO - look at moving all table creates to "create if not exits"
 
@@ -472,11 +475,11 @@ def connect_or_create_kospex_db():
 def drop_table(table):
     """ Drop a table from the DB """
     db = connect_or_create_kospex_db()
-    if table in KOSPEX_TABLES:
+    if table in get_kospex_tables(db):
         db.execute(f"DROP TABLE IF EXISTS [{table}]")
         print(f"Dropped table '{table}', if it existed")
     else:
-        print(f"Invalid table '{table}', was not in KOSPEX_TABLES")
+        print(f"Invalid table '{table}', not a known Kospex table")
 
 
 def array_to_db_tags(tags):
@@ -532,153 +535,3 @@ def metadata_rows_from_repo_files(files):
         #print(filtered_dict)
 
     return rows
-
-    # Claude.ai helped out with this one below
-    # Seems to work, and generates an alter table per column added
-    # TODO .. make sure all the old table columns are in the new table as sanity checking
-
-def generate_alter_table(old_create_sql, new_create_sql,tbl_name):
-
-    def extract_columns(create_sql):
-        start = create_sql.find('(') + 1
-        end = create_sql.rindex(')')
-        columns_section = create_sql[start:end]
-
-        # Split into lines and process each line
-        columns = []
-        for line in columns_section.split('\n'):
-            line = line.strip()
-            if not line or line.startswith('PRIMARY KEY'):
-                continue
-
-            # Remove any inline comments
-            if '--' in line:
-                line = line.split('--')[0].strip()
-
-            # Remove trailing comma if present
-            if line.endswith(','):
-                line = line[:-1].strip()
-
-            # Skip empty lines after processing
-            if not line:
-                continue
-
-            # Get column name from square brackets
-            if '[' in line:
-                col_name = line[line.find('[')+1:line.find(']')]
-                columns.append((col_name, line))
-
-        # TODO - Add as debug log
-        #print(f"Processed columns: {columns}")
-        return columns
-
-    old_cols = extract_columns(old_create_sql)
-    new_cols = extract_columns(new_create_sql)
-
-    old_names = [name for name, _ in old_cols]
-    new_names = [name for name, _ in new_cols]
-
-    # TODO - Add as debug log
-    #print(f"\nOld column names: {old_names}")
-    #print(f"New column names: {new_names}")
-
-    added_cols = [(name, def_) for name, def_ in new_cols if name not in old_names]
-
-    # TODO - Add as debug log
-    #print(f"Added columns: {added_cols}")
-
-    alter_commands = []
-    for _, col_def in added_cols:
-        alter_commands.append(f"ALTER TABLE [{tbl_name}] ADD COLUMN {col_def}\n")
-
-    return alter_commands
-
-def validate_square_brackets2(create_sql):
-    # Get the columns section
-    start = create_sql.find('(') + 1
-    end = create_sql.rindex(')')
-    columns_section = create_sql[start:end]
-
-    # Check each line
-    invalid_columns = []
-
-    for line in columns_section.split('\n'):
-        line = line.strip()
-        # Skip empty lines, comments, or PRIMARY KEY
-        if not line or line.startswith('--') or line.startswith('PRIMARY KEY'):
-            continue
-
-        # Remove comments
-        if '--' in line:
-            line = line.split('--')[0].strip()
-
-        # Split line by commas to handle multiple columns on one line
-        # but be careful not to split on commas inside parentheses (for types like VARCHAR(255))
-        columns_in_line = []
-        current_column = ""
-        paren_level = 0
-
-        for char in line:
-            if char == '(':
-                paren_level += 1
-                current_column += char
-            elif char == ')':
-                paren_level -= 1
-                current_column += char
-            elif char == ',' and paren_level == 0:
-                # End of a column definition
-                if current_column.strip():
-                    columns_in_line.append(current_column.strip())
-                current_column = ""
-            else:
-                current_column += char
-
-        # Add the last column if there is one
-        if current_column.strip():
-            columns_in_line.append(current_column.strip())
-
-        # Check each column declaration
-        for col_decl in columns_in_line:
-            # Check if the column declaration starts with a square bracket
-            if not col_decl.strip().startswith('['):
-                invalid_columns.append(col_decl.strip())
-
-    if invalid_columns:
-        print("The following column declarations are missing square brackets:")
-        for col in invalid_columns:
-            print(f"  {col}")
-        return False
-    return True
-
-def validate_square_brackets(create_sql):
-    # Get the columns section
-    start = create_sql.find('(') + 1
-    end = create_sql.rindex(')')
-    columns_section = create_sql[start:end]
-
-    # Check each line
-    invalid_lines = []
-    for line in columns_section.split('\n'):
-        line = line.strip()
-        # Skip empty lines, comments, or PRIMARY KEY
-        if not line or line.startswith('--') or line.startswith('PRIMARY KEY'):
-            continue
-        # Remove comments and trailing comma
-        if '--' in line:
-            line = line.split('--')[0].strip()
-        if line.endswith(','):
-            line = line[:-1].strip()
-        # Skip if empty after cleaning
-        if not line:
-            continue
-
-        # Check if the line starts with a square bracket
-        if not line.startswith('['):
-            invalid_lines.append(line)
-
-    if invalid_lines:
-        print("The following lines are missing square brackets:")
-        for line in invalid_lines:
-            print(f"  {line}")
-        return False
-    return True
