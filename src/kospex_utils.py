@@ -12,6 +12,7 @@ from datetime import datetime, timezone, timedelta
 from dateutil import parser
 from collections import Counter, OrderedDict
 from prettytable import PrettyTable
+from rich.table import Table as RichTable
 from dotenv import load_dotenv
 
 # Import centralized logging after other imports to handle potential import errors
@@ -1287,6 +1288,21 @@ def convert_to_percentage(data):
             percentage_data[key] = round(percentage, 2)
 
     return percentage_data
+
+def get_status_legend():
+    """Return a rich Table legend describing the development statuses.
+
+    Statuses come from development_status() with the default thresholds
+    (active_limit=90, aging_limit=180, stale_limit=365).
+    """
+    table = RichTable(title="Status legend", title_style="dim", show_edge=True)
+    table.add_column("Status", style="dim")
+    table.add_column("Meaning", style="dim")
+    table.add_row("Active", "commit within last 90 days")
+    table.add_row("Aging", "last commit 91-180 days ago")
+    table.add_row("Stale", "last commit 181-365 days ago")
+    table.add_row("Unmaintained", "no commit in over 365 days")
+    return table
 
 def get_status_table(status):
     """
