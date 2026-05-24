@@ -30,6 +30,19 @@ TBL_SCHEMA_MIGRATIONS = "schema_migrations"
 # Not yet implemented
 TBL_MAILMAP = "mailmaps"
 
+# package_use vocabulary — free-text DB column, enforced in code only
+PACKAGE_USE_DIRECT     = "direct"
+PACKAGE_USE_DEV        = "dev"
+PACKAGE_USE_PEER       = "peer"
+PACKAGE_USE_OPTIONAL   = "optional"
+PACKAGE_USE_TRANSITIVE = "transitive"
+
+PACKAGE_USE_VALUES = frozenset({
+    PACKAGE_USE_DIRECT, PACKAGE_USE_DEV,
+    PACKAGE_USE_PEER, PACKAGE_USE_OPTIONAL,
+    PACKAGE_USE_TRANSITIVE,
+})
+
 # Mapping of table name to create statement is below the create statement definitions in:
 # DB_CREATE_STATEMENTS
 
