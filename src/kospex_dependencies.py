@@ -564,6 +564,7 @@ class KospexDependencies:
         if "dependencies" in data:
             for item in data.get("dependencies"):
                 details = self.get_npm_dependency_dict(item, data)
+                details["package_use"] = KospexSchema.PACKAGE_USE_DIRECT
                 # print(details)
                 results.append(details)
                 print(item)
@@ -575,6 +576,7 @@ class KospexDependencies:
                     details = self.get_npm_dependency_dict(
                         item, data, dependency_key="devDependencies"
                     )
+                    details["package_use"] = KospexSchema.PACKAGE_USE_DEV
                     results.append(details)
                     print(item)
                     table_rows.append(

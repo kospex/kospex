@@ -1,9 +1,12 @@
 """ Tests for kospex """
+import json
+from unittest.mock import patch
 from kospex_core import Kospex
 import krunner_utils as KrunnerUtils
 import kospex_utils as KospexUtils
 from kospex_query import KospexQuery, KospexData
 from kospex_dependencies import KospexDependencies
+import kospex_schema as KospexSchema
 
 def test_kospex():
     """ Test object creation works"""
@@ -98,3 +101,23 @@ def test_find_dependency_files_includes_pnpm(tmp_path):
     found = kdeps.find_dependency_files(str(tmp_path))
     assert any("pnpm-lock.yaml" in f for f in found), \
         f"pnpm-lock.yaml not found in {found}"
+
+
+def test_npm_assess_stamps_package_use(tmp_path):
+    pkg_json = tmp_path / "package.json"
+    pkg_json.write_text(json.dumps({
+        "dependencies": {"lodash": "4.17.21"},
+        "devDependencies": {"jest": "29.0.0"},
+    }))
+
+    kdeps = KospexDependencies()
+
+    def fake_depsdev(pkg_type, name, version):
+        return {"package_name": name, "package_version": version, "package_type": pkg_type}
+
+    with patch.object(kdeps, "depsdev_record", side_effect=fake_depsdev):
+        results = kdeps.npm_assess(str(pkg_json), dev_deps=True)
+
+    by_name = {r["package_name"]: r for r in results}
+    assert by_name["lodash"]["package_use"] == KospexSchema.PACKAGE_USE_DIRECT
+    assert by_name["jest"]["package_use"] == KospexSchema.PACKAGE_USE_DEV
