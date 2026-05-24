@@ -355,6 +355,21 @@ class KospexDependencies:
                 print_table=print_table,
             )
 
+        elif basefile == "pnpm-lock.yaml":
+            from kospex.extractors.pnpm import extract_pnpm_lock
+            package_type = "npm"
+            _req_to_use = {
+                "direct":   KospexSchema.PACKAGE_USE_DIRECT,
+                "dev":      KospexSchema.PACKAGE_USE_DEV,
+                "resolved": KospexSchema.PACKAGE_USE_TRANSITIVE,
+            }
+            packages = extract_pnpm_lock(filename)
+            for pkg in packages:
+                pkg["package_use"] = _req_to_use.get(pkg.get("requirements_type", ""), "")
+                enrichment = self.depsdev_record("npm", pkg["package_name"], pkg["package_version"])
+                pkg.update(enrichment)
+            results = packages
+
         else:
             print(f"Unknown or unsupported package manager file found {basefile}")
             return None

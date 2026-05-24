@@ -1,5 +1,6 @@
 """ Tests for kospex """
 import json
+from pathlib import Path
 from unittest.mock import patch
 from kospex_core import Kospex
 import krunner_utils as KrunnerUtils
@@ -121,3 +122,42 @@ def test_npm_assess_stamps_package_use(tmp_path):
     by_name = {r["package_name"]: r for r in results}
     assert by_name["lodash"]["package_use"] == KospexSchema.PACKAGE_USE_DIRECT
     assert by_name["jest"]["package_use"] == KospexSchema.PACKAGE_USE_DEV
+
+
+PNPM_V9_FIXTURE = Path(__file__).parent / "fixtures" / "pnpm" / "v9-simple.yaml"
+
+
+def test_assess_pnpm_returns_records_with_package_use(tmp_path):
+    # assess() dispatches on the literal filename; write fixture as pnpm-lock.yaml
+    lock_file = tmp_path / "pnpm-lock.yaml"
+    lock_file.write_text(PNPM_V9_FIXTURE.read_text())
+
+    kdeps = KospexDependencies()
+
+    def fake_depsdev(pkg_type, name, version):
+        return {"package_name": name, "package_version": version, "package_type": pkg_type}
+
+    with patch.object(kdeps, "depsdev_record", side_effect=fake_depsdev):
+        results = kdeps.assess(str(lock_file))
+
+    assert results is not None, "assess() returned None for pnpm-lock.yaml"
+    assert len(results) > 0
+
+    by_name = {r["package_name"]: r for r in results}
+
+    assert by_name["lodash"]["package_use"] == KospexSchema.PACKAGE_USE_DIRECT
+    assert by_name["jest"]["package_use"] == KospexSchema.PACKAGE_USE_DEV
+
+    transitive = [r for r in results if r["package_use"] == KospexSchema.PACKAGE_USE_TRANSITIVE]
+    assert len(transitive) >= 1, "Expected at least one transitive package"
+
+
+def test_assess_pnpm_not_none(tmp_path):
+    """assess() must not return None for a pnpm-lock.yaml (would print error and exit in CLI)."""
+    lock_file = tmp_path / "pnpm-lock.yaml"
+    lock_file.write_text(PNPM_V9_FIXTURE.read_text())
+
+    kdeps = KospexDependencies()
+    with patch.object(kdeps, "depsdev_record", return_value={}):
+        result = kdeps.assess(str(lock_file))
+    assert result is not None
