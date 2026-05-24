@@ -1051,6 +1051,7 @@ class KospexDependencies:
             "go.sum": "Go Modules",
             "Podfile": "CocoaPods",
             "Podfile.lock": "CocoaPods",
+            "pnpm-lock\\.yaml$": "pnpm",
         }
 
         detected_files = []

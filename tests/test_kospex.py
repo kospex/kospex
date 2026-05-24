@@ -3,6 +3,7 @@ from kospex_core import Kospex
 import krunner_utils as KrunnerUtils
 import kospex_utils as KospexUtils
 from kospex_query import KospexQuery, KospexData
+from kospex_dependencies import KospexDependencies
 
 def test_kospex():
     """ Test object creation works"""
@@ -89,3 +90,11 @@ def test_has_complex_sql():
 
     invalid_complex = "cou!nt(distinct(author_email))"
     assert kd.validate_nested_expressions(invalid_complex) is False
+
+
+def test_find_dependency_files_includes_pnpm(tmp_path):
+    (tmp_path / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+    kdeps = KospexDependencies()
+    found = kdeps.find_dependency_files(str(tmp_path))
+    assert any("pnpm-lock.yaml" in f for f in found), \
+        f"pnpm-lock.yaml not found in {found}"
