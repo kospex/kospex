@@ -7,6 +7,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Added
 - New `/org/{org_key}` organisation view mirroring the repo view — org Commit Summary, Developer Status, Technology Landscape, and a Repositories table linking back to each `/repo/{repo_id}`. See `changes/202605-repo-org-header-redesign.md`.
 - Script-driven DB migration system at `src/kospex/db/`. Replaces the auto-`ALTER TABLE` `upgrade-db` command with numbered SQL migration files (`0003_<slug>.sql`) plus optional Python `up(db)` backfills, applied transactionally and tracked per-row in a new `schema_migrations` table. CLI: `kospex upgrade-db` (status / dry run) and `kospex upgrade-db -apply`. Framework only — no actual migration files shipped yet. See `changes/202605-db-migration-system.md`.
+- `kospex sca` and `kospex deps` now support `pnpm-lock.yaml` (lockfile versions 5, 6, 9)
+- `package_use` field populated for pnpm packages (`direct`, `dev`, `transitive`) and npm `package.json` packages (`direct`, `dev`)
+- `PACKAGE_USE_*` vocabulary constants added to `kospex_schema` for consistent cross-parser use
 
 ### Changed
 - `kospex summary` now renders the per-repo table and the status-count table as Rich tables (matching `kospex orgs` / `kospex stats`) instead of PrettyTable, and prints a status legend below the summary describing the Active (≤90d) / Aging (91–180d) / Stale (181–365d) / Unmaintained (>365d) thresholds. Rendering-only change — status logic, CSV (`-out`) output, and the returned results are unchanged. See `changes/202605-summary-rich-status-legend.md`.
