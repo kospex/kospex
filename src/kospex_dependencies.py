@@ -366,8 +366,11 @@ class KospexDependencies:
             packages = extract_pnpm_lock(filename)
             for pkg in packages:
                 pkg["package_use"] = _req_to_use.get(pkg.get("requirements_type", ""), "")
-                enrichment = self.depsdev_record("npm", pkg["package_name"], pkg["package_version"])
-                pkg.update(enrichment)
+                # Only enrich declared deps — lockfile closures can have thousands of
+                # transitive entries and each depsdev_record() call is an HTTP round-trip.
+                if pkg.get("requirements_type") in ("direct", "dev"):
+                    enrichment = self.depsdev_record("npm", pkg["package_name"], pkg["package_version"])
+                    pkg.update(enrichment)
             results = packages
 
         else:
