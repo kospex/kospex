@@ -392,6 +392,9 @@ class KospexDependencies:
                 r.pop("authors", None)
                 r.pop("ecosystem", None)  # This was added in krunner osi for CSV output
                 r.pop("semantic", None)  # Usd by npm to show what semantic types
+                r.pop("extras", None)           # extractor template field, not a DB column
+                r.pop("requirements_type", None) # extractor template field, not a DB column
+                r.pop("version_type", None)      # extractor template field, not a DB column
                 r.update(git_details)
                 r["package_type"] = package_type
                 r["latest"] = 1
