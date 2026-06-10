@@ -7,6 +7,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Added
 - New `/org/{org_key}` organisation view mirroring the repo view — org Commit Summary, Developer Status, Technology Landscape, and a Repositories table linking back to each `/repo/{repo_id}`. See `changes/202605-repo-org-header-redesign.md`.
 - Script-driven DB migration system at `src/kospex/db/`. Replaces the auto-`ALTER TABLE` `upgrade-db` command with numbered SQL migration files (`0003_<slug>.sql`) plus optional Python `up(db)` backfills, applied transactionally and tracked per-row in a new `schema_migrations` table. CLI: `kospex upgrade-db` (status / dry run) and `kospex upgrade-db -apply`. Framework only — no actual migration files shipped yet. See `changes/202605-db-migration-system.md`.
+- `krunner osi` now parses `pnpm-lock.yaml` via the new `kospex.extractors.pnpm` module — pnpm projects produce SCA results instead of being skipped. Supports lockfile versions 5/6/9 (`direct` / `dev` / `resolved` classification). Required the `panopticas` pin bump to `0.0.16` (which added `pnpm-lock.yaml` file-type detection). PR [#101](https://github.com/kospex/kospex/pull/101).
 - `kospex sca` and `kospex deps` now support `pnpm-lock.yaml` (lockfile versions 5, 6, 9)
 - `package_use` field populated for pnpm packages (`direct`, `dev`, `transitive`) and npm `package.json` packages (`direct`, `dev`)
 - `PACKAGE_USE_*` vocabulary constants added to `kospex_schema` for consistent cross-parser use
