@@ -1448,8 +1448,13 @@ def connectivity(save):
         print(f"\n{'Extracting' if save else 'Analyzing'} certificate chain from {hostname}...")
 
         try:
-            # Create an SSL context that doesn't verify certificates
+            # Create an SSL context that doesn't verify certificates.
+            # Verification is intentionally disabled because this is a
+            # diagnostic that must retrieve the cert chain even when the
+            # chain can't be validated (e.g. behind a TLS-intercepting proxy).
+            # Pin a modern minimum TLS version so the handshake itself stays safe.
             context = ssl.create_default_context()
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
 
