@@ -2,7 +2,34 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## 0.0.39 - 2026-06-14
+
+### Fixed
+- **Packaging — `templates/` and `static/` restored to the wheel**. The
+  0.0.38 wheel shipped no template or static asset files (180 KB vs
+  0.0.37's 526 KB; zero templates vs 50; zero static assets vs 8), so
+  `kweb2`-rendered routes could not resolve any template — including
+  `_entity_header.html`, surfacing as `TemplateNotFound` at
+  `/repo/{repo_id}` and similar. The cause was the
+  `[tool.setuptools.packages.find]` directive introduced in 0.0.38, whose
+  `include = ["kospex*"]` filter restricted setuptools to packages whose
+  name begins with `kospex` and excluded the sibling top-level
+  `templates/` and `static/` directories from `package-data` attachment.
+  Fix: extend the find directive to
+  `include = ["kospex*", "templates*", "static*"]` and add
+  `namespaces = true` so the data dirs are discovered as namespace
+  packages without requiring `__init__.py` files. Verified by rebuilding
+  the wheel and inspecting contents — 50 templates and 8 static assets
+  present, including `templates/_entity_header.html`. Editable installs
+  (`pip install -e .`) were unaffected (they bypass packaging), which is
+  what hid the regression during local development.
+
 ## 0.0.38 - 2026-06-14
+
+> **Note (2026-06-14)**: this release is structurally broken — the wheel
+> ships no `templates/` or `static/` assets, so `kweb2`-rendered web pages
+> cannot render. Use 0.0.39 or later. Root cause and fix in the 0.0.39
+> §Fixed entry above.
 
 ### Added
 - New `/org/{org_key}` organisation view mirroring the repo view — org Commit Summary, Developer Status, Technology Landscape, and a Repositories table linking back to each `/repo/{repo_id}`. See `changes/202605-repo-org-header-redesign.md`.
