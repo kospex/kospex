@@ -417,15 +417,74 @@ class KospexDependencies:
 
         return self.dependencies
 
-    def save_dependencies(self, git_details=None):
+    # Extractor-only template fields produced by the leaf parsers that are
+    # NOT columns in TBL_DEPENDENCY_DATA and must be stripped before upsert.
+    _NON_SCHEMA_FIELDS = (
+        "days_ago", "authors", "ecosystem", "semantic",
+        "extras", "requirements_type", "version_type",
+    )
+
+    def save_dependencies(self, records, source=None):
         """
-        Save the dependencies to the kospex database.
+        Save pre-parsed dependency records to TBL_DEPENDENCY_DATA.
 
-        For the _repo_id and file_path, set latest to 0
+        Reusable DB-write path shared by the dependency tools (e.g. `krunner
+        osi`). Each record must already carry the primary-key columns
+        (_repo_id, hash, file_path, package_type, package_name,
+        package_version); _git_server/_git_owner/_git_repo are derived from
+        _repo_id when absent.
 
+        Before inserting, prior rows for each (_repo_id, file_path,
+        package_name) are demoted to latest=0 so re-runs don't accumulate
+        stale "latest" rows; the incoming records are then upserted with
+        latest=1.
+
+        source: value for the [source] column identifying the writing tool.
+
+        Returns the number of records written.
         """
+        if not records:
+            return 0
 
-        # Set the latest to 0 based on the criteria above
+        # Demote prior "latest" rows for each (_repo_id, file_path,
+        # package_name) we are about to (re)write.
+        demote_keys = {
+            (r.get("_repo_id"), r.get("file_path"), r.get("package_name"))
+            for r in records
+        }
+        for repo_id, file_path, package_name in demote_keys:
+            self.kospex_db.execute(
+                f"UPDATE {KospexSchema.TBL_DEPENDENCY_DATA} SET latest = 0 "
+                "WHERE _repo_id = ? AND file_path = ? AND package_name = ?",
+                [repo_id, file_path, package_name],
+            )
+
+        cleaned = []
+        for r in records:
+            rec = dict(r)
+            for field_name in self._NON_SCHEMA_FIELDS:
+                rec.pop(field_name, None)
+            rec["latest"] = 1
+            if source is not None:
+                rec["source"] = source
+            # Derive the _git_* columns from _repo_id when not supplied.
+            if rec.get("_repo_id") and not rec.get("_git_server"):
+                parts = KospexUtils.parse_repo_id(rec["_repo_id"])
+                if parts:
+                    rec["_git_server"] = parts["git_server"]
+                    rec["_git_owner"] = parts["org"]
+                    rec["_git_repo"] = parts["repo"]
+            cleaned.append(rec)
+
+        self.kospex_db.table(KospexSchema.TBL_DEPENDENCY_DATA).upsert_all(
+            cleaned,
+            pk=[
+                "_repo_id", "hash", "file_path",
+                "package_type", "package_name", "package_version",
+            ],
+        )
+
+        return len(cleaned)
 
     def get_values_array(self, input_dict, keys, default_value):
         """return an array of values from a dictionary, using the keys provided"""

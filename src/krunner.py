@@ -596,7 +596,7 @@ def osi(all, request_id):
     repos = memory_kq.get_repos(**params)
     results = []
 
-    kdeps = KospexDependencies(kospex_query=kospex.kospex_query)
+    kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kospex.kospex_query)
 
     for r in repos:
         console.log(f"Running OSI on {r['_repo_id']} ...\n")
@@ -614,6 +614,7 @@ def osi(all, request_id):
                 reqs = kdeps.parse_pip_requirements_file(full_path)
                 for req in reqs:
                     req["_repo_id"] = r["_repo_id"]
+                    req["hash"] = d.get("hash")
                     req["file_path"] = d["Provider"]
                     req["requirements_type"] = "direct"
                     req["extras"] = ""
@@ -626,6 +627,7 @@ def osi(all, request_id):
                 reqs = kdeps.parse_pyproject_file(full_path)
                 for req in reqs:
                     req["_repo_id"] = r["_repo_id"]
+                    req["hash"] = d.get("hash")
                     req["file_path"] = d["Provider"]
                     req["ecosystem"] = "PyPi"
                     results.append(req)
@@ -643,6 +645,7 @@ def osi(all, request_id):
                     continue
                 for req in reqs:
                     req["_repo_id"] = r["_repo_id"]
+                    req["hash"] = d.get("hash")
                     req["file_path"] = d["Provider"]
                     req["ecosystem"] = "NPM"
                     results.append(req)
@@ -653,6 +656,7 @@ def osi(all, request_id):
                 reqs = extract_pnpm_lock(full_path)
                 for req in reqs:
                     req["_repo_id"] = r["_repo_id"]
+                    req["hash"] = d.get("hash")
                     req["file_path"] = d["Provider"]
                     req["ecosystem"] = "NPM"
                     results.append(req)
@@ -663,6 +667,15 @@ def osi(all, request_id):
 
         # console.print(deps)
         #
+    # Canonical DB values, matching what `kospex sca`/assess() writes so
+    # krunner osi rows reconcile with single-file scans rather than duplicating.
+    eco_to_type = {"PyPi": "pypi", "NPM": "npm"}
+    req_to_use = {
+        "direct": KospexSchema.PACKAGE_USE_DIRECT,
+        "dev": KospexSchema.PACKAGE_USE_DEV,
+        "resolved": KospexSchema.PACKAGE_USE_TRANSITIVE,
+    }
+
     console.print(results)
     for d in results:
         deps_rec = kdeps.depsdev_record(
@@ -678,10 +691,19 @@ def osi(all, request_id):
             d["published_at"] = published.split("T")[0]
         else:
             d["published_at"] = "Unknown"
+        d["package_type"] = eco_to_type.get(
+            d.get("ecosystem"), str(d.get("ecosystem", "")).lower()
+        )
+        d["package_use"] = req_to_use.get(d.get("requirements_type", ""), "")
 
     if not results or len(results) == 0:
         console.print("No results", style="red")
         sys.exit(1)
+
+    # Persist the enriched dependency data so the /dependencies/ web view and
+    # repeat scans have current advisory data (not just the CSV exports below).
+    written = kdeps.save_dependencies(results, source="krunner osi")
+    console.log(f"Wrote {written} dependency rows to the kospex DB")
 
     # Determine scope based on -all flag or request_id
     if all:

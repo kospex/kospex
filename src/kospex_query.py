@@ -266,7 +266,9 @@ class KospexQuery:
 
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_DEPENDENCY_DATA)
-        # kd.where("latest", "=", 1)
+        # Only current rows; save_dependencies() demotes superseded rows to
+        # latest=0 so this filter no longer double-counts old versions.
+        kd.where("latest", "=", 1)
 
         if request_id:
             if repo_id := request_id.get("repo_id"):
