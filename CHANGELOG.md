@@ -2,6 +2,22 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## [Unreleased]
+
+### Fixed
+- **Technology Landscape — `/tech/` drill-down link now URL-encoded**. On the
+  `/landscape/` page, each technology row linked to `/tech/{Language}` using the
+  raw language name, so names containing URL-special characters drilled down to
+  the wrong technology (or nothing): `C#`/`F#` (the `#` started a URL fragment,
+  so the server saw `/tech/C`/`/tech/F`), `C++` (the `+` decoded to a space),
+  and `Visual Basic` (raw space). Fix: encode the value in
+  `templates/landscape.html` with Jinja2's `urlencode` filter
+  (`/tech/{{ row['Language'] | urlencode }}`); the `/tech/{tech}` FastAPI route
+  auto-decodes the path param, so it receives the original language string.
+  The Language name is now also a `/tech/` link (matching the repos column), so
+  both columns drill into the per-technology view.
+  See `changes/202606-landscape-tech-link-urlencode.md`.
+
 ## 0.0.39 - 2026-06-14
 
 ### Fixed

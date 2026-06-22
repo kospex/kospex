@@ -64,10 +64,12 @@
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for row in data %}
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ row['Language'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <a href="/tech/{{ row['Language'] | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['Language'] }}</a>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['count'] }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
-                                        <a href="/tech/{{ row['Language'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['repos'] }}</a>
+                                        <a href="/tech/{{ row['Language'] | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['repos'] }}</a>
                                     </td>
                                 </tr>
                                 {% endfor %}
