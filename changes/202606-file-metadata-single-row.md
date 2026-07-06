@@ -119,7 +119,21 @@ below. This is the runtime-data half of draft issue #20.
   lookup inside `file_metadata()` (~34s → ~1.4s on babel; verified identical output,
   0 mismatches). This is the cheap source of each file's last-commit hash + date that
   the single-row builder (item 1) consumes. Tests: `tests/test_latest_commit_file_map.py`.
-- **[TODO]** Work items 1–4 below.
+- **[DONE] Single-row builder (item 1) + committer_when for all files (item 2).**
+  `KospexSchema.build_file_metadata_rows()` merges panopticas (all files, incl
+  UNKNOWN) + scc metrics (where known) + the commit map into **one row per file**,
+  keyed by the per-file last-commit hash; `committer_when` is set for every committed
+  file. `file_metadata()` now does a single `reset latest=0` + merged upsert (was two
+  divergent upserts). Also fixed: `get_repo_files()` now excludes `.git/` explicitly
+  (panopticas didn't on freshly-init'd repos). Tests:
+  `tests/test_build_file_metadata_rows.py` (unit) +
+  `tests/test_file_metadata_sync.py` (end-to-end sync: one row per file + the
+  3-file churn invariant).
+- **[TODO]** Item 3 (version-aware guard + `0003` migration) and item 4 (truncate +
+  re-sync cleanup). Note: the existing HEAD-hash skip-guard still works in the common
+  case (a synced HEAD leaves ≥1 row at that hash), so it degrades gracefully until
+  item 3 rehomes it. The rename/path-mismatch ~5% (files with no commit-map entry →
+  HEAD-fallback hash, no date) is deferred per prior decision.
 
 ## Work items
 

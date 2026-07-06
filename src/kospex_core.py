@@ -945,95 +945,52 @@ class Kospex:
             print(f"get_repo_files executed in {(end - start) * 1000:.2f}ms")
             # This will be a dict of file paths and their metadata
 
-            # Reset "latest" flags to false
-            reset_last_sql = f"""UPDATE {KospexSchema.TBL_FILE_METADATA} SET LATEST = 0
-            WHERE _repo_id = ?"""
-            self.kospex_db.execute(reset_last_sql, [repo_id])
+            # Each file's last commit (hash + date) in a single pass over
+            # commit_files — the source of each row's per-file hash + date.
+            latest_commit = self.kospex_query.latest_commit_file_map(repo_id)
 
-            # Get the list of files with metadata ready for an upsert
-            # The following rename the "Location" Field to "Provider"
-            git_rows = KospexSchema.metadata_rows_from_repo_files(files)
-            # Also adds the Latest = 1
-
-            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(
-                git_rows, pk=["Provider", "hash", "_repo_id"]
-            )
-
-            # Check we've got scc installed, add additional metadata if we can
-            installed = which("scc")
-            if not installed:
-                print("""WARNING: scc is not installed.
-                         Please install scc from https://github.com/boyter/scc""")
-            else:
-                # Let's grab the file metadata using 'scc'
+            # scc metrics (Lines/Code/Complexity/...) keyed by file path, for the
+            # files scc can analyse. panopticas (via get_repo_files) covers the
+            # rest, including its UNKNOWN default.
+            scc_metrics = {}
+            if which("scc"):
                 metadata = subprocess.run(
                     ["scc", "--by-file", "-f", "csv"],
                     stdout=subprocess.PIPE,
                     text=True,
                     check=False,
                 )
+                # scc columns: Language,Provider,Filename,Lines,Code,Comments,
+                # Blanks,Complexity,Bytes[,ULOC] — Provider is the file path.
+                scc_cols = ("Lines", "Code", "Comments", "Blanks", "Complexity", "Bytes")
+                for scc_row in csv.DictReader(metadata.stdout.splitlines()):
+                    provider = scc_row.get("Provider")
+                    if provider:
+                        scc_metrics[provider] = {
+                            c: scc_row[c] for c in scc_cols if c in scc_row
+                        }
+            else:
+                print("""WARNING: scc is not installed.
+                         Please install scc from https://github.com/boyter/scc""")
 
-                csv_reader = csv.DictReader(metadata.stdout.splitlines())
-                # TODO - revist parsing of scc output
-                # As of version 3.3.3, the output is:
-                # Language,Provider,Filename,Lines,Code,Comments,Blanks,Complexity,Bytes,ULOC
-                # A new ULOC parameter was added, which is not currently in our schema
-                meta_cols = [
-                    "Language",
-                    "Provider",
-                    "Filename",
-                    "Lines",
-                    "Code",
-                    "Comments",
-                    "Blanks",
-                    "Complexity",
-                    "Bytes",
-                ]
+            # One current-state row per file: panopticas (all files, incl UNKNOWN)
+            # + scc metrics (where known) + last commit, keyed by the per-file
+            # last-commit hash (falls back to HEAD only for uncommitted files).
+            data_rows = KospexSchema.build_file_metadata_rows(
+                files, latest_commit, scc_metrics=scc_metrics, git_hash=git_hash
+            )
 
-                # Each file's last commit (hash + date), built in a single pass
-                # over commit_files instead of a query per file against an
-                # in-memory copy (which was an unindexed scan per file — tens of
-                # seconds on large repos).
-                latest_commit = self.kospex_query.latest_commit_file_map(repo_id)
+            # Reset "latest" flags for the repo, then write the current rows.
+            # Files no longer present stay at latest=0 (soft-delete tombstones).
+            reset_last_sql = f"""UPDATE {KospexSchema.TBL_FILE_METADATA} SET LATEST = 0
+            WHERE _repo_id = ?"""
+            self.kospex_db.execute(reset_last_sql, [repo_id])
 
-                for row in csv_reader:
-                    row = {key: row[key] for key in meta_cols if key in row}
-                    row["hash"] = git_hash
+            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(
+                data_rows, pk=["Provider", "hash", "_repo_id"]
+            )
 
-                    # TODO - this doesn't work, a newly cloned repo will have mtime of when it was cloned
-                    # row['_mtime'] = os.path.getmtime(row['Filename'])
-                    # Set this entry to the latest. Required for tech landscape queries
-                    row["latest"] = 1
-
-                    # We only want to add files which are managed by Git
-                    file_path = row.get("Provider")
-                    if files.get(file_path):
-                        print(f"file_path/Provider : {file_path}")
-                        commit_info = latest_commit.get(row["Provider"])
-
-                        if commit_info:
-                            row["committer_when"] = commit_info.get("committer_when")
-                            row["hash"] = commit_info.get("hash")
-                        else:
-                            print(f"commit_info is None for file_path : {file_path}")
-
-                        data_rows.append(self.git.add_git_to_dict(row))
-
-                    else:
-                        print(f"file_path/Provider : {file_path}, not managed by Git")
-
-                self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(
-                    data_rows, pk=["Provider", "hash", "_repo_id"]
-                )
-
-                print(
-                    "Added "
-                    + str(len(data_rows))
-                    + " rows to "
-                    + KospexSchema.TBL_FILE_METADATA
-                    + " for repo_id "
-                    + str(self.git.get_repo_id())
-                )
+            print(f"Wrote {len(data_rows)} file_metadata rows for repo_id {repo_id}")
 
         self.chdir_original()
         return data_rows
