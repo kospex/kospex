@@ -17,7 +17,6 @@ import panopticas
 from prettytable import PrettyTable, from_db_cursor
 from rich.console import Console as RichConsole
 from rich.table import Table as RichTable
-from sqlite_utils import Database
 
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
@@ -991,22 +990,11 @@ class Kospex:
                     "Bytes",
                 ]
 
-                commit_info_sql = f"""SELECT committer_when, hash FROM {KospexSchema.TBL_COMMIT_FILES}
-                WHERE file_path = ? and _repo_id = ? ORDER BY committer_when DESC LIMIT 1"""
-
-                #
-                # Create an in memory database to handle the queries, WAY FASTER
-                #
-
-                file_commits = self.kospex_query.get_commit_files(repo_id=repo_id)
-                # Create in-memory DB
-                db = Database(memory=True)  # equivalent to Database(":memory:")
-
-                # Insert: sqlite-utils will create the table and infer types automatically
-                # - pk sets primary key (optional)
-                # - alter=True allows adding new columns if later rows introduce them
-                table = db[KospexSchema.TBL_COMMIT_FILES]
-                table.insert_all(file_commits, alter=True)
+                # Each file's last commit (hash + date), built in a single pass
+                # over commit_files instead of a query per file against an
+                # in-memory copy (which was an unindexed scan per file — tens of
+                # seconds on large repos).
+                latest_commit = self.kospex_query.latest_commit_file_map(repo_id)
 
                 for row in csv_reader:
                     row = {key: row[key] for key in meta_cols if key in row}
@@ -1021,10 +1009,7 @@ class Kospex:
                     file_path = row.get("Provider")
                     if files.get(file_path):
                         print(f"file_path/Provider : {file_path}")
-                        # commit_info = next(self.kospex_db.query(commit_info_sql, [row['Provider'], repo_id]),None)
-                        commit_info = next(
-                            db.query(commit_info_sql, [row["Provider"], repo_id]), None
-                        )
+                        commit_info = latest_commit.get(row["Provider"])
 
                         if commit_info:
                             row["committer_when"] = commit_info.get("committer_when")

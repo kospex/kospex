@@ -545,6 +545,35 @@ class KospexQuery:
 
         return kd.execute()
 
+    def latest_commit_file_map(self, repo_id):
+        """
+        Return each file's last commit for a repo as a single-pass map:
+
+            {file_path: {"hash": <hash>, "committer_when": <date>}}
+
+        "Latest" = the row with the greatest committer_when (matching the prior
+        per-file `ORDER BY committer_when DESC LIMIT 1` lookup). Built with one
+        windowed query over commit_files instead of a query (or git command)
+        per file — O(commit_files) once, then O(1) lookups by the caller.
+        """
+        sql = f"""
+        SELECT file_path, hash, committer_when FROM (
+            SELECT file_path, hash, committer_when,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY file_path ORDER BY committer_when DESC
+                   ) AS rn
+            FROM {KospexSchema.TBL_COMMIT_FILES}
+            WHERE _repo_id = ?
+        ) WHERE rn = 1
+        """
+        result = {}
+        for row in self.kospex_db.query(sql, [repo_id]):
+            result[row["file_path"]] = {
+                "hash": row["hash"],
+                "committer_when": row["committer_when"],
+            }
+        return result
+
     def get_file_collaborators(self, repo_id, file_path):
         """
         Get the author committer states dependencies for the given repo_id and file_path.
