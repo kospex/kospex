@@ -2,8 +2,7 @@
 
 Returns one record per resolved package (the full dependency closure),
 shaped to KospexDependencies.get_package_template() so ``krunner osi``
-consumes the records unchanged. Design:
-deploy-kospex/planning/pnpm-extractor-osi-plan.md.
+consumes the records unchanged.
 
 pnpm publishes a per-lockfileVersion spec at github.com/pnpm/spec
 (lockfile/{5,5.2,6.0,9.0}.md). Three structurally distinct families:
