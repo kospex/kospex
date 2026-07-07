@@ -555,6 +555,15 @@ class KospexQuery:
         per-file `ORDER BY committer_when DESC LIMIT 1` lookup). Built with one
         windowed query over commit_files instead of a query (or git command)
         per file — O(commit_files) once, then O(1) lookups by the caller.
+
+        Single-branch assumption: this ranks a file's commits purely by
+        committer_when across everything in commit_files. Sync currently ingests
+        only the default branch, so that is correct. When we sync all branches
+        (git log --all), commit_files will hold commits from every branch and a
+        file's "latest" could resolve to a commit on a branch that is NOT in the
+        checked-out (default) tree that file_metadata snapshots — so this must
+        then be scoped to the default-branch ancestry. See
+        changes/202606-file-metadata-single-row.md.
         """
         sql = f"""
         SELECT file_path, hash, committer_when FROM (

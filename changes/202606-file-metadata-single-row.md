@@ -187,12 +187,23 @@ below. This is the runtime-data half of draft issue #20.
 ## Out of scope / backlog
 
 - **`file_metadata.authors` / `.commits`** (0/136k populated today) — keep the columns;
-  populate via a later sync/assessment pass for per-file complexity. Tracked:
-  deploy-kospex `planning/draft-issues.md` #23.
-- **Multi-branch** — once non-default branches are ingested, the `commit_files`
-  "last commit" lookup (`latest_commit_file_map`, `ORDER BY committer_when DESC`) needs
-  branch-awareness, and `latest`/`authors`/`commits` semantics need a branch dimension.
-  Separate design.
+  populate via a later sync/assessment pass for per-file complexity. Tracked as a
+  separate backlog item (to be filed against kospex).
+- **Multi-branch** — the intended end state is a clean split of scope:
+  **`file_metadata` = the default branch's current state** (one row per file as it
+  exists on the checked-out/default branch), while **`commits` / `commit_files` =
+  every branch** (`git log --all`) so developer-activity analytics see all work, not
+  just what merged to default. That split is a feature — but it means anything that
+  derives a `file_metadata` attribute *from* `commit_files` must be branch-aware:
+  - `latest_commit_file_map` must scope to the **default-branch ancestry** — otherwise
+    a file's "last changed" resolves to a feature-branch commit that isn't in the
+    snapshotted tree (see its docstring caveat).
+  - the `authors` / `commits` per-file columns inherit a decision: count across **all
+    branches** (richer developer map) or **default only** (matches the row's scope).
+  - `commit_files` will reference files **not** in `file_metadata` (branch-only files);
+    joins must tolerate that.
+  This needs a branch/ref dimension on `commit_files` and its own migration — a separate
+  design. `0003`'s `last_sync_hash` stays valid then (it means the default-branch HEAD).
 - **Incremental scanning** — panopticas + scc still scan the *whole* working tree each
   sync; the one-pass map only made the *commit lookup* cheap, not the *scan* itself.
   Row churn is already bounded to changed files (per-file hash) and the version-aware

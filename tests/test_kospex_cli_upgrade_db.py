@@ -1,53 +1,52 @@
-"""Integration tests for the `kospex upgrade-db` CLI command."""
-import os
+"""Tests for the `kospex upgrade-db` CLI command and the shipped migrations."""
 from pathlib import Path
 
 from click.testing import CliRunner
 
 
 def _setup_kospex_home(monkeypatch, tmp_path: Path) -> Path:
-    """Point KOSPEX_HOME at an isolated tmpdir so the CLI uses a throwaway DB."""
+    """Point KOSPEX_HOME/KOSPEX_DB at an isolated tmpdir so the CLI uses a
+    throwaway DB (HabitatConfig singleton reset is handled by the autouse
+    fixture in conftest.py)."""
     home = tmp_path / "kospex_home"
     home.mkdir()
     monkeypatch.setenv("KOSPEX_HOME", str(home))
+    monkeypatch.setenv("KOSPEX_DB", str(home / "kospex.db"))
     return home
 
 
-def test_upgrade_db_status_no_migrations(monkeypatch, tmp_path, capsys):
-    """Status mode against a fresh DB with no migrations on disk."""
+def test_upgrade_db_status_is_dry_run(monkeypatch, tmp_path):
+    """Status mode prints the version + backup warning and exits cleanly."""
     _setup_kospex_home(monkeypatch, tmp_path)
 
     from kospex_cli import cli
-    runner = CliRunner()
-    result = runner.invoke(cli, ["upgrade-db"])
+    result = CliRunner().invoke(cli, ["upgrade-db"])
 
     assert result.exit_code == 0, result.output
     assert "Kospex CLI version" in result.output
     assert "WARNING: backup your database" in result.output
-    # Migrator should report no migrations on disk (the package ships an empty migrations dir)
-    assert "No migrations on disk" in result.output or "0 pending" in result.output.lower()
 
 
-def test_upgrade_db_apply_runs_pending(monkeypatch, tmp_path):
-    """-apply mode actually runs migrations and updates the version int."""
-    home = _setup_kospex_home(monkeypatch, tmp_path)
-
-    # Initialize the DB by importing kospex_schema (triggers connect_or_create_kospex_db
-    # when the Kospex object is constructed during CLI invocation).
-    from kospex_cli import cli
-    from kospex.db import Migrator
-    import kospex_utils as KospexUtils
+def test_shipped_0003_adds_repos_provenance_columns(tmp_path):
+    """The shipped 0003 migration applies via the real migrator and adds the
+    sync-provenance columns to repos. Driven directly (not through the CLI) so
+    it doesn't depend on global KOSPEX_HOME/DB path resolution."""
     import sqlite_utils
+    import kospex_schema as KospexSchema
+    from kospex.db.migrator import Migrator
 
-    runner = CliRunner()
-    # First call creates the DB structure
-    runner.invoke(cli, ["upgrade-db"])
+    db = sqlite_utils.Database(tmp_path / "kospex.db")
+    db.execute(KospexSchema.SQL_CREATE_REPOS)
+    db.execute(
+        "CREATE TABLE schema_migrations ("
+        "id TEXT PRIMARY KEY, sequence INTEGER NOT NULL, checksum TEXT NOT NULL, "
+        "applied_at TEXT NOT NULL, duration_ms INTEGER, has_python INTEGER NOT NULL)"
+    )
 
-    # Insert one fake migration into the shipped migrations dir would require touching
-    # package data. Instead, point Migrator at a tmp migrations dir via env var or
-    # similar would be ideal — but for now the simpler verification is that -apply
-    # against an empty migrations dir cleanly reports "Nothing to apply".
-    result = runner.invoke(cli, ["upgrade-db", "-apply"])
+    Migrator(db).apply_pending()  # default dir = the shipped migrations (incl 0003)
 
-    assert result.exit_code == 0, result.output
-    assert "Nothing to apply" in result.output or "Applied 0 migration" in result.output
+    cols = {r[1] for r in db.execute("PRAGMA table_info(repos)")}
+    assert {"last_sync_hash", "last_panopticas_version", "last_scc_version"} <= cols
+
+    # Re-applying is a clean no-op (already recorded in schema_migrations).
+    assert Migrator(db).apply_pending() == []
