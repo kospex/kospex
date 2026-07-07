@@ -204,6 +204,30 @@ def test_apply_records_in_schema_migrations(tmp_path):
     assert rows == [("0003_widgets", 3, 0)]
 
 
+def test_apply_succeeds_when_connection_already_in_transaction(tmp_path):
+    """The real CLI reaches apply() with the sqlite_utils connection already
+    mid-transaction (schema bootstrap on a fresh DB), which made apply()'s
+    explicit BEGIN raise 'cannot start a transaction within a transaction'."""
+    from kospex.db.migrator import Migrator, discover_migrations
+    db = _baseline_db(tmp_path)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    _write(migrations_dir / "0003_widgets.sql", "CREATE TABLE widgets (id INTEGER);")
+
+    # Simulate the bootstrap leaving an open implicit transaction.
+    db.conn.execute("BEGIN")
+    db.conn.execute("CREATE TABLE bootstrap (id INTEGER)")
+    assert db.conn.in_transaction
+
+    migrator = Migrator(db, migrations_dir=migrations_dir)
+    migrator.apply(discover_migrations(migrations_dir)[0])  # must not raise
+
+    tables = {r[0] for r in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    assert "widgets" in tables
+
+
 def test_apply_runs_python_up_after_sql(tmp_path):
     from kospex.db.migrator import Migrator, discover_migrations
     db = _baseline_db(tmp_path)
