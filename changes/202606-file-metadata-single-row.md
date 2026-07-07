@@ -129,11 +129,18 @@ below. This is the runtime-data half of draft issue #20.
   `tests/test_build_file_metadata_rows.py` (unit) +
   `tests/test_file_metadata_sync.py` (end-to-end sync: one row per file + the
   3-file churn invariant).
-- **[TODO]** Item 3 (version-aware guard + `0003` migration) and item 4 (truncate +
-  re-sync cleanup). Note: the existing HEAD-hash skip-guard still works in the common
-  case (a synced HEAD leaves ≥1 row at that hash), so it degrades gracefully until
-  item 3 rehomes it. The rename/path-mismatch ~5% (files with no commit-map entry →
-  HEAD-fallback hash, no date) is deferred per prior decision.
+- **[DONE] Version-aware skip-guard (item 3).** `0003` adds the `repos` provenance
+  columns; `needs_metadata_rebuild()` decides rebuild-vs-skip from recorded vs current
+  (HEAD + `panopticas`/`scc` versions, compared as opaque strings); `file_metadata()`
+  reads the provenance, rebuilds only when needed, stamps it after a successful write,
+  and logs version transitions to disk via `KospexUtils.get_kospex_logger`. Degrades to
+  always-rebuild on a pre-0003 DB (columns absent). Tests:
+  `tests/test_metadata_rebuild_guard.py` (unit) + skip / panopticas-bump end-to-end in
+  `tests/test_file_metadata_sync.py`. Also fixed a latent migrator transaction bug the
+  first real migration exposed.
+- **[TODO]** Item 4 (truncate + re-sync cleanup on the real DB). The rename/path-mismatch
+  ~5% (files with no commit-map entry → HEAD-fallback hash, no date) is deferred per
+  prior decision.
 
 ## Work items
 
@@ -163,6 +170,13 @@ below. This is the runtime-data half of draft issue #20.
    - This closes the draft-#20 hole: a panopticas pin bump now forces a re-tag pass even
      when no commits landed, instead of silently serving stale `tech_type`. Because
      hashes are stable across a pure re-tag, that pass updates rows in place.
+   - **No version *history*, so log transitions to disk.** The `repos` columns are
+     point-in-time (each rebuild overwrites them) — they answer "what version is the
+     current tagging?" not "when did it change?". When the guard rebuilds because a tool
+     version changed, log it via `KospexUtils.get_kospex_logger(...)` (→ `~/kospex/logs/`)
+     with the repo, reason, and old→new versions. That gives a durable, greppable audit
+     trail without a schema for it. A queryable history (e.g. an `observations` row per
+     re-tag) is a possible future enhancement, not built now.
 4. **Data cleanup (DB preserved, only `file_metadata` rows are disposable).** Truncate
    `file_metadata` and re-sync repos under the fixed code. No row-level migration — the
    table is rebuildable from the repos + `commit_files`. Every other table is untouched.
