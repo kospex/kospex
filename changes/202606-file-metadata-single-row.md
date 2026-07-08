@@ -138,9 +138,15 @@ below. This is the runtime-data half of draft issue #20.
   `tests/test_metadata_rebuild_guard.py` (unit) + skip / panopticas-bump end-to-end in
   `tests/test_file_metadata_sync.py`. Also fixed a latent migrator transaction bug the
   first real migration exposed.
-- **[TODO]** Item 4 (truncate + re-sync cleanup on the real DB). The rename/path-mismatch
-  ~5% (files with no commit-map entry → HEAD-fallback hash, no date) is deferred per
-  prior decision.
+- **[DONE] Real-DB cleanup (item 4).** Applied `0003`, then force-rebuilt + pruned
+  `latest=0` for all 104 repos (49s). `file_metadata` went 144,645 → **74,016 rows**,
+  all `latest=1`; **0** providers with a duplicate `latest=1` row (was 94/95 repos);
+  0 `.git` rows; provenance stamped on 104/104 repos. `/osi/` dep-file rows now carry
+  `tech_type` **and** `committer_when` in one row. Rebuild used force (bypassing the
+  guard) since a bare truncate would leave stamped provenance and make the guard skip
+  an empty table.
+- **Deferred:** the rename/path-mismatch (~0.4% of rows: files with no commit-map entry
+  → HEAD-fallback hash, no date). Tracked as the next item on this feature's tail.
 
 ## Work items
 
