@@ -98,9 +98,11 @@ def test_sync_writes_exactly_one_row_per_file(tmp_path, monkeypatch):
     # committer_when populated for ALL files (not just scc-known ones)
     assert all(r["committer_when"] for r in rows)
 
-    # scc knows Python -> app.py carries metrics
-    app = next(r for r in rows if r["Provider"] == "app.py")
-    assert app["Lines"] is not None
+    # scc metrics are only present when the optional scc binary is installed
+    # (absent on CI); panopticas + commit data above cover the rest.
+    if shutil.which("scc"):
+        app = next(r for r in rows if r["Provider"] == "app.py")
+        assert app["Lines"] is not None
 
 
 def test_resync_after_change_churns_only_the_changed_file(tmp_path, monkeypatch):
