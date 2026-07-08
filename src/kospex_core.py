@@ -17,7 +17,6 @@ import panopticas
 from prettytable import PrettyTable, from_db_cursor
 from rich.console import Console as RichConsole
 from rich.table import Table as RichTable
-from sqlite_utils import Database
 
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
@@ -27,6 +26,58 @@ from kospex_git import KospexGit, MissingGitDirectory
 from kospex_query import KospexData, KospexQuery
 
 _console = RichConsole()
+log = KospexUtils.get_kospex_logger("kospex")
+
+
+def needs_metadata_rebuild(recorded, current, force=False):
+    """Decide whether file_metadata must be rebuilt for a repo.
+
+    ``recorded`` is the provenance stored on the repos row at the last
+    successful sync (keys: hash, panopticas_version, scc_version; values may be
+    None if never recorded). ``current`` holds the same keys for the current
+    HEAD + installed tool versions. Returns ``(needs_rebuild, reason)`` — the
+    reason names old -> new for a tool-version change so the caller can log an
+    audit trail (the repos columns are point-in-time and keep no history).
+    """
+    if force:
+        return True, "force requested"
+    if not recorded.get("hash"):
+        return True, "no prior file_metadata sync recorded"
+    if recorded.get("hash") != current.get("hash"):
+        return True, f"HEAD changed ({recorded.get('hash')} -> {current.get('hash')})"
+    # Versions are compared as opaque strings, never parsed as semver — we only
+    # care whether the tag changed, not ordering. This handles any format
+    # (pre-release suffixes like "-alpha"/"rc1", build metadata, 0.0.0, etc.).
+    # The repos columns are TEXT, and the helpers return the full version string.
+    for tool in ("panopticas", "scc"):
+        key = f"{tool}_version"
+        old, new = recorded.get(key), current.get(key)
+        if old != new:
+            return True, f"{tool} version changed ({old} -> {new})"
+    return False, "up to date"
+
+
+def panopticas_version():
+    """Installed panopticas package version, or None if it can't be resolved."""
+    try:
+        return version("panopticas")
+    except Exception:
+        return None
+
+
+def scc_version():
+    """Installed scc version parsed from `scc --version`, or None if scc is absent."""
+    if not which("scc"):
+        return None
+    try:
+        out = subprocess.run(
+            ["scc", "--version"], stdout=subprocess.PIPE, text=True, check=False
+        ).stdout
+        # e.g. "scc version 3.7.0" -> "3.7.0"
+        parts = out.split()
+        return parts[-1] if parts else None
+    except Exception:
+        return None
 
 
 class GitRepo(click.ParamType):
@@ -927,16 +978,23 @@ class Kospex:
         git_hash = self.git.get_current_hash()
         repo_id = self.git.get_repo_id()
 
-        # Check to see if we have already got metadata for this repo and hash
-        sql = f"""SELECT hash, _repo_id FROM {KospexSchema.TBL_FILE_METADATA}
-        WHERE hash = ? and _repo_id = ?"""
-        row = self.kospex_db.execute(sql, [git_hash, repo_id]).fetchone()
+        # Version-aware skip-guard: rebuild file_metadata only when the HEAD
+        # moved or panopticas/scc changed version since the last successful sync
+        # (recorded on the repos row). See needs_metadata_rebuild().
+        current = {
+            "hash": git_hash,
+            "panopticas_version": panopticas_version(),
+            "scc_version": scc_version(),
+        }
+        recorded = self._recorded_sync_provenance(repo_id)
+        rebuild, reason = needs_metadata_rebuild(recorded, current, force=force)
 
         data_rows = []
 
-        if row and not force:
-            print(f"Already have metadata for {git_hash} and repo_id {str(repo_id)}")
+        if not rebuild:
+            print(f"file_metadata up to date for {repo_id} ({reason})")
         else:
+            log.info(f"file_metadata rebuild for {repo_id}: {reason}")
             # scc wont' analyse everything, so we need to do a file find for items not analysed
             # files = self.git.get_repo_files(skip_last_commit=skip_last_commit)
             start = time.perf_counter()
@@ -946,112 +1004,92 @@ class Kospex:
             print(f"get_repo_files executed in {(end - start) * 1000:.2f}ms")
             # This will be a dict of file paths and their metadata
 
-            # Reset "latest" flags to false
-            reset_last_sql = f"""UPDATE {KospexSchema.TBL_FILE_METADATA} SET LATEST = 0
-            WHERE _repo_id = ?"""
-            self.kospex_db.execute(reset_last_sql, [repo_id])
+            # Each file's last commit (hash + date) in a single pass over
+            # commit_files — the source of each row's per-file hash + date.
+            latest_commit = self.kospex_query.latest_commit_file_map(repo_id)
 
-            # Get the list of files with metadata ready for an upsert
-            # The following rename the "Location" Field to "Provider"
-            git_rows = KospexSchema.metadata_rows_from_repo_files(files)
-            # Also adds the Latest = 1
-
-            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(
-                git_rows, pk=["Provider", "hash", "_repo_id"]
-            )
-
-            # Check we've got scc installed, add additional metadata if we can
-            installed = which("scc")
-            if not installed:
-                print("""WARNING: scc is not installed.
-                         Please install scc from https://github.com/boyter/scc""")
-            else:
-                # Let's grab the file metadata using 'scc'
+            # scc metrics (Lines/Code/Complexity/...) keyed by file path, for the
+            # files scc can analyse. panopticas (via get_repo_files) covers the
+            # rest, including its UNKNOWN default.
+            scc_metrics = {}
+            if which("scc"):
                 metadata = subprocess.run(
                     ["scc", "--by-file", "-f", "csv"],
                     stdout=subprocess.PIPE,
                     text=True,
                     check=False,
                 )
+                # scc columns: Language,Provider,Filename,Lines,Code,Comments,
+                # Blanks,Complexity,Bytes[,ULOC] — Provider is the file path.
+                scc_cols = ("Lines", "Code", "Comments", "Blanks", "Complexity", "Bytes")
+                for scc_row in csv.DictReader(metadata.stdout.splitlines()):
+                    provider = scc_row.get("Provider")
+                    if provider:
+                        scc_metrics[provider] = {
+                            c: scc_row[c] for c in scc_cols if c in scc_row
+                        }
+            else:
+                print("""WARNING: scc is not installed.
+                         Please install scc from https://github.com/boyter/scc""")
 
-                csv_reader = csv.DictReader(metadata.stdout.splitlines())
-                # TODO - revist parsing of scc output
-                # As of version 3.3.3, the output is:
-                # Language,Provider,Filename,Lines,Code,Comments,Blanks,Complexity,Bytes,ULOC
-                # A new ULOC parameter was added, which is not currently in our schema
-                meta_cols = [
-                    "Language",
-                    "Provider",
-                    "Filename",
-                    "Lines",
-                    "Code",
-                    "Comments",
-                    "Blanks",
-                    "Complexity",
-                    "Bytes",
-                ]
+            # One current-state row per file: panopticas (all files, incl UNKNOWN)
+            # + scc metrics (where known) + last commit, keyed by the per-file
+            # last-commit hash (falls back to HEAD only for uncommitted files).
+            data_rows = KospexSchema.build_file_metadata_rows(
+                files, latest_commit, scc_metrics=scc_metrics, git_hash=git_hash
+            )
 
-                commit_info_sql = f"""SELECT committer_when, hash FROM {KospexSchema.TBL_COMMIT_FILES}
-                WHERE file_path = ? and _repo_id = ? ORDER BY committer_when DESC LIMIT 1"""
+            # Reset "latest" flags for the repo, then write the current rows.
+            # Files no longer present stay at latest=0 (soft-delete tombstones).
+            reset_last_sql = f"""UPDATE {KospexSchema.TBL_FILE_METADATA} SET LATEST = 0
+            WHERE _repo_id = ?"""
+            self.kospex_db.execute(reset_last_sql, [repo_id])
 
-                #
-                # Create an in memory database to handle the queries, WAY FASTER
-                #
+            self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(
+                data_rows, pk=["Provider", "hash", "_repo_id"]
+            )
 
-                file_commits = self.kospex_query.get_commit_files(repo_id=repo_id)
-                # Create in-memory DB
-                db = Database(memory=True)  # equivalent to Database(":memory:")
+            # Record what this rebuild was based on, for the next sync's guard.
+            self._record_sync_provenance(repo_id, current)
 
-                # Insert: sqlite-utils will create the table and infer types automatically
-                # - pk sets primary key (optional)
-                # - alter=True allows adding new columns if later rows introduce them
-                table = db[KospexSchema.TBL_COMMIT_FILES]
-                table.insert_all(file_commits, alter=True)
-
-                for row in csv_reader:
-                    row = {key: row[key] for key in meta_cols if key in row}
-                    row["hash"] = git_hash
-
-                    # TODO - this doesn't work, a newly cloned repo will have mtime of when it was cloned
-                    # row['_mtime'] = os.path.getmtime(row['Filename'])
-                    # Set this entry to the latest. Required for tech landscape queries
-                    row["latest"] = 1
-
-                    # We only want to add files which are managed by Git
-                    file_path = row.get("Provider")
-                    if files.get(file_path):
-                        print(f"file_path/Provider : {file_path}")
-                        # commit_info = next(self.kospex_db.query(commit_info_sql, [row['Provider'], repo_id]),None)
-                        commit_info = next(
-                            db.query(commit_info_sql, [row["Provider"], repo_id]), None
-                        )
-
-                        if commit_info:
-                            row["committer_when"] = commit_info.get("committer_when")
-                            row["hash"] = commit_info.get("hash")
-                        else:
-                            print(f"commit_info is None for file_path : {file_path}")
-
-                        data_rows.append(self.git.add_git_to_dict(row))
-
-                    else:
-                        print(f"file_path/Provider : {file_path}, not managed by Git")
-
-                self.kospex_db.table(KospexSchema.TBL_FILE_METADATA).upsert_all(
-                    data_rows, pk=["Provider", "hash", "_repo_id"]
-                )
-
-                print(
-                    "Added "
-                    + str(len(data_rows))
-                    + " rows to "
-                    + KospexSchema.TBL_FILE_METADATA
-                    + " for repo_id "
-                    + str(self.git.get_repo_id())
-                )
+            print(f"Wrote {len(data_rows)} file_metadata rows for repo_id {repo_id}")
 
         self.chdir_original()
         return data_rows
+
+    def _recorded_sync_provenance(self, repo_id):
+        """The file_metadata provenance stored on the repos row (last synced HEAD
+        + panopticas/scc versions). Returns a dict with None values if the row or
+        the columns (pre-0003 DB) are absent — which makes the guard rebuild."""
+        empty = {"hash": None, "panopticas_version": None, "scc_version": None}
+        try:
+            row = self.kospex_db.execute(
+                "SELECT last_sync_hash, last_panopticas_version, last_scc_version "
+                f"FROM {KospexSchema.TBL_REPOS} WHERE _repo_id = ?",
+                [repo_id],
+            ).fetchone()
+        except Exception:
+            return empty  # provenance columns not present (migration 0003 not applied)
+        if not row:
+            return empty
+        return {"hash": row[0], "panopticas_version": row[1], "scc_version": row[2]}
+
+    def _record_sync_provenance(self, repo_id, current):
+        """Stamp the repos row with what the just-completed rebuild was based on."""
+        try:
+            self.kospex_db.execute(
+                f"UPDATE {KospexSchema.TBL_REPOS} SET last_sync_hash = ?, "
+                "last_panopticas_version = ?, last_scc_version = ? WHERE _repo_id = ?",
+                [
+                    current.get("hash"),
+                    current.get("panopticas_version"),
+                    current.get("scc_version"),
+                    repo_id,
+                ],
+            )
+            self.kospex_db.conn.commit()
+        except Exception:
+            pass  # columns absent (pre-0003) -> nothing to stamp
 
     def sync_metadata(self, data_directory):
         """Find all git repos and sync the metadata to the kospex database"""

@@ -518,6 +518,60 @@ def db_tags_to_array(db_tags):
     tags = grouped.split('|')
     return tags
 
+def build_file_metadata_rows(files, commit_map, scc_metrics=None, git_hash=None):
+    """
+    Build exactly one current-state file_metadata row per file, merging the
+    three sources that previously produced two divergent rows per file:
+
+      - panopticas walk (``files``): dict keyed by path, each value carrying
+        Location/Provider, Language, tech_type (list), Filename and the _git_*
+        fields (get_repo_files already ran add_git_to_dict).
+      - per-file last commit (``commit_map``): ``{path: {"hash", "committer_when"}}``
+        from KospexQuery.latest_commit_file_map().
+      - ``scc_metrics`` (optional): ``{path: {Lines, Code, Comments, Blanks,
+        Complexity, Bytes}}`` for the files scc could analyse.
+
+    ``hash`` is the file's own last-commit hash (so an unchanged file keeps a
+    stable primary key across syncs); it falls back to ``git_hash`` (repo HEAD)
+    only when a file has no commit entry (e.g. uncommitted). ``latest=1`` on
+    every row. Returns rows ready for upsert_all(pk=[Provider, hash, _repo_id]).
+    """
+    scc_metrics = scc_metrics or {}
+    git_fields = ("_git_server", "_git_owner", "_git_repo", "_repo_id")
+    scc_cols = ("Lines", "Code", "Comments", "Blanks", "Complexity", "Bytes")
+
+    rows = []
+    for meta in files.values():
+        provider = meta.get("Provider", meta.get("Location"))
+        row = {
+            "Provider": provider,
+            "Filename": meta.get("Filename"),
+            "Language": meta.get("Language"),
+            "tech_type": array_to_db_tags(meta.get("tech_type")),
+            "latest": 1,
+        }
+        for gk in git_fields:
+            if gk in meta:
+                row[gk] = meta[gk]
+
+        commit = commit_map.get(provider)
+        if commit:
+            row["hash"] = commit.get("hash")
+            row["committer_when"] = commit.get("committer_when")
+        else:
+            row["hash"] = git_hash
+
+        metrics = scc_metrics.get(provider)
+        if metrics:
+            for col in scc_cols:
+                if col in metrics:
+                    row[col] = metrics[col]
+
+        rows.append(row)
+
+    return rows
+
+
 def metadata_rows_from_repo_files(files):
     """
     This function takes a dict (file_path) to dict (file details)

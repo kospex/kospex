@@ -1,7 +1,6 @@
 """Tests for kospex.extractors.workflows.
 
-Covers the edge cases listed in deploy-kospex/feature/find-actions/SPEC.md
-and planning/find-actions-migration-plan.md §5.
+Covers the edge cases for the find-actions workflow extractor.
 """
 
 from pathlib import Path

@@ -559,6 +559,12 @@ class KospexGit:
         unmanaged = 0
 
         for entry in p_files:
+            # Never record git internals as repo files. panopticas excludes
+            # .git on most repos but not reliably (e.g. a freshly-init'd repo),
+            # so exclude it explicitly here.
+            if entry == ".git" or entry.startswith(".git/") or "/.git/" in entry:
+                continue
+
             data = {}
             self.add_git_to_dict(data)
             data["hash"] = self.current_hash

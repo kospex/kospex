@@ -165,6 +165,12 @@ class Migrator:
         conn = self.db.conn
         sql = migration.sql_path.read_text()
         try:
+            # The shared sqlite_utils connection may already be mid-transaction
+            # (e.g. schema bootstrap on a fresh DB). Commit that first so our
+            # explicit BEGIN doesn't fail "cannot start a transaction within a
+            # transaction"; the migration then runs in its own transaction.
+            if conn.in_transaction:
+                conn.commit()
             conn.execute("BEGIN")
             # Split on `;` and execute each non-empty statement so DDL stays in tx
             for stmt in [s.strip() for s in sql.split(";") if s.strip()]:
