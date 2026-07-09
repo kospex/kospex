@@ -491,3 +491,23 @@ def up(db):
 
     rows = list(db.execute("SELECT id, name FROM widgets").fetchall())
     assert rows == [(1, "ok")]
+
+
+def test_shipped_0004_adds_repos_last_fetch(tmp_path):
+    """The shipped 0004 migration adds repos.last_fetch."""
+    import sqlite_utils
+    import kospex_schema as KospexSchema
+    from kospex.db.migrator import Migrator
+
+    db = sqlite_utils.Database(tmp_path / "kospex.db")
+    db.execute(KospexSchema.SQL_CREATE_REPOS)
+    db.execute(
+        "CREATE TABLE schema_migrations ("
+        "id TEXT PRIMARY KEY, sequence INTEGER NOT NULL, checksum TEXT NOT NULL, "
+        "applied_at TEXT NOT NULL, duration_ms INTEGER, has_python INTEGER NOT NULL)"
+    )
+
+    Migrator(db).apply_pending()  # default dir = shipped migrations (incl 0003, 0004)
+
+    cols = {r[1] for r in db.execute("PRAGMA table_info(repos)")}
+    assert "last_fetch" in cols
