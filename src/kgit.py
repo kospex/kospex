@@ -32,6 +32,27 @@ console = Console()
 # Get logger using the new centralized logging system
 log = KospexUtils.get_kospex_logger('kgit')
 
+
+def _resolve_pull_repos(kospex_query, repo_id=None, all_flag=False, org=None, server=None):
+    """Resolve the in-scope repo rows for `kgit pull`.
+
+    Exactly one of repo_id / all_flag / org / server must be given.
+    Returns the list of repo rows from the DB.
+    """
+    scopes = [bool(repo_id), bool(all_flag), bool(org), bool(server)]
+    if sum(scopes) != 1:
+        raise ValueError(
+            "Specify exactly one scope: a REPO_ID, or one of --all / --org / --server."
+        )
+    if all_flag:
+        return kospex_query.get_repos()
+    if repo_id:
+        return kospex_query.get_repos(repo_id=repo_id)
+    if org:
+        return kospex_query.get_repos(org_key=org)
+    return kospex_query.get_repos(server=server)
+
+
 @click.group()
 @click.version_option(version=Kospex.VERSION)
 def cli():
