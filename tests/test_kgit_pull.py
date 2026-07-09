@@ -97,3 +97,19 @@ def test_staleness_rows_formats_age_and_handles_null():
     assert [r["repo_id"] for r in rows] == ["s~o~never", "s~o~stale", "s~o~fresh"]
     assert rows[0]["age"] == "never"
     assert rows[2]["age"] == "1d"
+
+
+from kgit import _pull_command
+
+
+def test_pull_command_interactive_by_default():
+    argv, env = _pull_command("/clone/path", no_prompt=False)
+    assert argv[:3] == ["git", "-C", "/clone/path"]
+    assert argv[-2:] == ["pull", "--ff-only"]
+    assert "GIT_TERMINAL_PROMPT" not in env
+
+
+def test_pull_command_no_prompt_is_non_interactive():
+    argv, env = _pull_command("/clone/path", no_prompt=True)
+    assert env["GIT_TERMINAL_PROMPT"] == "0"
+    assert "-c" in argv and "credential.interactive=false" in argv

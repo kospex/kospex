@@ -86,6 +86,21 @@ def _staleness_rows(repos, now=None):
     return rows
 
 
+def _pull_command(path, no_prompt=False):
+    """Build (argv, env_overrides) for a fast-forward-only pull of `path`.
+
+    no_prompt: make git non-interactive (fail fast) instead of invoking the
+    credential helper — for unattended runs.
+    """
+    argv = ["git", "-C", path]
+    env = {}
+    if no_prompt:
+        argv += ["-c", "credential.interactive=false"]
+        env["GIT_TERMINAL_PROMPT"] = "0"
+    argv += ["pull", "--ff-only"]
+    return argv, env
+
+
 @click.group()
 @click.version_option(version=Kospex.VERSION)
 def cli():
