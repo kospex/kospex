@@ -75,3 +75,25 @@ def test_resolve_requires_exactly_one_scope():
         _resolve_pull_repos(kq, repo_id=None, all_flag=False, org=None, server=None)
     with pytest.raises(ValueError):
         _resolve_pull_repos(kq, repo_id="x~y~z", all_flag=True, org=None, server=None)
+
+
+from kgit import _staleness_rows
+
+
+def test_staleness_rows_formats_age_and_handles_null():
+    now = "2026-07-09T00:00:00+00:00"
+    repos = [
+        {"_repo_id": "s~o~fresh", "last_fetch": "2026-07-08T00:00:00+00:00",
+         "last_sync": "2026-07-08T00:00:00+00:00", "last_seen": "2026-07-01T00:00:00+00:00"},
+        {"_repo_id": "s~o~stale", "last_fetch": "2026-05-10T00:00:00+00:00",
+         "last_sync": "2026-05-10T00:00:00+00:00", "last_seen": "2026-05-01T00:00:00+00:00"},
+        {"_repo_id": "s~o~never", "last_fetch": None,
+         "last_sync": "2026-05-10T00:00:00+00:00", "last_seen": None},
+    ]
+
+    rows = _staleness_rows(repos, now=now)
+
+    # stalest first: never (no fetch) sorts first, then stale, then fresh
+    assert [r["repo_id"] for r in rows] == ["s~o~never", "s~o~stale", "s~o~fresh"]
+    assert rows[0]["age"] == "never"
+    assert rows[2]["age"] == "1d"
