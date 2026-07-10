@@ -1,5 +1,10 @@
 # `kgit pull` — refresh known local clones + offline staleness check
 
+> **Implemented** (2026-07): `kgit pull [REPO_ID] --all/--org/--server`, with `--check`
+> (offline staleness) and `--no-prompt` (fail-fast auth). Migration `0004` adds
+> `repos.last_fetch`, stamped on `kgit clone` and each `kgit pull`. Plan:
+> `changes/202607-kgit-pull-refresh-plan.md`.
+
 ## Overview
 
 kospex analyses local git clones under `KOSPEX_CODE`. Those clones only advance
