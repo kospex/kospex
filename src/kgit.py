@@ -263,7 +263,7 @@ def clone(sync, filename,repo):
             log.info(f"Syncing repository: {repo_path}")
             print("Syncing repo: " + repo_path)  # Keep user feedback
             kospex.sync_repo(repo_path)
-            kospex.kospex_query.set_repo_last_fetch(kgit.get_repo_id())
+            kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
 
     elif filename:
         with open(filename, "r", encoding='utf-8') as file:
@@ -281,7 +281,7 @@ def clone(sync, filename,repo):
                         print("Syncing: " + repo)
                         kospex = Kospex()
                         kospex.sync_repo(repo_path)
-                        kospex.kospex_query.set_repo_last_fetch(kgit.get_repo_id())
+                        kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
 
 
 @cli.command("sync")
@@ -331,6 +331,8 @@ def _git_pull(path, no_prompt=False):
     ok=False on missing dir / non-ff / auth-or-network failure (detail says why).
     commits = number of commits fast-forwarded (0 if already up to date).
     """
+    if path is None:
+        return False, "no local path recorded", 0
     if not os.path.isdir(path):
         return False, "not cloned", 0
 

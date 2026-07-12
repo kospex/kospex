@@ -113,3 +113,12 @@ def test_pull_command_no_prompt_is_non_interactive():
     argv, env = _pull_command("/clone/path", no_prompt=True)
     assert env["GIT_TERMINAL_PROMPT"] == "0"
     assert "-c" in argv and "credential.interactive=false" in argv
+
+
+from kgit import _git_pull
+
+
+def test_git_pull_none_path_is_skipped_not_crash():
+    ok, detail, commits = _git_pull(None)
+    assert ok is False and commits == 0
+    assert "path" in detail.lower()

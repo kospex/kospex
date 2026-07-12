@@ -93,3 +93,74 @@ def test_kgit_pull_fast_forwards_stamps_and_syncs(tmp_path, monkeypatch):
     db = sqlite3.connect(KospexUtils.get_kospex_db_path())
     row = db.execute("SELECT _repo_id, last_fetch FROM repos").fetchone()
     assert row is not None and row[1] is not None      # last_fetch stamped
+
+
+def test_kgit_clone_stamps_last_fetch(tmp_path, monkeypatch):
+    """Bug 1 regression: kgit clone must stamp last_fetch using kospex.git.get_repo_id()
+    not the module-level kgit.get_repo_id() (which is always empty after clone_repo)."""
+    # --- throwaway KOSPEX_HOME + DB ---
+    home = tmp_path / "home"; home.mkdir()
+    monkeypatch.setenv("KOSPEX_HOME", str(home))
+    monkeypatch.setenv("KOSPEX_DB", str(home / "kospex.db"))
+    from kospex.habitat_config import HabitatConfig
+    HabitatConfig.reset_instance()
+
+    # --- bare upstream with one commit ---
+    bare = tmp_path / "upstream.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+    work = tmp_path / "work"
+    subprocess.run(["git", "clone", "-q", str(bare), str(work)], check=True)
+    (work / "app.py").write_text("x = 1\n")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-q", "-m", "init", date="2025-01-01T00:00:00")
+    _git(work, "push", "-q", "origin", "main")
+
+    # --- redirect https://github.com/test/repo.git → local bare repo ---
+    gitconfig = tmp_path / "gitconfig"
+    gitconfig.write_text(
+        f'[url "{bare}/"]\n\tinsteadOf = https://github.com/test/repo.git\n'
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(gitconfig))
+
+    # kgit clone puts repos under KOSPEX_CODE/github.com/test/repo/
+    code_dir = tmp_path / "code"
+    code_dir.mkdir()
+    monkeypatch.setenv("KOSPEX_CODE", str(code_dir))
+
+    # --- reconnect kgit module-level objects to the throwaway DB ---
+    from kgit import cli
+    import kgit as kgit_module
+    import kospex_schema as KospexSchema
+    from kospex_query import KospexQuery as _KQ
+    from kospex.db.migrator import Migrator
+
+    throwaway_db_path = str(home / "kospex.db")
+    current_db_path = kgit_module.kospex.kospex_db.conn.execute(
+        "PRAGMA database_list"
+    ).fetchone()[2]
+    if os.path.realpath(current_db_path) != os.path.realpath(throwaway_db_path):
+        kgit_module.kospex.kospex_db = KospexSchema.connect_or_create_kospex_db()
+        kgit_module.kospex.kospex_query = _KQ(kospex_db=kgit_module.kospex.kospex_db)
+
+    if kgit_module.kospex.kospex_db.conn.in_transaction:
+        kgit_module.kospex.kospex_db.conn.commit()
+
+    Migrator(kgit_module.kospex.kospex_db).apply_pending()  # ensure last_fetch col exists
+
+    # --- invoke kgit clone ---
+    result = CliRunner().invoke(cli, ["clone", "https://github.com/test/repo.git"])
+    assert result.exit_code == 0, result.output
+
+    # --- verify last_fetch was stamped (the bug: kgit.get_repo_id() returned "" so
+    # the UPDATE matched zero rows; fix uses kospex.git.get_repo_id() instead).
+    # Note: _repo_id is derived from the actual git remote (the local bare path), not
+    # the original https URL, so we check any row rather than a fixed id. ---
+    import sqlite3
+    db = sqlite3.connect(throwaway_db_path)
+    rows = db.execute("SELECT _repo_id, last_fetch FROM repos").fetchall()
+    assert rows, "no repos rows found — sync did not record this repo"
+    repo_id, last_fetch = rows[0]
+    assert last_fetch is not None, (
+        f"last_fetch is NULL for repo_id={repo_id!r} — kgit clone did not stamp it "
+        "(Bug 1: kgit.get_repo_id() returned '' so UPDATE matched zero rows)"
+    )
