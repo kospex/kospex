@@ -87,7 +87,7 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ row['package_name'] }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">{{ row['package_version'] }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
-                                        {% if row['versions_behind'] and row['versions_behind'] > 0 %}
+                                        {% if row['versions_behind'] is number and row['versions_behind'] > 0 %}
                                             <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
                                                 {{ row['versions_behind'] }}
                                             </span>
