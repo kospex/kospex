@@ -20,6 +20,17 @@ _KOSPEX_ENV_KEYS = (
 )
 
 
+# Captured at conftest import time. pytest imports conftest.py BEFORE the test
+# modules, so this snapshot is the pristine shell environment — before any test
+# module's imports run kospex construction. (Importing some modules, e.g.
+# `import kgit`, runs a module-level `Kospex()` that writes KOSPEX_* straight to
+# os.environ at import time; a per-test snapshot taken during setup would already
+# contain that leak and perpetuate it across the whole session.) Restoring to
+# this pristine snapshot around every test undoes both import-time and per-test
+# leaks.
+_PRISTINE_ENV = {k: os.environ.get(k) for k in _KOSPEX_ENV_KEYS}
+
+
 def _reset_habitat_singleton():
     try:
         from kospex.habitat_config import HabitatConfig
@@ -28,14 +39,19 @@ def _reset_habitat_singleton():
         pass
 
 
-@pytest.fixture(autouse=True)
-def _isolate_kospex_globals():
-    saved = {k: os.environ.get(k) for k in _KOSPEX_ENV_KEYS}
-    _reset_habitat_singleton()
-    yield
-    for k, v in saved.items():
+def _restore_pristine_env():
+    for k in _KOSPEX_ENV_KEYS:
+        v = _PRISTINE_ENV[k]
         if v is None:
             os.environ.pop(k, None)
         else:
             os.environ[k] = v
+
+
+@pytest.fixture(autouse=True)
+def _isolate_kospex_globals():
+    _restore_pristine_env()
+    _reset_habitat_singleton()
+    yield
+    _restore_pristine_env()
     _reset_habitat_singleton()

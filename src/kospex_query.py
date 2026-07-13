@@ -583,6 +583,21 @@ class KospexQuery:
             }
         return result
 
+    def set_repo_last_fetch(self, repo_id, when=None):
+        """Record when a repo's local clone was last refreshed from its remote.
+
+        when: ISO timestamp string; defaults to now (local tz, second precision).
+        """
+        if when is None:
+            when = datetime.now(timezone.utc).astimezone().replace(
+                microsecond=0).isoformat()
+        self.kospex_db.execute(
+            f"UPDATE {KospexSchema.TBL_REPOS} SET last_fetch = ? WHERE _repo_id = ?",
+            [when, repo_id],
+        )
+        self.kospex_db.conn.commit()
+        return when
+
     def get_file_collaborators(self, repo_id, file_path):
         """
         Get the author committer states dependencies for the given repo_id and file_path.

@@ -32,6 +32,75 @@ console = Console()
 # Get logger using the new centralized logging system
 log = KospexUtils.get_kospex_logger('kgit')
 
+
+def _resolve_pull_repos(kospex_query, repo_id=None, all_flag=False, org=None, server=None):
+    """Resolve the in-scope repo rows for `kgit pull`.
+
+    Exactly one of repo_id / all_flag / org / server must be given.
+    Returns the list of repo rows from the DB.
+    """
+    scopes = [bool(repo_id), bool(all_flag), bool(org), bool(server)]
+    if sum(scopes) != 1:
+        raise ValueError(
+            "Specify exactly one scope: a REPO_ID, or one of --all / --org / --server."
+        )
+    if all_flag:
+        return kospex_query.get_repos()
+    if repo_id:
+        return kospex_query.get_repos(repo_id=repo_id)
+    if org:
+        return kospex_query.get_repos(org_key=org)
+    return kospex_query.get_repos(server=server)
+
+
+def _staleness_rows(repos, now=None):
+    """Build offline staleness display rows, sorted stalest-first.
+
+    now: ISO string reference time (defaults to now); used so the function is
+    deterministic under test.
+    """
+    if now is None:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).astimezone().isoformat()
+
+    def _age_days(iso):
+        if not iso:
+            return None
+        return KospexUtils.days_between_datetimes(iso, now)
+
+    rows = []
+    for r in repos:
+        days = _age_days(r.get("last_fetch"))
+        rows.append({
+            "repo_id": r.get("_repo_id"),
+            "last_fetch": r.get("last_fetch") or "never",
+            "last_sync": r.get("last_sync") or "-",
+            "last_commit": r.get("last_seen") or "-",
+            "age": "never" if days is None else f"{int(days)}d",
+            "_sort": float("inf") if days is None else days,
+        })
+    # stalest first: never-fetched (inf) first, then largest age
+    rows.sort(key=lambda x: x["_sort"], reverse=True)
+    for x in rows:
+        del x["_sort"]
+    return rows
+
+
+def _pull_command(path, no_prompt=False):
+    """Build (argv, env_overrides) for a fast-forward-only pull of `path`.
+
+    no_prompt: make git non-interactive (fail fast) instead of invoking the
+    credential helper — for unattended runs.
+    """
+    argv = ["git", "-C", path]
+    env = {}
+    if no_prompt:
+        argv += ["-c", "credential.interactive=false"]
+        env["GIT_TERMINAL_PROMPT"] = "0"
+    argv += ["pull", "--ff-only"]
+    return argv, env
+
+
 @click.group()
 @click.version_option(version=Kospex.VERSION)
 def cli():
@@ -194,6 +263,7 @@ def clone(sync, filename,repo):
             log.info(f"Syncing repository: {repo_path}")
             print("Syncing repo: " + repo_path)  # Keep user feedback
             kospex.sync_repo(repo_path)
+            kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
 
     elif filename:
         with open(filename, "r", encoding='utf-8') as file:
@@ -211,6 +281,7 @@ def clone(sync, filename,repo):
                         print("Syncing: " + repo)
                         kospex = Kospex()
                         kospex.sync_repo(repo_path)
+                        kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
 
 
 @cli.command("sync")
@@ -254,24 +325,101 @@ def sync(org, sync_db, url):
         console.print(f"Synced {len(commits)} commits")
 
 
-# @cli.command("pull")
-# @click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
-# def pull(sync):
-#     """
-#     Check if we're in a git repo, do a git pull,
-#     and sync to the kospex DB.
-#     """
-#     current = os.getcwd()
-#     git_base = KospexUtils.find_git_base(current)
-#     if git_base:
-#         os.chdir(git_base)
-#         os.system("git pull")
-#         if sync:
-#             print("Syncing to kospex DB ...")
-#             kospex.sync_repo(git_base)
-#         os.chdir(current)
-#     else:
-#         print(f"{current} does not appear to be in a git repo")
+def _git_pull(path, no_prompt=False):
+    """Fast-forward the clone at `path`. Returns (ok, detail, commits).
+
+    ok=False on missing dir / non-ff / auth-or-network failure (detail says why).
+    commits = number of commits fast-forwarded (0 if already up to date).
+    """
+    if path is None:
+        return False, "no local path recorded", 0
+    if not os.path.isdir(path):
+        return False, "not cloned", 0
+
+    def _head():
+        r = subprocess.run(["git", "-C", path, "rev-parse", "HEAD"],
+                           capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    before = _head()
+    argv, env_over = _pull_command(path, no_prompt=no_prompt)
+    proc = subprocess.run(argv, capture_output=True, text=True,
+                          env={**os.environ, **env_over})
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "fetch failed").strip().splitlines()
+        return False, f"fetch failed: {detail[-1] if detail else 'unknown'}", 0
+
+    after = _head()
+    if before and after and before == after:
+        return True, "up to date", 0
+    count = 0
+    if before and after:
+        r = subprocess.run(["git", "-C", path, "rev-list", "--count",
+                            f"{before}..{after}"], capture_output=True, text=True)
+        count = int(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else 0
+    return True, f"updated {count} commits", count
+
+
+@cli.command("pull")
+@click.option("--all", "all_flag", is_flag=True, default=False, help="All known repos")
+@click.option("--org", default=None, help="Scope to an ORG_KEY, e.g. github.com~kospex")
+@click.option("--server", default=None, help="Scope to a git server, e.g. github.com")
+@click.option("--check", "check", is_flag=True, default=False,
+              help="Offline staleness report; no pull, no network")
+@click.option("--no-prompt", "no_prompt", is_flag=True, default=False,
+              help="Non-interactive auth (fail fast) for unattended runs")
+@click.argument("repo_id", required=False, type=click.STRING)
+def pull(all_flag, org, server, check, no_prompt, repo_id):
+    """Refresh the local clones kospex already knows about (git pull + sync).
+
+    Scope is required - a REPO_ID or one of --all / --org / --server.
+    """
+    try:
+        repos = _resolve_pull_repos(kospex.kospex_query, repo_id=repo_id,
+                                    all_flag=all_flag, org=org, server=server)
+    except ValueError as e:
+        raise click.UsageError(str(e))
+
+    if not repos:
+        console.print("No matching repos in the kospex DB.", style="yellow")
+        return
+
+    if check:
+        table = PrettyTable()
+        table.field_names = ["repo_id", "last_fetch", "last_sync", "last_commit", "age"]
+        table.align = "l"
+        for row in _staleness_rows(repos):
+            table.add_row([row["repo_id"], row["last_fetch"], row["last_sync"],
+                           row["last_commit"], row["age"]])
+        print(table)
+        return
+
+    updated = current = skipped = failed = 0
+    for r in repos:
+        rid = r.get("_repo_id")
+        path = r.get("file_path")
+        ok, detail, commits = _git_pull(path, no_prompt=no_prompt)
+        if not ok:
+            console.print(f"SKIP {rid}: {detail}", style="yellow")
+            skipped += 1
+            continue
+        kospex.kospex_query.set_repo_last_fetch(rid)
+        try:
+            kospex.sync_repo(path)
+        except Exception as e:  # never let one repo kill the run
+            log.error(f"sync failed for {rid}: {e}")
+            console.print(f"FAIL {rid}: sync error: {e}", style="red")
+            failed += 1
+            continue
+        if commits:
+            console.print(f"OK   {rid}: {detail}", style="green")
+            updated += 1
+        else:
+            current += 1
+    console.print(
+        f"\nDone. updated={updated} up-to-date={current} skipped={skipped} failed={failed}"
+    )
+
 
 @cli.command("github")
 @click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")
