@@ -1174,8 +1174,12 @@ class KospexQuery:
 
         return results
 
-    def url_request(self, url, cache=3600, timeout=10, headers=None):
-        """Make a request to a URL, and use the cached version is less than [cache] seconds"""
+    def url_request_with_status(self, url, cache=3600, timeout=10, headers=None):
+        """Make a request to a URL, and use the cached version if less than [cache] seconds.
+
+        Returns a (content, status) tuple: status is 200 on a cache hit or fresh
+        success, the HTTP status on an HTTP error, or None on a network/timeout
+        error. 200 responses are cached; failures are not."""
         # Set default cache to 1 hour (60mins * 60secs)
 
         # Check the cache first
@@ -1185,22 +1189,31 @@ class KospexQuery:
 
         if result and (time.time() - result["timestamp"]) < cache:
             # Cache is valid
-            content = result["content"]
-        else:
-            # Fetch new content and update the cache
-            try:
-                response = requests.get(url, timeout=timeout)
-                response.raise_for_status()  # Raise an exception for HTTP errors
-                content = response.text
+            return result["content"], 200
 
-                # Insert or update the cache
-                url_cache = {"url": url, "content": content, "timestamp": int(time.time())}
-                self.kospex_db.table(KospexSchema.TBL_URL_CACHE).upsert(url_cache, pk=["url"])
+        # Fetch new content and update the cache
+        try:
+            response = requests.get(url, timeout=timeout, headers=headers)
+            response.raise_for_status()  # Raise an exception for HTTP errors
+            content = response.text
 
-            except requests.RequestException as e:
-                print(f"Error fetching URL content: {e}")
-                content = None
+            # Insert or update the cache
+            url_cache = {"url": url, "content": content, "timestamp": int(time.time())}
+            self.kospex_db.table(KospexSchema.TBL_URL_CACHE).upsert(url_cache, pk=["url"])
 
+            return content, 200
+
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            return None, status
+        except requests.RequestException:
+            return None, None
+
+    def url_request(self, url, cache=3600, timeout=10, headers=None):
+        """Make a request to a URL, and use the cached version is less than [cache] seconds"""
+        content, _status = self.url_request_with_status(
+            url, cache=cache, timeout=timeout, headers=headers
+        )
         return content
 
     def get_repo_ids(self):
