@@ -621,14 +621,20 @@ class KospexDependencies:
 
         if not package_version:
             details["resolution"] = "no_version"
+            log.info(f"deps.dev unresolved [{details['resolution']}] {package_type} "
+                     f"{package_name} {package_version!r}")
             return details
         if not self.is_concrete_version(package_version):
             details["resolution"] = "unresolved_spec"
+            log.info(f"deps.dev unresolved [{details['resolution']}] {package_type} "
+                     f"{package_name} {package_version!r}")
             return details
 
         deps_info, status = self.deps_dev_status(package_type, package_name, package_version)
         if not deps_info:
             details["resolution"] = self._classify_lookup_miss(package_type, package_name, status)
+            log.info(f"deps.dev unresolved [{details['resolution']}] {package_type} "
+                     f"{package_name} {package_version!r}")
             return details
 
         # resolved
