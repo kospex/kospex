@@ -19,6 +19,7 @@ from xml.etree import ElementTree as ET
 import dateutil.parser
 import requests
 from packaging.requirements import InvalidRequirement, Requirement
+from packaging.version import Version, InvalidVersion
 from prettytable import PrettyTable
 
 import kospex_schema as KospexSchema
@@ -31,6 +32,10 @@ log = KospexUtils.get_kospex_logger("kospex_dependencies")
 class KospexDependencies:
     """kospex database query functionality"""
 
+    # Markers that make a version string a range/spec/reference, not a concrete version.
+    _SPEC_MARKERS = ("^", "~", ">", "<", "=", "*", "|", " - ", "://", "workspace:",
+                     "file:", "link:", "git+", "portal:")
+
     def __init__(self, kospex_db=None, kospex_query=None):
         # Initialize the kospex environment
         self.kospex_db = kospex_db
@@ -39,6 +44,24 @@ class KospexDependencies:
         # self.kospex_db = Database(KospexUtils.get_kospex_db_path())
         # The following will be the results from the list of dependencies from the assess command
         self.dependencies = []
+
+    def is_concrete_version(self, version):
+        """True if `version` is a single concrete version (e.g. 1.2.3), not a
+        range/spec/URL/keyword. Used to skip deps.dev calls that would 404 on a
+        spec and to categorise them as unresolved_spec."""
+        if not version or not isinstance(version, str):
+            return False
+        v = version.strip()
+        if not v or v.lower() in ("latest", "next", "*", "x"):
+            return False
+        if any(m in v for m in self._SPEC_MARKERS):
+            return False
+        try:
+            Version(v)
+            return True
+        except InvalidVersion:
+            # Accept npm-ish concrete versions packaging can't parse (e.g. 1.2.3-beta.1)
+            return bool(re.match(r"^\d+(\.\d+){0,3}([-+][0-9A-Za-z.-]+)?$", v))
 
     def extract_purl(self, purl):
         # Extract the purl from the given URL

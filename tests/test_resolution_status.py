@@ -71,3 +71,17 @@ def test_url_request_still_returns_bare_content(monkeypatch):
         raise requests.ConnectionError("down")
     monkeypatch.setattr("kospex_query.requests.get", _boom)
     assert kq.url_request("http://x/err") is None
+
+
+import pytest
+from kospex_dependencies import KospexDependencies
+
+
+@pytest.mark.parametrize("v,expected", [
+    ("1.2.3", True), ("0.0.16", True), ("2.0.0rc1", True), ("1.2.3-beta.1", True),
+    ("", False), (None, False), ("^4.4.0", False), (">=1.0,<2.0", False),
+    ("~1.2", False), ("1.x", False), ("latest", False), ("*", False),
+    ("workspace:*", False), ("https://github.com/o/r", False), ("git+https://x", False),
+])
+def test_is_concrete_version(v, expected):
+    assert KospexDependencies().is_concrete_version(v) is expected

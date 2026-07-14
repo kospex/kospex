@@ -14,6 +14,7 @@ dependencies = [
     "duckdb==1.4.3",
     "prettytable==3.17.0",
     "dateutils",
+    "packaging",
     "panopticas==0.0.16",
     "python-dotenv",
     "sqlite-utils",
