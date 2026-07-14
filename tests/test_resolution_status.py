@@ -1,4 +1,5 @@
 """Tests for dependency resolution-status classification."""
+import json
 import sqlite_utils
 import kospex_schema as KospexSchema
 from kospex_query import KospexQuery
@@ -85,3 +86,81 @@ from kospex_dependencies import KospexDependencies
 ])
 def test_is_concrete_version(v, expected):
     assert KospexDependencies().is_concrete_version(v) is expected
+
+
+class _StubQuery:
+    """Stub KospexQuery: url_request_with_status returns queued (content, status)
+    for the exact-version lookup (deps_dev_status). url_request (bare content on
+    success, None otherwise) drives the package-level lookup used by both
+    deps_dev_package (KospexDependencies._package_exists) and get_versions_behind
+    (via get_url_json) -- both hit the same package-level URL (no "/versions/")."""
+    def __init__(self, version_result, package_result=None):
+        self._version = version_result      # (content, status) for the exact version
+        self._package = package_result      # (content, status) for the package-level call
+
+    def url_request_with_status(self, url, **kw):
+        return self._package if "/versions/" not in url else self._version
+
+    def url_request(self, url, **kw):
+        if self._package is None:
+            return None
+        content, status = self._package
+        return content if status == 200 else None
+
+
+def _deps(version_result, package_result=None):
+    kd = KospexDependencies(kospex_query=_StubQuery(version_result, package_result))
+    return kd
+
+
+def test_depsdev_record_no_version():
+    rec = _deps((None, None)).depsdev_record("pypi", "foo", "")
+    assert rec["resolution"] == "no_version" and rec["versions_behind"] is None
+
+
+def test_depsdev_record_unresolved_spec():
+    rec = _deps((None, None)).depsdev_record("npm", "chartjs", "^4.4.0")
+    assert rec["resolution"] == "unresolved_spec" and rec["versions_behind"] is None
+
+
+def test_depsdev_record_package_not_found():
+    # exact version 404, package-level also 404
+    rec = _deps(version_result=(None, 404), package_result=(None, 404)).depsdev_record(
+        "pypi", "nope-typo", "1.0.0")
+    assert rec["resolution"] == "package_not_found" and rec["versions_behind"] is None
+
+
+def test_depsdev_record_version_yanked():
+    # exact version 404, but package exists
+    rec = _deps(version_result=(None, 404), package_result=('{"versions": []}', 200)).depsdev_record(
+        "pypi", "realpkg", "9.9.9")
+    assert rec["resolution"] == "version_yanked" and rec["versions_behind"] is None
+
+
+def test_depsdev_record_lookup_error():
+    rec = _deps(version_result=(None, None)).depsdev_record("pypi", "x", "1.0.0")
+    assert rec["resolution"] == "lookup_error" and rec["versions_behind"] is None
+
+
+def test_depsdev_record_resolved_versions_behind_is_int():
+    """get_versions_behind always returns an int in its 'versions_behind' key
+    (initialised to 0, only ever incremented) when the package-level fetch
+    succeeds, so the resolved path must carry a real int, never a sentinel
+    string like the old 'Unknown'/''."""
+    version_body = json.dumps({
+        "publishedAt": "2024-01-01T00:00:00Z",
+        "isDefault": True,
+        "links": [],
+        "advisoryKeys": [],
+    })
+    package_body = json.dumps({
+        "versions": [
+            {"isDefault": True, "publishedAt": "2024-01-01T00:00:00Z",
+             "versionKey": {"version": "1.0.0"}},
+        ]
+    })
+    rec = _deps(version_result=(version_body, 200),
+                package_result=(package_body, 200)).depsdev_record("pypi", "foo", "1.0.0")
+    assert rec["resolution"] == "resolved"
+    assert type(rec["versions_behind"]) is int
+    assert rec["versions_behind"] == 0
