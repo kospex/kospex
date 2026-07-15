@@ -1325,6 +1325,45 @@ async def commit(request: Request, repo_id: str, commit_hash: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# Human-readable labels for the failure `resolution` categories a dependency
+# item can carry when deps.dev could not resolve it. Kept in sync with the
+# `_labels` map used on the /dependencies/ page (src/templates/dependencies.html).
+UNRESOLVED_STATUS_LABELS = {
+    "unresolved_spec": "Unresolved spec",
+    "version_yanked": "Yanked",
+    "package_not_found": "Not found",
+    "no_version": "No version",
+    "lookup_error": "Lookup error",
+}
+
+
+def _classify_upload_status(item: dict) -> str:
+    """Classify a single package-check result item into a status string.
+
+    Precedence: advisories (Vulnerable) wins over everything else - a package
+    that is both vulnerable and unresolved is most usefully flagged as
+    Vulnerable. Then an honest label for unresolved/failed-resolution items,
+    then the existing numeric versions_behind tiers. `versions_behind` and
+    `advisories` are coalesced to 0 so an explicit None (used for unresolved
+    dependencies) never reaches a numeric comparison.
+    """
+    advisories = item.get("advisories") or 0
+    versions_behind = item.get("versions_behind") or 0
+
+    if advisories > 0:
+        return "Vulnerable"
+
+    resolution = item.get("resolution")
+    if resolution in UNRESOLVED_STATUS_LABELS:
+        return UNRESOLVED_STATUS_LABELS[resolution]
+
+    if versions_behind > 6:
+        return "Outdated"
+    elif versions_behind > 2:
+        return "Behind"
+    return "Current"
+
+
 @app.get("/package-check/", response_class=HTMLResponse)
 async def package_check(request: Request):
     """Display the package check page with drag and drop interface"""
@@ -1372,16 +1411,9 @@ async def package_check_upload(file: UploadFile = File(...)):
             os.remove(temp_path)
             os.rmdir(temp_dir)
 
-            # Add status based on advisories and versions behind
+            # Add status based on advisories, resolution and versions behind
             for item in results:
-                if item.get("advisories", 0) > 0:
-                    item["status"] = "Vulnerable"
-                elif item.get("versions_behind", 0) > 6:
-                    item["status"] = "Outdated"
-                elif item.get("versions_behind", 0) > 2:
-                    item["status"] = "Behind"
-                else:
-                    item["status"] = "Current"
+                item["status"] = _classify_upload_status(item)
 
             return JSONResponse(content=results)
 
