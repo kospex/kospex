@@ -1,5 +1,7 @@
 # Dependency resolution status — categorise & record why a lookup failed
 
+**Status: Implemented** via migration `0005` on branch `feature/dependency-resolution-status`. The `resolution` column classifies every dependency lookup into one of six categories; `/dependencies/` displays category badges for unresolved rows.
+
 ## Overview
 
 When kospex enriches a dependency via deps.dev, the lookup can come back empty.
