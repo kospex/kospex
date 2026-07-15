@@ -110,6 +110,12 @@ deploy refreshes everything.) The template treats `NULL` resolution as "fall bac
 numeric/`Up to date` logic", so legacy rows render exactly as they do post-#105 until
 re-run.
 
+**Deploy ordering (required).** Both DB-writing paths now emit `resolution` on every row,
+so `kospex upgrade-db -apply` must be run to add the `0005` column before the upgraded code
+writes dependencies. On a DB still on the old schema, `krunner osi` / `assess(save=True)`
+will fail with `no such column: resolution` (sqlite_utils does not auto-add columns). A
+freshly created DB likewise needs `upgrade-db -apply` before its first dependency write.
+
 ## Testing
 
 - **Classifier units** (stub the deps.dev status/data): one test per branch —
