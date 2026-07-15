@@ -19,6 +19,7 @@ from xml.etree import ElementTree as ET
 import dateutil.parser
 import requests
 from packaging.requirements import InvalidRequirement, Requirement
+from packaging.version import Version, InvalidVersion
 from prettytable import PrettyTable
 
 import kospex_schema as KospexSchema
@@ -31,6 +32,10 @@ log = KospexUtils.get_kospex_logger("kospex_dependencies")
 class KospexDependencies:
     """kospex database query functionality"""
 
+    # Markers that make a version string a range/spec/reference, not a concrete version.
+    _SPEC_MARKERS = ("^", "~", ">", "<", "=", "*", "|", " - ", "://", "workspace:",
+                     "file:", "link:", "git+", "portal:")
+
     def __init__(self, kospex_db=None, kospex_query=None):
         # Initialize the kospex environment
         self.kospex_db = kospex_db
@@ -39,6 +44,24 @@ class KospexDependencies:
         # self.kospex_db = Database(KospexUtils.get_kospex_db_path())
         # The following will be the results from the list of dependencies from the assess command
         self.dependencies = []
+
+    def is_concrete_version(self, version):
+        """True if `version` is a single concrete version (e.g. 1.2.3), not a
+        range/spec/URL/keyword. Used to skip deps.dev calls that would 404 on a
+        spec and to categorise them as unresolved_spec."""
+        if not version or not isinstance(version, str):
+            return False
+        v = version.strip()
+        if not v or v.lower() in ("latest", "next", "*", "x"):
+            return False
+        if any(m in v for m in self._SPEC_MARKERS):
+            return False
+        try:
+            Version(v)
+            return True
+        except InvalidVersion:
+            # Accept npm-ish concrete versions packaging can't parse (e.g. 1.2.3-beta.1)
+            return bool(re.match(r"^\d+(\.\d+){0,3}([-+][0-9A-Za-z.-]+)?$", v))
 
     def extract_purl(self, purl):
         # Extract the purl from the given URL
@@ -79,6 +102,26 @@ class KospexDependencies:
                 print(f"Error: {req.status_code} {req.text}")
 
         return data
+
+    def deps_dev_status(self, package_type, package_name, version):
+        """Exact-version deps.dev lookup returning (data|None, status)."""
+        encoded = urllib.parse.quote(package_name, safe="")
+        url = (f"https://api.deps.dev/v3alpha/systems/{package_type}"
+               f"/packages/{encoded}/versions/{version}")
+        content, status = self.kospex_query.url_request_with_status(url)
+        data = json.loads(content) if content else None
+        return data, status
+
+    def _package_exists(self, package_type, package_name):
+        """True if the package (any version) is known to deps.dev."""
+        return bool(self.deps_dev_package(package_type, package_name))
+
+    def _classify_lookup_miss(self, package_type, package_name, status):
+        """Category for a failed exact-version lookup given its HTTP status."""
+        if status == 404:
+            return "version_yanked" if self._package_exists(package_type, package_name) \
+                else "package_not_found"
+        return "lookup_error"
 
     def deps_dev_package(self, package_type, package_name):
         """
@@ -570,54 +613,47 @@ class KospexDependencies:
         return record
 
     def depsdev_record(self, package_type, package_name, package_version):
-        """Convert a deps.dev package info record into a dictionary with other metadata"""
-
-        details = {}
-        details["package_name"] = package_name
-        details["package_version"] = package_version
-        details["package_type"] = package_type
-
-        deps_info = None
-
+        """Convert a deps.dev package info record into a dictionary with other
+        metadata, including a `resolution` category and int-or-None versions_behind."""
+        details = {"package_name": package_name, "package_version": package_version,
+                   "package_type": package_type, "versions_behind": None}
         today = datetime.datetime.now(datetime.timezone.utc)
-        # TODO - Handle bad package names
-        # TODO - Handle 404 errors (most likely due to bad package name)
-        if package_version:
-            deps_info = self.deps_dev(package_type, package_name, package_version)
 
-        # If we don't get any info back, we'll just return an empty dictionary
-        if not deps_info:
-            # details['source_repo'] = "Unknown, maybe internal library"
+        if not package_version:
+            details["resolution"] = "no_version"
+            log.info(f"deps.dev unresolved [{details['resolution']}] {package_type} "
+                     f"{package_name} {package_version!r}")
+            return details
+        if not self.is_concrete_version(package_version):
+            details["resolution"] = "unresolved_spec"
+            log.info(f"deps.dev unresolved [{details['resolution']}] {package_type} "
+                     f"{package_name} {package_version!r}")
             return details
 
-        pub_date = None
-        if deps_info:
-            pub_date = deps_info.get("publishedAt")
+        deps_info, status = self.deps_dev_status(package_type, package_name, package_version)
+        if not deps_info:
+            details["resolution"] = self._classify_lookup_miss(package_type, package_name, status)
+            log.info(f"deps.dev unresolved [{details['resolution']}] {package_type} "
+                     f"{package_name} {package_version!r}")
+            return details
 
+        # resolved
+        details["resolution"] = "resolved"
+        pub_date = deps_info.get("publishedAt")
         if pub_date:
-            pub_date = dateutil.parser.isoparse(deps_info.get("publishedAt"))
-            diff = today - pub_date
-            details["days_ago"] = diff.days
-
-        details["published_at"] = deps_info.get("publishedAt")
+            details["days_ago"] = (today - dateutil.parser.isoparse(pub_date)).days
+        details["published_at"] = pub_date
         details["default"] = deps_info.get("isDefault")
         # TODO - need to parse the source repo to create proper links for NPM .. looks
         # a little dirty with actual Git urls and not https to Github
         details["source_repo"] = KospexUtils.extract_git_url(self.get_source_repo_info(deps_info))
         details["advisories"] = self.get_advisories_count(deps_info)
-
-        # Get the versions behind info
-        if package_version:
-            days_info = self.get_versions_behind(package_type, package_name, package_version)
-            details["versions_behind"] = days_info.get("versions_behind", "Unknown")
-
-        # TODO - this is a hacky way of duplicating the keys needed
-        # details['package_name'] = package_name
-        # details['package_version'] = package_version
+        days_info = self.get_versions_behind(package_type, package_name, package_version)
+        versions_behind = days_info.get("versions_behind")
+        details["versions_behind"] = versions_behind if isinstance(versions_behind, int) else None
         details["authors"] = None
         if details["source_repo"]:
             details["authors"] = self.get_repo_authors(details["source_repo"])
-
         return details
 
     def npm_assess(self, filename, results_file=None, repo_info=None, dev_deps=None):

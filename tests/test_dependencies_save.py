@@ -116,3 +116,19 @@ def test_save_dependencies_empty_is_noop():
     kdeps = KospexDependencies(kospex_db=db)
     assert kdeps.save_dependencies([], source="krunner osi") == 0
     assert list(db[KospexSchema.TBL_DEPENDENCY_DATA].rows) == []
+
+
+def test_save_dependencies_persists_resolution():
+    import sqlite_utils, kospex_schema as KospexSchema
+    from kospex_dependencies import KospexDependencies
+    db = sqlite_utils.Database(memory=True)
+    db.execute(KospexSchema.SQL_CREATE_DEPENDENCY_DATA)
+    db.execute("ALTER TABLE dependency_data ADD COLUMN resolution TEXT")
+    kd = KospexDependencies(kospex_db=db)
+    kd.save_dependencies([{
+        "_repo_id": "s~o~r", "hash": "h", "file_path": "req.txt", "package_type": "pypi",
+        "package_name": "foo", "package_version": "^1.0",
+        "versions_behind": None, "resolution": "unresolved_spec",
+    }], source="krunner osi")
+    row = next(db.query("SELECT resolution, versions_behind FROM dependency_data"))
+    assert row["resolution"] == "unresolved_spec" and row["versions_behind"] is None

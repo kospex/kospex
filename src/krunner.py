@@ -684,8 +684,9 @@ def osi(all, request_id):
             kdeps.clean_version_spec(d["package_version"]),
         )
         console.print(deps_rec)
-        d["versions_behind"] = deps_rec.get("versions_behind", "Unknown")
-        d["advisories"] = deps_rec.get("advisories", "Unknown")
+        d["versions_behind"] = deps_rec.get("versions_behind")   # int or None, no "Unknown"
+        d["advisories"] = deps_rec.get("advisories")
+        d["resolution"] = deps_rec.get("resolution")
         published = deps_rec.get("published_at", None)
         if published:
             d["published_at"] = published.split("T")[0]

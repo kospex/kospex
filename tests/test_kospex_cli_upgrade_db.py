@@ -37,6 +37,7 @@ def test_shipped_0003_adds_repos_provenance_columns(tmp_path):
 
     db = sqlite_utils.Database(tmp_path / "kospex.db")
     db.execute(KospexSchema.SQL_CREATE_REPOS)
+    db.execute(KospexSchema.SQL_CREATE_DEPENDENCY_DATA)
     db.execute(
         "CREATE TABLE schema_migrations ("
         "id TEXT PRIMARY KEY, sequence INTEGER NOT NULL, checksum TEXT NOT NULL, "
