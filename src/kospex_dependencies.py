@@ -1021,13 +1021,14 @@ class KospexDependencies:
                 row["package_name"] = package
                 row["package_version"] = version
 
-                record = {}
-                # print(f"Checking {package} version |{version}|")
-                # Check for multiple versions specifiers, we can't handle that
+                # A multiple-specifier line (e.g. requests>=1.0,<2.0) isn't a
+                # concrete version, so it routes through depsdev_record like any
+                # other non-concrete version: the declared spec is retained as
+                # package_version and it classifies as unresolved_spec without a
+                # deps.dev call. We skip the source-repo lookup (there's no
+                # concrete version to attribute it to).
                 if package_declaration.get("version_type") == "multiple":
-                    print(f"Skipping multiple version specifiers in {line.strip()}")
-                    record["package_name"] = package_declaration["package_name"]
-                    # continue
+                    record = self.depsdev_record("pypi", package, version)
                 else:
                     record = self.depsdev_record("pypi", package, version)
                     if not record.get("source_repo"):

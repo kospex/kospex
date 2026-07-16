@@ -4,7 +4,58 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## [Unreleased]
 
+### Added
+- **Dependency resolution status — categorise & record why a deps.dev lookup
+  failed**. When kospex enriches a dependency via deps.dev, the lookup can come
+  back empty; previously that was flattened to `versions_behind = "Unknown"`
+  (from `krunner osi`) or `""` (from `sca`) — one opaque bucket that lost the
+  *reason*. A new nullable `dependency_data.resolution` column (migration `0005`)
+  now classifies every lookup into one of six categories: `resolved`,
+  `no_version`, `unresolved_spec` (a range/git-URL/`workspace:*`/`latest`, etc.),
+  `version_yanked` (package exists on deps.dev but that version doesn't),
+  `package_not_found` (typo / private / removed), or `lookup_error` (transient
+  5xx/timeout). The classifier lives at the shared `depsdev_record` enrichment
+  seam, so both DB-writing paths (`krunner osi` and `assess()`/`sca`) record it,
+  and every non-resolved outcome is logged at INFO for a greppable audit trail.
+  The `/dependencies/` page shows the category as a badge instead of the
+  misleading "Up to date". Legacy rows keep `resolution = NULL` and render as
+  before until re-synced (`krunner osi -all` refreshes everything).
+  **Requires `kospex upgrade-db -apply` before the upgraded code writes
+  dependencies** (a DB on the old schema fails with `no such column:
+  resolution`). See `changes/202607-dependency-resolution-status.md`.
+  PR [#106](https://github.com/kospex/kospex/pull/106).
+- **`KospexQuery.url_request_with_status()`** — a status-aware variant of
+  `url_request` returning `(content, status)`, so callers can tell an HTTP 404
+  apart from a transient network error. `url_request` is now a thin wrapper over
+  it (single copy of the cache/fetch/upsert logic; `headers` are now actually
+  passed through to the request).
+
+### Changed
+- **`versions_behind` normalised to integer-or-NULL**. The `"Unknown"` / `""`
+  string sentinels are no longer written for unresolved dependencies — a
+  resolved dependency stores an integer (0 = up to date) and every unresolved one
+  stores `NULL`, paired with its `resolution` category (above). Downstream readers
+  that assumed the sentinel should treat `NULL` as "not resolved".
+
 ### Fixed
+- **`pypi_assess` no longer drops the version on multiple-specifier
+  requirements**. A `requirements.txt` line with more than one version specifier
+  (e.g. `requests>=1.0,<2.0`) was emitted with only `package_name` — the declared
+  spec was lost and no `resolution` was recorded. It now routes through the same
+  `depsdev_record` seam as every other line: the declared spec is retained as
+  `package_version` and the row classifies as `unresolved_spec` (no deps.dev call,
+  since the spec isn't a concrete version). Fixes
+  [#108](https://github.com/kospex/kospex/issues/108).
+- **`/package-check/upload` no longer 500s on unresolved dependencies**. The
+  status-classification loop compared `versions_behind` with `> 6` / `> 2`; once
+  unresolved rows began carrying an explicit `None` (from the `versions_behind`
+  normalisation above), `None > 6` raised `TypeError` and turned the whole upload
+  response into an HTTP 500 for any manifest containing a single unresolvable
+  dependency (a git/URL dep, `workspace:*`, `*`, `latest`, a private/typo'd
+  package, …). Fix: the classification moved into a pure `_classify_upload_status`
+  helper that coalesces `versions_behind`/`advisories` to 0 before comparing and
+  surfaces an honest status label (e.g. "Unresolved spec", "Not found") for the
+  failure categories instead of silently reporting "Current".
 - **Technology Landscape — `/tech/` drill-down link now URL-encoded**. On the
   `/landscape/` page, each technology row linked to `/tech/{Language}` using the
   raw language name, so names containing URL-special characters drilled down to
