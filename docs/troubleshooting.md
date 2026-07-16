@@ -56,11 +56,11 @@ If `kgit clone` fails, here are the most common causes and solutions:
   ```
 
 **Option 3: Git Credential Manager, Private CAs and CURL failures**
-  Git Credntial Manager can call bitbucket or git servers to detect the server type
-  When it can't find it, it default to lauching the UI for the credentials
+  Git Credential Manager can call Bitbucket or git servers to detect the server type.
+  When it can't reach them, it defaults to launching the UI for the credentials.
 
-  If Curl doesn't have a CA bundle set, it will error, even if you've configured your Git SSL certificates
-  The following allows you to use the CA bundle for curl to stop erroring.
+  If curl doesn't have a CA bundle set, it will error, even if you've configured your Git SSL certificates.
+  The following lets curl use the CA bundle to stop the error.
 
   ```bash
   # Environment variable for CURL
@@ -86,7 +86,7 @@ If `kgit clone` fails, here are the most common causes and solutions:
   sudo update-ca-trust
   ```
 
-  **Option 4: Repository-Specific CA Configuration**
+  **Option 5: Repository-Specific CA Configuration**
   ```bash
   # Configure CA certificate for specific repository URL
   git config --global http."https://your-git-server.company.com/".sslCAInfo /path/to/your/private-ca.crt
@@ -199,13 +199,27 @@ If `kgit clone` fails, here are the most common causes and solutions:
   ```
 
 #### Bitbucket Authentication
-- **Problem**: Bitbucket API requests fail with authentication errors
-- **Solution**:
+- **Problem**: Bitbucket API requests (`kgit bitbucket`) fail with authentication errors
+- **Solution**: Authenticate with a **Bitbucket API token** (the app-password replacement). Set `BITBUCKET_API_TOKEN` plus **one** of `BITBUCKET_EMAIL` (recommended) or `BITBUCKET_USERNAME` — they are mutually exclusive:
   ```bash
-  # Set Bitbucket credentials
-  export BITBUCKET_USERNAME=your_username
-  export BITBUCKET_PASSWORD=your_app_password
+  # Recommended: API token + Atlassian account email
+  export BITBUCKET_API_TOKEN=your_api_token
+  export BITBUCKET_EMAIL=you@example.com
+
+  # Verify credentials and scopes against a workspace
+  kgit bitbucket -test-auth -workspace YOUR_WORKSPACE
   ```
+
+  Two Atlassian token types work:
+  - **Atlassian account API token** (`id.atlassian.com` → Security → API tokens) — no scopes required, account-wide.
+  - **Bitbucket-scoped API token** (Bitbucket settings → API tokens) — must include all of `read:project:bitbucket`, `read:repository:bitbucket`, `read:workspace:bitbucket`.
+
+- **Problem**: `-test-auth` returns HTTP 403 (not 401)
+- **Solution**: 401 means bad credentials; **403 means the token authenticated but is missing scopes**. Add the three scopes above to the token, or switch to an unscoped Atlassian account API token.
+
+> **Deprecated — app passwords (`BITBUCKET_APP_PASSWORD`)**
+>
+> The legacy path used `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` (the Bitbucket username from account settings, **not** your email). **Atlassian permanently disabled all existing app passwords on 2026-06-09**, so this method no longer authenticates — every request using it will fail. It is documented here only for historical reference; migrate to `BITBUCKET_API_TOKEN` as shown above. See [Atlassian API tokens](https://support.atlassian.com/bitbucket-cloud/docs/api-tokens).
 
 ## Web Interface Issues
 
