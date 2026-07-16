@@ -38,6 +38,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   that assumed the sentinel should treat `NULL` as "not resolved".
 
 ### Fixed
+- **`pypi_assess` no longer drops the version on multiple-specifier
+  requirements**. A `requirements.txt` line with more than one version specifier
+  (e.g. `requests>=1.0,<2.0`) was emitted with only `package_name` — the declared
+  spec was lost and no `resolution` was recorded. It now routes through the same
+  `depsdev_record` seam as every other line: the declared spec is retained as
+  `package_version` and the row classifies as `unresolved_spec` (no deps.dev call,
+  since the spec isn't a concrete version). Fixes
+  [#108](https://github.com/kospex/kospex/issues/108).
 - **`/package-check/upload` no longer 500s on unresolved dependencies**. The
   status-classification loop compared `versions_behind` with `> 6` / `> 2`; once
   unresolved rows began carrying an explicit `None` (from the `versions_behind`
