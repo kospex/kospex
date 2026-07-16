@@ -14,6 +14,21 @@ By default, this will find all repos in DIRECTORY and attempt a "git pull" as yo
 **NOTE** - This will NOT download new repositories, it will only sync existing ones thare are aleady on disk.
 
 
+## osi
+
+Run an open source inventory across all synced repos, extracting dependency
+names and versions and enriching them via deps.dev.
+
+> krunner osi -all
+
+You can also scope it to a server, org or repo:
+
+> krunner osi GIT_SERVER~ORG~REPO
+
+If a repo runs off a non-default branch (e.g. `development` rather than `main`),
+see [Scanning a non-default branch](branch-aware-sync) for how to get an
+accurate inventory.
+
 ## find-docker
 
 This command finds files with the naming convention of Dockerfile and docker-*.yml

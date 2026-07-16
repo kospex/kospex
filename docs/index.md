@@ -21,6 +21,8 @@ If you are after some generally useful git commands then take a look at [Useful 
 
  Some better descriptions can be found at [use cases](use-cases).
 
+If some of your repos run off a non-default branch, see [Scanning a non-default branch](branch-aware-sync).
+
 ## General description of aging "things"
 
 Many reports or commands generate a description of active, aging, stale or unmaintained. This description is a simple calculation based on give date using the following default rules.
