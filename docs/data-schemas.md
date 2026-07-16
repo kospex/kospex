@@ -83,7 +83,12 @@ The SQLite database is the primary data store for all kospex data including comm
 
 Source: `/src/kospex_schema.py`
 
-**Current Schema Version:** 2
+**Baseline Schema Version:** 2 (frozen in `kospex_schema.py`)
+
+Columns added by later migrations are marked _(migration NNNN)_ below. A DB that
+has had `kospex upgrade-db -apply` run against it is at the latest migrated
+version. For the authoritative list of changes since the baseline, see
+`src/kospex/db/migrations/`.
 
 ### Core Tables
 
@@ -147,8 +152,14 @@ Repository metadata and sync status.
 | `first_seen` | TEXT | Date of first commit |
 | `git_remote` | TEXT | URL of the git repository |
 | `file_path` | TEXT | Path to repo on local filesystem |
+| `last_sync_hash` | TEXT | HEAD of the branch `file_metadata` was snapshotted from _(migration 0003)_ |
+| `last_panopticas_version` | TEXT | panopticas version at last sync _(migration 0003)_ |
+| `last_scc_version` | TEXT | scc version at last sync _(migration 0003)_ |
+| `last_fetch` | TEXT | When the local clone was last refreshed from its remote (clone/pull) _(migration 0004)_ |
 
 **Primary Key:** `(_repo_id)`
+
+The `last_sync_hash` / `last_panopticas_version` / `last_scc_version` columns are the provenance of the last successful `file_metadata` sync, used by the sync skip-guard to decide whether a rebuild is needed. `last_fetch` is distinct from `last_sync` (when kospex last read the clone into the DB) and `last_seen` (the newest commit date).
 
 ### File Analysis Tables
 
@@ -221,6 +232,7 @@ Software composition analysis (SCA) data.
 | `versions_behind` | INTEGER | How many versions behind latest |
 | `source_repo` | TEXT | Source repository URL |
 | `default` | TEXT | If this is the default version |
+| `resolution` | TEXT | Why a deps.dev version lookup resolved or failed: `resolved`, `no_version`, `unresolved_spec`, `version_yanked`, `package_not_found`, `lookup_error`; NULL for legacy unclassified rows _(migration 0005)_ |
 | `source` | TEXT | Tool used to get metadata |
 | `latest` | INTEGER | 1 if latest entry, 0 otherwise |
 | `created_at` | TIMESTAMP | When record was created |

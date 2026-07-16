@@ -60,6 +60,36 @@
   <lastmod>2026-07-16T00:00:00+00:00</lastmod>
   <priority>0.64</priority>
 </url>
+<url>
+  <loc>https://docs.kospex.io/data-schemas</loc>
+  <lastmod>2026-07-16T00:00:00+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/troubleshooting</loc>
+  <lastmod>2025-11-03T17:08:19+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/github-rate-limits</loc>
+  <lastmod>2025-07-04T11:32:54+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/kweb/</loc>
+  <lastmod>2025-06-26T09:59:57+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/metrics</loc>
+  <lastmod>2024-04-24T09:20:51+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
+<url>
+  <loc>https://docs.kospex.io/git-twin</loc>
+  <lastmod>2024-04-19T14:58:44+00:00</lastmod>
+  <priority>0.64</priority>
+</url>
 
 
 </urlset>
