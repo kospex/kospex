@@ -31,16 +31,6 @@
   <priority>0.80</priority>
 </url>
 <url>
-  <loc>https://docs.kospex.io/articles/orphaned-repos</loc>
-  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
-  <priority>0.80</priority>
-</url>
-<url>
-  <loc>https://docs.kospex.io/articles/vulnerabilities-testing-indicator</loc>
-  <lastmod>2025-03-25T07:25:09+00:00</lastmod>
-  <priority>0.80</priority>
-</url>
-<url>
   <loc>https://docs.kospex.io/kospex</loc>
   <lastmod>2025-03-25T07:25:09+00:00</lastmod>
   <priority>0.64</priority>

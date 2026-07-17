@@ -43,9 +43,9 @@ It's possibly that something labelled "unmaintained" is feature complete and doe
 
 ## Thoughts and articles
 
-["What are orphaned repos?"](articles/orphaned-repos) take a look at some basics of knowledge loss and the challenges.
+["What are orphaned repos?"](https://kospex.io/articles/orphaned-repos/) take a look at some basics of knowledge loss and the challenges.
 
-["Are security vulnerabilities an indicator of development testing practices?"](articles/vulnerabilities-testing-indicator)
+["Are security vulnerabilities an indicator of development testing practices?"](https://kospex.io/articles/vulnerabilities-testing-indicator/)
 
 ## What is a kospex?
 
