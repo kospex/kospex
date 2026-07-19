@@ -116,7 +116,7 @@ class Extractor:
 
 | `name` | `kind` | matches (basename) | `scanners` | `package_type` | `parse_ref` |
 |---|---|---|---|---|---|
-| pypi-requirements | PACKAGE | `requirements(-[\w.]+)?\.(txt\|in)` | `sca, osi` | pypi | `kospex_dependencies:KospexDependencies.parse_pip_requirements_file` |
+| pypi-requirements | PACKAGE | `requirements([-_][\w.]*)?\.(txt\|in)` | `sca, osi` | pypi | `kospex_dependencies:KospexDependencies.parse_pip_requirements_file` |
 | pyproject | PACKAGE | `pyproject.toml` | `sca, osi` | pypi | `…:parse_pyproject_file` |
 | npm-packagejson | PACKAGE | `package.json` (exact) | `sca, osi` | npm | `…:parse_package_json` |
 | pnpm-lock | PACKAGE | `pnpm-lock.yaml` | `sca, osi` | npm | `kospex.extractors.pnpm:extract_pnpm_lock` |

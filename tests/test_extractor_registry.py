@@ -59,7 +59,7 @@ def test_matchers_are_total():
     odd = ["", "   ", "wiérd", "a/b/c", "UPPER.TXT", "noext", ".hidden", "pyproject"]
     for e in REGISTRY:
         for s in odd:
-            assert e.matches(s) in (True, False)
+            assert isinstance(e.matches(s), bool)
 
 
 def test_matchers_mutually_exclusive():
@@ -70,6 +70,13 @@ def test_matchers_mutually_exclusive():
         base = os.path.basename(fname)
         hits = [e.name for e in REGISTRY if e.matches(base)]
         assert len(hits) == 1, f"{fname!r} matched {hits}"
+
+    # Adversarial filename shapes outside CASES — lock exclusivity for shapes,
+    # not just the fixed cases (sub-project C's dispatch relies on this).
+    for fname in ("Dockerfile.prod", "app.Dockerfile", "Project.Tests.csproj",
+                  ".renovaterc.json", "requirements-dev.in", "build.gradle.kts"):
+        hits = [e.name for e in REGISTRY if e.matches(os.path.basename(fname))]
+        assert len(hits) <= 1, f"{fname!r} matched {hits}"
 
 
 def test_coverage_matrix_records_the_krunner_gap():
