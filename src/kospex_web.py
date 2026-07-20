@@ -3,6 +3,18 @@ import os
 import kospex_utils as KospexUtils
 from kospex.extractors.registry import classify
 
+# Friendly labels for the classify() kinds shown in the /osi/ commentary.
+_KIND_LABELS = {
+    "package": "Package manifests",
+    "runtime": "Runtime versions",
+    "container": "Container images",
+    "unknown": "Unrecognised files",
+    "sca_config": "SCA config",
+    "lockfile": "Lockfiles",
+}
+# Kinds recognised but not a package source kospex scans (so not "awaiting a parser").
+_NOT_A_SOURCE_KINDS = {"sca_config", "lockfile"}
+
 
 def get_id_params(request_id,request_params=None):
     """
@@ -54,12 +66,18 @@ def osi_extraction_view(files, extracted_keys):
     extracted_keys: set of (repo_id, file_path) that have extracted dependency rows.
 
     Sets file["extracted"] = True/False on each file. Returns (files, commentary)
-    where commentary = {"no_parser": {kind_value: {basename: count}}, "not_scanned": int}:
-      - no_parser: not-extracted files whose type has no parser (classify.supported False),
-        grouped by kind then basename.
+    where commentary now has three keys:
+      no_parser {label: {basename: count}} for parser-planned kinds,
+      not_a_source {label: {basename: count}} for sca_config/lockfile,
+      not_scanned int:
+      - no_parser: not-extracted files whose type has no parser (classify.supported False)
+        and is genuinely awaiting a parser, grouped by friendly label then basename.
+      - not_a_source: not-extracted files whose type is recognised but not a package
+        source kospex scans (sca_config/lockfile), grouped by friendly label then basename.
       - not_scanned: count of not-extracted files whose type IS supported (just not scanned).
     """
     no_parser = {}
+    not_a_source = {}
     not_scanned = 0
 
     for f in files:
@@ -72,10 +90,14 @@ def osi_extraction_view(files, extracted_keys):
         result = classify(f.get("Provider") or "")
         if result.supported:
             not_scanned += 1
-        else:
-            basename = os.path.basename(f.get("Provider") or "")
-            kind = result.kind.value
-            no_parser.setdefault(kind, {})
-            no_parser[kind][basename] = no_parser[kind].get(basename, 0) + 1
+            continue
 
-    return files, {"no_parser": no_parser, "not_scanned": not_scanned}
+        basename = os.path.basename(f.get("Provider") or "")
+        kind = result.kind.value
+        label = _KIND_LABELS.get(kind, kind)
+        bucket = not_a_source if kind in _NOT_A_SOURCE_KINDS else no_parser
+        bucket.setdefault(label, {})
+        bucket[label][basename] = bucket[label].get(basename, 0) + 1
+
+    return files, {"no_parser": no_parser, "not_a_source": not_a_source,
+                   "not_scanned": not_scanned}
