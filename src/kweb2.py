@@ -487,6 +487,9 @@ async def osi(request: Request, id: Optional[str] = None):
             file["days_ago"] = KospexUtils.days_ago(file.get("committer_when"))
             file["status"] = KospexUtils.development_status(file.get("days_ago"))
 
+        extracted_keys = KospexQuery().extracted_dependency_file_keys(request_id=params)
+        deps, commentary = KospexWeb.osi_extraction_view(deps, extracted_keys)
+
         file_number = len(deps)
         status = KospexUtils.repo_stats(deps, "committer_when")
         filenames = KospexUtils.filenames_by_repo_id(deps)
@@ -498,6 +501,7 @@ async def osi(request: Request, id: Optional[str] = None):
                 "file_number": file_number,
                 "dep_files": filenames,
                 "status": status,
+                "commentary": commentary,
             },
         )
     except Exception as e:
