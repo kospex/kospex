@@ -29,6 +29,19 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   apart from a transient network error. `url_request` is now a thin wrapper over
   it (single copy of the cache/fetch/upsert logic; `headers` are now actually
   passed through to the request).
+- **`/osi/` shows per-file extraction status**. The Open Source Inventory now
+  marks each discovered dependency file with an **"Extracted?"** column — whether
+  kospex has parsed and enriched its dependencies into `dependency_data` — and a
+  "Dependency extraction coverage" callout groups the files with no extracted
+  details by kind: types with no parser yet (package manifests, runtime versions,
+  containers), kinds recognised but not scanned for packages (SCA config,
+  lockfiles), and supported files not yet scanned. Built on a new
+  `kospex.extractors.registry` classifier (`classify()`) that names each
+  dependency-bearing file type and its scanner support. See
+  `changes/2026-07-20-osi-extraction-status-design.md` and
+  `changes/2026-07-17-extractor-registry-classifier-design.md`.
+  PRs [#114](https://github.com/kospex/kospex/pull/114),
+  [#117](https://github.com/kospex/kospex/pull/117).
 
 ### Changed
 - **`versions_behind` normalised to integer-or-NULL**. The `"Unknown"` / `""`
@@ -38,6 +51,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   that assumed the sentinel should treat `NULL` as "not resolved".
 
 ### Fixed
+- **`/osi/` "last commit" no longer shows `None` for renamed files**. A
+  directory-level rename (a file moved up or down a level) renders in
+  `git log --numstat` with an empty brace side (e.g.
+  `.github/{workflows => }/dependabot.yml`), and `parse_git_rename_event` left a
+  doubled slash (`.github//dependabot.yml`). That malformed `commit_files` path
+  never matched the working-tree path, so `file_metadata.committer_when` was
+  left NULL and surfaced as "last commit: None". Repeated slashes are now
+  collapsed after rename substitution; existing rows clear on the next
+  `kospex sync`. PR [#115](https://github.com/kospex/kospex/pull/115). (The
+  non-ASCII-filename variant of the same NULL is tracked in
+  [#116](https://github.com/kospex/kospex/issues/116).)
 - **`pypi_assess` no longer drops the version on multiple-specifier
   requirements**. A `requirements.txt` line with more than one version specifier
   (e.g. `requests>=1.0,<2.0`) was emitted with only `package_name` — the declared
