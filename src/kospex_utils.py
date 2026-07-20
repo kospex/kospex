@@ -625,6 +625,16 @@ def parse_git_rename_event(event_str):
         old, new = extract_git_rename_values(rename)
         event_str = event_str.replace(rename, new)
 
+    if renames:
+        # A directory-level rename (a file moved up/down a level) renders with
+        # an empty brace side, e.g. ".github/{workflows => }/dependabot.yml".
+        # Substituting the empty side leaves a doubled slash (or a leading
+        # slash when the file moved to the repo root); collapse to the
+        # canonical repo-relative path so it matches the working-tree path.
+        # Guarded on `renames` so non-rename inputs (including legitimate
+        # leading-slash paths) are returned untouched.
+        event_str = re.sub(r"/{2,}", "/", event_str).lstrip("/")
+
     return event_str
 
 #def parse_git_rename_event(event_str):

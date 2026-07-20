@@ -58,6 +58,22 @@ def test_git_rename_event():
     expected = 'utilities/developer_utils/cookiecutter/static/css/{{cookiecutter.app_name}}.css'
     assert expected == KospexUtils.parse_git_rename_event(replace_and_2braces)
 
+
+def test_git_rename_event_empty_brace_side():
+    """A directory-level rename renders in git --numstat with an empty brace
+    side (the file moved up/down a level). Expanding the empty side must not
+    leave a doubled or leading slash, or the resulting path won't match the
+    working-tree path and file_metadata.committer_when ends up NULL."""
+    # File moved up a level: ".github/workflows/dependabot.yml" -> ".github/dependabot.yml"
+    assert KospexUtils.parse_git_rename_event(
+        ".github/{workflows => }/dependabot.yml") == ".github/dependabot.yml"
+    # File moved to repo root: "docs/README.md" -> "README.md"
+    assert KospexUtils.parse_git_rename_event("{docs => }/README.md") == "README.md"
+    # Empty side at the start (added dir level) still resolves cleanly
+    assert KospexUtils.parse_git_rename_event("{ => src}/foo.js") == "src/foo.js"
+    # Both-sides-present renames are unaffected
+    assert KospexUtils.parse_git_rename_event("pkg/{old => new}/x.py") == "pkg/new/x.py"
+
 def test_days_functions():
     """ Test the days calculation functions """
 
