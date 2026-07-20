@@ -292,6 +292,7 @@ class KospexQuery:
         kd.from_table(KospexSchema.TBL_DEPENDENCY_DATA)
         kd.select("_repo_id", "file_path")
         kd.where("latest", "=", 1)
+        kd.group_by("_repo_id", "file_path")
 
         if request_id:
             if repo_id := request_id.get("repo_id"):
