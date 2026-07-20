@@ -284,6 +284,25 @@ class KospexQuery:
 
         return results
 
+    def extracted_dependency_file_keys(self, request_id=None):
+        """Return the set of (repo_id, file_path) that have extracted dependency
+        rows (latest=1) in dependency_data, scoped like get_dependencies. Used by
+        /osi/ to mark which discovered files kospex has actually parsed."""
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_DEPENDENCY_DATA)
+        kd.select("_repo_id", "file_path")
+        kd.where("latest", "=", 1)
+
+        if request_id:
+            if repo_id := request_id.get("repo_id"):
+                kd.where("_repo_id", "=", repo_id)
+            elif org_key := request_id.get("org_key"):
+                kd.where_org_key(org_key)
+            elif server := request_id.get("server"):
+                kd.where("_git_server", "=", server)
+
+        return {(row["_repo_id"], row["file_path"]) for row in kd.execute()}
+
     def get_email_maps(self, alias=None, email=None):
         """
         Get the email maps for the given scope.
