@@ -31,6 +31,35 @@
 
         <!-- Main content area -->
         <div class="container mx-auto px-4 mt-12">
+            <!-- Dependency Extraction Coverage -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
+                <div class="p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                        Dependency extraction coverage
+                    </h2>
+                    {% if commentary and (commentary['no_parser'] or commentary['not_scanned']) %}
+                        {% if commentary['no_parser'] %}
+                        <p class="text-gray-700 mb-2">Not extracted — no parser yet:</p>
+                        <ul class="list-disc list-inside text-gray-700 mb-3">
+                            {% for kind, types in commentary['no_parser'].items() %}
+                            <li>
+                                <span class="font-semibold">{{ kind }}</span>:
+                                {% for name, count in types.items() %}{{ name }} ({{ count }}){% if not loop.last %}, {% endif %}{% endfor %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% if commentary['not_scanned'] %}
+                        <p class="text-gray-700">
+                            {{ commentary['not_scanned'] }} supported file{{ 's' if commentary['not_scanned'] != 1 else '' }} not yet scanned — run <code>kospex sca</code> / <code>krunner osi</code> to extract them.
+                        </p>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-gray-700">All discovered dependency files have extracted details.</p>
+                    {% endif %}
+                </div>
+            </div>
+
             <!-- Page Header -->
             <div
                 class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
@@ -225,6 +254,11 @@
                                     >
                                         Days Ago
                                     </th>
+                                    <th
+                                        class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                    >
+                                        Extracted?
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -259,11 +293,23 @@
                                     >
                                         {{ row.get('days_ago',"-") }}
                                     </td>
+                                    <td
+                                        class="px-6 py-4 whitespace-nowrap text-sm text-center"
+                                    >
+                                        {% if row.get('extracted') %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Yes</span>
+                                        {% else %}
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-700">No</span>
+                                        {% endif %}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
+                    <p class="text-sm text-gray-500 mt-3">
+                        "Extracted?" = kospex has parsed and enriched dependency details from this file.
+                    </p>
                 </div>
             </div>
         </div>
