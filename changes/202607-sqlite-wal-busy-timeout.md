@@ -2,6 +2,7 @@
 
 **Status:** spec / not yet implemented
 **Date:** 2026-07
+**Tracked in:** kospex/kospex#119
 
 ## Problem
 
