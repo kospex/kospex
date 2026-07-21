@@ -58,8 +58,11 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   doubled slash (`.github//dependabot.yml`). That malformed `commit_files` path
   never matched the working-tree path, so `file_metadata.committer_when` was
   left NULL and surfaced as "last commit: None". Repeated slashes are now
-  collapsed after rename substitution; existing rows clear on the next
-  `kospex sync`. PR [#115](https://github.com/kospex/kospex/pull/115). (The
+  collapsed after rename substitution. PR
+  [#115](https://github.com/kospex/kospex/pull/115). Note: because `kospex sync`
+  is incremental, rows already stored with the bad path do **not** self-heal —
+  DBs synced before this fix can clear them with the one-off SQL in
+  `changes/2026-07-21-commit-files-double-slash-remediation.md`. (The
   non-ASCII-filename variant of the same NULL is tracked in
   [#116](https://github.com/kospex/kospex/issues/116).)
 - **`pypi_assess` no longer drops the version on multiple-specifier
