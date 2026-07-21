@@ -635,6 +635,14 @@ def parse_git_rename_event(event_str):
         # leading-slash paths) are returned untouched.
         event_str = re.sub(r"/{2,}", "/", event_str).lstrip("/")
 
+    elif " => " in event_str:
+        # git only uses the brace form when the old and new paths share a
+        # common leading directory or trailing component. With nothing in
+        # common (a root-level file moved into a subdirectory, or an extension
+        # change) the whole field is a bare "old => new" — keep the new path,
+        # which is the one that exists in the working tree.
+        event_str = event_str.split(" => ", 1)[1]
+
     return event_str
 
 #def parse_git_rename_event(event_str):

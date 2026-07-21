@@ -74,6 +74,23 @@ def test_git_rename_event_empty_brace_side():
     # Both-sides-present renames are unaffected
     assert KospexUtils.parse_git_rename_event("pkg/{old => new}/x.py") == "pkg/new/x.py"
 
+def test_git_rename_event_no_braces():
+    """git only uses the brace form when the old and new paths share a common
+    leading directory or trailing component. With nothing in common it emits a
+    bare "old => new", which must resolve to the new path — otherwise the raw
+    arrow string is stored as commit_files.file_path, never matches the
+    working-tree path, and file_metadata.committer_when ends up NULL."""
+    # Root-level file moved into a subdirectory (no shared prefix or suffix)
+    assert KospexUtils.parse_git_rename_event(
+        "FASTAPI_MIGRATION.md => changes/FASTAPI_MIGRATION.md") == "changes/FASTAPI_MIGRATION.md"
+    # Extension change at the repo root
+    assert KospexUtils.parse_git_rename_event("LICENSE.rst => LICENSE.txt") == "LICENSE.txt"
+    # Directory-to-directory move with nothing in common
+    assert KospexUtils.parse_git_rename_event("old/a.py => new/b.py") == "new/b.py"
+    # A path that merely contains "=>" without the git rename spacing is untouched
+    assert KospexUtils.parse_git_rename_event("src/a=>b.txt") == "src/a=>b.txt"
+
+
 def test_days_functions():
     """ Test the days calculation functions """
 

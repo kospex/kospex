@@ -51,6 +51,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   that assumed the sentinel should treat `NULL` as "not resolved".
 
 ### Fixed
+- **Brace-less git renames are now parsed**. `git log --numstat` only uses the
+  brace form when the old and new paths share a common leading directory or
+  trailing component; with nothing in common it emits a bare `old => new` (e.g.
+  `LICENSE.rst => LICENSE.txt`, or a root-level file moved into a subdirectory).
+  `parse_git_rename_event` required braces, so the raw arrow string was stored
+  as `commit_files.file_path` — a second, independent source of the
+  `file_metadata.committer_when` NULL that surfaces as "last commit: None" on
+  `/osi/`. The new path is now kept for the brace-less form. Existing rows do
+  not self-heal (an incremental re-sync only reads commits newer than the last
+  synced one, so the old rename commit is never re-parsed); see
+  `changes/2026-07-21-rename-arrow-braceless-remediation.md` for the one-off SQL.
 - **`/osi/` "last commit" no longer shows `None` for renamed files**. A
   directory-level rename (a file moved up or down a level) renders in
   `git log --numstat` with an empty brace side (e.g.
