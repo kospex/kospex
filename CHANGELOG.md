@@ -51,6 +51,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   that assumed the sentinel should treat `NULL` as "not resolved".
 
 ### Fixed
+- **Brace-less git renames are now parsed**. `git log --numstat` only uses the
+  brace form when the old and new paths share a common leading directory or
+  trailing component; with nothing in common it emits a bare `old => new` (e.g.
+  `LICENSE.rst => LICENSE.txt`, or a root-level file moved into a subdirectory).
+  `parse_git_rename_event` required braces, so the raw arrow string was stored
+  as `commit_files.file_path` — a second, independent source of the
+  `file_metadata.committer_when` NULL that surfaces as "last commit: None" on
+  `/osi/`. The new path is now kept for the brace-less form. Existing rows do
+  not self-heal (an incremental re-sync only reads commits newer than the last
+  synced one, so the old rename commit is never re-parsed); see
+  `changes/2026-07-21-rename-arrow-braceless-remediation.md` for the one-off SQL.
 - **`/osi/` "last commit" no longer shows `None` for renamed files**. A
   directory-level rename (a file moved up or down a level) renders in
   `git log --numstat` with an empty brace side (e.g.
@@ -58,8 +69,11 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   doubled slash (`.github//dependabot.yml`). That malformed `commit_files` path
   never matched the working-tree path, so `file_metadata.committer_when` was
   left NULL and surfaced as "last commit: None". Repeated slashes are now
-  collapsed after rename substitution; existing rows clear on the next
-  `kospex sync`. PR [#115](https://github.com/kospex/kospex/pull/115). (The
+  collapsed after rename substitution. PR
+  [#115](https://github.com/kospex/kospex/pull/115). Note: because `kospex sync`
+  is incremental, rows already stored with the bad path do **not** self-heal —
+  DBs synced before this fix can clear them with the one-off SQL in
+  `changes/2026-07-21-commit-files-double-slash-remediation.md`. (The
   non-ASCII-filename variant of the same NULL is tracked in
   [#116](https://github.com/kospex/kospex/issues/116).)
 - **`pypi_assess` no longer drops the version on multiple-specifier
