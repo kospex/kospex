@@ -400,61 +400,21 @@ class KospexGit:
 
     def extract_git_url_parts(self, url):
         """
-        Extracts the domain name, organization, and repository name from a given URL.
+        Deprecated: use parse_git_remote().
+
+        Retained so existing callers keep working. parse_git_remote() is the
+        single source of truth and additionally handles scp-style SSH, Azure
+        DevOps and on-premise Bitbucket URLs. Collapsing the remaining parsers
+        is tracked in kospex#94.
 
         Args:
         url (str): The URL to extract information from.
 
         Returns:
-        dict: A dictionary containing the remote, org, repo, and remote_type.
+        dict: A dictionary containing the remote, org, repo, and remote_type,
+        or None if the URL could not be parsed.
         """
-        # Regular expression to match the default pattern
-        pattern = r"^(https?|git|ssh)\:\/\/(?:[\w.-]+@)?([\w.-]+)\/([\w.-]+)\/([\w.-]+)(?:\.git)?$"
-        match = re.match(pattern, url)
-        # There are some Go libraries which use a different URL format from Google
-        # https://go.googlesource.com/oauth2
-        g_pattern = r"(?P<protocol>^\w+)://(?P<domain>[^\/?#]+)/(?P<directory>.*)"
-        google_match = re.match(g_pattern, url)
-
-        # gitlab_pattern = r"(?P<protocol>^https?://)" \
-        gitlab_pattern = (
-            r"(?P<protocol>^\w+)://"
-            r"(?P<hostname>[^/]+)"
-            r"(?P<directories>(?:/[^/]+)*?)/"
-            r"(?P<last_part>[^/]+)$"
-        )
-
-        gitlab_match = re.match(gitlab_pattern, url)
-
-        slashes_count = url.count("/")
-        # Looks like github URLS have 4 slashes,
-        # gitlab URLs have more than 4 slashes (more like 5 or 6 for subprojects),
-        # Google/Go URLs have 3 slashes
-        # TODO - check SSH URLs
-
-        if slashes_count > 4 and gitlab_match:
-            return {
-                "remote": gitlab_match.group("hostname"),
-                "org": gitlab_match.group("directories").removeprefix("/"),
-                "repo": gitlab_match.group("last_part").removesuffix(".git"),
-                "remote_type": gitlab_match.group("protocol"),
-            }
-        elif match:
-            return {
-                "remote": match.group(2),
-                "org": match.group(3),
-                "repo": match.group(4).removesuffix(".git"),
-                "remote_type": match.group(1),
-            }
-        elif google_match:
-            return {
-                "remote": google_match.group("domain"),
-                "org": "",
-                "repo": google_match.group("directory").removesuffix(".git"),
-                "remote_type": google_match.group("protocol"),
-            }
-        else:
-            return None
+        return self.parse_git_remote(url)
 
     @staticmethod
     def generate_repo_id(remote, org, repo):
