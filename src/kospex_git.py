@@ -12,6 +12,7 @@ from prettytable import PrettyTable
 
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
+from kospex.habitat_config import HabitatConfig
 from kospex_observation import Observation
 from kospex_query import KospexQuery
 
@@ -584,57 +585,58 @@ class KospexGit:
         return obs
 
     def clone_repo(self, repo_url):
-        """Clone a repo to the kospex code directory"""
-        repo_dir = os.getenv("KOSPEX_CODE")
-        if not os.path.isdir(repo_dir):
-            exit("KOSPEX_CODE directory not found: " + repo_dir)
+        """Clone a repo into the kospex code directory.
 
-        current_dir = os.getcwd()
-        os.chdir(repo_dir)
+        Accepts HTTPS, ssh:// and scp-style (git@host:org/repo.git) URLs.
 
-        # Need to strip a trailing slash if it's there
-        # https://github.com/kospex/kospex/
-        repo_url = repo_url.rstrip("/")
-        # the trailing slash messes with the parsing
+        Args:
+        repo_url (str): The git URL to clone.
 
-        parts = self.extract_git_url_parts(repo_url)
-        remote_org_dir = None
-        print(parts)
-        if parts:
-            remote_org_dir = f"{parts['remote']}/{parts['org']}"
-        else:
-            # TODO - add logging
+        Returns:
+        str: Path to the cloned repo on disk, or None on failure.
+        """
+        code_dir = HabitatConfig.get_instance().code_dir
+        if not code_dir.is_dir():
+            exit(f"KOSPEX_CODE directory not found: {code_dir}\n"
+                 f"Run 'kospex init --create' to create it.")
+
+        # Trailing slashes break the parsers
+        parts = self.parse_git_remote(repo_url.rstrip("/"))
+        if not parts:
+            print(f"ERROR: could not parse git URL: {repo_url}")
             return None
 
-        if not os.path.isdir(remote_org_dir):
-            print("Creating directory: " + remote_org_dir)
-            os.makedirs(remote_org_dir)
+        org_dir = code_dir / parts["remote"] / parts["org"]
+        repo_path = org_dir / parts["repo"]
+
+        # ADO repo names can carry path segments straight from the URL, and
+        # urlparse does not normalise '..'. Resolve both sides — comparing a
+        # resolved path against an unresolved root false-positives wherever the
+        # root is a symlink (macOS symlinks /tmp to /private/tmp).
+        code_root = code_dir.resolve()
+        if not repo_path.resolve().is_relative_to(code_root):
+            print(f"ERROR: refusing to clone outside {code_root}: {repo_path}")
+            return None
+
+        org_dir.mkdir(parents=True, exist_ok=True)
+
+        if repo_path.is_dir():
+            print(f"Repo exists, pulling latest changes: {repo_path}")
+            result = subprocess.run(["git", "pull"], cwd=repo_path, check=False)
         else:
-            print("Directory exists: " + remote_org_dir)
+            print(f"Cloning repo: {repo_url}")
+            # List form (no shell) and an explicit destination: the URL cannot
+            # reach a shell, and '--' stops a hostile URL being read as a flag.
+            result = subprocess.run(
+                ["git", "clone", "--", repo_url, parts["repo"]],
+                cwd=org_dir, check=False)
 
-        os.chdir(remote_org_dir)
-        org_dir = os.getcwd()
-        repo_path = os.path.join(org_dir, parts["repo"])
-        print("Current directory: " + os.getcwd())
+        if result.returncode != 0:
+            print(f"Error cloning or pulling repo: {repo_url}")
+            return None
 
-        status = 0
-
-        if os.path.isdir(parts["repo"]):
-            print("Repo exists: " + parts["repo"])
-            print("Trying pulling latest changes instead ...")
-            os.chdir(parts["repo"])
-            status = os.system("git pull")
-        else:
-            print("Cloning repo: " + repo_url)
-            status = os.system(f"git clone {repo_url}")
-
-        if status != 0:
-            print("Error cloning or pulling repo: " + repo_url)
-            repo_path = None
-
-        os.chdir(current_dir)
-
-        return repo_path
+        # str, not Path: kgit.py:264 concatenates this with a str.
+        return str(repo_path)
 
     def get_latest_commit_datetime(self, repo_id):
         """Get the latest commit datetime for the given repo_id"""
