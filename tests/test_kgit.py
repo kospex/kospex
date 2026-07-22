@@ -1,6 +1,7 @@
 """
 Tests for KospexGit
 """
+import pytest
 from kospex_git import KospexGit
 
 def test_parse_git_remote():
@@ -46,3 +47,38 @@ def test_repo_id():
 
     gitlab_repo_id = KospexGit.generate_repo_id("gitlab.com","gitlab/bob","the_repo")
     assert gitlab_repo_id == "gitlab.com~gitlab~~bob~the_repo"
+
+
+SSH_ACCEPT_CASES = [
+    ("git@github.com:company-org/dashboard.git", "github.com", "company-org", "dashboard"),
+    ("git@github.com:company-org/dashboard", "github.com", "company-org", "dashboard"),
+    ("git@github.com:company-org/dashboard.js.git", "github.com", "company-org", "dashboard.js"),
+    ("git@github.com:company.org/repo.git", "github.com", "company.org", "repo"),
+    ("git@gitlab.com:group/sub/repo.git", "gitlab.com", "group/sub", "repo"),
+]
+
+
+@pytest.mark.parametrize("url,remote,org,repo", SSH_ACCEPT_CASES)
+def test_parse_ssh_git_url_accepts(url, remote, org, repo):
+    """scp-style SSH URLs parse, including dotted org and repo names."""
+    parts = KospexGit.parse_ssh_git_url(url)
+    assert parts is not None, f"failed to parse {url}"
+    assert parts["remote"] == remote
+    assert parts["org"] == org
+    assert parts["repo"] == repo
+    assert parts["remote_type"] == "ssh"
+
+
+SSH_REJECT_CASES = [
+    "git@github.com:company-org/.git",
+    "git@github.com:./../etc/passwd",
+    "git@github.com:company-org/repo.git; rm -rf /",
+    "git@github.com:-org/repo.git",
+    "https://github.com/company-org/dashboard.git",
+]
+
+
+@pytest.mark.parametrize("url", SSH_REJECT_CASES)
+def test_parse_ssh_git_url_rejects(url):
+    """Degenerate, traversal-shaped and non-SSH URLs return None, not a partial parse."""
+    assert KospexGit.parse_ssh_git_url(url) is None

@@ -42,7 +42,11 @@ class KospexGit:
 
     @staticmethod
     def parse_ssh_git_url(url):
-        pattern = r"git@(?P<remote>[^:]+):(?P<org>[\w-]+(?:/[\w-]+)*)/(?P<repo>[\w-]+)(?:\.git)?"
+        # Anchored at both ends so a junk suffix is a rejection, not a silent
+        # truncation. Dots are legal in orgs and repo names (e.g. dashboard.js);
+        # each segment must start with a word char so ".git", ".." and "-org"
+        # can never become directory names.
+        pattern = r"^git@(?P<remote>[\w.-]+):(?P<org>\w[\w.-]*(?:/\w[\w.-]*)*)/(?P<repo>\w[\w.-]*?)(?:\.git)?$"
         match = re.match(pattern, url)
 
         if match:
