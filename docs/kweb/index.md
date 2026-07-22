@@ -1,207 +1,134 @@
-# Kospex Web Interface Documentation
+# Kospex Web UI
 
-## Overview
+`kweb` is the web interface for navigating the data kospex has synced into its database.
+Where the CLI is built for scanning, scripting and reporting, the Web UI is built for
+*exploring* — following a thread from an organisation, to a repo, to a file, to the
+developer who last touched it.
 
-Kospex Web is a comprehensive software development analytics platform that provides insights into code repositories, developer activity, and organizational patterns. The web interface offers interactive dashboards, visualizations, and detailed analysis tools for understanding software development metrics across your organization.
+## Starting the Web UI
 
-## Key Features
+```bash
+kweb
+```
 
-### Core Analytics Views
+Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
-#### 📦 **Repositories**
-- **Purpose**: Browse and analyze all repositories in your organization
-- **Key Metrics**: Commit counts, developer activity, repository health indicators
-- **Filtering**: By organization, git server, or specific criteria
-- **Use Cases**: Repository inventory, health assessment, maintenance planning
-- **Documentation**: [Repositories Documentation](repos.md) *(to be created)*
+You'll need repositories synced into the database first — see
+[Getting started](../getting-started) if you haven't done that yet.
 
-#### 🏢 **Organizations**
-- **Purpose**: View organizational structure and ownership patterns
-- **Key Metrics**: Repository count, active developers per organization
-- **Insights**: Cross-organizational collaboration, ownership distribution
-- **Use Cases**: Portfolio management, organizational restructuring
-- **Documentation**: [Organizations Documentation](orgs.md) *(to be created)*
+> **The Web UI has no authentication.** It binds to `127.0.0.1` by default, so it's only
+> reachable from your own machine. Don't expose it to a network or the internet without
+> putting your own authentication in front of it — everything kospex knows about your
+> code and developers is readable by anyone who can reach the port.
 
-#### 👥 **Developers**
-- **Purpose**: Analyze individual and team contribution patterns
-- **Key Metrics**: Commit history, expertise areas, activity trends
-- **Features**: Individual profiles, collaboration patterns, knowledge mapping
-- **Use Cases**: Performance reviews, team planning, expertise location
-- **Documentation**: [Developers Documentation](developers.md) *(to be created)*
+## Navigation
 
-#### 🔧 **Technology Landscape**
-- **Purpose**: Explore technology stack across your organization
-- **Key Metrics**: Programming languages, frameworks, file type distribution
-- **Visualizations**: Usage statistics, trend analysis, technology adoption
-- **Use Cases**: Technology standardization, migration planning, skill gap analysis
-- **Documentation**: [Technology Landscape Documentation](landscape.md) *(to be created)*
+The main menu maps to the core views:
 
-#### 📊 **Metadata Overview**
-- **Purpose**: High-level dashboard with summary statistics
-- **Key Metrics**: Total repositories, commits, developers, organizations
-- **Features**: At-a-glance organizational health indicators
-- **Use Cases**: Executive reporting, baseline establishment
-- **Documentation**: [Metadata Documentation](metadata.md) *(to be created)*
+| Menu | Path | What it shows |
+| ---- | ---- | ------------- |
+| Summary | `/summary/` | High-level overview of everything synced |
+| Repos | `/repos/` | Repository inventory, activity and health |
+| Orgs | `/orgs/` | Organisations and git servers |
+| Developers | `/developers/` | Contributors, activity and expertise |
+| Opensource | `/osi/` | Open Source Inventory — dependency files and packages |
+| Landscape | `/landscape/` | Technology landscape across your code |
+| Metadata | `/metadata/` | File-level metadata and technology detail |
+| Help | `/help/` | Context-sensitive help |
 
-### Advanced Analysis Tools
+## Core views
 
-#### 🔍 **Dependencies**
-- **Purpose**: Track software dependencies and version management
-- **Features**: Security vulnerability tracking, version analysis
-- **Use Cases**: Security auditing, dependency management, upgrade planning
-- **Documentation**: [Dependencies Documentation](dependencies.md) *(to be created)*
+### Summary
 
-#### 🔥 **Code Hotspots**
-- **Purpose**: Identify files with high commit frequency and complexity
-- **Metrics**: Change frequency, complexity scores, maintenance indicators
-- **Use Cases**: Refactoring prioritization, technical debt management
-- **Documentation**: [Code Hotspots Documentation](hotspots.md) *(to be created)*
+The starting point. Aggregate counts of repositories, developers and organisations,
+with activity status so you can see how much of your estate is active versus aging.
 
-#### 📋 **Supply Chain Analysis**
-- **Purpose**: Visualize dependency relationships and security status
-- **Features**: Interactive bubble charts, security risk assessment
-- **Use Cases**: Supply chain security, dependency impact analysis
-- **Documentation**: [Supply Chain Documentation](supply-chain.md) *(to be created)*
+### Repos
 
-#### 📝 **Commit History**
-- **Purpose**: Browse detailed commit logs and file changes
-- **Features**: Author information, file change statistics, timeline views
-- **Use Cases**: Code archaeology, change impact analysis
-- **Documentation**: [Commit History Documentation](commits.md) *(to be created)*
+Repository inventory. For each repo you can see commit activity, contributor counts and
+last-commit age, which drives the active / aging / stale / unmaintained status described
+on the [home page](../).
 
-#### 🕸️ **Developer Collaboration Graphs**
-- **Purpose**: Visualize collaboration patterns between developers and repositories
-- **Features**: Interactive network visualizations, bubble charts, treemaps
-- **Use Cases**: Team dynamics analysis, knowledge transfer planning
-- **Documentation**: [Collaboration Graphs Documentation](graphs.md) *(to be created)*
+Drilling into a single repo (`/repo/{repo_id}`) gives you its contributors, technologies,
+files and commit history.
 
-#### 📋 **Observations**
-- **Purpose**: Custom analysis results and insights
-- **Features**: Configurable analysis rules, custom reporting
-- **Use Cases**: Policy compliance, custom metrics tracking
-- **Documentation**: [Observations Documentation](observations.md) *(to be created)*
+### Orgs
 
-### Visualization Features
+Organisation and git server level views (`/orgs/`, `/org/{org_key}`). Useful for
+portfolio-level questions — which parts of the business have the most repos, the most
+developers, or the most unmaintained code.
 
-#### 🫧 **Bubble Charts**
-- **Purpose**: Visualize developer contributions and repository relationships
-- **Features**: Interactive filtering, zoom capabilities, status indicators
-- **Customization**: Commit thresholds, time-based filtering
-- **Documentation**: [Bubble Charts Documentation](bubble.md) *(to be created)*
+### Developers
 
-#### 🗺️ **Treemap Views**
-- **Purpose**: Alternative visualization for hierarchical data representation
-- **Features**: Space-efficient visualization, comparative analysis
-- **Use Cases**: Resource allocation visualization, proportional analysis
-- **Documentation**: [Treemap Documentation](treemap.md) *(to be created)*
+Contributor analysis (`/developers/`, `/developer/{id}`). For an individual you can see
+which repos they've committed to, the technologies they've used, and how that has changed
+over time — the basis for offboarding and knowledge-transfer planning.
 
-#### 📈 **Dashboard Views**
-- **Purpose**: Aggregate multiple metrics in customizable dashboards
-- **Features**: Summary cards, trend indicators, status overviews
-- **Use Cases**: Regular monitoring, stakeholder reporting
-- **Documentation**: [Dashboard Documentation](dashboard.md) *(to be created)*
+> Kospex measures commit activity, which reflects *where knowledge sits*, not how well
+> someone does their job. It is not a productivity metric and shouldn't be used as one.
 
-## Navigation and User Interface
+### Opensource (OSI)
 
-### Main Navigation Menu
-- **Repos**: Repository listing and analysis
-- **Orgs**: Organization overview and metrics
-- **Developers**: Individual and team analytics
-- **Landscape**: Technology stack analysis
-- **Metadata**: High-level summary dashboard
-- **Help**: Context-sensitive assistance
+The Open Source Inventory. Shows the dependency and lock files found across your repos,
+when each was last updated, and the packages extracted from them.
 
-### Common Features Across Views
-- **Filtering**: Drill down by various criteria
-- **Sorting**: Customizable data ordering
-- **Export**: Data download capabilities
-- **Responsive Design**: Mobile and desktop compatibility
-- **Dark Mode**: Optional dark theme
+Because a package manager file that hasn't been touched in a year is a strong signal on
+its own, dependency files carry the same active / aging / stale / unmaintained status as
+repositories.
 
-## Data Sources and Integration
+### Landscape
 
-### Supported Git Platforms
-- GitHub (Enterprise and Cloud)
-- GitLab (Enterprise and Cloud)
-- Bitbucket (Server and Cloud)
-- Generic Git repositories
+The technology landscape — languages, infrastructure as code, package managers, pipelines
+and linters detected across your code. `/tech/{tech}` drills into a single technology to
+see which repos use it, and `/tech-change/` compares the landscape over time.
 
-### Data Collection
-- Repository metadata
-- Commit history and statistics
-- Developer information
-- File and dependency analysis
-- Security scanning results
+### Metadata
 
-## Getting Started
+File-level metadata and technology detail, including the file types and complexity metrics
+gathered via `scc`.
 
-### Prerequisites
-- Kospex CLI tool installed and configured
-- Database populated with repository data
-- Web server running (Flask or FastAPI)
+## Analysis views
 
-### Quick Start
-1. Access the web interface at your configured URL
-2. Start with the **Metadata** page for an overview
-3. Use **Repos** to explore individual repositories
-4. Check **Developers** for team analytics
-5. Review **Landscape** for technology insights
+These aren't all in the top menu, but are reachable by drilling down:
 
-### Common Workflows
-- **Repository Health Assessment**: Metadata → Repos → Individual Repository Views
-- **Developer Performance Review**: Developers → Individual Developer Profile → Collaboration Graphs
-- **Technology Audit**: Landscape → Dependencies → Supply Chain Analysis
-- **Security Review**: Dependencies → Supply Chain → Hotspots Analysis
+| View | Path | Purpose |
+| ---- | ---- | ------- |
+| Orphans | `/orphans/` | Repos with no active committer still contributing |
+| Key person | `/key-person/{repo_id}` | Files and repos carrying single-contributor risk |
+| Collaboration | `/collab/{repo_id}` | Who works alongside whom in a repo |
+| File collaboration | `/file-collab/{repo_id}/` | Collaboration at the individual file level |
+| Hotspots | `/hotspots/{repo_id}` | Files that change often and are hard to change |
+| Files | `/files/repo/{repo_id}` | File inventory for a repo |
+| Dependencies | `/dependencies/` | Declared dependencies and how far behind they are |
+| Package check | `/package-check/` | Drag and drop a dependency file to analyse it ad hoc |
+| Commits | `/commits/{repo_id}` | Commit history and individual commit detail |
+| Tenure | `/tenure/` | How long contributors have been active |
+| Observations | `/observations/` | Stored analysis results |
+| Recent | `/recent/` | Recently synced repositories |
 
-## API and Integration
+### Graphs and visualisations
 
-### REST API Endpoints
-- JSON data endpoints for programmatic access
-- Compatible with external dashboard tools
-- Rate limiting and authentication support
+- **Collaboration graphs** (`/graph/{org_key}`) — interactive network views of how
+  developers and repositories connect
+- **Bubble charts** (`/bubble/{id}`) — contribution volume and status at a glance
+- **Treemaps** (`/treemap/{id}`) — proportional views of the same data
 
-### Export Capabilities
-- CSV export for tabular data
-- JSON export for structured data
-- Custom report generation
+## Common workflows
+
+- **Where is our knowledge concentrated?** Orgs → Repos → Key person → Collaboration graph
+- **What are we built on?** Landscape → Opensource → Dependencies
+- **What's been abandoned?** Summary → Orphans → individual repo views
+- **What is this person taking with them?** Developers → individual developer → their repos and technologies
 
 ## Troubleshooting
 
-### Common Issues
-- **Data Not Loading**: Check database connection and data freshness
-- **Slow Performance**: Review data volume and consider filtering
-- **Missing Repositories**: Verify scanning and indexing completion
+- **No data showing** — the database may be empty. Sync at least one repo with
+  `kgit clone` or `kospex sync`, and check `kospex summary` returns results from the CLI.
+- **Missing repositories** — confirm the repo synced successfully; `/recent/` shows what
+  was most recently ingested.
+- **Missing file types or complexity metrics** — check that `scc` is installed, as it
+  drives file type detection and complexity analysis.
+- **Slow pages** — large estates produce large tables; filter by org or server rather than
+  loading everything at once.
 
-### Error Handling
-- Graceful error messages for data loading issues
-- Modal dialogs for network connectivity problems
-- Fallback views for incomplete data
-
-## Future Documentation Pages
-
-The following documentation pages will provide detailed guidance for each feature:
-
-1. **repositories.md** - Repository analysis and management
-2. **organizations.md** - Organizational views and metrics
-3. **developers.md** - Developer analytics and profiles
-4. **landscape.md** - Technology stack analysis
-5. **metadata.md** - Summary dashboard and overview
-6. **dependencies.md** - Dependency tracking and management
-7. **hotspots.md** - Code complexity and maintenance analysis
-8. **supply-chain.md** - Dependency relationship visualization
-9. **commits.md** - Commit history and change analysis
-10. **graphs.md** - Collaboration network visualizations
-11. **observations.md** - Custom analysis and reporting
-12. **bubble.md** - Bubble chart visualizations
-13. **treemap.md** - Treemap visualization guide
-14. **dashboard.md** - Dashboard customization and usage
-
-## Support and Resources
-
-- **Official Documentation**: [kospex.io](https://kospex.io)
-- **GitHub Repository**: Issues and feature requests
-- **Community Support**: User forums and discussion groups
-
----
-
-*This documentation reflects the current state of Kospex Web. For the latest updates and detailed API documentation, visit the official Kospex website.*
+More general help is in [Troubleshooting](../troubleshooting).
