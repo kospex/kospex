@@ -49,6 +49,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   resolved dependency stores an integer (0 = up to date) and every unresolved one
   stores `NULL`, paired with its `resolution` category (above). Downstream readers
   that assumed the sentinel should treat `NULL` as "not resolved".
+- Azure DevOps and on-premise Bitbucket repos now clone to a flatter directory
+  (`dev.azure.com/myorg-myproj/myrepo` instead of `dev.azure.com/myorg/myproj/_git/myrepo`),
+  matching the `repo_id` that sync already generates. Existing clones under the old layout are
+  orphaned on disk and can be deleted; no `repo_id` values change.
+- `kgit clone` with no arguments prints help instead of exiting silently, and its help text
+  documents SSH URL support.
 
 ### Fixed
 - **Brace-less git renames are now parsed**. `git log --numstat` only uses the
@@ -106,6 +112,20 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   The Language name is now also a `/tech/` link (matching the repos column), so
   both columns drill into the per-technology view.
   See `changes/202606-landscape-tech-link-urlencode.md`.
+- `kgit clone` now accepts scp-style SSH URLs (`git@host:org/repo.git`), completing the
+  `kgit github -ssh-clone-url -out-repo-list` → `kgit clone -filename` pipeline. Previously
+  every SSH URL failed with `ERROR with <url>`.
+- Repo names containing dots (e.g. `dashboard.js`) no longer truncate when parsed from an SSH
+  URL, which produced a wrong `repo_id` and a wrong on-disk directory.
+- `clone_repo()` resolves the code directory through `HabitatConfig` instead of a bare
+  `os.getenv`, so it no longer depends on a CLI entry point having populated `os.environ` at
+  import. CLI behaviour is unchanged; this fixes a `TypeError` for library callers.
+
+### Security
+- Clone and pull no longer shell out via `os.system`, closing a command-injection path for
+  repo URLs read from a file.
+- Clone destinations are confined to the kospex code directory; a crafted Azure DevOps URL
+  could previously resolve outside it.
 
 ## 0.0.39 - 2026-06-14
 

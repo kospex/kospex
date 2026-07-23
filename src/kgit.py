@@ -243,19 +243,29 @@ def import_mailmap(filename):
 
 @cli.command("clone")
 @click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
-@click.option('-filename',  type=click.Path(exists=True), help="File with HTTP git clone URLs")
+@click.option('-filename',  type=click.Path(exists=True), help="File with git clone URLs (HTTPS or SSH)")
 @click.argument('repo',type=click.STRING, required=False)
-def clone(sync, filename,repo):
+@click.pass_context
+def clone(ctx, sync, filename, repo):
     """
     Clone the given repo into our KOSPEX_CODE directory.
-    Example:
+
+    Accepts HTTPS and scp-style SSH URLs:
+
+    \b
     kgit clone https://github.com/ORG/REPO
+    kgit clone git@github.com:ORG/REPO.git
+    kgit clone -filename repos.txt
     """
     # We're going to shell out to git to do the clone
     kospex = Kospex()
 
     if repo and filename:
-        exit("You can't specify both a repo and a filename. Please choose one.")
+        raise click.UsageError("Specify either a repo URL or -filename, not both.")
+
+    if not repo and not filename:
+        click.echo(ctx.get_help())
+        ctx.exit(0)
 
     if repo:
         repo_path = kgit.clone_repo(repo)
@@ -320,6 +330,9 @@ def sync(org, sync_db, url):
         console.log(f"Starting single repository sync for: {url}")
 
         repo_path = kgit.clone_repo(url)
+        if not repo_path:
+            console.print(f"[bold red]Error:[/bold red] Failed to clone {url}")
+            return
         log.info(f"Syncing repository {url} to path: {repo_path}")
         commits = kospex.sync_repo(repo_path)
         console.print(f"Synced {len(commits)} commits")
@@ -477,7 +490,10 @@ def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
             if sync:
                 clone_url = repo.get('clone_url')
                 repo_path = kgit.clone_repo(clone_url)
-                print(f"Syncing repo: {clone_url} in directorty {repo_path}")
+                if not repo_path:
+                    print(f"ERROR: failed to clone {clone_url}, skipping")
+                    continue
+                print(f"Syncing repo: {clone_url} in directory {repo_path}")
                 kospex.sync_repo(repo_path)
 
     table = kgit.get_repos_pretty_table(repos=repos)
