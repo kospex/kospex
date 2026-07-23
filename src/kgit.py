@@ -330,6 +330,9 @@ def sync(org, sync_db, url):
         console.log(f"Starting single repository sync for: {url}")
 
         repo_path = kgit.clone_repo(url)
+        if not repo_path:
+            console.print(f"[bold red]Error:[/bold red] Failed to clone {url}")
+            return
         log.info(f"Syncing repository {url} to path: {repo_path}")
         commits = kospex.sync_repo(repo_path)
         console.print(f"Synced {len(commits)} commits")
@@ -487,7 +490,10 @@ def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
             if sync:
                 clone_url = repo.get('clone_url')
                 repo_path = kgit.clone_repo(clone_url)
-                print(f"Syncing repo: {clone_url} in directorty {repo_path}")
+                if not repo_path:
+                    print(f"ERROR: failed to clone {clone_url}, skipping")
+                    continue
+                print(f"Syncing repo: {clone_url} in directory {repo_path}")
                 kospex.sync_repo(repo_path)
 
     table = kgit.get_repos_pretty_table(repos=repos)
