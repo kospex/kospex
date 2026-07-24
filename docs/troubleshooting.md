@@ -19,7 +19,7 @@ If `kgit clone` fails, here are the most common causes and solutions:
   git config --global credential.helper manager-core
   ```
 - **For GitHub**: Set up a Personal Access Token with repository access
-- **For Bitbucket**: Configure app passwords or OAuth
+- **For Bitbucket**: Set a `BITBUCKET_API_TOKEN` (see [Bitbucket Authentication](#bitbucket-authentication) below)
 
 #### Network and SSL Issues
 - **Problem**: Clone fails with SSL certificate or network errors

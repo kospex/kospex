@@ -38,11 +38,18 @@ https://github.com/mergestat/mergestat-lite
 
 ## bitbucket
 
-All bitbucket commands require the credentials to be set. The following environment
+All bitbucket commands require Atlassian credentials in the environment. The following
 variables are required:
 
-- `BITBUCKET_USERNAME`
-- `BITBUCKET_APP_PASSWORD`
+- `BITBUCKET_API_TOKEN` — an Atlassian API token
+- `BITBUCKET_EMAIL` — your Atlassian account email (or `BITBUCKET_USERNAME`, but not both)
+
+See [Troubleshooting → Bitbucket authentication](troubleshooting#bitbucket-authentication)
+for the token types, required scopes and worked examples.
+
+> *Historical:* the old `BITBUCKET_USERNAME` + `BITBUCKET_APP_PASSWORD` method stopped
+> working on 2026-06-09, when Atlassian permanently disabled all app passwords. Use an
+> API token as above.
 
 ```bash
 kgit bitbucket -test-auth
