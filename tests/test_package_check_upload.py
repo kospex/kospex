@@ -137,3 +137,65 @@ def test_upload_endpoint_does_not_500_on_unresolved_dependency(client, monkeypat
     assert by_name["some-git-dep"]["status"] == "Unresolved spec"
     assert by_name["some-git-dep"]["status"] != "Current"
     assert by_name["requests"]["status"] == "Current"
+
+
+# ---------------------------------------------------------------------------
+# Security regression: upload filename path traversal (deploy-kospex#8 item #10
+# is the clone half; this is item #2 — the unauthenticated upload route joined
+# tempfile.mkdtemp() with the raw client filename, so an absolute or ".." name
+# wrote (then deleted) outside the temp dir. CWE-22.
+# ---------------------------------------------------------------------------
+import os.path  # noqa: E402
+import tempfile as _tempfile  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+
+def test_upload_filename_with_traversal_stays_inside_temp_dir(client, monkeypatch):
+    """A "../" in the client filename must not let the write escape the temp dir."""
+    created = {}
+    real_mkdtemp = _tempfile.mkdtemp
+
+    def recording_mkdtemp(*a, **k):
+        d = real_mkdtemp(*a, **k)
+        created["dir"] = d
+        return d
+
+    monkeypatch.setattr(_tempfile, "mkdtemp", recording_mkdtemp)
+
+    captured = {}
+
+    def fake_assess(self, filename, **kwargs):
+        captured["path"] = filename
+        return []
+
+    monkeypatch.setattr("kospex_dependencies.KospexDependencies.assess", fake_assess)
+
+    resp = client.post(
+        "/package-check/upload",
+        files={"file": ("../pwned.json", b"{}", "application/json")},
+    )
+
+    assert resp.status_code == 200
+    assert "path" in captured, "assess was not reached"
+    written = Path(captured["path"]).resolve()
+    tempdir = Path(created["dir"]).resolve()
+    assert written.is_relative_to(tempdir), (
+        f"upload escaped temp dir: {written} is not under {tempdir}")
+    assert written.name == "pwned.json", "the basename must be preserved for parser dispatch"
+
+
+def test_upload_rejects_dot_dot_filename(client, monkeypatch):
+    """A filename of "..' must be rejected outright, not written to the parent dir."""
+    def exploding_assess(self, filename, **kwargs):
+        raise AssertionError("assess must not be reached for a rejected filename")
+
+    monkeypatch.setattr("kospex_dependencies.KospexDependencies.assess", exploding_assess)
+
+    resp = client.post(
+        "/package-check/upload",
+        files={"file": ("..", b"{}", "application/json")},
+    )
+
+    assert resp.status_code == 400
+    # Pin the rejection to the filename sanitiser, not any incidental 400.
+    assert resp.json()["detail"] == "Invalid filename"
