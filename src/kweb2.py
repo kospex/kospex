@@ -1393,9 +1393,23 @@ async def package_check_upload(file: UploadFile = File(...)):
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file selected")
 
+        # Strip any directory components from the client-supplied filename before
+        # joining it onto our temp dir. os.path.join(dir, "/abs") discards dir and
+        # a "../" name traverses out, so the raw name is a path-traversal sink
+        # (CWE-22). basename keeps the meaningful part — assess() dispatches the
+        # parser off it (requirements.txt / package.json / pom.xml / ...).
+        safe_name = os.path.basename(file.filename)
+        if not safe_name or safe_name in (".", ".."):
+            raise HTTPException(status_code=400, detail="Invalid filename")
+
         # Save the uploaded file temporarily
         temp_dir = tempfile.mkdtemp()
-        temp_path = os.path.join(temp_dir, file.filename)
+        temp_path = os.path.join(temp_dir, safe_name)
+
+        # Belt-and-braces: assert the destination stays under the temp dir, the
+        # same containment check clone_repo() uses for clone destinations.
+        if not Path(temp_path).resolve().is_relative_to(Path(temp_dir).resolve()):
+            raise HTTPException(status_code=400, detail="Invalid filename")
 
         # Read and save file content
         content = await file.read()
