@@ -126,6 +126,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   repo URLs read from a file.
 - Clone destinations are confined to the kospex code directory; a crafted Azure DevOps URL
   could previously resolve outside it.
+- `/package-check/upload` now sanitises the client-supplied filename (`os.path.basename` plus a
+  containment check on the resolved path), closing a path-traversal write/delete outside the
+  temp directory (CWE-22).
 
 ## 0.0.39 - 2026-06-14
 
