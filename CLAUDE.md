@@ -184,6 +184,7 @@ Design / spec: `changes/202605-db-migration-system.md`.
 - Database operations through kospex_core and kospex_query abstractions 
 - Web templates use Jinja2 with TailwindCSS classes
 - JavaScript uses JS with jQuery for DOM manipulation
+- Security fixes: in code comments, commit messages, test names, CHANGELOG, and PR text, describe the issue by its **CWE and mechanism only**. Do not reference internal or ops issue trackers, private repos, or private review documents, and don't point at an adjacent unfixed weakness. (Vulnerabilities are tracked privately until a fix ships; naming that tracking in a public fix defeats the purpose.)
 
 ### Testing
 - Tests located in `/tests/` directory using pytest framework
