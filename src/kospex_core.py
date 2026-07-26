@@ -3,6 +3,7 @@
 import csv
 import os
 import os.path
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -1202,10 +1203,15 @@ class Kospex:
         return krunner_path
 
     def generate_krunner_filename(self, function=None, ext="out"):
-        """Get the path to a krunner file"""
-        krunner_path = self.get_krunner_directory()
-        # TODO - do better path join method and validate no path traversal .. etc
-        return os.path.join(krunner_path, self.git.get_repo_id() + "." + function + "." + ext)
+        """Absolute path to a krunner report file, guaranteed to sit under the
+        krunner directory. Raises ValueError if the repo-id-derived name would
+        escape it (defense-in-depth against a crafted git remote)."""
+        krunner_path = Path(self.get_krunner_directory()).resolve()
+        name = f"{self.git.get_repo_id()}.{function}.{ext}"
+        candidate = (krunner_path / name).resolve()
+        if not candidate.is_relative_to(krunner_path):
+            raise ValueError(f"refusing krunner filename outside {krunner_path}: {name}")
+        return str(candidate)
 
     def extract_krunner_file_details(self, filename, krunner_home=None):
         """Extract the repo_id and function from a krunner filename"""
