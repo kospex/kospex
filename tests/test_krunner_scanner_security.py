@@ -167,3 +167,32 @@ def test_grep_no_shell_injection(tmp_path, monkeypatch):
     assert captured["argv"] == ["grep", "-Rn", "-e", evil, "."]  # keyword inert, one element
     assert captured["kwargs"].get("cwd") == str(repo)
     assert captured["kwargs"].get("shell") in (None, False)
+
+
+def test_run_scanner_missing_binary_does_not_raise(monkeypatch):
+    def boom(argv, **kwargs):
+        raise FileNotFoundError(argv[0])
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    # must not raise; returns None
+    assert krunner._run_scanner(["nope-not-installed", "x"], cwd="/repo") is None
+
+
+def test_run_scanner_missing_binary_removes_empty_stdout_file(tmp_path, monkeypatch):
+    out_path = tmp_path / "report.json"
+
+    def boom(argv, **kwargs):
+        raise FileNotFoundError(argv[0])
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    result = krunner._run_scanner(
+        ["nope-not-installed"], cwd="/repo", stdout_path=str(out_path))
+
+    assert result is None
+    assert not out_path.exists(), "a 0-byte report would mask the repo on the next run"
+
+
+def test_grep_requires_keyword(tmp_path):
+    result = CliRunner().invoke(krunner.cli, ["grep", str(tmp_path)])
+    assert result.exit_code != 0
+    assert "keyword" in result.output.lower()

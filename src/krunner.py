@@ -1108,12 +1108,21 @@ def _run_scanner(argv, cwd, stdout_path=None):
     cwd:  directory the tool runs in, so it scans the intended repo.
     stdout_path: if given, the child's stdout is written to this file
         (trufflehog's -j JSON output); otherwise the tool writes its own file.
-    Returns the CompletedProcess.
+    Returns the CompletedProcess, or None if the tool is not installed.
     """
-    if stdout_path is not None:
-        with open(stdout_path, "wb") as out:
-            return subprocess.run(argv, cwd=cwd, stdout=out, check=False)
-    return subprocess.run(argv, cwd=cwd, check=False)
+    try:
+        if stdout_path is not None:
+            with open(stdout_path, "wb") as out:
+                return subprocess.run(argv, cwd=cwd, stdout=out, check=False)
+        return subprocess.run(argv, cwd=cwd, check=False)
+    except FileNotFoundError:
+        # Tool not on PATH. Don't abort the whole run, and don't leave a
+        # 0-byte report behind — an empty file would trip the caller's
+        # "skip, file exists" guard on the next run and silently mask the repo.
+        if stdout_path is not None and os.path.exists(stdout_path):
+            os.remove(stdout_path)
+        print(f"ERROR: scanner not found on PATH: {argv[0]}")
+        return None
 
 
 @cli.command("trufflehog")
@@ -1148,7 +1157,7 @@ def trufflehog_scan(only_verified, directory):
 
 
 @cli.command("grep")
-@click.option("-keyword", type=click.STRING, help="String to search for.")
+@click.option("-keyword", type=click.STRING, required=True, help="String to search for.")
 @click.argument("directory", type=click.Path(exists=True))
 def grep(keyword, directory):
     """Run a 'grep' on all git repositories found in the given directory."""
