@@ -81,3 +81,66 @@ def test_run_scanner_routes_stdout_to_file(tmp_path, monkeypatch):
         ["trufflehog", "filesystem", "-j", "."], cwd="/repo", stdout_path=str(out_path))
 
     assert out_path.read_bytes() == b"hello"
+
+
+from click.testing import CliRunner  # noqa: E402
+
+
+def _drive_scanner(command_name, tmp_path, monkeypatch, extra_args=None):
+    """Run a scanner command through one repo whose report filename carries
+    shell metacharacters; capture the subprocess call.
+
+    Returns (result, captured, evil_fname, repo_dir).
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    evil_fname = str(tmp_path / "evil~org~repo;$(touch pwned).SCAN.json")
+
+    monkeypatch.setattr(krunner.KospexUtils, "find_repos", lambda directory: [str(repo)])
+    monkeypatch.setattr(krunner.kospex, "set_repo_dir", lambda d: None)
+    monkeypatch.setattr(
+        krunner.kospex, "generate_krunner_filename",
+        lambda function, ext: evil_fname)
+
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        return _FakeCompleted(0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    args = [command_name, *(extra_args or []), str(tmp_path)]
+    result = CliRunner().invoke(krunner.cli, args)
+    return result, captured, evil_fname, str(repo)
+
+
+def test_gitleaks_no_shell_injection(tmp_path, monkeypatch):
+    result, cap, evil_fname, repo = _drive_scanner("gitleaks", tmp_path, monkeypatch)
+    assert result.exit_code == 0
+    assert isinstance(cap["argv"], list)
+    assert cap["argv"] == ["gitleaks", "detect", "-r", evil_fname]  # fname inert, one element
+    assert cap["kwargs"].get("cwd") == repo
+    assert cap["kwargs"].get("shell") in (None, False)
+
+
+def test_semgrep_no_shell_injection(tmp_path, monkeypatch):
+    result, cap, evil_fname, repo = _drive_scanner("semgrep", tmp_path, monkeypatch)
+    assert result.exit_code == 0
+    assert cap["argv"] == ["semgrep", "scan", "--json", "-o", evil_fname]
+    assert cap["kwargs"].get("cwd") == repo
+    assert cap["kwargs"].get("shell") in (None, False)
+
+
+def test_trufflehog_no_shell_injection(tmp_path, monkeypatch):
+    result, cap, evil_fname, repo = _drive_scanner("trufflehog", tmp_path, monkeypatch)
+    assert result.exit_code == 0
+    # For trufflehog the report path is the stdout target, not an argv element,
+    # so it never touches the command line at all.
+    assert cap["argv"][:3] == ["trufflehog", "filesystem", "-j"]
+    assert "." in cap["argv"]
+    assert evil_fname not in cap["argv"]
+    assert cap["kwargs"].get("stdout") is not None
+    assert cap["kwargs"].get("cwd") == repo
+    assert cap["kwargs"].get("shell") in (None, False)
