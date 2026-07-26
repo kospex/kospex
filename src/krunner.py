@@ -1101,6 +1101,21 @@ def find_repos(directory):
     kospex.list_repos(directory)
 
 
+def _run_scanner(argv, cwd, stdout_path=None):
+    """Run a scanner tool via subprocess — never a shell.
+
+    argv: the command as a list (no shell string, no interpolation).
+    cwd:  directory the tool runs in, so it scans the intended repo.
+    stdout_path: if given, the child's stdout is written to this file
+        (trufflehog's -j JSON output); otherwise the tool writes its own file.
+    Returns the CompletedProcess.
+    """
+    if stdout_path is not None:
+        with open(stdout_path, "wb") as out:
+            return subprocess.run(argv, cwd=cwd, stdout=out, check=False)
+    return subprocess.run(argv, cwd=cwd, check=False)
+
+
 @cli.command("trufflehog")
 @click.option(
     "--only-verified",
