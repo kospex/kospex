@@ -174,6 +174,7 @@ def test_run_scanner_missing_binary_does_not_raise(monkeypatch):
         raise FileNotFoundError(argv[0])
 
     monkeypatch.setattr(subprocess, "run", boom)
+    monkeypatch.setattr(krunner.shutil, "which", lambda name: None)
     # must not raise; returns None
     assert krunner._run_scanner(["nope-not-installed", "x"], cwd="/repo") is None
 
@@ -185,11 +186,26 @@ def test_run_scanner_missing_binary_removes_empty_stdout_file(tmp_path, monkeypa
         raise FileNotFoundError(argv[0])
 
     monkeypatch.setattr(subprocess, "run", boom)
+    monkeypatch.setattr(krunner.shutil, "which", lambda name: None)
     result = krunner._run_scanner(
         ["nope-not-installed"], cwd="/repo", stdout_path=str(out_path))
 
     assert result is None
     assert not out_path.exists(), "a 0-byte report would mask the repo on the next run"
+
+
+def test_run_scanner_reraises_real_error_when_tool_exists(monkeypatch):
+    # Tool is on PATH, but the run fails with FileNotFoundError (e.g. a bad cwd).
+    # That must propagate, not be mislabelled as "scanner not found".
+    monkeypatch.setattr(krunner.shutil, "which", lambda name: "/usr/bin/" + name)
+
+    def boom(argv, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", kwargs.get("cwd"))
+
+    monkeypatch.setattr(subprocess, "run", boom)
+
+    with pytest.raises(FileNotFoundError):
+        krunner._run_scanner(["gitleaks", "detect"], cwd="/no/such/cwd")
 
 
 def test_grep_requires_keyword(tmp_path):

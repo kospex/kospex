@@ -8,6 +8,7 @@ import json
 import os
 import os.path
 import shlex
+import shutil
 import subprocess
 import sys
 from itertools import count
@@ -1116,6 +1117,11 @@ def _run_scanner(argv, cwd, stdout_path=None):
                 return subprocess.run(argv, cwd=cwd, stdout=out, check=False)
         return subprocess.run(argv, cwd=cwd, check=False)
     except FileNotFoundError:
+        # Only a missing executable is skip-and-continue. A bad cwd or output
+        # directory also raises FileNotFoundError but is a real error — if the
+        # tool itself exists on PATH, re-raise rather than mislabel it.
+        if shutil.which(argv[0]) is not None:
+            raise
         # Tool not on PATH. Don't abort the whole run, and don't leave a
         # 0-byte report behind — an empty file would trip the caller's
         # "skip, file exists" guard on the next run and silently mask the repo.
