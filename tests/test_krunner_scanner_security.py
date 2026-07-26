@@ -144,3 +144,26 @@ def test_trufflehog_no_shell_injection(tmp_path, monkeypatch):
     assert cap["kwargs"].get("stdout") is not None
     assert cap["kwargs"].get("cwd") == repo
     assert cap["kwargs"].get("shell") in (None, False)
+
+
+def test_grep_no_shell_injection(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setattr(krunner.KospexUtils, "find_repos", lambda directory: [str(repo)])
+
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        return _FakeCompleted(0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    evil = "x;$(touch pwned)"
+    result = CliRunner().invoke(krunner.cli, ["grep", "-keyword", evil, str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert captured["argv"] == ["grep", "-Rn", "-e", evil, "."]  # keyword inert, one element
+    assert captured["kwargs"].get("cwd") == str(repo)
+    assert captured["kwargs"].get("shell") in (None, False)

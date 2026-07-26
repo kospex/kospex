@@ -1154,13 +1154,10 @@ def grep(keyword, directory):
     """Run a 'grep' on all git repositories found in the given directory."""
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
-    cwd = os.getcwd()
     print("# repos: " + str(len(dirs)))
     for d in dirs:
         print("\nRepo: " + d)
-        os.chdir(d)
-        os.system(f"grep -Rn {keyword} *")
-        os.chdir(cwd)
+        _run_scanner(["grep", "-Rn", "-e", keyword, "."], cwd=d)
 
 
 @cli.command("todo")
