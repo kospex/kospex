@@ -129,6 +129,11 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - `/package-check/upload` now sanitises the client-supplied filename (`os.path.basename` plus a
   containment check on the resolved path), closing a path-traversal write/delete outside the
   temp directory (CWE-22).
+- `krunner`'s secret-scanner commands (`trufflehog`, `gitleaks`, `semgrep`) and `krunner grep`
+  now invoke their tools via argv lists instead of a shell, closing a command-injection path
+  where a repository's remote-derived identifier (or the grep keyword) reached the shell
+  (CWE-78). The scanners also now run against the intended repository directory rather than the
+  directory kospex was launched from.
 
 ## 0.0.39 - 2026-06-14
 
