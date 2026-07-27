@@ -52,13 +52,37 @@ if ! command -v trivy &> /dev/null; then
     exit 1
 fi
 
-# Run Trivy scan on the newly created image
-echo "Running Trivy scan on $IMAGE_NAME"
-trivy image $IMAGE_NAME
+# Severities that fail the build. Override with e.g.
+#   TRIVY_GATE_SEVERITY=CRITICAL ./build-image.sh
+TRIVY_GATE_SEVERITY="${TRIVY_GATE_SEVERITY:-HIGH,CRITICAL}"
 
-# Check Trivy scan exit code
-if [ $? -eq 0 ]; then
-    echo "Trivy scan completed successfully"
+# Full report first, for visibility -- every severity, including findings with no
+# fix available. This pass is informational and never fails the build.
+echo "Running Trivy scan on $IMAGE_NAME"
+trivy image "$IMAGE_NAME"
+
+# Then the gate.
+#
+# `trivy image` exits 0 even when it finds vulnerabilities unless --exit-code is
+# passed, so the previous version of this check could never fail: a scan full of
+# CRITICALs printed its table and then reported success.
+#
+# --ignore-unfixed limits the gate to findings that are actually actionable. When
+# this image last went stale it carried 127 HIGH vulnerabilities and every single
+# one had a fix available, so a fixable-only gate would have caught it while still
+# not blocking on upstream issues nobody here can resolve.
+echo "Gating on fixable $TRIVY_GATE_SEVERITY vulnerabilities"
+trivy image --quiet --exit-code 1 --ignore-unfixed \
+    --severity "$TRIVY_GATE_SEVERITY" "$IMAGE_NAME"
+TRIVY_STATUS=$?
+
+if [ $TRIVY_STATUS -eq 0 ]; then
+    echo "Trivy gate passed: no fixable $TRIVY_GATE_SEVERITY vulnerabilities"
+elif [ $TRIVY_STATUS -eq 1 ]; then
+    echo "FAILED: fixable $TRIVY_GATE_SEVERITY vulnerabilities found (listed above)."
+    echo "If the image is simply stale, rebuild without the cache: ./build-image.sh"
+    exit 1
 else
-    echo "Trivy scan found vulnerabilities or encountered an error"
+    echo "FAILED: Trivy could not complete the scan (exit $TRIVY_STATUS)."
+    exit "$TRIVY_STATUS"
 fi
