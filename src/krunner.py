@@ -8,6 +8,7 @@ import json
 import os
 import os.path
 import shlex
+import shutil
 import subprocess
 import sys
 from itertools import count
@@ -1101,6 +1102,35 @@ def find_repos(directory):
     kospex.list_repos(directory)
 
 
+def _run_scanner(argv, cwd, stdout_path=None):
+    """Run a scanner tool via subprocess — never a shell.
+
+    argv: the command as a list (no shell string, no interpolation).
+    cwd:  directory the tool runs in, so it scans the intended repo.
+    stdout_path: if given, the child's stdout is written to this file
+        (trufflehog's -j JSON output); otherwise the tool writes its own file.
+    Returns the CompletedProcess, or None if the tool is not installed.
+    """
+    try:
+        if stdout_path is not None:
+            with open(stdout_path, "wb") as out:
+                return subprocess.run(argv, cwd=cwd, stdout=out, check=False)
+        return subprocess.run(argv, cwd=cwd, check=False)
+    except FileNotFoundError:
+        # Only a missing executable is skip-and-continue. A bad cwd or output
+        # directory also raises FileNotFoundError but is a real error — if the
+        # tool itself exists on PATH, re-raise rather than mislabel it.
+        if shutil.which(argv[0]) is not None:
+            raise
+        # Tool not on PATH. Don't abort the whole run, and don't leave a
+        # 0-byte report behind — an empty file would trip the caller's
+        # "skip, file exists" guard on the next run and silently mask the repo.
+        if stdout_path is not None and os.path.exists(stdout_path):
+            os.remove(stdout_path)
+        print(f"ERROR: scanner not found on PATH: {argv[0]}")
+        return None
+
+
 @cli.command("trufflehog")
 @click.option(
     "--only-verified",
@@ -1113,37 +1143,36 @@ def trufflehog_scan(only_verified, directory):
     """Run trufflehog on all git repositories found in the given directory."""
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
-    cwd = os.getcwd()
     for d in dirs:
         print("\nRepo: " + d)
         kospex.set_repo_dir(d)
-        fname = kospex.generate_krunner_filename(function="TRUFFLEHOG", ext="json")
-        verif = ""
-        if only_verified:
-            verif = "--only-verified"
-        command = f"trufflehog filesystem -j {verif} . 2&> {fname}"
+        try:
+            fname = kospex.generate_krunner_filename(function="TRUFFLEHOG", ext="json")
+        except ValueError as e:
+            print(f"Skipping {d}: {e}")
+            continue
         if not os.path.exists(fname):
-            print(command)
-            os.system(command)
+            argv = ["trufflehog", "filesystem", "-j"]
+            if only_verified:
+                argv.append("--only-verified")
+            argv.append(".")
+            print(f"{' '.join(argv)}  (cwd={d}, output={fname})")
+            _run_scanner(argv, cwd=d, stdout_path=fname)
         else:
             print(f"Skipping, file {fname} exists")
-        os.chdir(cwd)
 
 
 @cli.command("grep")
-@click.option("-keyword", type=click.STRING, help="String to search for.")
+@click.option("-keyword", type=click.STRING, required=True, help="String to search for.")
 @click.argument("directory", type=click.Path(exists=True))
 def grep(keyword, directory):
     """Run a 'grep' on all git repositories found in the given directory."""
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
-    cwd = os.getcwd()
     print("# repos: " + str(len(dirs)))
     for d in dirs:
         print("\nRepo: " + d)
-        os.chdir(d)
-        os.system(f"grep -Rn {keyword} *")
-        os.chdir(cwd)
+        _run_scanner(["grep", "-Rn", "-e", keyword, "."], cwd=d)
 
 
 @cli.command("todo")
@@ -1217,17 +1246,18 @@ def gitleaks_scan(directory):
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
     print(f"About to run gitleaks on {len(dirs)} repos\nThis may take a while ...")
-    cwd = os.getcwd()
     for d in dirs:
         print("\nRepo: " + d)
         kospex.set_repo_dir(d)
-        # print(kospex.git.get_repo_id())
-        fname = kospex.generate_krunner_filename(function="GITLEAKS", ext="json")
+        try:
+            fname = kospex.generate_krunner_filename(function="GITLEAKS", ext="json")
+        except ValueError as e:
+            print(f"Skipping {d}: {e}")
+            continue
         if not os.path.exists(fname):
-            os.system(f"gitleaks detect -r {fname}")
+            _run_scanner(["gitleaks", "detect", "-r", fname], cwd=d)
         else:
             print(f"Skipping, file {fname} exists")
-        os.chdir(cwd)
         print("\n")
 
 
@@ -1283,25 +1313,19 @@ def semgrep(directory):
     """
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
-    cwd = os.getcwd()
     print("# repos: " + str(len(dirs)))
     for d in dirs:
         print("\nRepo: " + d)
-        # os.chdir(d)
         kospex.set_repo_dir(d)
-        print(kospex.git.get_repo_id())
-        # fname = kospex.generate_krunner_filename(function="SEMGREP",ext="txt")
-        fname = kospex.generate_krunner_filename(function="SEMGREP", ext="json")
+        try:
+            fname = kospex.generate_krunner_filename(function="SEMGREP", ext="json")
+        except ValueError as e:
+            print(f"Skipping {d}: {e}")
+            continue
         if not os.path.exists(fname):
-            # os.system(f"gitleaks detect -r {fname}")
-            os.system(f"semgrep scan --json -o {fname}")
+            _run_scanner(["semgrep", "scan", "--json", "-o", fname], cwd=d)
         else:
             print(f"Skipping, file {fname} exists")
-        # we should output as json, but for inital test, we'll use txt
-        # os.system(f"semgrep scan > {fname}")
-        # os.system(f"semgrep scan --json -o {fname}")
-
-        os.chdir(cwd)
 
 
 @cli.command("find-urls")
