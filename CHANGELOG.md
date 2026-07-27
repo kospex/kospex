@@ -2,7 +2,7 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## [Unreleased]
+## 0.0.40 - 2026-07-27
 
 ### Added
 - **Dependency resolution status — categorise & record why a deps.dev lookup
