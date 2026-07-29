@@ -161,20 +161,38 @@ def file_metadata(force, request_id):
 @click.option("-save", is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
 @click.option("-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)")
 @click.option("-verbose", is_flag=True, default=False, help="Verbose output. (Default: False)")
+@click.option(
+    "-strict", is_flag=True, default=False, help="Exit non-zero if any repo errored. (Default: False)"
+)
 @click.argument("request_id", required=False, type=click.STRING)
-def branches(save, csv, verbose, request_id):
+def branches(save, csv, verbose, strict, request_id):
     """
     Update the current branches for the in-scope repos.
     """
     repos = get_repos(request_id)
     results = []
+    errors = KrunnerUtils.RunErrors(logger=log, console=console)
 
     for r in repos:
+        # The recorded clone can be gone (deleted, moved, or a throwaway path).
+        # Skip it rather than aborting the run for every remaining repo.
+        repo_path = r["file_path"]
+        if not repo_path or not os.path.isdir(repo_path):
+            errors.add(KrunnerUtils.MISSING_CLONE, r["_repo_id"], f"no local clone at {repo_path}")
+            continue
+
         kgit = KospexGit()
-        kgit.set_repo(r["file_path"])
+        kgit.set_repo(repo_path)
         obs = kgit.new_observation("BRANCHES", "REPO")
 
-        branches = KospexGit.get_branches(r["file_path"])
+        try:
+            branches = KospexGit.get_branches(repo_path)
+        except (subprocess.CalledProcessError, OSError) as exc:
+            errors.add(
+                KrunnerUtils.GIT_ERROR, r["_repo_id"], f"could not read branches in {repo_path} ({exc})"
+            )
+            continue
+
         obs.raw = branches
         obs.format = "INTEGER"
         obs.data = len(branches)
@@ -217,10 +235,17 @@ def branches(save, csv, verbose, request_id):
 
     console.print(f"\nTotal number of repositories checked: {len(results)}\n")
 
+    if error_summary := errors.summary_table():
+        console.print(error_summary)
+        console.print()
+
     if csv:
         filename = "branches.csv"
         console.log(f"Writing {len(results)} repo sizes to {filename}")
         KrunnerUtils.write_dict_to_csv(filename, results)
+
+    if strict and errors:
+        sys.exit(1)
 
 
 @cli.command("repo-size")

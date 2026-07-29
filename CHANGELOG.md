@@ -2,6 +2,33 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+### Fixed
+- **`krunner branches` no longer aborts the whole run on one missing clone.**
+  `repos.file_path` records where a repo's clone lives on disk, and that path can
+  stop existing at any time — the clone is deleted, moved, or was only ever a
+  throwaway directory. `KospexGit.get_branches()` chdir'd into it with no guard,
+  so a single stale row raised `FileNotFoundError` and killed the scan for every
+  remaining repo (104 healthy repos skipped because of one). `get_branches()` now
+  runs git with `cwd=` instead of `os.chdir()`, so neither a missing directory nor
+  a failing git command can strand the process working directory, and `branches`
+  skips unreadable repos and carries on. A path that exists but isn't a git repo
+  is handled the same way. See `changes/202607-krunner-error-tracking.md`.
+
+### Added
+- **Error tracking by type for krunner scans.** New `krunner_utils.RunErrors`
+  collects per-repo failures during a scan, logs each at ERROR level to
+  `~/kospex/logs/krunner.log`, echoes it to the console, and prints a
+  count-by-type summary table at the end of the run (nothing prints when the run
+  is clean). Failures are tagged with kospex-level names — `MISSING_CLONE`,
+  `GIT_ERROR` — rather than Python exception classes, so both the summary and the
+  log read in kospex terms. Wired into `krunner branches`; the other repo-looping
+  commands can adopt it as they're touched.
+- **`krunner branches -strict`** exits non-zero if any repo errored, for CI and
+  cron jobs that need failures to surface without parsing output. The default
+  stays exit 0 so existing scripts are unaffected.
+
 ## 0.0.40 - 2026-07-27
 
 ### Added

@@ -7,6 +7,64 @@ import re
 
 import yaml
 from prettytable import PrettyTable
+from rich.table import Table
+
+# Error types recorded by RunErrors. Stable, kospex-level names - they appear in
+# the end-of-scan summary and in the krunner log, so keep them meaningful.
+MISSING_CLONE = "MISSING_CLONE"  # the repo's local clone is not on disk
+GIT_ERROR = "GIT_ERROR"  # the path exists but a git command failed on it
+
+
+class RunErrors:
+    """Collects per-item failures during a krunner scan.
+
+    A scan walks many repos and a single bad one should not abort the run. Each
+    failure is recorded here, logged at ERROR level and (optionally) echoed to
+    the console, then reported as a count-by-type summary once the scan ends.
+    """
+
+    def __init__(self, logger=None, console=None):
+        self.logger = logger
+        self.console = console
+        self.errors = []
+
+    def add(self, error_type, item, message):
+        """Record one failure against an item (usually a repo_id) and report it."""
+        self.errors.append({"type": error_type, "item": item, "message": message})
+
+        line = f"{error_type} {item}: {message}"
+        if self.logger:
+            self.logger.error(line)
+        if self.console:
+            self.console.log(line, style="dark_orange")
+
+    def __len__(self):
+        return len(self.errors)
+
+    def __bool__(self):
+        return bool(self.errors)
+
+    def counts_by_type(self):
+        """Return {error_type: count}, ordered by count descending then name."""
+        counts = {}
+        for error in self.errors:
+            counts[error["type"]] = counts.get(error["type"], 0) + 1
+
+        return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+    def summary_table(self):
+        """Return a rich Table of error counts, or None if the run was clean."""
+        if not self.errors:
+            return None
+
+        table = Table(title=f"Errors ({len(self.errors)})")
+        table.add_column("Type", justify="left", style="dark_orange", no_wrap=True)
+        table.add_column("Count", justify="right", style="magenta")
+
+        for error_type, count in self.counts_by_type().items():
+            table.add_row(error_type, str(count))
+
+        return table
 
 
 def generate_krunner_csv_filename(command_key, request_id):

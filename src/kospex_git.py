@@ -376,10 +376,12 @@ class KospexGit:
         Returns:
         list: A list of branch names.
         """
-        original_directory = os.getcwd()
-        os.chdir(directory)
-        # Run git command to get remote branches
-        result = subprocess.run(["git", "branch", "-r"], capture_output=True, text=True, check=True)
+        # Run git *in* the directory rather than chdir'ing the process into it.
+        # A missing directory or a failing git command used to leave the process
+        # cwd stranded inside (or pointing at) the repo, breaking later commands.
+        result = subprocess.run(
+            ["git", "branch", "-r"], cwd=directory, capture_output=True, text=True, check=True
+        )
 
         # Parse the output
         remote_branches = []
@@ -394,8 +396,6 @@ class KospexGit:
                     # Handle other remotes (not just origin)
                     if "/" in line:
                         remote_branches.append(line.split("/", 1)[1])
-
-        os.chdir(original_directory)
 
         return remote_branches
 
