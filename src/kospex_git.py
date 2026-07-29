@@ -3,14 +3,12 @@
 import os
 import re
 import subprocess
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
 import panopticas as Panopticas
 from prettytable import PrettyTable
 
-import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 from kospex.habitat_config import HabitatConfig
 from kospex_observation import Observation
@@ -645,157 +643,6 @@ class KospexGit:
         )
         latest_datetime = cursor.fetchone()[0]
         return latest_datetime
-
-    def sync_repo(self, directory=None, limit=None, from_date=None, to_date=None, no_scc=None):
-        """
-        Sync the commit data (authors, commmitters, files, etc) for the given directory
-        This is a work in progress refactor from kospex_core.py sync_repo
-        """
-        results = []
-
-        use_scc = True
-        if no_scc:
-            use_scc = False
-        # See at the bottom for file metadata
-
-        self.set_repo_dir(directory)
-
-        # If we don't have a from date from the use, get the last commit date from DB
-        if not from_date:
-            latest_datetime = self.get_latest_commit_datetime(self.git.get_repo_id())
-            if latest_datetime:
-                from_date = latest_datetime
-
-        # Use hash (#) as a delimeter as names can contain spaces
-        cmd = ["git", "log", "--pretty=format:%H#%aI#%cI#%aN#%aE#%cN#%cE", "--numstat"]
-
-        if from_date and to_date:
-            cmd += ["--since={}".format(from_date), "--until={}".format(to_date)]
-            print(f"Syncing commits from {from_date} to {to_date}...")
-        elif from_date:
-            cmd += ["--since={}".format(from_date)]
-            # print("Syncing commits from {}...".format(from_date))
-            print(f"Syncing commits from {from_date}...")
-        elif limit:
-            cmd += ["-n", str(limit)]
-            print(f"Syncing {limit} commits...")
-        else:
-            print("Syncing all commits...")
-
-        result = subprocess.run(cmd, capture_output=True, text=True).stdout.split("\n")
-
-        commits = []
-        commit = {}
-
-        for line in result:
-            if line:
-                if "\t" in line and len(line.split("\t")) == 3:
-                    # Check if the line represents file stats
-                    additions, deletions, filename = line.split("\t")
-                    if "filenames" in commit:
-                        # The following checks for git rename events which change the filename
-                        # With a git rename event, the filename will be in the format of
-                        # old_filename => new_filename
-                        if "=>" in filename:
-                            fpath = KospexUtils.parse_git_rename_event(filename)
-                            path_change = filename
-                        else:
-                            fpath = filename
-                            path_change = None
-
-                        commit["filenames"].append(
-                            {
-                                "file_path": fpath,
-                                "path_change": path_change,
-                                "additions": int(additions) if additions != "-" else 0,
-                                "deletions": int(deletions) if deletions != "-" else 0,
-                            }
-                        )
-                elif "#" in line:
-                    if commit:  # Save the previous commit
-                        commits.append(commit)
-
-                    (
-                        hash_value,
-                        author_datetime,
-                        committer_datetime,
-                        author_name,
-                        author_email,
-                        committer_name,
-                        committer_email,
-                    ) = line.split("#", 6)
-
-                    commit = {
-                        "hash": hash_value,
-                        "author_when": author_datetime,
-                        "committer_when": committer_datetime,
-                        "author_name": author_name,
-                        "author_email": author_email,
-                        "committer_name": committer_name,
-                        "committer_email": committer_email,
-                        "filenames": [],
-                    }
-
-                else:
-                    commit["filenames"].append({"filename": line, "additions": 0, "deletions": 0})
-
-            else:
-                if commit:  # Save the last commit
-                    commits.append(commit)
-                commit = {}
-
-        # cursor = conn.cursor()
-
-        counter = 0
-        print("About to insert commits into the database...")
-
-        # Insert the commits to the database
-        for commit in commits:
-            counter += 1
-            # Insert the commit to the database
-            files = len(commit["filenames"])
-            commit["_files"] = files
-            commit = self.git.add_git_to_dict(commit)
-            commit_files = commit["filenames"]
-            # Need to copy as we
-            results.append(commit.copy())
-            del commit["filenames"]
-            self.kospex_db.table(KospexSchema.TBL_COMMITS).upsert(commit, pk=["_repo_id", "hash"])
-
-            # Insert the filenames to the database
-            for file_info in commit_files:
-                file_info = self.git.add_git_to_dict(file_info)
-                file_info["hash"] = commit["hash"]
-                file_info["_ext"] = KospexUtils.get_extension(file_info["file_path"])
-                file_info["committer_when"] = commit["committer_when"]
-                self.kospex_db.table(KospexSchema.TBL_COMMIT_FILES).upsert(
-                    file_info, pk=["file_path", "_repo_id", "hash"]
-                )
-
-            # we'll print a + for each commit and a newline every 80 commits
-            print("+", end="")
-            if (counter % 80) == 0:
-                print()
-            if (counter % 500) == 0:
-                print(f"\nSynced {counter} commits so far ...\n")
-
-        print()
-        print(f"Synced {len(commits)} total commits")
-
-        # Update the repos table with the last sync time
-        last_sync = datetime.now(timezone.utc).astimezone().replace(microsecond=0).isoformat()
-        self.update_repo_status(last_sync=last_sync)
-
-        print("Processing file metadata...")
-
-        # We should process the metadata after the commits, so we can query the last date time from the database
-        # if not no_scc:
-        if use_scc:
-            metadata_files = self.file_metadata(directory, skip_last_commit=True)
-
-        self.chdir_original()
-
-        return results
 
 
 class MissingGitDirectory(Exception):
