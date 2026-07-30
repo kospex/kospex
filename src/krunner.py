@@ -22,7 +22,7 @@ import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 import kospex_web as KospexWeb
 import krunner_utils as KrunnerUtils
-from kospex_core import Kospex
+from kospex_core import Kospex, RepoPathConflict
 from kospex_query import KospexQuery
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
@@ -1252,16 +1252,24 @@ def git_pull(directory, sync):
     print("\nDirectory: " + os.path.abspath(directory))
 
     dirs = KospexUtils.find_repos(directory)
-    cwd = os.getcwd()
     print("# repos: " + str(len(dirs)))
+    errors = KrunnerUtils.RunErrors(logger=log, console=console)
     for d in dirs:
         print("\nRepo: " + d)
-        os.chdir(d)
-        os.system("git pull")
-        os.chdir(cwd)
+        # Run git in the repo (cwd=) rather than chdir'ing the process around it,
+        # and as a list with no shell.
+        subprocess.run(["git", "pull"], cwd=d, check=False)
         if sync:
             print("Syncing to kospex DB ...")
-            kospex.sync_repo(d)
+            try:
+                kospex.sync_repo(d)
+            except RepoPathConflict as exc:
+                # Already synced from another clone that still exists — skip it
+                # rather than repointing the repos row mid-walk.
+                errors.add(KrunnerUtils.PATH_CONFLICT, exc.repo_id, str(exc))
+
+    if error_summary := errors.summary_table():
+        console.print(error_summary)
 
 
 @cli.command("gitleaks")

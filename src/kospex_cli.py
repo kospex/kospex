@@ -20,7 +20,7 @@ import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
 from kospex.db import Migrator
-from kospex_core import GitRepo, Kospex
+from kospex_core import GitRepo, Kospex, RepoPathConflict
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
 from kospex_query import KospexQuery
@@ -403,14 +403,27 @@ def summary(
 
 
 @cli.command("sync-directory")
+@click.option("-force", is_flag=True, default=False,
+              help="Sync repos already synced from another directory, repointing them.")
 @click.argument("directory", type=click.Path(exists=True))
-def sync_directory(directory):
+def sync_directory(force, directory):
     """Sync all Git repos found in the data directory to the kospex DB."""
     # Find all the repos in the directory
     repos = KospexUtils.find_repos(directory)
+    skipped = 0
     for repo in repos:
         print(f"\nSyncing {repo}")
-        kospex.sync_repo(repo)
+        try:
+            kospex.sync_repo(repo, force=force)
+        except RepoPathConflict as exc:
+            # A second copy of a tree would otherwise repoint many rows at once.
+            log.error(str(exc))
+            print(f"SKIPPED: {exc}")
+            skipped += 1
+
+    if skipped:
+        print(f"\nSkipped {skipped} repo(s) already synced from another directory. "
+              f"Re-run with -force to repoint them.")
 
 
 @cli.command("developers")

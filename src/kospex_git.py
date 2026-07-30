@@ -582,6 +582,43 @@ class KospexGit:
 
         return obs
 
+    def planned_clone_path(self, repo_url):
+        """Where clone_repo() would put this URL, worked out without the network.
+
+        Lets callers check a URL against the DB before paying for a clone.
+
+        Args:
+        repo_url (str): The git URL to clone.
+
+        Returns:
+        dict: {"repo_id", "path", "parts"}, or None if the URL cannot be parsed
+        or the destination would fall outside KOSPEX_CODE.
+        """
+        code_dir = HabitatConfig.get_instance().code_dir
+
+        # Trailing slashes break the parsers
+        parts = self.parse_git_remote(repo_url.rstrip("/"))
+        if not parts:
+            print(f"ERROR: could not parse git URL: {repo_url}")
+            return None
+
+        repo_path = code_dir / parts["remote"] / parts["org"] / parts["repo"]
+
+        # ADO repo names can carry path segments straight from the URL, and
+        # urlparse does not normalise '..'. Resolve both sides — comparing a
+        # resolved path against an unresolved root false-positives wherever the
+        # root is a symlink (macOS symlinks /tmp to /private/tmp).
+        code_root = code_dir.resolve()
+        if not repo_path.resolve().is_relative_to(code_root):
+            print(f"ERROR: refusing to clone outside {code_root}: {repo_path}")
+            return None
+
+        return {
+            "repo_id": self.generate_repo_id(parts["remote"], parts["org"], parts["repo"]),
+            "path": str(repo_path),
+            "parts": parts,
+        }
+
     def clone_repo(self, repo_url):
         """Clone a repo into the kospex code directory.
 
@@ -598,23 +635,13 @@ class KospexGit:
             exit(f"KOSPEX_CODE directory not found: {code_dir}\n"
                  f"Run 'kospex init --create' to create it.")
 
-        # Trailing slashes break the parsers
-        parts = self.parse_git_remote(repo_url.rstrip("/"))
-        if not parts:
-            print(f"ERROR: could not parse git URL: {repo_url}")
+        planned = self.planned_clone_path(repo_url)
+        if not planned:
             return None
 
-        org_dir = code_dir / parts["remote"] / parts["org"]
-        repo_path = org_dir / parts["repo"]
-
-        # ADO repo names can carry path segments straight from the URL, and
-        # urlparse does not normalise '..'. Resolve both sides — comparing a
-        # resolved path against an unresolved root false-positives wherever the
-        # root is a symlink (macOS symlinks /tmp to /private/tmp).
-        code_root = code_dir.resolve()
-        if not repo_path.resolve().is_relative_to(code_root):
-            print(f"ERROR: refusing to clone outside {code_root}: {repo_path}")
-            return None
+        parts = planned["parts"]
+        repo_path = Path(planned["path"])
+        org_dir = repo_path.parent
 
         org_dir.mkdir(parents=True, exist_ok=True)
 

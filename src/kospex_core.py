@@ -30,6 +30,55 @@ _console = RichConsole()
 log = KospexUtils.get_kospex_logger("kospex")
 
 
+class RepoPathConflict(Exception):
+    """A repo is already registered in the DB at a different local path.
+
+    ``repos._repo_id`` is the primary key and every sync upserts ``file_path``
+    into that row, so syncing the same repo from a second clone repoints the row
+    and loses which path the existing data was built from.
+    """
+
+    def __init__(self, repo_id, recorded_path, new_path):
+        self.repo_id = repo_id
+        self.recorded_path = recorded_path
+        self.new_path = new_path
+        super().__init__(
+            f"{repo_id} is already synced from {recorded_path}, "
+            f"which still exists - refusing to repoint it at {new_path}. "
+            f"Sync with force to overwrite, or remove the repo from the DB first."
+        )
+
+
+def repo_path_conflict(recorded_path, new_path, force=False):
+    """Decide whether syncing ``new_path`` would wrongly repoint an existing repo.
+
+    ``recorded_path`` is ``repos.file_path`` from the existing row (None if the
+    repo was never synced). Returns ``(is_conflict, reason)`` — the reason names
+    the recorded path so the caller can log an audit trail, since the repos row
+    is point-in-time and keeps no history of where it pointed before.
+
+    Refuse only when both paths exist on disk: that's the ambiguous case where a
+    throwaway copy could overwrite the real one. A recorded path that no longer
+    exists is a genuine move (a deleted or relocated clone), so repointing the
+    row self-heals it.
+    """
+    if not recorded_path:
+        return False, "repo not previously synced"
+
+    # Resolve both sides: an unresolved comparison false-positives wherever
+    # either path crosses a symlink (macOS symlinks /tmp to /private/tmp).
+    if os.path.realpath(recorded_path) == os.path.realpath(new_path):
+        return False, "same path as the last sync"
+
+    if force:
+        return False, f"force requested (was {recorded_path})"
+
+    if not os.path.isdir(recorded_path):
+        return False, f"recorded clone {recorded_path} no longer exists"
+
+    return True, f"already synced from {recorded_path}, which still exists"
+
+
 def needs_metadata_rebuild(recorded, current, force=False):
     """Decide whether file_metadata must be rebuilt for a repo.
 
@@ -133,6 +182,33 @@ class Kospex:
         """Change back to the original directory"""
         os.chdir(self.original_cwd)
 
+    def check_repo_path(self, force=False):
+        """Refuse to repoint an already-synced repo at a different clone.
+
+        Prerequisite: set_repo_dir() has been called. Raises RepoPathConflict
+        when this repo_id is already recorded against a different path that
+        still exists on disk. A repoint that is allowed (forced, or the recorded
+        clone is gone) is logged at WARNING — the repos row is point-in-time, so
+        the log is the only record of where it used to point.
+        """
+        repo_id = self.git.get_repo_id()
+        recorded = self.kospex_query.get_repo_by_id(repo_id)
+        recorded_path = recorded.get("file_path") if recorded else None
+
+        conflict, reason = repo_path_conflict(recorded_path, self.repo_directory, force=force)
+
+        if conflict:
+            # set_repo_dir() chdir'd into the repo — don't strand the caller.
+            self.chdir_original()
+            raise RepoPathConflict(repo_id, recorded_path, self.repo_directory)
+
+        if recorded_path and os.path.realpath(recorded_path) != os.path.realpath(
+            self.repo_directory
+        ):
+            log.warning(
+                f"Repointing {repo_id} from {recorded_path} to {self.repo_directory}: {reason}"
+            )
+
     def get_hash(self, **kwargs):
         """Get a hash, based on search criteria.
         Must pass in either a valid repo with -repo or a repo_id with -repo_id
@@ -224,8 +300,14 @@ class Kospex:
         return latest_datetime
 
     # def sync_repo2(self, directory, **kwargs):
-    def sync_repo(self, directory, limit=None, from_date=None, to_date=None, no_scc=None):
-        """Sync the commit data (authors, commmitters, files, etc) for the given directory"""
+    def sync_repo(
+        self, directory, limit=None, from_date=None, to_date=None, no_scc=None, force=False
+    ):
+        """Sync the commit data (authors, commmitters, files, etc) for the given directory
+
+        Raises RepoPathConflict if this repo is already synced from a different
+        clone that still exists on disk; pass force=True to repoint it.
+        """
         # def sync_commits(conn, git_dir, limit=None, from_date=None, to_date=None):
 
         results = []
@@ -236,6 +318,11 @@ class Kospex:
         # See at the bottom for file metadata
 
         self.set_repo_dir(directory)
+
+        # Check before ingesting anything: commits are upserted well before
+        # update_repo_status() writes file_path, so refusing at the upsert would
+        # leave a second clone's commit data merged under this repo_id.
+        self.check_repo_path(force=force)
 
         # If we don't have a from date from the use, get the last commit date from DB
         if not from_date:

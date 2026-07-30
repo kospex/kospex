@@ -8,7 +8,7 @@ import json
 import subprocess
 import click
 from prettytable import PrettyTable
-from kospex_core import GitRepo, Kospex
+from kospex_core import GitRepo, Kospex, RepoPathConflict, repo_path_conflict
 from rich.console import Console
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -31,6 +31,36 @@ console = Console()
 
 # Get logger using the new centralized logging system
 log = KospexUtils.get_kospex_logger('kgit')
+
+
+def clone_path_conflict(kospex, repo_url, force=False):
+    """Report whether cloning repo_url would repoint an already-synced repo.
+
+    Checked before the clone so no network work is spent on a repo the sync
+    would refuse anyway. Returns True (and explains) when the clone should not
+    go ahead.
+    """
+    planned = kgit.planned_clone_path(repo_url)
+    if not planned:
+        # Unparseable URL or one that escapes KOSPEX_CODE — clone_repo reports it.
+        return False
+
+    recorded = kospex.kospex_query.get_repo_by_id(planned["repo_id"])
+    recorded_path = recorded.get("file_path") if recorded else None
+    conflict, reason = repo_path_conflict(recorded_path, planned["path"], force=force)
+
+    if conflict:
+        log.error(f"refusing to clone {repo_url}: {reason}")
+        console.print(
+            f"[bold red]Refusing to clone[/bold red] {repo_url}\n"
+            f"  {planned['repo_id']} is already synced from {recorded_path}, "
+            f"which still exists.\n"
+            f"  Cloning to {planned['path']} would repoint it and lose which clone "
+            f"the existing data came from.\n"
+            f"  Re-run with -force to clone anyway, or remove the repo from the DB first."
+        )
+
+    return conflict
 
 
 def _resolve_pull_repos(kospex_query, repo_id=None, all_flag=False, org=None, server=None):
@@ -244,9 +274,11 @@ def import_mailmap(filename):
 @cli.command("clone")
 @click.option('-sync', is_flag=True, default=True, help="Sync the repo to the database (Default)")
 @click.option('-filename',  type=click.Path(exists=True), help="File with git clone URLs (HTTPS or SSH)")
+@click.option('-force', is_flag=True, default=False,
+              help="Clone even if the repo is already synced from another directory.")
 @click.argument('repo',type=click.STRING, required=False)
 @click.pass_context
-def clone(ctx, sync, filename, repo):
+def clone(ctx, sync, filename, force, repo):
     """
     Clone the given repo into our KOSPEX_CODE directory.
 
@@ -268,11 +300,14 @@ def clone(ctx, sync, filename, repo):
         ctx.exit(0)
 
     if repo:
+        if clone_path_conflict(kospex, repo, force):
+            ctx.exit(1)
+
         repo_path = kgit.clone_repo(repo)
         if sync and repo_path:
             log.info(f"Syncing repository: {repo_path}")
             print("Syncing repo: " + repo_path)  # Keep user feedback
-            kospex.sync_repo(repo_path)
+            kospex.sync_repo(repo_path, force=force)
             kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
 
     elif filename:
@@ -282,6 +317,9 @@ def clone(ctx, sync, filename, repo):
                 if repo.startswith("#"):
                     log.debug(f"Skipping commented line in config: {repo}")
                     print(f"\n\nSkipping commented line: {repo}\n\n")
+                elif clone_path_conflict(kospex, repo, force):
+                    # One bad URL must not stop the rest of the file.
+                    continue
                 else:
                     repo_path = kgit.clone_repo(repo)
                     if not repo_path:
@@ -290,7 +328,7 @@ def clone(ctx, sync, filename, repo):
                     if sync and repo_path:
                         print("Syncing: " + repo)
                         kospex = Kospex()
-                        kospex.sync_repo(repo_path)
+                        kospex.sync_repo(repo_path, force=force)
                         kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
 
 
@@ -489,6 +527,9 @@ def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
         for repo in repos:
             if sync:
                 clone_url = repo.get('clone_url')
+                if clone_path_conflict(kospex, clone_url):
+                    # One conflicting repo must not stop the rest of the org.
+                    continue
                 repo_path = kgit.clone_repo(clone_url)
                 if not repo_path:
                     print(f"ERROR: failed to clone {clone_url}, skipping")

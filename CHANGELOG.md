@@ -4,6 +4,32 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+### Changed
+- **Syncing a repo from a second clone is now refused instead of silently
+  repointing it.** `repos._repo_id` is the primary key and every sync upserts
+  `file_path` into that row, so syncing the same repo from a different directory
+  used to overwrite the recorded path with no warning — losing which clone the
+  existing data was built from. This is how a `KOSPEX_CODE` pointed at a
+  throwaway directory could leave a repo permanently registered at a path that
+  later disappeared. A sync now raises `RepoPathConflict` when the repo is
+  already recorded against a **different path that still exists on disk**, and
+  the check runs before any commits are ingested (they were previously written
+  well before the row was repointed). A recorded path that no longer exists is
+  treated as a genuine move and repoints with a WARNING, so stale rows
+  self-heal. `kgit clone` checks before cloning, so nothing is downloaded for a
+  repo the sync would refuse. Override with `kgit clone -force` or
+  `kospex sync-directory -force`; bulk paths (`kgit clone -filename`,
+  `kgit github`, `krunner git-pull`, `kospex sync-directory`) skip the
+  conflicting repo and carry on. See `changes/202607-repo-path-conflict.md`.
+
+### Removed
+- **`KospexGit.sync_repo`** — an abandoned Oct 2025 "work in progress refactor"
+  of `Kospex.sync_repo` with no callers anywhere. It could not have run (it
+  called four methods that do not exist on `KospexGit`) and had drifted behind
+  the live method in two ways that would have corrupted data if it ever were
+  wired up: no `author_email`/`committer_email` lowercasing, and no
+  `developer_stats` update.
+
 ### Fixed
 - **`krunner branches` no longer aborts the whole run on one missing clone.**
   `repos.file_path` records where a repo's clone lives on disk, and that path can

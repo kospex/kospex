@@ -13,6 +13,7 @@ from rich.table import Table
 # the end-of-scan summary and in the krunner log, so keep them meaningful.
 MISSING_CLONE = "MISSING_CLONE"  # the repo's local clone is not on disk
 GIT_ERROR = "GIT_ERROR"  # the path exists but a git command failed on it
+PATH_CONFLICT = "PATH_CONFLICT"  # already synced from a different clone that still exists
 
 
 class RunErrors:
