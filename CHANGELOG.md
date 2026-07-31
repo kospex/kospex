@@ -30,6 +30,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   wired up: no `author_email`/`committer_email` lowercasing, and no
   `developer_stats` update.
 
+### Changed
+- **`krunner todo` now needs `-save` to write to the DB.** It was the only one
+  of the three observation-writing krunner commands with no opt-in — merely
+  running it inserted a `GREP_TODO` row per match into `observations` (and reset
+  `latest = 0` on matching prior rows). It now prints findings by default and
+  writes only with `-save`, matching `branches` and `repo-size`, whose `-save`
+  also defaults to off.
+
 ### Fixed
 - **`krunner todo` no longer records TODOs from git's own hook samples.** The
   grep had no path operand, so it recursed into `.git/` and logged four bogus

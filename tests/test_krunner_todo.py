@@ -41,12 +41,26 @@ def _observations(monkeypatch):
     return seen
 
 
+def test_todo_writes_nothing_without_save(tmp_path, monkeypatch):
+    """Merely running todo must not touch the observations table - matching
+    `branches` and `repo-size`, whose -save also defaults to off."""
+    repo = _repo(tmp_path / "repo", {"app.py": "# TODO fix this\n"})
+    monkeypatch.setattr(KospexUtils, "find_repos", lambda directory: [str(repo)])
+    seen = _observations(monkeypatch)
+
+    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert seen == []
+    assert "TODO fix this" in result.output  # still shows what it found
+
+
 def test_todo_records_the_todo_lines_it_finds(tmp_path, monkeypatch):
     repo = _repo(tmp_path / "repo", {"app.py": "# TODO fix this\nx = 1\n"})
     monkeypatch.setattr(KospexUtils, "find_repos", lambda directory: [str(repo)])
     seen = _observations(monkeypatch)
 
-    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path)])
+    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path), "-save"])
 
     assert result.exit_code == 0, result.output
     assert len(seen) == 1
@@ -62,7 +76,7 @@ def test_todo_matches_a_bare_todo_with_nothing_after_it(tmp_path, monkeypatch):
     monkeypatch.setattr(KospexUtils, "find_repos", lambda directory: [str(repo)])
     seen = _observations(monkeypatch)
 
-    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path)])
+    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path), "-save"])
 
     assert result.exit_code == 0, result.output
     assert len(seen) == 1
@@ -74,7 +88,7 @@ def test_todo_leaves_the_working_directory_alone(tmp_path, monkeypatch):
     _observations(monkeypatch)
 
     before = os.getcwd()
-    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path)])
+    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path), "-save"])
 
     assert result.exit_code == 0, result.output
     assert os.getcwd() == before
@@ -88,7 +102,7 @@ def test_todo_greps_each_repo_not_the_process_directory(tmp_path, monkeypatch):
         KospexUtils, "find_repos", lambda directory: [str(without), str(with_todo)])
     seen = _observations(monkeypatch)
 
-    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path)])
+    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path), "-save"])
 
     assert result.exit_code == 0, result.output
     assert len(seen) == 1

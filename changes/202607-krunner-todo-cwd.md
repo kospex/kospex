@@ -63,9 +63,25 @@ result = subprocess.run(cmd, cwd=d, capture_output=True, text=True)
 
 **krunner now contains no `os.chdir` and no `os.system` at all.**
 
+## `-save` (default off)
+
+`todo` was the only one of the three observation-writing krunner commands with
+no opt-in — merely running it wrote a `GREP_TODO` row per match to
+`observations`, and `add_observation()` also runs an `UPDATE ... SET LATEST = 0`
+against matching prior rows, so it mutated existing observations too.
+
+| command | writes observations | `-save` gate |
+|---|---|---|
+| `branches` | yes | yes, defaults off |
+| `repo-size` | yes | yes, defaults off |
+| `todo` | yes | **added here**, defaults off |
+
+Findings are still printed without the flag; only the DB write is gated.
+
 ## Tests
 
-`tests/test_krunner_todo.py` — records the TODO lines it finds with the right
+`tests/test_krunner_todo.py` — writes nothing without `-save`; records the TODO
+lines it finds with the right
 repo_id; matches a bare `TODO` with nothing after it (pins the intent the old
 BRE only met by accident); leaves the process working directory alone; and, with
 two repos where only one has a TODO, attributes the match to the right one

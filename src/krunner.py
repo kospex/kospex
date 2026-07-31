@@ -1201,9 +1201,13 @@ def grep(keyword, directory):
 
 
 @cli.command("todo")
+@click.option("-save", is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
 @click.argument("directory", type=click.Path(exists=True))
-def todo(directory):
-    """Search for the keyword TODO in files in git repos."""
+def todo(save, directory):
+    """Search for the keyword TODO in files in git repos.
+
+    Write the results to the observations table with -save
+    """
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
     print("# repos: " + str(len(dirs)))
@@ -1241,7 +1245,8 @@ def todo(directory):
                 obs["data"] = finding
                 obs["raw"] = raw
                 print(obs)
-                kospex.kospex_query.add_observation(obs)
+                if save:
+                    kospex.kospex_query.add_observation(obs)
 
 
 @cli.command("git-pull")
