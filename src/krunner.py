@@ -1206,24 +1206,28 @@ def todo(directory):
     """Search for the keyword TODO in files in git repos."""
     print("\nDirectory: " + os.path.abspath(directory))
     dirs = KospexUtils.find_repos(directory)
-    cwd = os.getcwd()
     print("# repos: " + str(len(dirs)))
     for d in dirs:
         print("\nRepo: " + d)
-        # os.chdir(d)
-        kospex.set_repo_dir(d)
-        details = kospex.git.add_git_to_dict({})
-        details["hash"] = kospex.git.current_hash
+        # set_repo() reads the git metadata with 'git -C', unlike set_repo_dir()
+        # which chdirs the whole process into the repo.
+        kgit = KospexGit()
+        kgit.set_repo(d)
+        details = kgit.add_git_to_dict({})
+        details["hash"] = kgit.current_hash
         details["observation_key"] = "GREP_TODO"
         details["observation_type"] = "FILE"
         # _repo_id,hash,file_path,observation_key
-        # cmd = "grep -Rn TODO *"
-        # os.system(cmd)
-        # os.system("pwd")
-        cmd = ["grep", "-Rn", "TODO *"]
-        # result = subprocess.run(cmd, capture_output=True, text=True).stdout.split('\n')
-        result = []
-        result = subprocess.run(cmd, capture_output=True, text=True).stdout.split("\n")
+        # Explicit pattern and search path, and run it in the repo with cwd=.
+        # The old "TODO *" only matched a bare TODO by accident (in a BRE, '*'
+        # means zero-or-more of the preceding space), and the missing path
+        # operand relied on grep defaulting to '.' under -R. Excluding .git
+        # keeps git's own shipped hook samples, which contain TODOs, out of the
+        # observations.
+        cmd = ["grep", "-Rn", "--exclude-dir=.git", "TODO", "."]
+        result = subprocess.run(
+            cmd, cwd=d, capture_output=True, text=True
+        ).stdout.split("\n")
         for raw in result:
             obs = details.copy()
             # print(i)
@@ -1238,7 +1242,6 @@ def todo(directory):
                 obs["raw"] = raw
                 print(obs)
                 kospex.kospex_query.add_observation(obs)
-        os.chdir(cwd)
 
 
 @cli.command("git-pull")

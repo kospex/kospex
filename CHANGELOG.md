@@ -31,6 +31,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `developer_stats` update.
 
 ### Fixed
+- **`krunner todo` no longer records TODOs from git's own hook samples.** The
+  grep had no path operand, so it recursed into `.git/` and logged four bogus
+  `GREP_TODO` observations per repo from the `.git/hooks/*.sample` files git
+  ships. It now passes an explicit pattern and path with `--exclude-dir=.git`,
+  and runs in the repo via `cwd=` instead of relying on `set_repo_dir()` having
+  chdir'd the process (with a hand-rolled `os.chdir` to undo it). krunner now
+  contains no `os.chdir` and no `os.system` at all. See
+  `changes/202607-krunner-todo-cwd.md`.
 - **`krunner branches` no longer aborts the whole run on one missing clone.**
   `repos.file_path` records where a repo's clone lives on disk, and that path can
   stop existing at any time — the clone is deleted, moved, or was only ever a
