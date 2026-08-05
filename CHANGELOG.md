@@ -4,7 +4,44 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+### Added
+- **AI coding agent files are now tagged in `file_metadata`.** Bumped
+  `panopticas==0.0.16` → `0.0.17`, which detects the artifacts of 20 AI coding
+  agent products via 60 path-based rules. Every recognised file gains three
+  tags in `tech_type`: `AI`, the product brand, and the kind of artifact it is —
+  so `CLAUDE.md` stores as `|AI|Claude|instructions|` and
+  `.cursor/rules/style.mdc` as `|AI|Cursor|rules|`. Products are brand-level
+  (`Claude` covers both Claude Code and Claude Desktop; `Gemini` covers the CLI
+  and Code Assist), with pseudo-products `Agents`, `MCP` and `llms.txt` for
+  vendor-neutral files like `AGENTS.md` and `.mcp.json`. Detection is
+  path-based only — panopticas never opens a file to decide this.
+
+  No kospex code change was needed: `kospex_git.py` already calls
+  `get_filename_metatypes()`, and the existing `tech_type LIKE '%|tag|%'` query
+  in `kospex_query.py` reaches the new tags unchanged. `tech_type LIKE '%|AI|%'`
+  returns every AI file in a repo; substituting a product name narrows to one
+  tool. Detected products: Claude, Copilot, Cursor, Gemini, Codex, Windsurf,
+  Aider, Cline, Roo Code, Continue, Amazon Q, Junie, Goose, Augment, OpenHands,
+  Kilo Code, Trae, plus `Agents`, `MCP` and `llms.txt`. See
+  `changes/202608-panopticas-ai-tags.md`.
+
 ### Changed
+- **The AI tags panopticas emits for `CLAUDE.md` and `GEMINI.md` have changed
+  shape, and the old ones are gone.** `CLAUDE.md` was
+  `|Claude|AI|Claude Code|` and is now `|AI|Claude|instructions|`; `GEMINI.md`
+  was `|Gemini|AI|Gemini CLI|` and is now `|AI|Gemini|instructions|`. The
+  `Claude Code` and `Gemini CLI` tags no longer exist. Nothing in kospex queries
+  them, so no code change was required — but **any saved query, report or
+  external consumer filtering on `Claude Code` or `Gemini CLI` will silently
+  return nothing rather than erroring.**
+
+  `tech_type` is cached at sync time, so **existing databases keep the old tags
+  until their repos are re-synced.** The version-aware skip-guard in
+  `Kospex.file_metadata` compares the recorded `last_panopticas_version` against
+  the installed one, so the bump to 0.0.17 marks every repo for a
+  `file_metadata` rebuild on its next sync — no manual reindex, but also no
+  change until that sync happens.
+
 - **Syncing a repo from a second clone is now refused instead of silently
   repointing it.** `repos._repo_id` is the primary key and every sync upserts
   `file_path` into that row, so syncing the same repo from a different directory

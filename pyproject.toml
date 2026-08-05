@@ -15,7 +15,7 @@ dependencies = [
     "prettytable==3.17.0",
     "dateutils",
     "packaging",
-    "panopticas==0.0.16",
+    "panopticas==0.0.17",
     "python-dotenv",
     "sqlite-utils",
     "requests==2.33.0",
