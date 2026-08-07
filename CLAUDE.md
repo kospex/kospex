@@ -23,8 +23,7 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - **kospex_dependencies.py** - Dependency analysis and SCA functionality
 
 ### Web Interface Components
-- **kweb.py** - Original Flask web interface
-- **kweb2.py** - Enhanced Flask web interface with FastAPI migration prep
+- **kweb2.py** - FastAPI web interface, and the target of the `kweb` entry point
 - **kospex_web.py** - Core web functionality
 - **kweb_help_service.py** - Help system for web interface
 - **kweb_graph_service.py** - Graph visualization services
@@ -46,8 +45,7 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 
 ### Python Backend
 - **Click** - CLI framework for command-line interface
-- **Flask** - Web framework for UI
-- **FastAPI** - Modern web framework (migration in progress)
+- **FastAPI** - Web framework for the UI (`kweb2.py`), served by uvicorn
 - **SQLite3/sqlite_utils** - Database operations
 - **PyYAML** - Configuration file parsing
 - **Jinja2** - Template engine for web interface
@@ -121,7 +119,7 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - `kospex-agent test` - Test repository update checking functionality
 
 ### Web Interface
-- `kweb` - Start Flask web interface
+- `kweb` - Start the web interface (entry point for `kweb2:main`)
 - `python run_fastapi.py` - Start FastAPI web interface (development)
 - `python kweb2.py` - Start FastAPI web interface (default: localhost:8000)
 - `python kweb2.py --host 0.0.0.0 --port 8080` - Start with custom host/port
@@ -297,12 +295,16 @@ logger.info("This will appear in both console and log file")
 - `kospex init --verbose` - Show detailed initialization status
 - Python: `KospexUtils.validate_kospex_setup()` - Programmatic validation
 
-## FastAPI Migration
+## Web Interface (FastAPI)
 
-The project includes FastAPI support alongside the existing Flask web interface:
+The web interface is FastAPI throughout. Flask has been removed — from `pyproject.toml` and
+from every import under `src/` (see `changes/202602-remove-flask-dependencies.md`). Do not add
+Flask routes, `flask.make_response`, or a `Flask(__name__)` app; the older `kweb.py` Flask
+interface no longer exists.
+
 - `run_fastapi.py` - FastAPI development server with auto-reload and Docker support
-- `kweb2.py` - Main FastAPI web interface with Docker-aware host binding
-- Templates remain Jinja2-based for compatibility
+- `kweb2.py` - Main FastAPI web interface with Docker-aware host binding; the `kweb` entry point
+- Templates remain Jinja2-based (Jinja2 is a FastAPI/Starlette template backend, not a Flask dependency)
 
 ### Development Usage
 - `python run_fastapi.py` for development with hot reload
