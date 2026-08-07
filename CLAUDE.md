@@ -34,9 +34,6 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - **kgit.py** - Git operations wrapper with kospex directory structure
 - **krunner.py** - Batch processing and automation
 - **kreaper.py** - Data deletion
-- **kwatch.py** - File system monitoring
-- **ksyncer.py** - Synchronization utilities
-- **repo_sync.py** - Repository synchronization functionality
 - **kospex_agent.py** - Background agent for continuous repository monitoring and synchronization
 - **kospex_stats.py** - Statistical analysis and reporting
 
@@ -52,10 +49,9 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - **Flask** - Web framework for UI
 - **FastAPI** - Modern web framework (migration in progress)
 - **SQLite3/sqlite_utils** - Database operations
-- **PyGitHub** - GitHub API integration
 - **PyYAML** - Configuration file parsing
 - **Jinja2** - Template engine for web interface
-- **Requests** - HTTP client for API calls
+- **Requests** - HTTP client for API calls, including the GitHub and Bitbucket REST calls in `kospex_github.py` / `kospex_bitbucket.py`. PyGitHub was removed (LGPL v3) — call the REST API directly rather than reintroducing it.
 
 ### Frontend Assets
 - **TailwindCSS** - Utility-first CSS framework
@@ -80,7 +76,6 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
       ├── kgit.log         # Git operations logs
       ├── kweb2.log        # Web interface logs
       ├── krunner.log      # Batch processing logs
-      ├── kwatch.log       # File monitoring logs
       └── kospex_agent.log # Background agent logs
 
 ~/code/            # Git repositories in GIT_SERVER/ORG/REPO format
@@ -267,7 +262,7 @@ Kospex uses a comprehensive centralized logging system with daily rotation and p
       "kgit": {"level": "DEBUG"},
       "kweb2": {"level": "WARNING"},
       "krunner": {"level": "INFO"},
-      "kwatch": {"level": "INFO"}
+      "kospex_agent": {"level": "INFO"}
     }
   }
 }
