@@ -184,3 +184,9 @@ cython_debug/
 
 # Warp terminal configuration (user-specific)
 .warp/
+
+# Output files (CSV reports and exports) — krunner osi, tech-landscape, etc.
+# write these into the working directory. Nothing tracked is a .csv.
+*.csv
+# ...but keep the door open for CSV test fixtures, which must be committed.
+!tests/**/*.csv
