@@ -299,7 +299,7 @@ def create_sample_config() -> Path:
                 "kgit": {"level": "DEBUG"},
                 "kweb2": {"level": "WARNING"},
                 "krunner": {"level": "INFO"},
-                "kwatch": {"level": "INFO"},
+                "kospex_agent": {"level": "INFO"},
             },
         }
     }
