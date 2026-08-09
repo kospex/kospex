@@ -25,6 +25,18 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   Kilo Code, Trae, plus `Agents`, `MCP` and `llms.txt`. See
   `changes/202608-panopticas-ai-tags.md`.
 
+- **Error tracking by type for krunner scans.** New `krunner_utils.RunErrors`
+  collects per-repo failures during a scan, logs each at ERROR level to
+  `~/kospex/logs/krunner.log`, echoes it to the console, and prints a
+  count-by-type summary table at the end of the run (nothing prints when the run
+  is clean). Failures are tagged with kospex-level names — `MISSING_CLONE`,
+  `GIT_ERROR` — rather than Python exception classes, so both the summary and the
+  log read in kospex terms. Wired into `krunner branches`; the other repo-looping
+  commands can adopt it as they're touched.
+- **`krunner branches -strict`** exits non-zero if any repo errored, for CI and
+  cron jobs that need failures to surface without parsing output. The default
+  stays exit 0 so existing scripts are unaffected.
+
 ### Changed
 - **The AI tags panopticas emits for `CLAUDE.md` and `GEMINI.md` have changed
   shape, and the old ones are gone.** `CLAUDE.md` was
@@ -59,6 +71,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `kgit github`, `krunner git-pull`, `kospex sync-directory`) skip the
   conflicting repo and carry on. See `changes/202607-repo-path-conflict.md`.
 
+- **`krunner todo` now needs `-save` to write to the DB.** It was the only one
+  of the three observation-writing krunner commands with no opt-in — merely
+  running it inserted a `GREP_TODO` row per match into `observations` (and reset
+  `latest = 0` on matching prior rows). It now prints findings by default and
+  writes only with `-save`, matching `branches` and `repo-size`, whose `-save`
+  also defaults to off.
+
 ### Removed
 - **`KospexGit.sync_repo`** — an abandoned Oct 2025 "work in progress refactor"
   of `Kospex.sync_repo` with no callers anywhere. It could not have run (it
@@ -66,14 +85,6 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   the live method in two ways that would have corrupted data if it ever were
   wired up: no `author_email`/`committer_email` lowercasing, and no
   `developer_stats` update.
-
-### Changed
-- **`krunner todo` now needs `-save` to write to the DB.** It was the only one
-  of the three observation-writing krunner commands with no opt-in — merely
-  running it inserted a `GREP_TODO` row per match into `observations` (and reset
-  `latest = 0` on matching prior rows). It now prints findings by default and
-  writes only with `-save`, matching `branches` and `repo-size`, whose `-save`
-  also defaults to off.
 
 ### Fixed
 - **`krunner todo` no longer records TODOs from git's own hook samples.** The
@@ -94,19 +105,6 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   a failing git command can strand the process working directory, and `branches`
   skips unreadable repos and carries on. A path that exists but isn't a git repo
   is handled the same way. See `changes/202607-krunner-error-tracking.md`.
-
-### Added
-- **Error tracking by type for krunner scans.** New `krunner_utils.RunErrors`
-  collects per-repo failures during a scan, logs each at ERROR level to
-  `~/kospex/logs/krunner.log`, echoes it to the console, and prints a
-  count-by-type summary table at the end of the run (nothing prints when the run
-  is clean). Failures are tagged with kospex-level names — `MISSING_CLONE`,
-  `GIT_ERROR` — rather than Python exception classes, so both the summary and the
-  log read in kospex terms. Wired into `krunner branches`; the other repo-looping
-  commands can adopt it as they're touched.
-- **`krunner branches -strict`** exits non-zero if any repo errored, for CI and
-  cron jobs that need failures to surface without parsing output. The default
-  stays exit 0 so existing scripts are unaffected.
 
 ## 0.0.40 - 2026-07-27
 
