@@ -22,6 +22,10 @@ Follow our guide on [Installation and setup](getting-started).
 Also check out the [list of commands](commands) that are part of the kospex toolkit,
 and the [Web UI guide](kweb/) for exploring the data.
 
+Already have data and wondering why it hasn't changed? See
+[Refreshing data](refreshing-data) — which command refreshes which table, and why
+syncing a repo does not update its dependencies.
+
 If you are after some generally useful git commands, take a look at [Useful Git commands](useful-git-commands).
 
 ## What kospex gives you
