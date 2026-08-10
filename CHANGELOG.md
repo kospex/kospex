@@ -112,12 +112,16 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   rewriting either would insert duplicate rows on re-sync. Closes
   [#29](https://github.com/kospex/kospex/issues/29).
 
-  **A re-sync is required, and the numbers will get worse.** The mangling
-  happened at parse time, so existing databases cannot be repaired in place —
-  they are unaffected until `kospex sync` re-reads the manifests. Afterwards,
-  dependency counts rise and freshness figures fall, because previously-dropped
-  unpinned packages reappear as rows with no resolvable version. That is the
-  parser reporting what was always there, not a regression.
+  **A re-parse is required, and the numbers will get worse.** The mangling
+  happened at parse time, so existing databases cannot be repaired in place.
+  Re-run whichever command populated `dependency_data` — `krunner osi -all` for
+  the whole install, `krunner osi <repo_id>` for one repo, or `kospex deps` /
+  `kospex sca` for a single file or repo. **`kospex sync` does not re-parse
+  dependencies**; it populates commits and `file_metadata`, and nothing in
+  `kospex_core.py` writes `dependency_data`. After the re-parse, dependency
+  counts rise and freshness figures fall, because previously-dropped unpinned
+  packages reappear as rows with no resolvable version. That is the parser
+  reporting what was always there, not a regression.
 - **Unresolved dependencies rendered as green / "Up to Date" on
   `supply_chain.html`.** PR #106 normalised `versions_behind` to `null` for
   unresolved dependencies, and in JavaScript `null <= 2` is *true* — so a package
