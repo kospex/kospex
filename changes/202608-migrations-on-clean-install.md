@@ -9,8 +9,9 @@ database is therefore three migrations behind on first use, and two of the three
 crash real commands.
 
 This change applies pending migrations automatically when the database is created, warns
-when an existing database is behind, and routes the web interface through the same
-bootstrap so it stops crashing on a clean install.
+when an existing database is behind, routes the web interface through the same bootstrap so
+it stops crashing on a clean install, and makes `kospex init` report DB health so the
+setup-validation command stops declaring a broken install healthy.
 
 ## Problem
 
@@ -65,6 +66,34 @@ This is worse than the migration gap, because the empty file now exists on disk.
 true, so on the next run the user gets the baseline tables (every CREATE is
 `IF NOT EXISTS`) but **no version stamp and no migrations, permanently**.
 
+### Third defect: `kospex init` never checks the database
+
+`kospex init` is the command whose entire purpose is verifying the environment — it checks
+directories, write permissions, env vars, logging, and the `scc` binary. It does not look
+at the database at all. `validate_kospex_setup()` (`kospex_utils.py:215`) returns sections
+for `environment_vars`, `directories`, and `logging`, and nothing for the DB.
+
+Worse, `kospex init --validate` documents itself as validating "without making changes",
+but `kospex = Kospex()` at `kospex_cli.py:30` runs at import, so the DB is created before
+the command body executes. Observed on an empty `KOSPEX_HOME`:
+
+```
+=== before: contents of KOSPEX_HOME ===
+                                     (empty)
+=== running: kospex init --validate ===
+Overall Status: HEALTHY
+=== after: contents of KOSPEX_HOME ===
+kospex.db
+logs
+```
+
+So on a clean install it creates the database, then reports `HEALTHY` without inspecting
+it — over a DB that is three migrations behind and will crash `kgit pull`.
+
+Relatedly, `kospex system-status` prints a `Database table version status` heading at
+`kospex_cli.py:1300` followed by nothing. It is an orphaned stub where this information was
+evidently intended to go.
+
 ### Why the design allowed this
 
 `changes/202605-db-migration-system.md` deliberately froze `KOSPEX_DB_VERSION = 2` as the
@@ -74,9 +103,10 @@ omission is that nothing was wired to run the migrations afterwards.
 
 ## Design
 
-Four pieces. Bootstrap and warning are kept separate because they need different
+Six pieces. Bootstrap and warning are kept separate because they need different
 cadences: bootstrap must fire wherever the DB is created, the warning must fire only when
-a user actually runs a command.
+a user actually runs a command. Reporting is separate again — it must describe the DB
+without changing it.
 
 ### 1. Fresh-DB bootstrap — `kospex_schema.py`
 
@@ -170,6 +200,52 @@ This does double duty:
 `connect_or_create_kospex_db()` would re-run ~19 `CREATE TABLE IF NOT EXISTS` statements
 at each of its 47 call sites, per request.
 
+### 5. DB health helper — `kospex/db/health.py` (new)
+
+A `db_status(db=None)` returning one dict: path, `exists`, `writable`, `version`,
+`applied_count`, `pending_count`, `pending_ids`, and `schema_migrations_present`. Read-only
+— it never creates or migrates.
+
+Plus a bootstrap record. `connect_or_create_kospex_db()` records what it actually did
+(`created` / `already_existed`, plus `migrations_applied`) in a module-level record that
+`db_status()` reads. This is what makes `init --validate` honest: rather than reporting
+"the DB exists" (trivially true, since it just created it), it reports what happened:
+
+```
+Database:
+  ✓ /Users/pete/kospex/kospex.db (created during this invocation, 3 migrations applied)
+```
+
+versus, on an established install that is behind:
+
+```
+Database:
+  ⚠ /Users/pete/kospex/kospex.db (version 2, 3 migrations pending)
+```
+
+The import of `db_status` into `kospex_utils` must be **lazy, inside the function body**.
+`kospex_utils` is imported by `kospex_schema`, so a module-level import creates
+`kospex_utils → kospex.db.health → kospex_schema → kospex_utils`. Same trap as §1.
+
+### 6. Reporting surfaces
+
+Three consumers of `db_status()`, so the wording cannot drift:
+
+**`validate_kospex_setup()` (`kospex_utils.py:215`)** gains a `database` section alongside
+`environment_vars` / `directories` / `logging`. A behind, unwritable, or schema-less DB
+adds to `critical_issues`, so `overall_status` is no longer `healthy` — today it reports
+HEALTHY over a DB that will crash `kgit pull`. It also appends the
+`Run 'kospex upgrade-db -apply'` recommendation.
+
+**`kospex init --validate`** prints the `Database:` block shown above, following the
+existing `✓`/`⚠`/`✗` convention.
+
+**`kospex init`** (non-validate) reports DB path, version, and any migrations applied,
+consistent with how it already reports directories and `scc`.
+
+**`kospex system-status`** fills the orphaned `Database table version status` heading at
+`kospex_cli.py:1300` with version, applied count, and pending list.
+
 ## Decisions taken
 
 **Unguarded call sites stay unguarded.** `set_repo_last_fetch` and the `dependency_data`
@@ -192,8 +268,15 @@ concurrent CLI / kweb / kospex-agent processes.
 - `src/kospex_cli.py` — `warn_if_behind` in the `cli` group callback, honouring `--quiet`
 - `src/kgit.py`, `src/krunner.py`, `src/kreaper.py` — `warn_if_behind` in each group callback
 - `src/kweb2.py` — lifespan hook on the `FastAPI` app
+- `src/kospex/db/health.py` — **new**; `db_status()`
+- `src/kospex_utils.py` — `database` section + critical-issue handling in
+  `validate_kospex_setup()`
+- `src/kospex_cli.py` — also: `Database:` block in the `init` command (both `--validate`
+  and normal paths); fill the empty `Database table version status` heading in
+  `system-status`
 - `tests/test_db_migrator.py` — extended (file already exists, 31 tests)
 - `tests/test_kospex_schema.py` — extended (file already exists, 4 tests)
+- `tests/test_kospex_utils.py` — extended (file already exists, 4 tests)
 
 ## Testing
 
@@ -219,6 +302,10 @@ Also covered:
   missing `schema_migrations` table
 - The zero-table repair case: an empty DB file is detected and fully rebuilt
 - Bootstrap failure is non-fatal and leaves a usable DB
+- `db_status()` reports correctly for: fresh/just-created, current, behind, and
+  missing-`schema_migrations` databases
+- `validate_kospex_setup()` returns `overall_status != "healthy"` when the DB is behind —
+  the specific regression that let a clean install report HEALTHY
 
 Every test must set `KOSPEX_HOME` via `monkeypatch.setenv` so the suite never touches the
 developer's real `~/kospex/kospex.db`.
@@ -230,9 +317,15 @@ the wrong code.
 ## Out of scope
 
 **Module-level `Kospex()` in all four CLIs.** Because the instance is constructed at
-import, `kospex --help` on a clean machine creates `~/kospex/kospex.db` as a side effect.
-Pre-existing behaviour, orthogonal to this fix, and changing it means restructuring four
-entry points.
+import, `kospex --help` on a clean machine creates `~/kospex/kospex.db` as a side effect,
+and `kospex init --validate` cannot be genuinely read-only. There are 37 references to the
+global in `kospex_cli.py` alone, plus `kgit` / `krunner` / `kreaper` — roughly 50 call
+sites across four entry points, touching every CLI command.
+
+§5 works around this rather than fixing it: the bootstrap record makes `--validate`
+*report the side effect honestly* instead of eliminating it. The lazy-init restructure
+should be a follow-up issue on its own, not bundled with a bug fix whose blast radius is
+otherwise small.
 
 **Adding `--quiet` to `kgit` / `krunner` / `kreaper`.** Their group callbacks currently
 take no options.
