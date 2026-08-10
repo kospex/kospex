@@ -298,9 +298,15 @@
                 .domain([0, d3.max(data.nodes, d => d.versions_behind)])
                 .range([minSize, maxSize]);
 
-            // Add size to each node based on versions_behind
+            // Add size to each node based on versions_behind.
+            // Size encodes *how far behind* a package is, and an unresolved
+            // package has no such value. d3.scaleLinear() coerces null to 0 and
+            // returns the range minimum, which would draw it smallest — reading
+            // as "least versions behind". Give it a fixed mid size instead, so
+            // magnitude is never implied; the grey fill carries the status.
+            const unresolvedSize = (minSize + maxSize) / 2;
             data.nodes.forEach(node => {
-                node.size = sizeScale(node.versions_behind);
+                node.size = isUnresolved(node) ? unresolvedSize : sizeScale(node.versions_behind);
             });
 
             // Set up the SVG
@@ -328,8 +334,17 @@
 
             // Color scale based on status
             const color = d3.scaleOrdinal()
-                .domain(["green", "yellow", "orange", "red"])
-                .range(["#4CAF50", "#FFF176", "#FF9800", "#F44336"]);
+                .domain(["green", "yellow", "orange", "red", "grey"])
+                .range(["#4CAF50", "#FFF176", "#FF9800", "#F44336", "#9E9E9E"]);
+
+            // An unresolved dependency carries versions_behind === null (PR #106
+            // normalised the old "Unknown"/"" sentinels). In JS `null <= 2` is
+            // TRUE, so without this guard an unresolved package renders green /
+            // "Up to Date" — the most reassuring state available, for a package
+            // whose version could not be determined at all.
+            function isUnresolved(d) {
+                return d.versions_behind === null || d.versions_behind === undefined;
+            }
 
             // Create the simulation
             const simulation = d3.forceSimulation(data.nodes)
@@ -369,8 +384,8 @@
                                </a>
                             </p>                            
                             <p><strong>Published:</strong> ${formatDate(d.publishedAt)}</p>
-                            <p><strong>Versions behind:</strong> ${d.versions_behind}</p>
-                            <p><strong>Advisories:</strong> ${d.advisories}</p>
+                            <p><strong>Versions behind:</strong> ${isUnresolved(d) ? "unknown" : d.versions_behind}</p>
+                            <p><strong>Advisories:</strong> ${d.advisories ?? "unknown"}</p>
                             <p><strong>Malware detected:</strong> ${d.malware ? "Yes" : "No"}</p>
                             <div class="status ${getStatusClass(d)}">${getStatusText(d)}</div>
                         </div>
@@ -384,6 +399,7 @@
                 .style("fill", d => {
                     if (d.malware) return color("red");
                     if (d.advisories > 0) return color("orange");
+                    if (isUnresolved(d)) return color("grey");
                     const monthsBehind = d.versions_behind;
                     if (monthsBehind <= 2) return color("green");
                     if (monthsBehind <= 6) return color("yellow");
@@ -398,7 +414,7 @@
 
             // Add tooltips
             node.append("title")
-                .text(d => `${d.name} v${d.version}\nPublished: ${formatDate(d.publishedAt)}\nVersions behind: ${d.versions_behind}\nAdvisories: ${d.advisories}\nMalware: ${d.malware}`);
+                .text(d => `${d.name} v${d.version}\nPublished: ${formatDate(d.publishedAt)}\nVersions behind: ${isUnresolved(d) ? "unknown" : d.versions_behind}\nAdvisories: ${d.advisories ?? "unknown"}\nMalware: ${d.malware}`);
 
             // Update positions on each tick
             simulation.on("tick", () => {
@@ -465,7 +481,8 @@
                 { color: "green", text: "Up to date (0-2 versions behind)" },
                 { color: "yellow", text: "Slightly outdated (2-6 versions behind)" },
                 { color: "orange", text: "Outdated or has advisories" },
-                { color: "red", text: "Has malware or very outdated" }
+                { color: "red", text: "Has malware or very outdated" },
+                { color: "grey", text: "Unresolved — version could not be determined" }
             ];
 
             legendItems.forEach(item => {
@@ -493,6 +510,7 @@
             function getStatusClass(d) {
                 if (d.malware) return "red";
                 if (d.advisories > 0) return "orange";
+                if (isUnresolved(d)) return "grey";
                 if (d.versions_behind <= 2) return "green";
                 if (d.versions_behind <= 6) return "yellow";
                 return "orange";
@@ -502,6 +520,7 @@
             function getStatusText(d) {
                 if (d.malware) return "Malware Detected";
                 if (d.advisories > 0) return "Has Security Advisories";
+                if (isUnresolved(d)) return "Unresolved (version unknown)";
                 if (d.versions_behind <= 2) return "Up to Date";
                 if (d.versions_behind <= 6) return "Slightly Outdated";
                 return "Outdated";
