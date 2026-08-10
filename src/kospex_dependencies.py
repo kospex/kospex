@@ -477,10 +477,35 @@ class KospexDependencies:
         package_version); _git_server/_git_owner/_git_repo are derived from
         _repo_id when absent.
 
-        Before inserting, prior rows for each (_repo_id, file_path,
-        package_name) are demoted to latest=0 so re-runs don't accumulate
-        stale "latest" rows; the incoming records are then upserted with
-        latest=1.
+        Before inserting, **all** prior rows for each (_repo_id, file_path)
+        being written are demoted to latest=0; the incoming records are then
+        upserted with latest=1. A re-parse of a manifest supersedes everything
+        previously extracted from it, whatever those packages were called.
+
+        The demote is deliberately keyed on the file rather than on
+        (_repo_id, file_path, package_name). Keying it on the package name
+        meant the demote only ran for names present in the incoming batch,
+        which left two classes of row stuck at latest=1 forever:
+
+        * **Renamed packages.** package_name is part of the primary key, so a
+          parser change that derives a different name inserts a new row instead
+          of updating the old one — and the demote, keyed on the new name,
+          never reached the predecessor. Observed live: `mkdocstrings[python]`
+          (package_not_found) and `mkdocstrings` (resolved) both current for the
+          same file, after the PEP 508 parser began separating extras.
+        * **Removed dependencies.** A package deleted from a manifest has no
+          incoming record at all, so nothing ever demoted it and kospex kept
+          reporting it as a current dependency.
+
+        Trade-off: a partial parse now demotes the packages it failed to
+        re-extract. "Not found this time" is the honest reading, and the rows
+        stay queryable at latest=0 — but a truncated run marks more rows stale
+        than it replaces. `krunner osi` accumulates every file and calls this
+        once, so it is not exposed to that.
+
+        Note this only changes which rows are *flagged* current. Row growth is
+        driven by the upsert primary key — chiefly `hash` — and is unaffected;
+        the demote is an UPDATE, never a DELETE.
 
         source: value for the [source] column identifying the writing tool.
 
@@ -489,17 +514,19 @@ class KospexDependencies:
         if not records:
             return 0
 
-        # Demote prior "latest" rows for each (_repo_id, file_path,
-        # package_name) we are about to (re)write.
+        # Demote every prior "latest" row for each (_repo_id, file_path) we are
+        # about to rewrite — not just the package names in this batch. A
+        # re-parse supersedes the whole file; keying this on package_name left
+        # renamed and removed packages stuck at latest=1. See the docstring.
         demote_keys = {
-            (r.get("_repo_id"), r.get("file_path"), r.get("package_name"))
+            (r.get("_repo_id"), r.get("file_path"))
             for r in records
         }
-        for repo_id, file_path, package_name in demote_keys:
+        for repo_id, file_path in demote_keys:
             self.kospex_db.execute(
                 f"UPDATE {KospexSchema.TBL_DEPENDENCY_DATA} SET latest = 0 "
-                "WHERE _repo_id = ? AND file_path = ? AND package_name = ?",
-                [repo_id, file_path, package_name],
+                "WHERE _repo_id = ? AND file_path = ?",
+                [repo_id, file_path],
             )
 
         cleaned = []
