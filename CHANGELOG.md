@@ -91,6 +91,31 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `developer_stats` update.
 
 ### Fixed
+- **Renamed and removed dependencies stayed flagged as current forever.**
+  `save_dependencies` demoted prior rows keyed on `(_repo_id, file_path,
+  package_name)`, taking the name from the *incoming* record — so the demote
+  only ran for names present in the batch. Two classes of row were left stuck
+  at `latest = 1`. **Renamed packages:** `package_name` is part of the
+  `dependency_data` primary key, so a parser change that derives a different
+  name inserts a new row rather than updating the old one, and a demote keyed
+  on the new name never reaches the predecessor — after the PEP 508 parser
+  above began separating extras, `mkdocstrings[python]` (`package_not_found`)
+  and `mkdocstrings` (`resolved`) were both current for the same file, so a
+  repo reported 17 dependencies where 16 was correct. **Removed dependencies:**
+  a package deleted from a manifest has no incoming record at all, so nothing
+  ever demoted it — delete a package from `requirements.txt`, re-parse, and
+  kospex kept reporting it as a current dependency. This second one predates
+  the parser work. The demote is now keyed on `(_repo_id, file_path)`: a
+  re-parse supersedes everything previously extracted from that manifest,
+  whatever those packages were called.
+
+  This does not grow the table — the demote is an `UPDATE`, never a `DELETE`,
+  and row count is driven by the upsert primary key (chiefly `hash`). Only the
+  `latest` flag changes. Existing stale rows need no migration; they are
+  demoted by the next re-parse of their file. One behaviour change worth
+  knowing: a *partial* parse now demotes packages it failed to re-extract,
+  where previously they were left looking current. `krunner osi` accumulates
+  every file and writes once, so it is not exposed to that.
 - **Unpinned Python dependencies were silently dropped and never reached
   `dependency_data`.** `parse_pypi_package_declaration` substring-tested version
   operators against the whole declaration — *including the environment marker* —
