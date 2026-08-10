@@ -36,6 +36,10 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - **`krunner branches -strict`** exits non-zero if any repo errored, for CI and
   cron jobs that need failures to surface without parsing output. The default
   stays exit 0 so existing scripts are unaffected.
+- **Repo page links to its dependencies.** `/repo/{repo_id}` gains a
+  **Dependencies** link, placed first in the Quick Links bar ahead of Tech
+  Landscape. The `/dependencies/{repo_id}` route already existed but nothing
+  linked to it, so reaching a repo's dependency list meant typing the URL.
 
 ### Changed
 - **The AI tags panopticas emits for `CLAUDE.md` and `GEMINI.md` have changed
