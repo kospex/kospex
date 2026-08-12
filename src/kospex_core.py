@@ -835,7 +835,6 @@ class Kospex:
             #     params.append(server)
 
             # results = self.kospex_db.query(sql, params)
-            print(kwargs)
             results = self.kospex_query.get_repos(**kwargs)
 
             for row in results:
