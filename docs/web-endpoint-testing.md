@@ -163,12 +163,11 @@ For optimal test coverage, your kospex database should contain:
 # Initialize kospex
 kospex init --create
 
-# Sync a test repository  
+# Sync a test repository (kgit clone syncs by default)
 kgit clone https://github.com/kospex/kospex
-kospex sync ~/code/github.com/kospex/kospex
 
 # Or sync any existing repository
-kospex sync /path/to/your/repo
+kospex sync-directory /path/to/your/repo
 ```
 
 ## Troubleshooting

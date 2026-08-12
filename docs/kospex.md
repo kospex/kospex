@@ -42,23 +42,34 @@ The output will be a table with the following columns:
 - `source_repo` — the git URL for this package if known
 - `authors` — the number of authors, if we've synced the source_repo to the kospex DB
 
-## sync
+## sync-directory
 
-The sync command takes all the commit history and adds it to the kospex database.
+The sync-directory command finds every git repo in the given directory (including the
+directory itself, if it's a repo) takes all the commit history and adds it to the kospex
+database.
 
 ```bash
-kospex sync [DIRECTORY]
+kospex sync-directory [DIRECTORY]
 ```
 
 Most likely, you'll cd to a repo and then run the following command:
 
 ```bash
-kospex sync .
+kospex sync-directory .
+```
+
+Or sync everything you've cloned in one go:
+
+```bash
+kospex sync-directory ~/code
 ```
 
 **Parameters**
 
-- `--no-scc` — skip scc analysis.
+- `-force` — sync repos already synced from another directory, repointing them.
+
+To clone and sync in a single step, use [`kgit clone`](kgit). To refresh clones kospex
+already knows about, use `kgit pull`.
 
 ## orphans
 

@@ -82,8 +82,12 @@ kospex uses a git repository layout for cloning repos to disk, with the followin
 If you're happy to use the `~/code` directory for cloned repos, run:
 
 ```bash
-kospex init --default
+kospex init --create --verbose
 ```
+
+`--create` creates the missing directories (`~/kospex` and `~/code`, or `KOSPEX_CODE`),
+and `--verbose` shows you what it did. To check an existing setup without changing
+anything, use `kospex init --validate`.
 
 See [Git code layout for running analysis](#git-code-layout-for-running-analysis) below for more details.
 

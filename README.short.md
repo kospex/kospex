@@ -1,14 +1,22 @@
 # kospex
 
-Kospex is a CLI and Web application gain insights into your developers, opensource maintenacne and technology landscape.
+Kospex maps the **knowledge**, **technology** and **maintenance risk** hiding in your git repositories.
 
-Inspired by the excellent [Mergestat lite](https://github.com/mergestat/mergestat-lite) to model data from git repositories.
+It answers questions that are surprisingly hard to answer at scale: *who still knows this
+code? what are we actually built on? what's quietly going stale?*
 
-For details on changes, see  the [changelog](https://github.com/kospex/kospex/blob/main/CHANGELOG.md)
+Kospex inspects cloned repositories on disk and aggregates everything into a single
+queryable database. There are two ways to use it: a **CLI** for scanning, querying and
+automation, and a **Web UI** (`kweb`) for exploring the data interactively.
+
+Inspired by the excellent [Mergestat lite](https://github.com/mergestat/mergestat-lite),
+whose database structure we use to model data from git repositories.
+
+For details on changes, see the [changelog](https://github.com/kospex/kospex/blob/main/CHANGELOG.md).
 
 ## Installation, setup and usage
 
-See the official [installation documentation](https://kospex.io/getting-started)
+See the official [installation documentation](https://docs.kospex.io/getting-started).
 
 ## What is a kospex?
 
