@@ -91,6 +91,21 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `developer_stats` update.
 
 ### Fixed
+- **`kospex list-repos -db -repo_id` returned no rows.** `list-repos` defines
+  `-repo_id` as an `is_flag` option meaning "add the Repo ID column to the
+  output", but the whole kwargs dict is forwarded to
+  `KospexData.set_params_by_id()`, which read `repo_id=True` as a scope value
+  and emitted `WHERE _repo_id = 1` — matching nothing. The same dict also
+  carries display-only keys such as `db=True`, which defeated the
+  `any(id_params.values())` all-scope test and sent an unscoped call down an
+  error branch that printed `ERROR: can't identify {...}` to stdout while
+  correctly applying no filter. Scope resolution now considers only `repo_id`,
+  `org_key` and `server`, and only when they hold a non-empty string; anything
+  else means "all scope". Also removed a leftover `print(kwargs)` debug
+  statement from `Kospex.list_repos()`, so `-db` output is no longer preceded
+  by a raw params dict. Row counts for `-db`, `-db -repo_id` and
+  `-db -server SERVER` now match the `repos` table exactly.
+
 - **Renamed and removed dependencies stayed flagged as current forever.**
   `save_dependencies` demoted prior rows keyed on `(_repo_id, file_path,
   package_name)`, taking the name from the *incoming* record — so the demote
