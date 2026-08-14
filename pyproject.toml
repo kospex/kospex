@@ -17,7 +17,10 @@ dependencies = [
     "packaging",
     "panopticas>=0.0.18",
     "python-dotenv",
-    "sqlite-utils",
+    # >=4.1.1 for Database.atomic(): save_dependencies() needs an explicit
+    # BEGIN to roll a failed upsert back. sqlite3's `with conn:` does not
+    # work here. Matches the pin already in requirements.txt.
+    "sqlite-utils>=4.1.1",
     "requests==2.33.0",
     "rich>=14.0.0",
     "python-multipart>=0.0.20",

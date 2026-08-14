@@ -262,3 +262,40 @@ def test_demote_is_scoped_to_the_repo_being_written():
              if r["_repo_id"] == "github.com~other~repo"]
     assert len(other) == 1
     assert other[0]["latest"] == 1, "another repo's rows must not be demoted"
+
+
+def test_upsert_failure_leaves_prior_rows_current():
+    """A failed upsert must not blank the manifest's current dependencies.
+
+    The demote and the upsert are one unit of work. Run as two statements with
+    no transaction, a failure between them leaves the demote committed and the
+    replacements never written, so the file ends up with zero rows at latest=1
+    -- silently, because the demote itself succeeded.
+    """
+    import sqlite3
+
+    db = _make_db()
+    kdeps = KospexDependencies(kospex_db=db)
+    for name in ("requests", "click", "urllib3"):
+        _existing_row(db, package_name=name, package_version="1.0.0")
+
+    # `not_a_column` is not in the schema and is not stripped as a template
+    # field, so the upsert raises after the demote has already run. The trigger
+    # is deliberately generic -- any DB error between the two statements does
+    # this; a pre-0005 DB hitting `resolution` is just the case seen in the wild.
+    with pytest.raises(sqlite3.OperationalError):
+        kdeps.save_dependencies([{
+            "_repo_id": "github.com~kospex~kospex",
+            "hash": "newhash",
+            "file_path": "requirements.txt",
+            "package_type": "pypi",
+            "package_name": "requests",
+            "package_version": "2.31.0",
+            "not_a_column": "boom",
+        }], source="krunner osi")
+
+    current = [r for r in db[KospexSchema.TBL_DEPENDENCY_DATA].rows if r["latest"] == 1]
+    assert {r["package_name"] for r in current} == {"requests", "click", "urllib3"}, (
+        "the demote must roll back with the failed upsert, leaving the previous "
+        "dependency set current"
+    )
