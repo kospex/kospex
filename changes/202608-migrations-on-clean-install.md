@@ -184,12 +184,29 @@ A module-level `warn_if_behind(db, quiet=False)`:
 - Returns silently when there are no pending migrations.
 - Catches `sqlite3.OperationalError` for a missing `schema_migrations` table
   (pre-migration-system databases) and reports those as behind rather than propagating.
-- Writes one line to **stderr**, never stdout, so it cannot corrupt piped output from
-  `kospex list-repos` or krunner's CSV paths.
+- Writes to **stderr**, never stdout, so it cannot corrupt piped output from
+  `kospex list-repos -out file.csv` or krunner's CSV paths.
+- Never blocks. It warns and returns; the command proceeds.
+
+The warning is a full banner rather than a single line. The failure it precedes is silent
+data damage — a `deps -save` on a behind DB blanks a manifest's current dependencies — so
+it needs to survive being buried in scrolling command output:
 
 ```
-kospex: database is 3 migration(s) behind — run `kospex upgrade-db -apply`
+╔══════════════════════════════════════════════════════════╗
+║  DATABASE SCHEMA IS OUT OF DATE                          ║
+╠══════════════════════════════════════════════════════════╣
+║  3 migration(s) pending (DB version 2).                  ║
+║  Commands that write may fail or record incomplete data. ║
+║                                                          ║
+║  Back up your database, then run:                        ║
+║      kospex upgrade-db -apply                            ║
+╚══════════════════════════════════════════════════════════╝
 ```
+
+The banner reports the pending *count*, not the migration IDs — `kospex upgrade-db`
+already lists those, and an unbounded list would grow the banner without adding anything
+actionable.
 
 Cost is one `SELECT id FROM schema_migrations` plus a small `iterdir()`, once per process.
 
@@ -212,6 +229,21 @@ The warning also fires ahead of `kospex upgrade-db` itself, which is redundant b
 harmless — the command's own output immediately supersedes it. Not worth special-casing.
 
 Each has a module-level `kospex` instance, so `kospex.kospex_db` is the handle.
+
+**Resulting coverage.** Every subcommand of all four CLIs prints the banner on every run,
+for as long as the DB is behind:
+
+| Case | Banner? |
+| --- | --- |
+| Any subcommand of `kospex` / `kgit` / `krunner` / `kreaper` | Yes, every run |
+| `--help`, mistyped subcommand, tab-completion | No — Click skips the group callback |
+| `kospex --quiet ...` | No |
+| `kgit` / `krunner` / `kreaper` (no `--quiet` flag exists) | Always |
+| Fresh DB | No — migrated at creation, nothing pending |
+| kweb | Once at startup, to the log; not per request |
+
+Nothing is ever refused. A behind DB stays fully usable, including the write paths that
+may damage data — the banner is the whole intervention.
 
 ### 4. kweb lifespan — `kweb2.py`
 
@@ -289,6 +321,13 @@ would mutate databases holding real data with no backup prompt, which
 `changes/202605-db-migration-system.md` explicitly warns against, and would race between
 concurrent CLI / kweb / kospex-agent processes.
 
+**The banner does not block, and no command is refused.** Blocking the known-destructive
+write paths (`deps -save`, `kgit pull`) was considered and rejected: it would prevent the
+manifest-blanking outright, but at the cost of hard-stopping scripted workflows over a
+schema gap the user may already know about. The banner is the whole intervention, so it
+has to be prominent enough to be read — hence a banner rather than a line. Exit codes are
+unchanged.
+
 ## Files changed
 
 - `src/kospex_schema.py` — `_bootstrap_migrations()`; widened `new_db` test in
@@ -329,6 +368,9 @@ Also covered:
   fresh DB (regression tests for the two crash paths)
 - `warn_if_behind` fires on a DB stamped behind, is silent when current, and handles a
   missing `schema_migrations` table
+- The banner goes to stderr and leaves stdout byte-identical — asserted by capturing both
+  streams, since a banner on stdout would corrupt `kospex list-repos -out file.csv`
+- The banner never changes a command's exit code, and the command still runs to completion
 - The zero-table repair case: an empty DB file is detected and fully rebuilt
 - Bootstrap failure is non-fatal and leaves a usable DB
 - `db_status()` reports correctly for: fresh/just-created, current, behind, and
