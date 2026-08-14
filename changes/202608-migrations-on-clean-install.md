@@ -66,6 +66,35 @@ This is worse than the migration gap, because the empty file now exists on disk.
 true, so on the next run the user gets the baseline tables (every CREATE is
 `IF NOT EXISTS`) but **no version stamp and no migrations, permanently**.
 
+### The 0005 gap now silently blanks a manifest's dependencies
+
+`a298f97` ("demote latest rows by file, not by package name") changed
+`save_dependencies()` to demote **every** prior `latest=1` row for each
+`(_repo_id, file_path)` before upserting, rather than only the package names in the
+incoming batch. That is correct on a migrated DB, and it raises the severity of the 0005
+gap on one that is behind.
+
+The demote runs first (`kospex_dependencies.py:525-530`) and persists; the upsert then
+fails on the missing column. Reproduced on a baseline v2 DB:
+
+```
+resolution column present: False
+current (latest=1) rows before: 3
+save_dependencies FAILED: OperationalError: table dependency_data has no column named resolution
+current (latest=1) rows after:  0   (total rows: 3)
+```
+
+So a `kospex deps -save` against a DB that never ran migrations does not merely error —
+it marks the entire manifest's dependencies as not-current first. The repo then reports
+zero current dependencies for that file. Nothing is deleted (the rows survive at
+`latest=0`, and the demote is an UPDATE, never a DELETE), so it is recoverable by running
+the migrations and re-syncing, but every "current dependencies" view reads empty until
+then.
+
+Before `a298f97` the blast radius was limited to the packages being rewritten. This is
+the strongest argument for the warning in §2 being loud, and is worth weighing against
+the decision not to auto-migrate existing databases.
+
 ### Third defect: `kospex init` never checks the database
 
 `kospex init` is the command whose entire purpose is verifying the environment — it checks
