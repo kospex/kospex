@@ -522,12 +522,6 @@ class KospexDependencies:
             (r.get("_repo_id"), r.get("file_path"))
             for r in records
         }
-        for repo_id, file_path in demote_keys:
-            self.kospex_db.execute(
-                f"UPDATE {KospexSchema.TBL_DEPENDENCY_DATA} SET latest = 0 "
-                "WHERE _repo_id = ? AND file_path = ?",
-                [repo_id, file_path],
-            )
 
         cleaned = []
         for r in records:
@@ -546,13 +540,31 @@ class KospexDependencies:
                     rec["_git_repo"] = parts["repo"]
             cleaned.append(rec)
 
-        self.kospex_db.table(KospexSchema.TBL_DEPENDENCY_DATA).upsert_all(
-            cleaned,
-            pk=[
-                "_repo_id", "hash", "file_path",
-                "package_type", "package_name", "package_version",
-            ],
-        )
+        # The demote and the upsert are one unit of work. Run as two statements
+        # with no transaction, a failed upsert leaves the demote committed and
+        # the replacements never written — the manifest silently reports zero
+        # current dependencies, because the demote itself succeeded.
+        #
+        # atomic() is required rather than sqlite3's `with conn:`: the latter
+        # relies on the implicit transaction and does NOT roll the demote back
+        # here, because something inside upsert_all ends it. atomic() issues an
+        # explicit BEGIN, and nests via savepoints if a caller already has a
+        # transaction open.
+        with self.kospex_db.atomic():
+            for repo_id, file_path in demote_keys:
+                self.kospex_db.execute(
+                    f"UPDATE {KospexSchema.TBL_DEPENDENCY_DATA} SET latest = 0 "
+                    "WHERE _repo_id = ? AND file_path = ?",
+                    [repo_id, file_path],
+                )
+
+            self.kospex_db.table(KospexSchema.TBL_DEPENDENCY_DATA).upsert_all(
+                cleaned,
+                pk=[
+                    "_repo_id", "hash", "file_path",
+                    "package_type", "package_name", "package_version",
+                ],
+            )
 
         return len(cleaned)
 
