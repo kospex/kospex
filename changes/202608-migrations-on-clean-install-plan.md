@@ -950,8 +950,9 @@ In the `cli` group callback, add the call after the bare-invocation block. The `
         click.echo(ctx.get_help())
         ctx.exit(0)
 
-    # A behind DB can silently damage data (a deps -save blanks a manifest's
-    # current dependencies), so warn before every real subcommand. Never blocks.
+    # On a behind DB the write paths fail hard (no such column: last_fetch,
+    # no column named resolution). This banner is what connects those errors
+    # back to their cause. Warns before every real subcommand; never blocks.
     warn_if_behind(kospex.kospex_db, quiet=quiet)
 ```
 

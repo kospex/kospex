@@ -66,34 +66,39 @@ This is worse than the migration gap, because the empty file now exists on disk.
 true, so on the next run the user gets the baseline tables (every CREATE is
 `IF NOT EXISTS`) but **no version stamp and no migrations, permanently**.
 
-### The 0005 gap now silently blanks a manifest's dependencies
+### The 0005 gap used to blank a manifest — fixed separately in #150
 
-`a298f97` ("demote latest rows by file, not by package name") changed
-`save_dependencies()` to demote **every** prior `latest=1` row for each
-`(_repo_id, file_path)` before upserting, rather than only the package names in the
-incoming batch. That is correct on a migrated DB, and it raises the severity of the 0005
-gap on one that is behind.
+**Resolved. Retained because it is why the §2 warning is a banner rather than a line.**
 
-The demote runs first (`kospex_dependencies.py:525-530`) and persists; the upsert then
-fails on the missing column. Reproduced on a baseline v2 DB:
+`save_dependencies()` used to run its demote and its upsert as two statements with no
+transaction. On a DB missing the `resolution` column the demote committed and the upsert
+then failed, so `kospex deps -save` left the manifest reporting zero current
+dependencies — silently, because the demote itself succeeded:
 
 ```
-resolution column present: False
 current (latest=1) rows before: 3
 save_dependencies FAILED: OperationalError: table dependency_data has no column named resolution
-current (latest=1) rows after:  0   (total rows: 3)
+current (latest=1) rows after:  0
 ```
 
-So a `kospex deps -save` against a DB that never ran migrations does not merely error —
-it marks the entire manifest's dependencies as not-current first. The repo then reports
-zero current dependencies for that file. Nothing is deleted (the rows survive at
-`latest=0`, and the demote is an UPDATE, never a DELETE), so it is recoverable by running
-the migrations and re-syncing, but every "current dependencies" view reads empty until
-then.
+PR #150 wrapped both statements in a single `Database.atomic()` transaction. The same
+reproduction now preserves the previous dependency set:
 
-Before `a298f97` the blast radius was limited to the packages being rewritten. This is
-the strongest argument for the warning in §2 being loud, and is worth weighing against
-the decision not to auto-migrate existing databases.
+```
+current (latest=1) rows before: 3
+save_dependencies raised: OperationalError
+after (reopened):   3
+```
+
+**Current behaviour on a behind DB:** `kospex deps -save` fails loudly with
+`OperationalError` and the existing dependency data is left intact. That is a visible
+error the user can act on, not silent data loss.
+
+This changes the *justification* for the banner, not the decision. The original argument
+was that the banner had to survive being buried because the failure behind it was silent.
+That specific failure is gone, but the general point stands: the write paths gated on
+migrations fail hard on a behind DB, and `warn_if_behind` is what tells the user why. See
+`changes/202608-save-dependencies-atomic.md`.
 
 ### Third defect: `kospex init` never checks the database
 
@@ -188,9 +193,10 @@ A module-level `warn_if_behind(db, quiet=False)`:
   `kospex list-repos -out file.csv` or krunner's CSV paths.
 - Never blocks. It warns and returns; the command proceeds.
 
-The warning is a full banner rather than a single line. The failure it precedes is silent
-data damage — a `deps -save` on a behind DB blanks a manifest's current dependencies — so
-it needs to survive being buried in scrolling command output:
+The warning is a full banner rather than a single line. It has to survive being buried in
+scrolling command output, because it is the only thing connecting a later hard failure
+(`no such column: last_fetch` from `kgit pull`, `no column named resolution` from
+`deps -save`) back to its actual cause:
 
 ```
 ╔══════════════════════════════════════════════════════════╗
@@ -321,12 +327,16 @@ would mutate databases holding real data with no backup prompt, which
 `changes/202605-db-migration-system.md` explicitly warns against, and would race between
 concurrent CLI / kweb / kospex-agent processes.
 
-**The banner does not block, and no command is refused.** Blocking the known-destructive
-write paths (`deps -save`, `kgit pull`) was considered and rejected: it would prevent the
-manifest-blanking outright, but at the cost of hard-stopping scripted workflows over a
-schema gap the user may already know about. The banner is the whole intervention, so it
-has to be prominent enough to be read — hence a banner rather than a line. Exit codes are
-unchanged.
+**The banner does not block, and no command is refused.** Blocking the write paths that
+fail on a behind DB (`deps -save`, `kgit pull`) was considered and rejected: it would
+convert their errors into a clean refusal, but at the cost of hard-stopping scripted
+workflows over a schema gap the user may already know about. The banner is the whole
+intervention, so it has to be prominent enough to be read — hence a banner rather than a
+line. Exit codes are unchanged.
+
+This was decided when a behind DB could silently blank a manifest, which #150 has since
+fixed. The case for blocking is now weaker than it was, not stronger, so the decision
+stands unchanged.
 
 ## Files changed
 
