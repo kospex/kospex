@@ -91,6 +91,20 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `developer_stats` update.
 
 ### Fixed
+- **A failed dependency save left a manifest with zero current dependencies.**
+  `save_dependencies()` ran its demote (`UPDATE ... SET latest = 0` for every
+  prior row of the `(_repo_id, file_path)` being rewritten) and its
+  `upsert_all()` as two statements with no transaction. If the upsert failed,
+  the demote was already committed and the replacement rows were never written,
+  so every "current dependencies" view for that file read empty — silently,
+  because the demote itself succeeded. The rows survived at `latest=0` (the
+  demote is an UPDATE, never a DELETE), so the data was recoverable, but it was
+  no longer reported. The two statements now run inside a single
+  `Database.atomic()` transaction, so a failed upsert rolls the demote back and
+  the previous dependency set stays current. `sqlite-utils>=4.1.1` is now
+  declared in `pyproject.toml`, matching the existing `requirements.txt` pin:
+  `atomic()` issues an explicit `BEGIN`, and sqlite3's `with conn:` does **not**
+  roll the demote back here. See `changes/202608-save-dependencies-atomic.md`.
 - **`kospex list-repos -db -repo_id` returned no rows.** `list-repos` defines
   `-repo_id` as an `is_flag` option meaning "add the Repo ID column to the
   output", but the whole kwargs dict is forwarded to
