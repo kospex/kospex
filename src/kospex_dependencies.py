@@ -477,10 +477,35 @@ class KospexDependencies:
         package_version); _git_server/_git_owner/_git_repo are derived from
         _repo_id when absent.
 
-        Before inserting, prior rows for each (_repo_id, file_path,
-        package_name) are demoted to latest=0 so re-runs don't accumulate
-        stale "latest" rows; the incoming records are then upserted with
-        latest=1.
+        Before inserting, **all** prior rows for each (_repo_id, file_path)
+        being written are demoted to latest=0; the incoming records are then
+        upserted with latest=1. A re-parse of a manifest supersedes everything
+        previously extracted from it, whatever those packages were called.
+
+        The demote is deliberately keyed on the file rather than on
+        (_repo_id, file_path, package_name). Keying it on the package name
+        meant the demote only ran for names present in the incoming batch,
+        which left two classes of row stuck at latest=1 forever:
+
+        * **Renamed packages.** package_name is part of the primary key, so a
+          parser change that derives a different name inserts a new row instead
+          of updating the old one — and the demote, keyed on the new name,
+          never reached the predecessor. Observed live: `mkdocstrings[python]`
+          (package_not_found) and `mkdocstrings` (resolved) both current for the
+          same file, after the PEP 508 parser began separating extras.
+        * **Removed dependencies.** A package deleted from a manifest has no
+          incoming record at all, so nothing ever demoted it and kospex kept
+          reporting it as a current dependency.
+
+        Trade-off: a partial parse now demotes the packages it failed to
+        re-extract. "Not found this time" is the honest reading, and the rows
+        stay queryable at latest=0 — but a truncated run marks more rows stale
+        than it replaces. `krunner osi` accumulates every file and calls this
+        once, so it is not exposed to that.
+
+        Note this only changes which rows are *flagged* current. Row growth is
+        driven by the upsert primary key — chiefly `hash` — and is unaffected;
+        the demote is an UPDATE, never a DELETE.
 
         source: value for the [source] column identifying the writing tool.
 
@@ -489,17 +514,19 @@ class KospexDependencies:
         if not records:
             return 0
 
-        # Demote prior "latest" rows for each (_repo_id, file_path,
-        # package_name) we are about to (re)write.
+        # Demote every prior "latest" row for each (_repo_id, file_path) we are
+        # about to rewrite — not just the package names in this batch. A
+        # re-parse supersedes the whole file; keying this on package_name left
+        # renamed and removed packages stuck at latest=1. See the docstring.
         demote_keys = {
-            (r.get("_repo_id"), r.get("file_path"), r.get("package_name"))
+            (r.get("_repo_id"), r.get("file_path"))
             for r in records
         }
-        for repo_id, file_path, package_name in demote_keys:
+        for repo_id, file_path in demote_keys:
             self.kospex_db.execute(
                 f"UPDATE {KospexSchema.TBL_DEPENDENCY_DATA} SET latest = 0 "
-                "WHERE _repo_id = ? AND file_path = ? AND package_name = ?",
-                [repo_id, file_path, package_name],
+                "WHERE _repo_id = ? AND file_path = ?",
+                [repo_id, file_path],
             )
 
         cleaned = []
@@ -756,38 +783,74 @@ class KospexDependencies:
 
         return p_template
 
+    # Leading `name` plus optional `[extras]` of a PEP 508 requirement. Used to
+    # recover the *declared* specifier text, which must be preserved verbatim —
+    # see the "multiple" branch below.
+    _PYPI_NAME_EXTRAS_RE = re.compile(r"^\s*[A-Za-z0-9._-]+\s*(?:\[[^\]]*\])?\s*")
+
     def parse_pypi_package_declaration(self, package_declaration):
-        """Parse a PyPi package declaration into a dictionary"""
-        # TODO - need to double check the version specifiers as described in:
-        # https://packaging.python.org/en/latest/specifications/version-specifiers/
-        # They are claiming a lot of different ways to specify versions
-        package = {}
-        version_spec = None
-        single_specifier = True
+        """Parse a PyPi package declaration into a dictionary.
 
-        match = re.match(r"([a-zA-Z0-9_-]+)(.+)", package_declaration)
+        Returns ``{"package_name", "package_version", "version_type"}``, or
+        ``None`` when the line is not a requirement at all (a URL, an ``-e``
+        or ``-r`` directive, a blank line). Callers treat ``None`` as "not a
+        package declaration", not as "no version".
 
-        if match:
-            package["package_name"] = match.group(1)
-            package["package_version"] = match.group(2)
+        An unversioned declaration is a *valid* requirement and returns a
+        record with an empty ``package_version`` — it is never dropped. The
+        previous implementation returned ``None`` for it, and
+        ``parse_pip_requirements_file`` discards falsy results, so unpinned
+        packages never reached ``dependency_data``. Observed on a real repo:
+        a requirements.txt declaring ten packages, nine unpinned, produced a
+        single row.
 
-        if "," in package_declaration:
-            single_specifier = False
-            package["version_type"] = "multiple"
-        elif ">=" in package_declaration:
-            version_spec = ">="
-        elif "~=" in package_declaration:
-            version_spec = "~="
-        elif "==" in package_declaration:
-            version_spec = "=="
-        else:
-            print(f"Unknown version type in {package_declaration}")
+        Parsing is delegated to ``packaging.requirements.Requirement`` (PEP
+        508) rather than substring-matching operators. The old approach tested
+        operators against the whole line *including the environment marker*, so
+        ``requests; sys_platform == 'win32'`` split on the marker's ``==`` and
+        yielded a package named ``"requests; sys_platform "``.
+
+        Two deliberate non-normalisations, both because ``package_name`` and
+        ``package_version`` are part of the ``dependency_data`` primary key —
+        rewriting either inserts duplicate rows on re-sync instead of updating:
+
+        * the declared name is kept as written (``MarkupSafe``, not
+          ``markupsafe``), so ``packaging`` is used to parse, never to rename;
+        * for a multi-specifier line the declared text is preserved verbatim.
+          ``str(SpecifierSet)`` sorts its members, turning ``>=1.0,<2.0`` into
+          ``<2.0,>=1.0``.
+        """
+        if not package_declaration:
             return None
 
-        if single_specifier:
-            package["package_name"] = package_declaration.split(version_spec)[0]
-            package["package_version"] = package_declaration.split(version_spec)[1]
-            package["version_type"] = version_spec
+        # Strip the environment marker before parsing. Markers routinely contain
+        # `==` / `>=`, which is what misled the operator-matching implementation.
+        spec_part = package_declaration.split(";", 1)[0].strip()
+        if not spec_part:
+            return None
+
+        try:
+            requirement = Requirement(spec_part)
+        except InvalidRequirement:
+            # Not a requirement line — a URL, `-e .`, `-r other.txt`, or junk.
+            # pypi_assess falls back to source-repo URL extraction for these.
+            return None
+
+        package = {"package_name": requirement.name}
+        specifiers = list(requirement.specifier)
+
+        if not specifiers:
+            # Declared with no version: unpinned, or version-less with extras
+            # and/or a marker. A real declaration, so it is recorded.
+            package["package_version"] = ""
+            package["version_type"] = None
+        elif len(specifiers) > 1:
+            # Preserve the declared text, not packaging's sorted rendering.
+            package["package_version"] = self._PYPI_NAME_EXTRAS_RE.sub("", spec_part).strip()
+            package["version_type"] = "multiple"
+        else:
+            package["package_version"] = specifiers[0].version
+            package["version_type"] = specifiers[0].operator
 
         return package
 

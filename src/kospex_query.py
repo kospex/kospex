@@ -2626,6 +2626,12 @@ class KospexData:
 
         If request_id is provided, it takes precedence and is parsed first.
         Falls back to id_params dict if request_id is not provided.
+
+        Callers often pass their full kwargs, which can include non-scope keys
+        (display flags like 'db', filters like 'email'). Only the scope keys below
+        are considered, and only when they hold a non-empty string - CLI flags such
+        as list-repos' -repo_id are booleans and must not be read as a repo id.
+        No recognised scope means "all scope".
         """
         # If request_id string is provided, parse it to get params
         if request_id:
@@ -2636,17 +2642,20 @@ class KospexData:
         if not id_params:
             return
 
-        if repo_id := id_params.get("repo_id"):
+        scope = {
+            key: value
+            for key, value in id_params.items()
+            if key in ("repo_id", "org_key", "server")
+            and isinstance(value, str)
+            and value
+        }
+
+        if repo_id := scope.get("repo_id"):
             self.where("_repo_id", "=", repo_id)
-        elif org_key := id_params.get("org_key"):
+        elif org_key := scope.get("org_key"):
             self.where_org_key(org_key)
-        elif server := id_params.get("server"):
+        elif server := scope.get("server"):
             self.where("_git_server", "=", server)
-        elif not any(id_params.values()):
-            # All keys present but values are None/empty → treat as "all scope"
-            return
-        else:
-            print(f"ERROR: can't identify {id_params}")
 
     def group_name_where_subselect(self, group_name):
         """Add a subselect where clause to the query"""

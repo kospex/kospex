@@ -17,7 +17,7 @@ inventory:
 ```
 # per repo
 git checkout development
-kospex sync .
+kospex sync-directory .
 
 # once every repo is on development and synced
 krunner osi -all

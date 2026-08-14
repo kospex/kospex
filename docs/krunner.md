@@ -24,6 +24,11 @@ names and versions and enriching them via deps.dev.
 krunner osi -all
 ```
 
+This is what refreshes `dependency_data` — syncing a repo does not. Note it reads
+the file list from `file_metadata` rather than scanning disk, so a manifest
+kospex has never tagged stays invisible however often you re-run it. See
+[Refreshing data](refreshing-data) for the ordering rule.
+
 You can also scope it to a server, org or repo:
 
 ```bash

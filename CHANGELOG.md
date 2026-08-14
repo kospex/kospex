@@ -36,6 +36,10 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - **`krunner branches -strict`** exits non-zero if any repo errored, for CI and
   cron jobs that need failures to surface without parsing output. The default
   stays exit 0 so existing scripts are unaffected.
+- **Repo page links to its dependencies.** `/repo/{repo_id}` gains a
+  **Dependencies** link, placed first in the Quick Links bar ahead of Tech
+  Landscape. The `/dependencies/{repo_id}` route already existed but nothing
+  linked to it, so reaching a repo's dependency list meant typing the URL.
 
 ### Changed
 - **The AI tags panopticas emits for `CLAUDE.md` and `GEMINI.md` have changed
@@ -87,6 +91,93 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `developer_stats` update.
 
 ### Fixed
+- **`kospex list-repos -db -repo_id` returned no rows.** `list-repos` defines
+  `-repo_id` as an `is_flag` option meaning "add the Repo ID column to the
+  output", but the whole kwargs dict is forwarded to
+  `KospexData.set_params_by_id()`, which read `repo_id=True` as a scope value
+  and emitted `WHERE _repo_id = 1` — matching nothing. The same dict also
+  carries display-only keys such as `db=True`, which defeated the
+  `any(id_params.values())` all-scope test and sent an unscoped call down an
+  error branch that printed `ERROR: can't identify {...}` to stdout while
+  correctly applying no filter. Scope resolution now considers only `repo_id`,
+  `org_key` and `server`, and only when they hold a non-empty string; anything
+  else means "all scope". Also removed a leftover `print(kwargs)` debug
+  statement from `Kospex.list_repos()`, so `-db` output is no longer preceded
+  by a raw params dict. Row counts for `-db`, `-db -repo_id` and
+  `-db -server SERVER` now match the `repos` table exactly.
+
+- **Renamed and removed dependencies stayed flagged as current forever.**
+  `save_dependencies` demoted prior rows keyed on `(_repo_id, file_path,
+  package_name)`, taking the name from the *incoming* record — so the demote
+  only ran for names present in the batch. Two classes of row were left stuck
+  at `latest = 1`. **Renamed packages:** `package_name` is part of the
+  `dependency_data` primary key, so a parser change that derives a different
+  name inserts a new row rather than updating the old one, and a demote keyed
+  on the new name never reaches the predecessor — after the PEP 508 parser
+  above began separating extras, `mkdocstrings[python]` (`package_not_found`)
+  and `mkdocstrings` (`resolved`) were both current for the same file, so a
+  repo reported 17 dependencies where 16 was correct. **Removed dependencies:**
+  a package deleted from a manifest has no incoming record at all, so nothing
+  ever demoted it — delete a package from `requirements.txt`, re-parse, and
+  kospex kept reporting it as a current dependency. This second one predates
+  the parser work. The demote is now keyed on `(_repo_id, file_path)`: a
+  re-parse supersedes everything previously extracted from that manifest,
+  whatever those packages were called.
+
+  This does not grow the table — the demote is an `UPDATE`, never a `DELETE`,
+  and row count is driven by the upsert primary key (chiefly `hash`). Only the
+  `latest` flag changes. Existing stale rows need no migration; they are
+  demoted by the next re-parse of their file. One behaviour change worth
+  knowing: a *partial* parse now demotes packages it failed to re-extract,
+  where previously they were left looking current. `krunner osi` accumulates
+  every file and writes once, so it is not exposed to that.
+- **Unpinned Python dependencies were silently dropped and never reached
+  `dependency_data`.** `parse_pypi_package_declaration` substring-tested version
+  operators against the whole declaration — *including the environment marker* —
+  then split on the first one found. Four consequences: markers leaked into the
+  package name (`requests; sys_platform == 'win32'` parsed as a package called
+  `requests; sys_platform`); `>=` was tested before `~=`, so a `~=` spec split on
+  the marker's operator; neither field was stripped, leaving `"hypothesis "` and
+  `" 3.30"`; and unpinned declarations plus `<`, `<=`, `!=` and `===` specs
+  returned `None`, which `parse_pip_requirements_file` discards. Measured on a
+  synced copy of `theskumar/python-dotenv`, whose `requirements.txt` declares ten
+  packages with nine unpinned: `dependency_data` held **one row**. Parsing now
+  uses `packaging.requirements.Requirement` (PEP 508, already a dependency of
+  this module); an unversioned declaration is a valid requirement and records an
+  empty `package_version`, matching how the `pyproject.toml` path already handles
+  it. `None` is now reserved for lines that are not requirements at all — URLs,
+  `-e .`, `-r other.txt`. Declared names and multi-specifier text are preserved
+  verbatim rather than canonicalised, because `package_name` and
+  `package_version` are both part of the `dependency_data` primary key and
+  rewriting either would insert duplicate rows on re-sync. Closes
+  [#29](https://github.com/kospex/kospex/issues/29).
+
+  **A re-parse is required, and the numbers will get worse.** The mangling
+  happened at parse time, so existing databases cannot be repaired in place.
+  Re-run whichever command populated `dependency_data` — `krunner osi -all` for
+  the whole install, `krunner osi <repo_id>` for one repo, or `kospex deps` /
+  `kospex sca` for a single file or repo. **`kospex sync` does not re-parse
+  dependencies**; it populates commits and `file_metadata`, and nothing in
+  `kospex_core.py` writes `dependency_data`. After the re-parse, dependency
+  counts rise and freshness figures fall, because previously-dropped unpinned
+  packages reappear as rows with no resolvable version. That is the parser
+  reporting what was always there, not a regression.
+- **Unresolved dependencies rendered as green / "Up to Date" on
+  `supply_chain.html`.** PR #106 normalised `versions_behind` to `null` for
+  unresolved dependencies, and in JavaScript `null <= 2` is *true* — so a package
+  whose version could not be determined at all drew in the most reassuring state
+  available. The same coercion affected size: `d3.scaleLinear()` treats `null` as
+  0 and returns the range minimum, so those nodes also drew smallest, reading as
+  "least versions behind". Adds an `isUnresolved()` guard applied at every site
+  that consumed `versions_behind` — fill colour, status class, status text, size,
+  hover tooltip and detail panel, the last two of which printed a literal
+  `null` — plus a grey legend entry, "Unresolved — version could not be
+  determined". A package that is both unresolved *and* vulnerable still shows as
+  vulnerable, matching the precedence used elsewhere. Closes
+  [#109](https://github.com/kospex/kospex/issues/109). This is the view-layer
+  half of the same problem as #29 above: fixing the parser alone increases the
+  number of `null` rows, which would have moved the misreporting from the data
+  layer to the view layer.
 - **`krunner todo` no longer records TODOs from git's own hook samples.** The
   grep had no path operand, so it recursed into `.git/` and logged four bogus
   `GREP_TODO` observations per repo from the `.git/hooks/*.sample` files git
