@@ -42,6 +42,19 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   linked to it, so reaching a repo's dependency list meant typing the URL.
 
 ### Changed
+- **Raised the panopticas floor to `>=0.0.19`.** 0.0.19 adds a queryable tag
+  vocabulary (`get_tags()`, `get_filetypes()`, `get_languages()`, derived from
+  the detection rules so they cannot drift), `--json` on every panopticas
+  command, and migrates its table output from prettytable to rich. **No tag was
+  renamed or removed**, so stored `tech_type` values stay valid and no re-sync
+  is required for correctness. `tests/test_panopticas_tag_contract.py` passes
+  unchanged against 0.0.19, which is what that guard exists to confirm.
+
+  Note the floor is not a delivery gate: since the pin was relaxed from an exact
+  version, a new panopticas release already reaches fresh kospex installs
+  without a kospex release. This bump states the minimum version kospex is
+  tested against, and does not by itself change what users resolve.
+
 - **The AI tags panopticas emits for `CLAUDE.md` and `GEMINI.md` have changed
   shape, and the old ones are gone.** `CLAUDE.md` was
   `|Claude|AI|Claude Code|` and is now `|AI|Claude|instructions|`; `GEMINI.md`

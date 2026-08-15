@@ -15,7 +15,7 @@ dependencies = [
     "prettytable==3.17.0",
     "dateutils",
     "packaging",
-    "panopticas>=0.0.18",
+    "panopticas>=0.0.19",
     "python-dotenv",
     # >=4.1.1 for Database.atomic(): save_dependencies() needs an explicit
     # BEGIN to roll a failed upsert back. sqlite3's `with conn:` does not
