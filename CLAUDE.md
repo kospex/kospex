@@ -225,6 +225,14 @@ Design / spec: `changes/202605-db-migration-system.md`.
 
 ### Query Patterns
 - Most tables include `repo_id` in format `GIT_SERVER~OWNER~REPO`
+- **`repo_id` is not safe to `split("~")`.** A `/` in the owner segment (GitLab nested groups /
+  subgroups) is encoded as `~~` by `KospexGit.generate_repo_id()`, so
+  `gitlab.com~group~~subgroup~repo` splits into **five** segments, not three. Indexing `parts[1]`
+  for the owner silently drops the subgroup and shifts the repo name off the end. Build ids with
+  `generate_repo_id()` and parse URLs with `parse_git_remote()` rather than by hand.
+  Note `KospexUtils.parse_repo_id()` currently returns `None` for these ids
+  (`if len(parts) != 3`) — see [#94](https://github.com/kospex/kospex/issues/94). Until that
+  lands, mask `~~` to a sentinel before splitting and restore it after.
 - Author identification primarily uses `author_email` from git
 - Time-based queries often filter by commit date ranges
 - Technology landscape aggregates by file extensions and scc metadata, also uses panopticas
