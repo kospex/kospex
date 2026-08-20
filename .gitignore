@@ -122,6 +122,13 @@ ipython_config.py
 #   https://pdm.fming.dev/#use-with-ide
 .pdm.toml
 
+# uv
+#   Lock files are recommended for applications but commonly ignored for libraries, and kospex
+#   ships to PyPI as one — a lock here would pin resolution for the project rather than for
+#   anyone installing it. Dependencies are declared in pyproject.toml, with requirements.txt
+#   regenerated from a clean wheel venv. uv.lock is a local convenience, so keep it untracked.
+uv.lock
+
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 
