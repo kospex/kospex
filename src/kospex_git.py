@@ -14,6 +14,8 @@ from kospex.habitat_config import HabitatConfig
 from kospex_observation import Observation
 from kospex_query import KospexQuery
 
+log = KospexUtils.get_kospex_logger("kospex_git")
+
 
 class KospexGit:
     """Git metadata class for kospex"""
@@ -513,11 +515,107 @@ class KospexGit:
         """return the repo ID (e.g. github.com~owner~repo)"""
         return self.repo_id
 
+    @staticmethod
+    def _unquote_git_path(path):
+        """Undo git's C-style path quoting.
+
+        With core.quotePath=false git only quotes control characters, double
+        quotes and backslashes, so every escape is ASCII and the round trip
+        through latin-1 restores the original UTF-8 bytes.
+        """
+        if not (path.startswith('"') and path.endswith('"') and len(path) > 1):
+            return path
+
+        try:
+            return (path[1:-1]
+                    .encode("utf-8")
+                    .decode("unicode_escape")
+                    .encode("latin-1")
+                    .decode("utf-8"))
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            return path
+
+    def _last_commit_by_path(self):
+        """Every tracked path's most recent commit, from a single 'git log' walk.
+
+        Returns {path: {"commit_hash", "author_when", "committer_when"}}.
+
+        This replaces a 'git log -1 -- <file>' per file. The per-file cost was
+        fork/exec overhead rather than git work, so it scaled with the file
+        count and dominated a file_metadata rebuild. One walk is 15-217x faster
+        depending on repo size, and does not degrade with history depth.
+
+        Two flags carry the correctness:
+
+        --diff-merges=combined lists, for a merge commit, the files that differ
+        from *every* parent. That matches what path-limited 'git log' history
+        simplification shows, so content which only ever existed in a conflict
+        resolution is found (git's default shows no diff at all for merges),
+        while files the merge merely forwarded from the branch stay with the
+        commit that actually changed them (which --diff-merges=first-parent
+        would wrongly reattribute to the merge).
+
+        core.quotePath=false stops git emitting "caf\\303\\251.py" for
+        non-ASCII paths, which would never match the path panopticas walked.
+
+        git log is newest first, so the first commit to mention a path is that
+        path's last commit.
+
+        Known divergence from the per-file version, measured at 0-1.3% of paths
+        across react/babel/pydantic/kospex: path-limited 'git log' simplifies
+        history and prunes a branch whose changes to that path did not survive
+        the merge (e.g. an import that was reverted on the branch before it
+        landed). An unlimited walk still sees those commits, so such a path gets
+        the abandoned commit rather than the one that set its current content.
+        Both are commits that really touched the path; the walk's is newer.
+        """
+        if not self.repo_dir:
+            return {}
+
+        cmd = [
+            "git", "-c", "core.quotePath=false", "log",
+            "--name-only", "--diff-merges=combined",
+            "--pretty=format:%x01%H|%ad|%cd", "--date=iso-strict",
+        ]
+
+        try:
+            out = subprocess.check_output(
+                cmd,
+                cwd=str(Path(self.repo_dir).resolve()),
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+        except (subprocess.CalledProcessError, OSError) as exc:
+            # No HEAD (a repo without commits) or not a git directory at all.
+            log.debug("git log walk failed for %s: %s", self.repo_dir, exc)
+            return {}
+
+        last = {}
+        current = None
+
+        for line in out.splitlines():
+            if line.startswith("\x01"):
+                commit_hash, author_when, committer_when = line[1:].split("|", 2)
+                current = {
+                    "commit_hash": commit_hash,
+                    "author_when": author_when,
+                    "committer_when": committer_when,
+                }
+            elif line and current:
+                path = self._unquote_git_path(line)
+                if path not in last:
+                    last[path] = current
+
+        return last
+
     def get_repo_files(self, language=None, skip_last_commit=None):
         """return a list of files in the repo, excluding .git"""
         repo_files = {}
         repo_path = Path(self.repo_dir).resolve()
         p_files = Panopticas.identify_files(repo_path)
+
+        # One git log walk for the whole repo, then a dict lookup per file.
+        last_commits = {} if skip_last_commit else self._last_commit_by_path()
 
         unmanaged = 0
 
@@ -526,6 +624,15 @@ class KospexGit:
             # .git on most repos but not reliably (e.g. a freshly-init'd repo),
             # so exclude it explicitly here.
             if entry == ".git" or entry.startswith(".git/") or "/.git/" in entry:
+                continue
+
+            git_metadata = last_commits.get(entry)
+
+            if not skip_last_commit and git_metadata is None:
+                # git doesn't track it, so it isn't repo content. Absent from
+                # the lookup costs nothing, where the per-file implementation
+                # paid a subprocess before discarding the file anyway.
+                unmanaged += 1
                 continue
 
             data = {}
@@ -539,21 +646,24 @@ class KospexGit:
             tags = Panopticas.get_filename_metatypes(entry)
             data["tech_type"] = tags
 
-            # This process is very CPU intensitve, so might skip it for big repos
-            git_metadata = {}
             if skip_last_commit:
                 data["committer_when"] = None
                 data["status"] = None
-                repo_files[entry] = data
             else:
-                git_metadata = KospexUtils.get_last_commit_info(entry)
                 data["committer_when"] = git_metadata.get("committer_when")
-                data["status"] = git_metadata.get("status")
+                data["status"] = KospexUtils.development_status(
+                    KospexUtils.days_ago(git_metadata.get("author_when")))
 
-                if git_metadata.get("unmanaged"):
-                    unmanaged += 1
-                else:
-                    repo_files[entry] = data
+            repo_files[entry] = data
+
+        if unmanaged:
+            # On a clean clone panopticas and git agree, so this is zero. A
+            # non-zero count means the sync was taken from a working directory
+            # with untracked files (build output, scratch files, an in-progress
+            # branch), and the file inventory won't match what is committed.
+            log.warning("%s: %d untracked file(s) skipped - synced from a "
+                        "working directory rather than a clean clone",
+                        self.repo_dir, unmanaged)
 
         self.repo_files = repo_files
 

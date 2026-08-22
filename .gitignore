@@ -122,6 +122,13 @@ ipython_config.py
 #   https://pdm.fming.dev/#use-with-ide
 .pdm.toml
 
+# uv
+#   Lock files are recommended for applications but commonly ignored for libraries, and kospex
+#   ships to PyPI as one — a lock here would pin resolution for the project rather than for
+#   anyone installing it. Dependencies are declared in pyproject.toml, with requirements.txt
+#   regenerated from a clean wheel venv. uv.lock is a local convenience, so keep it untracked.
+uv.lock
+
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 
@@ -184,6 +191,13 @@ cython_debug/
 
 # Warp terminal configuration (user-specific)
 .warp/
+
+# Claude Code local state. Worktrees under .claude/worktrees/ are full working
+# copies of this repo — without this, a `git add -A` on the default branch tries
+# to stage the entire tree of every active worktree. settings.local.json is a
+# per-machine override, not shared config.
+.claude/worktrees/
+.claude/settings.local.json
 
 # Output files (CSV reports and exports) — krunner osi, tech-landscape, etc.
 # write these into the working directory. Nothing tracked is a .csv.
