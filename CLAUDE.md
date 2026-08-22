@@ -161,14 +161,23 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 
 The kospex DB schema is evolved via numbered migration files under `src/kospex/db/migrations/`. The runner is `src/kospex/db/migrator.py`. See `src/kospex/db/migrations/README.md` for the full conventions and limitations; quick reference:
 
-1. **Pick the next prefix.** Current baseline is version 2 (frozen in `kospex_schema.py`), so the first new migration is `0003`. New migrations always go at the end (next sequential number) — do not renumber.
+1. **Pick the next prefix.** `0003`–`0005` exist, so the next new migration is `0006`. Check `src/kospex/db/migrations/` rather than trusting this number — new migrations always go at the end (next sequential number) and are never renumbered. The `KOSPEX_DB_VERSION = 2` constant in `kospex_schema.py` is the frozen *baseline*, not the current version; the live version is `max(baseline, max(sequence))`, so a fully migrated DB currently reports 5.
 2. **Create `NNNN_<short-slug>.sql`** with the schema change. Plain SQL, `--` comments allowed. Do NOT include `BEGIN` / `COMMIT` / `ROLLBACK` — the runner manages the transaction.
 3. **(Optional) Create `NNNN_<short-slug>.py`** with the same prefix and slug for data backfills. Must export `def up(db): ...` — runs after the SQL in the same transaction. Raise to roll back the whole migration.
 4. **Do not edit a migration once committed and shipped.** Write a new forward migration instead. Checksums in `schema_migrations` will warn on tampering.
-5. **Verify locally:** `kospex upgrade-db` (status / dry run), then `kospex upgrade-db -apply` (execute against `~/kospex/kospex.db`). Back up the DB first.
+5. **Verify locally:** `kospex upgrade-db` (status / dry run), then `kospex upgrade-db -apply` (execute against `~/kospex/kospex.db`). Back up the DB first. A *newly created* DB needs neither — see below.
 6. **Watch for SQL parser limitations** (CREATE TRIGGER bodies, string literals with `;`, `/* */` comments with `;`) — see the Limitations section in the migrations README. Workaround: do the nuanced part in the Python `up(db)` step using `db.execute(...)` on the raw string.
+7. **Expect `test_fresh_db_has_no_pending_migrations` to fail** (`tests/test_kospex_schema.py`) until your migration applies cleanly on a brand-new DB. That is the point of it — it is the guard that makes "does a clean install work?" a permanent CI question. If it fails, the migration errors on a fresh baseline schema; fix the migration, do not weaken the test.
 
-Design / spec: `changes/202605-db-migration-system.md`.
+#### How migrations reach a database
+
+- **New DBs migrate themselves.** `connect_or_create_kospex_db()` calls `_bootstrap_migrations()` when it creates the DB, so a clean install comes out fully migrated. It also treats a DB file with no `kospex_config` table as new, which repairs a zero-table file left behind by a failed first run. Failure is logged to stderr but never fatal — each migration is individually transactional, so a partial failure leaves the DB consistent at whatever version succeeded.
+- **Existing DBs are never auto-migrated.** They only warn: `warn_if_behind()` prints a stderr banner from each Click group callback (`kospex`, `kgit`, `krunner`, `kreaper`), and kweb logs it once at startup. Nothing is blocked and no exit code changes. Applying is always an explicit `kospex upgrade-db -apply`, because auto-applying would mutate populated databases with no backup prompt and could race between concurrent CLI / kweb / agent processes.
+- **kweb builds the schema at startup** via a FastAPI `lifespan` hook, so it participates in the same bootstrap. Do not route `KospexQuery.__init__` through `connect_or_create_kospex_db()` — it would re-run ~19 `CREATE TABLE IF NOT EXISTS` statements at each of its call sites, per request.
+- **DB health is reported by `kospex.db.health.db_status()`** — a read-only helper shared by `kospex init`, `kospex init --validate` and `kospex system-status`. A behind or unwritable DB makes `validate_kospex_setup()` report `issues_found` rather than `healthy`.
+- Anything importing `kospex.db.*` from `kospex_schema.py` or `kospex_utils.py` must do so **inside the function body** — `kospex/db/migrator.py` imports `kospex_schema`, so a module-level import the other way is a circular import.
+
+Design / spec: `changes/202605-db-migration-system.md` (migration system), `changes/202608-migrations-on-clean-install.md` (clean-install bootstrap, banner and health reporting).
 
 ### Code Style & Standards
 - Use Python 3.12+ features
@@ -329,7 +338,7 @@ interface no longer exists.
 
 ### Common Issues
 - **scc not found**: Install scc binary for file type detection and complexity metrics
-- **Database errors**: Run `kospex upgrade-db` to apply schema updates
+- **Database errors** (`no such column: ...`, `has no column named ...`): the DB is behind. Every CLI prints an out-of-date banner in this state; run `kospex upgrade-db` for status, then `kospex upgrade-db -apply`. Newly created DBs migrate themselves, so this only affects databases created before the change landed.
 - **Permission errors**: Ensure proper file permissions in KOSPEX_CODE directory
 - **GitHub rate limits**: Use GITHUB_TOKEN environment variable for authentication
 
