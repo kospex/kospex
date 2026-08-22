@@ -5,6 +5,16 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ## Unreleased
 
 ### Added
+- **Every kospex, kgit, krunner and kreaper command now warns when the database
+  is behind.** A banner on stderr reporting the pending count and
+  `kospex upgrade-db -apply`. It is called from each Click group callback rather
+  than from the database connect, so it appears only for subcommands that
+  actually run — not on `--help` or shell tab-completion, which never reach the
+  callback. `kospex --quiet` suppresses it. Nothing is blocked and no exit code
+  changes: on a behind database the affected commands still fail with their own
+  errors, and the banner is what connects those errors to the cause. stdout is
+  untouched, so piped output such as `kospex list-repos -out file.csv` is safe.
+  See `changes/202608-migrations-on-clean-install.md`.
 - **AI coding agent files are now tagged in `file_metadata`.** Bumped
   `panopticas==0.0.16` → `0.0.17`, which detects the artifacts of 20 AI coding
   agent products via 60 path-based rules. Every recognised file gains three
@@ -104,6 +114,39 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `developer_stats` update.
 
 ### Fixed
+- **A clean install never applied its database migrations.**
+  `connect_or_create_kospex_db()` built the frozen v2 baseline schema and created
+  an empty `schema_migrations` table, but nothing ran the migrations — only
+  `kospex upgrade-db -apply` did, and no first-run command calls it. A brand-new
+  database was therefore three migrations behind on first use, which broke two
+  paths outright: `kgit clone` / `kgit pull` raised `no such column: last_fetch`,
+  and a dependency save raised `table dependency_data has no column named
+  resolution`. `kospex init` did not touch the database at all, so nothing in the
+  normal setup path closed the gap. A fresh install now comes out at version 5
+  with all three applied. The `new_db` test also treats a database file with no
+  `kospex_config` table as new, which repairs one left behind by the kweb bug
+  below — `os.path.isfile()` alone would have left it unmigrated permanently.
+- **kweb crashed on a clean install, and poisoned the database for later runs.**
+  `kweb2.py` had no startup hook and reached the database only through
+  `KospexQuery`, which opens the path directly with sqlite_utils — creating an
+  empty file when none exists. Running kweb first on a clean install therefore
+  produced `sqlite3.OperationalError: no such table: kospex_config` on every
+  request, and left a zero-table file behind that made `os.path.isfile()` true so
+  the schema was never bootstrapped afterwards either. A FastAPI `lifespan` hook
+  now builds and migrates the schema once per server boot, before any request.
+  Startup failure is logged rather than fatal.
+- **`kospex init` reported a broken setup as healthy.** It validated
+  directories, permissions, environment variables and logging, but never the
+  database — so on a clean install it printed `Overall Status: HEALTHY` over a
+  database three migrations behind that would crash `kgit pull`. A behind or
+  unwritable database is now a critical issue. `kospex init --validate` gained a
+  `Database:` block reporting what the bootstrap actually did ("created during
+  this invocation, 3 migration(s) applied"), which is honest about the fact that
+  the module-level `Kospex()` creates the database at import — so "does it
+  exist?" is always true by the time the command body runs. `kospex
+  system-status` printed a `Database table version status` heading followed by
+  nothing; it now shows version, applied count and any pending migrations.
+
 - **A failed dependency save left a manifest with zero current dependencies.**
   `save_dependencies()` ran its demote (`UPDATE ... SET latest = 0` for every
   prior row of the `(_repo_id, file_path)` being rewritten) and its

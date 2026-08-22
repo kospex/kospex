@@ -59,3 +59,62 @@ def test_get_status_table_rich():
         assert header in text
     assert "5" in text       # total count
     assert "%" in text       # percentage row present
+
+
+# --- DB health in validate_kospex_setup() -----------------------------------
+
+
+def _fresh_home_util(tmp_path, monkeypatch):
+    from kospex.habitat_config import HabitatConfig
+    monkeypatch.setenv("KOSPEX_HOME", str(tmp_path))
+    HabitatConfig.reset_instance()
+
+
+def _behind_db_at(tmp_path):
+    """Build the DB, then rewind it to look like migrations never ran."""
+    import kospex_schema as KospexSchema
+    db = KospexSchema.connect_or_create_kospex_db()
+    db.execute("DELETE FROM schema_migrations")
+    db.execute(
+        "UPDATE kospex_config SET value = '2' WHERE key = ?",
+        [KospexSchema.KOSPEX_DB_VERSION_KEY],
+    )
+    db.conn.commit()
+    return db
+
+
+def test_validate_includes_a_database_section(tmp_path, monkeypatch):
+    import kospex_utils as KospexUtils
+    _fresh_home_util(tmp_path, monkeypatch)
+    _behind_db_at(tmp_path)
+
+    validation = KospexUtils.validate_kospex_setup()
+
+    assert "database" in validation
+    assert validation["database"]["pending_count"] == 3
+
+
+def test_behind_db_is_not_healthy(tmp_path, monkeypatch):
+    """The regression: a clean install reported HEALTHY over a DB that would
+    crash kgit pull."""
+    import kospex_utils as KospexUtils
+    _fresh_home_util(tmp_path, monkeypatch)
+    _behind_db_at(tmp_path)
+
+    validation = KospexUtils.validate_kospex_setup()
+
+    assert validation["overall_status"] != "healthy"
+    assert any("migration" in issue for issue in validation["critical_issues"])
+    assert any("upgrade-db" in rec for rec in validation["recommendations"])
+
+
+def test_current_db_is_healthy(tmp_path, monkeypatch):
+    import kospex_schema as KospexSchema
+    import kospex_utils as KospexUtils
+    _fresh_home_util(tmp_path, monkeypatch)
+    KospexSchema.connect_or_create_kospex_db()
+
+    validation = KospexUtils.validate_kospex_setup()
+
+    assert validation["database"]["pending_count"] == 0
+    assert validation["overall_status"] == "healthy"

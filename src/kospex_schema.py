@@ -1,5 +1,6 @@
 """ Helper functions for kospex related to SQLite and database operations """
 import os
+import sys
 from sqlite_utils import Database
 import kospex_utils as KospexUtils
 from kospex.db.introspect import get_kospex_tables
@@ -441,15 +442,61 @@ def dict_factory(cursor, row):
     col_names = [col[0] for col in cursor.description]
     return dict(zip(col_names, row))
 
+# What the most recent connect_or_create_kospex_db() call actually did.
+#
+# `kospex init --validate` cannot simply report "the DB exists" — the
+# module-level Kospex() in each CLI runs at import, so the DB has always just
+# been created by the time the command body runs. This record lets it report
+# what happened instead. See changes/202608-migrations-on-clean-install.md.
+LAST_BOOTSTRAP = {
+    "created": False,
+    "migrations_applied": 0,
+    "migration_error": None,
+}
+
+
+def _bootstrap_migrations(kospex_db):
+    """Apply pending migrations to a newly created database.
+
+    Migrator is imported inside the function on purpose: kospex/db/migrator.py
+    imports this module, so a module-level import here is a circular import.
+
+    Failure is loud but not fatal. Each migration is individually
+    transactional, so a partial failure leaves the DB consistent at whatever
+    version succeeded; the caller gets a usable database either way.
+    """
+    try:
+        from kospex.db.migrator import Migrator
+        ran = Migrator(kospex_db).apply_pending()
+        LAST_BOOTSTRAP["migrations_applied"] = len(ran)
+    except Exception as exc:
+        LAST_BOOTSTRAP["migration_error"] = str(exc)
+        print(
+            "\nWARNING: could not apply database migrations to the new database:"
+            f"\n  {exc}"
+            "\n  The database is usable but may be missing columns."
+            "\n  Run `kospex upgrade-db` to see what is pending.\n",
+            file=sys.stderr,
+        )
+
+
 def connect_or_create_kospex_db():
     """ Connect to the kospex DB or create it if it doesn't exist """
-    new_db = False
     db_path = KospexUtils.get_kospex_db_path()
-
-    if not os.path.isfile(db_path):
-        new_db = True
+    new_db = not os.path.isfile(db_path)
 
     kospex_db = Database(db_path)
+
+    # A file with no kospex_config is not a usable database — it is the empty
+    # file sqlite leaves behind when something opened a missing DB path (kweb
+    # via KospexQuery did exactly this). Treat it as new so it gets the version
+    # stamp and the migrations, rather than being stuck unmigrated forever
+    # because os.path.isfile() happens to be true.
+    #
+    # This must be tested BEFORE the CREATE block below, which would create
+    # kospex_config itself and defeat the check.
+    if not new_db and not kospex_db["kospex_config"].exists():
+        new_db = True
 
     kospex_db.execute(SQL_CREATE_COMMITS)
     kospex_db.execute(SQL_CREATE_COMMIT_FILES)
@@ -476,12 +523,17 @@ def connect_or_create_kospex_db():
 
     # TODO - look at moving all table creates to "create if not exits"
 
+    LAST_BOOTSTRAP["created"] = new_db
+    LAST_BOOTSTRAP["migrations_applied"] = 0
+    LAST_BOOTSTRAP["migration_error"] = None
+
     if new_db:
         # Set the database version
         kospex_db.execute(
             f"INSERT INTO {TBL_KOSPEX_CONFIG} (key, value, format, latest) VALUES (?, ?, ?, ?)",
             [KOSPEX_DB_VERSION_KEY, str(KOSPEX_DB_VERSION), 'INTEGER', 1]
         )
+        _bootstrap_migrations(kospex_db)
 
     return kospex_db
 

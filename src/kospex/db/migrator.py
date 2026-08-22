@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import re
 import sqlite3
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -147,6 +148,77 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def format_behind_banner(pending_count: int, version) -> str:
+    """Render the out-of-date banner.
+
+    Pure string function so the box maths can be tested without a database.
+    The box widens to fit its content — a large pending count or a long
+    version string must not break the border alignment.
+    """
+    title = "DATABASE SCHEMA IS OUT OF DATE"
+    body = [
+        f"{pending_count} migration(s) pending (DB version {version}).",
+        "Commands that write may fail or record incomplete data.",
+        "",
+        "Back up your database, then run:",
+        "    kospex upgrade-db -apply",
+    ]
+    width = max(len(line) for line in [title, *body])
+    inner = width + 4  # two spaces of padding each side
+
+    def row(text: str) -> str:
+        return "║  " + text.ljust(width) + "  ║"
+
+    return "\n".join([
+        "╔" + "═" * inner + "╗",
+        row(title),
+        "╠" + "═" * inner + "╣",
+        *[row(line) for line in body],
+        "╚" + "═" * inner + "╝",
+    ])
+
+
+def _current_version(db) -> str:
+    """The KOSPEX_DB_VERSION_KEY value, or 'unknown' when unreadable."""
+    import kospex_schema as KospexSchema
+    try:
+        rows = list(db.execute(
+            "SELECT value FROM kospex_config WHERE key=? AND latest=1",
+            [KospexSchema.KOSPEX_DB_VERSION_KEY],
+        ).fetchall())
+        return rows[0][0] if rows else "unknown"
+    except Exception:
+        return "unknown"
+
+
+def warn_if_behind(db, quiet: bool = False, stream=None, migrations_dir=None) -> int:
+    """Print the out-of-date banner when migrations are pending.
+
+    Returns the pending count (0 when current or suppressed). Writes to stderr
+    so it cannot corrupt piped stdout. Never raises and never blocks — the
+    caller proceeds regardless. See changes/202608-migrations-on-clean-install.md.
+    """
+    if quiet:
+        return 0
+    stream = stream or sys.stderr
+    try:
+        migrator = Migrator(db, migrations_dir=migrations_dir)
+        try:
+            pending = migrator.pending()
+        except sqlite3.OperationalError:
+            # No schema_migrations table (pre-migration-system DB): nothing has
+            # been applied, so everything on disk is pending.
+            pending = migrator.discover()
+    except Exception:
+        return 0
+
+    if not pending:
+        return 0
+
+    print(format_behind_banner(len(pending), _current_version(db)), file=stream)
+    return len(pending)
+
+
 class Migrator:
     def __init__(self, db, migrations_dir: Optional[Path] = None):
         self.db = db
@@ -257,8 +329,6 @@ class Migrator:
 
     def print_status(self) -> None:
         """Write a human-readable status summary to stdout."""
-        import kospex_schema as KospexSchema
-
         try:
             discovered = self.discover()
         except FileNotFoundError:
@@ -273,14 +343,7 @@ class Migrator:
         pending = [m for m in discovered if m.id not in applied_ids]
 
         # Resolve current version int (kospex_config may not exist on baseline DB)
-        try:
-            version_row = list(self.db.execute(
-                "SELECT value FROM kospex_config WHERE key=? AND latest=1",
-                [KospexSchema.KOSPEX_DB_VERSION_KEY],
-            ).fetchall())
-            version = version_row[0][0] if version_row else "unknown"
-        except sqlite3.OperationalError:
-            version = "unknown"
+        version = _current_version(self.db)
 
         db_path = self.db.conn.execute("PRAGMA database_list").fetchone()[2]
 

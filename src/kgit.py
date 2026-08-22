@@ -11,6 +11,7 @@ from prettytable import PrettyTable
 from kospex_core import GitRepo, Kospex, RepoPathConflict, repo_path_conflict
 from rich.console import Console
 import kospex_utils as KospexUtils
+from kospex.db.migrator import warn_if_behind
 from kospex_git import KospexGit
 from kospex_github import KospexGithub
 from kospex_bitbucket import (
@@ -139,6 +140,8 @@ def cli():
     For documentation on how commands run `kgit COMMAND --help`.
 
     """
+    # kgit pull / clone write repos.last_fetch, which a behind DB does not have.
+    warn_if_behind(kospex.kospex_db)
 
 @cli.command("status")
 @click.argument('repo', required=False, type=GitRepo())

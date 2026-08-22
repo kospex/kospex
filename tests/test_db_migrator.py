@@ -529,3 +529,115 @@ def test_shipped_0005_adds_dependency_data_resolution(tmp_path):
     Migrator(db).apply_pending()
     cols = {r[1] for r in db.execute("PRAGMA table_info(dependency_data)")}
     assert "resolution" in cols
+
+
+# --- behind-DB banner -------------------------------------------------------
+
+
+def _seed_migrations(tmp_path):
+    """A migrations dir with two migrations, so pending counts are deterministic."""
+    d = tmp_path / "migrations"
+    d.mkdir()
+    _write(d / "0003_a.sql", "CREATE TABLE a (id INTEGER);")
+    _write(d / "0004_b.sql", "CREATE TABLE b (id INTEGER);")
+    return d
+
+
+def _db_with_migrations_table(tmp_path):
+    import sqlite_utils
+    import kospex_schema as KospexSchema
+    db = sqlite_utils.Database(tmp_path / "kospex.db")
+    db.execute(KospexSchema.SQL_CREATE_SCHEMA_MIGRATIONS)
+    db.execute(KospexSchema.SQL_CREATE_KOSPEX_CONFIG)
+    return db
+
+
+def test_banner_lines_are_all_the_same_width():
+    from kospex.db.migrator import format_behind_banner
+    lines = format_behind_banner(3, 2).splitlines()
+    assert len({len(line) for line in lines}) == 1
+
+
+def test_banner_reports_count_and_version_and_fix_command():
+    from kospex.db.migrator import format_behind_banner
+    banner = format_behind_banner(3, 2)
+    assert "3 migration(s) pending (DB version 2)." in banner
+    assert "kospex upgrade-db -apply" in banner
+    assert "DATABASE SCHEMA IS OUT OF DATE" in banner
+
+
+def test_banner_widens_for_long_content():
+    """A large count must not break the box."""
+    from kospex.db.migrator import format_behind_banner
+    lines = format_behind_banner(1234567, "unknown").splitlines()
+    assert len({len(line) for line in lines}) == 1
+
+
+def test_warn_if_behind_writes_banner_and_returns_count(tmp_path):
+    import io
+    from kospex.db.migrator import warn_if_behind
+    db = _db_with_migrations_table(tmp_path)
+    stream = io.StringIO()
+
+    count = warn_if_behind(db, stream=stream, migrations_dir=_seed_migrations(tmp_path))
+
+    assert count == 2
+    assert "DATABASE SCHEMA IS OUT OF DATE" in stream.getvalue()
+
+
+def test_warn_if_behind_silent_when_current(tmp_path):
+    import io
+    from kospex.db.migrator import warn_if_behind
+    db = _db_with_migrations_table(tmp_path)
+    # The directory must EXIST and be empty. A missing dir makes
+    # validate_migrations() raise on iterdir(), which warn_if_behind swallows —
+    # the test would then pass for the wrong reason.
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    stream = io.StringIO()
+
+    count = warn_if_behind(db, stream=stream, migrations_dir=empty)
+
+    assert count == 0
+    assert stream.getvalue() == ""
+
+
+def test_warn_if_behind_respects_quiet(tmp_path):
+    import io
+    from kospex.db.migrator import warn_if_behind
+    db = _db_with_migrations_table(tmp_path)
+    stream = io.StringIO()
+
+    count = warn_if_behind(
+        db, quiet=True, stream=stream, migrations_dir=_seed_migrations(tmp_path)
+    )
+
+    assert count == 0
+    assert stream.getvalue() == ""
+
+
+def test_warn_if_behind_handles_missing_schema_migrations_table(tmp_path):
+    """A pre-migration-system DB has no schema_migrations: treat all as pending."""
+    import io
+    import sqlite_utils
+    from kospex.db.migrator import warn_if_behind
+    db = sqlite_utils.Database(tmp_path / "old.db")
+    db.execute("CREATE TABLE commits (hash TEXT)")
+    stream = io.StringIO()
+
+    count = warn_if_behind(db, stream=stream, migrations_dir=_seed_migrations(tmp_path))
+
+    assert count == 2
+    assert "2 migration(s) pending" in stream.getvalue()
+
+
+def test_warn_if_behind_never_raises_on_a_broken_db(tmp_path):
+    """It is a warning, not a gate: any failure must be swallowed."""
+    import io
+    from kospex.db.migrator import warn_if_behind
+
+    class Broken:
+        def execute(self, *a, **k):
+            raise RuntimeError("boom")
+
+    assert warn_if_behind(Broken(), stream=io.StringIO()) == 0

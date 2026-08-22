@@ -132,13 +132,6 @@ def test_resync_after_change_churns_only_the_changed_file(tmp_path, monkeypatch)
     assert counts == {"README.md": 1, "app.py": 1}
 
 
-def _add_provenance_columns(db):
-    """Simulate a 0003-migrated DB (connect_or_create makes the baseline repos)."""
-    for col in ("last_sync_hash", "last_panopticas_version", "last_scc_version"):
-        db.execute(f"ALTER TABLE repos ADD COLUMN {col} TEXT")
-    db.conn.commit()
-
-
 def _app_langs(db):
     return [r["Language"] for r in db.query(
         "SELECT Language FROM file_metadata WHERE Provider='app.py' AND latest=1"
@@ -148,7 +141,6 @@ def _app_langs(db):
 def test_resync_skips_when_nothing_changed(tmp_path, monkeypatch):
     repo = _make_repo(tmp_path)
     k = _kospex(tmp_path, monkeypatch)
-    _add_provenance_columns(k.kospex_db)
     k.sync_repo(str(repo))
 
     # Sentinel: a rebuild would overwrite Language back to "Python".
@@ -165,7 +157,6 @@ def test_resync_skips_when_nothing_changed(tmp_path, monkeypatch):
 def test_resync_rebuilds_on_panopticas_version_bump(tmp_path, monkeypatch):
     repo = _make_repo(tmp_path)
     k = _kospex(tmp_path, monkeypatch)
-    _add_provenance_columns(k.kospex_db)
     k.sync_repo(str(repo))
 
     k.kospex_db.execute(

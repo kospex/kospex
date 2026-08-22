@@ -4,6 +4,7 @@
 import csv
 import os
 import sys
+from contextlib import asynccontextmanager
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
@@ -22,10 +23,12 @@ from fastapi.templating import Jinja2Templates
 from requests.models import LocationParseError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+import kospex_schema as KospexSchema
 import kospex_stats as KospexStats
 import kospex_utils as KospexUtils
 import kospex_web as KospexWeb
 from api_routes import router as api_router
+from kospex.db.migrator import warn_if_behind
 from kospex_core import Kospex
 from kospex_query import KospexQuery
 from kospex_request_cache import RequestCache
@@ -44,11 +47,39 @@ request_cache = RequestCache()
 # structure
 # key: { data, last_updated}
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Build (and migrate) the kospex schema once, before serving any request.
+
+    kweb reaches the DB through KospexQuery, which opens the path directly and
+    so CREATES an empty file when it is missing — on a clean install that meant
+    every request failed on 'no such table: kospex_config'. Doing it here also
+    lets kweb participate in the fresh-DB migration bootstrap.
+
+    Once per server boot, not per request: the KospexQuery call sites would
+    otherwise re-run ~19 CREATE TABLE IF NOT EXISTS statements each time.
+    """
+    try:
+        db = KospexSchema.connect_or_create_kospex_db()
+        pending = warn_if_behind(db)
+        if pending:
+            logger.warning(
+                "kospex DB is %s migration(s) behind - run `kospex upgrade-db -apply`",
+                pending,
+            )
+    except Exception as exc:
+        # Never prevent the server booting; the failure is visible in the log
+        # and every request will report it anyway.
+        logger.error("Could not initialise the kospex database at startup: %s", exc)
+    yield
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Kospex Web",
     description="Kospex Code and Developer analytics platform",
     version=Kospex.VERSION,
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
