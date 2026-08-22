@@ -7,6 +7,7 @@ from kospex_core import Kospex
 import kospex_utils as KospexUtils
 import kospex_schema as KospexSchema
 from kospex.db.introspect import get_kospex_tables, get_repo_tables
+from kospex.db.migrator import warn_if_behind
 
 kospex = Kospex()
 
@@ -17,6 +18,8 @@ def cli():
     For documentation on how commands run `kreaper COMMAND --help`.
 
     """
+    # Deleting from a behind DB is doubly worth warning about.
+    warn_if_behind(kospex.kospex_db)
 @cli.command("repos")
 def repo_ids():
     """ List the repo_ids (based on commits table)."""

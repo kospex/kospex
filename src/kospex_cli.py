@@ -20,6 +20,7 @@ import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
 from kospex.db import Migrator
+from kospex.db.migrator import warn_if_behind
 from kospex_core import GitRepo, Kospex, RepoPathConflict
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
@@ -118,6 +119,11 @@ def cli(ctx, debug, verbose, quiet, log_console):
         # Default behavior when no command is provided
         click.echo(ctx.get_help())
         ctx.exit(0)
+
+    # On a behind DB the write paths fail hard (no such column: last_fetch,
+    # no column named resolution). This banner is what connects those errors
+    # back to their cause. Warns before every real subcommand; never blocks.
+    warn_if_behind(kospex.kospex_db, quiet=quiet)
 
 
 @cli.command("init")

@@ -28,6 +28,7 @@ from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
 from kospex_utils import KospexTimer
 from kospex.assessment_types import AssessmentTypes
+from kospex.db.migrator import warn_if_behind
 from kospex.extractors.workflows import extract_workflow_actions
 from kospex.extractors.pnpm import extract_pnpm_lock
 
@@ -49,6 +50,8 @@ def cli():
     See also https://kospex.io/krunner
 
     """
+    # krunner osi writes dependency_data.resolution, absent on a behind DB.
+    warn_if_behind(kospex.kospex_db)
 
 
 def get_repos(request_id):
