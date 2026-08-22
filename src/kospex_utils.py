@@ -223,8 +223,10 @@ def validate_kospex_setup():
         "environment_vars": {},
         "directories": {},
         "logging": None,
+        "database": None,
         "overall_status": "unknown",
-        "recommendations": []
+        "recommendations": [],
+        "critical_issues": []
     }
 
     # Check environment variables
@@ -258,12 +260,25 @@ def validate_kospex_setup():
         except Exception as e:
             validation["logging"] = {"error": str(e)}
 
+    # DB health. Imported here, not at module level: kospex_schema imports this
+    # module, and kospex/db/* imports kospex_schema.
+    try:
+        from kospex.db.health import db_status
+        validation["database"] = db_status()
+    except Exception as e:
+        validation["database"] = {"error": str(e), "pending_count": 0}
+
     # Generate recommendations
     if not validation["directories"]["kospex_home"]["exists"]:
         validation["recommendations"].append("Run 'kospex init --create' to initialize directory structure")
 
     if not validation["directories"]["kospex_code"]["exists"]:
         validation["recommendations"].append(f"Create code directory: mkdir -p {kospex_code}")
+
+    if validation["database"] and validation["database"].get("pending_count"):
+        validation["recommendations"].append(
+            "Run 'kospex upgrade-db -apply' to apply pending database migrations"
+        )
 
     # Determine overall status
     critical_issues = []
@@ -272,11 +287,20 @@ def validate_kospex_setup():
     if not validation["directories"]["kospex_home"]["writable"]:
         critical_issues.append("KOSPEX_HOME not writable")
 
+    # A behind DB is not a healthy setup: kgit pull and deps -save fail on it.
+    database = validation["database"] or {}
+    if database.get("pending_count"):
+        critical_issues.append(
+            f"Database {database['pending_count']} migration(s) behind"
+        )
+    if database.get("exists") and not database.get("writable"):
+        critical_issues.append("Database not writable")
+
     if not critical_issues:
         validation["overall_status"] = "healthy"
     else:
         validation["overall_status"] = "issues_found"
-        validation["critical_issues"] = critical_issues
+    validation["critical_issues"] = critical_issues
 
     return validation
 

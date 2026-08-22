@@ -179,6 +179,30 @@ def kospex_init(create, verbose, validate):
             else:
                 print("  ✗ Logging directories need setup")
 
+        database = validation.get("database") or {}
+        if database:
+            print("\nDatabase:")
+            if database.get("error"):
+                print(f"  ✗ Could not read database status: {database['error']}")
+            else:
+                mark = "✓" if not database.get("pending_count") else "⚠"
+                print(f"  {mark} {database['path']}")
+                # Report what the bootstrap actually did rather than "it exists" —
+                # the module-level Kospex() creates it at import, so "exists" is
+                # always true by the time this runs.
+                if database.get("created_this_run"):
+                    applied = database.get("migrations_applied_this_run", 0)
+                    print(f"      created during this invocation, {applied} migration(s) applied")
+                elif database.get("pending_count"):
+                    print(
+                        f"      version {database['version']}, "
+                        f"{database['pending_count']} migration(s) pending"
+                    )
+                else:
+                    print(f"      version {database['version']}, up to date")
+                if database.get("migration_error"):
+                    print(f"  ✗ Migration error: {database['migration_error']}")
+
         if validation["recommendations"]:
             print("\nRecommendations:")
             for rec in validation["recommendations"]:
@@ -222,6 +246,23 @@ def kospex_init(create, verbose, validate):
     elif verbose:
         log.info("scc binary found!")
         print("\n✓ scc binary found and ready")
+
+    # Report DB state alongside the directory and scc checks.
+    try:
+        from kospex.db.health import db_status
+        db_info = db_status()
+        if db_info.get("created_this_run"):
+            applied = db_info.get("migrations_applied_this_run", 0)
+            print(f"\n✓ Created database: {db_info['path']}")
+            print(f"  Applied {applied} migration(s), now at version {db_info['version']}")
+        elif db_info.get("pending_count"):
+            print(f"\n⚠ Database is {db_info['pending_count']} migration(s) behind")
+            print("  Run 'kospex upgrade-db -apply' to update it")
+        elif verbose:
+            print(f"\n✓ Database up to date: {db_info['path']} (version {db_info['version']})")
+    except Exception as e:
+        log.error(f"Could not read database status: {e}")
+        print(f"\n✗ Could not read database status: {e}")
 
     # Handle code directory creation/validation
     kospex_code = KospexUtils.get_kospex_code_path()
@@ -1303,7 +1344,24 @@ def status():
     print(config)
     print()
 
-    print("Database table version status\n")
+    print("Database table version status")
+    print("-----------------------------")
+    try:
+        from kospex.db.health import db_status
+        db_info = db_status()
+        print(f"Path:\t\t{db_info['path']}")
+        print(f"Version:\t{db_info['version']}")
+        print(f"Applied:\t{db_info['applied_count']} migration(s)")
+        if db_info["pending_count"]:
+            print(f"Pending:\t{db_info['pending_count']} migration(s)")
+            for migration_id in db_info["pending_ids"]:
+                print(f"\t\t  {migration_id}")
+            print("\nRun 'kospex upgrade-db -apply' to apply them.")
+        else:
+            print("Pending:\tnone")
+    except Exception as e:
+        print(f"Could not read database status: {e}")
+    print()
 
     print("Installed tool status")
     print("---------------------")
