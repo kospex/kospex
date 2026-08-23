@@ -90,10 +90,53 @@ Execute in this order so each step leaves the tree green.
 
 ### Step 1 — Fix the parsers (additive, no call-site changes)
 
-- `src/kospex_utils.py:659` `parse_repo_id`: change the length check from exactly-3 to `>= 3`, treat everything between `parts[0]` and `parts[-1]` as the org (joined back with `/` to reverse the `~~` encoding). The returned dict stays the same shape; `org_key` should be rebuilt from the reconstructed encoded form so it round-trips.
-- `src/kospex_utils.py:679` `parse_org_key`: mirror change — accept `>= 2` parts, org is everything after the first segment, reverse `~~` → `/`.
-- Remove the TODO comment on `src/kospex_utils.py:663`.
-- Add tests in `tests/test_kospex_utils.py` covering: GitHub (`github.com~acme~repo`), GitLab nested (`gitlab.com~gitlab-org~~cloud-connector~gitlab-cloud-connector`), and the round-trip property `parse_repo_id(generate_repo_id(r, o, repo))["org"] == o`.
+> **Corrected 2026-08-23 — the original recipe in this step was wrong.** It said to take
+> "everything between `parts[0]` and `parts[-1]` as the org (joined back with `/`)". That does not
+> reverse the encoding, because `~~` splits into an **empty element**:
+>
+> ```python
+> 'gitlab.com~group~~subgroup~repo'.split('~')   # ['gitlab.com','group','','subgroup','repo']
+> '/'.join(parts[1:-1])                          # 'group//subgroup'   ← doubled slash
+> ```
+>
+> Implementing it as written ships a bug that **passes every flat-case test**. Use the form below,
+> which peels the ends off the *string* rather than the split list.
+
+- `src/kospex_utils.py` `parse_repo_id`: accept any id with at least two `~`, and decode the org by
+  splitting off the first and last segments, then reversing `~~` → `/`:
+
+  ```python
+  server, rest    = repo_id.split("~", 1)      # 'gitlab.com', 'group~~subgroup~repo'
+  org_enc, repo   = rest.rsplit("~", 1)        # 'group~~subgroup', 'repo'
+  org             = org_enc.replace("~~", "/") # 'group/subgroup'
+  ```
+
+  Verified: nested → `('gitlab.com', 'group/subgroup', 'repo')`; flat `github.com~acme~svc` →
+  `('github.com', 'acme', 'svc')`, unchanged. The returned dict keeps its current shape.
+- `src/kospex_utils.py` `parse_org_key`: mirror it — `server, org_enc = org_key.split("~", 1)`
+  then `org_enc.replace("~~", "/")`. Note this is a **string** split with `maxsplit=1`, not a list
+  join; the same doubled-slash trap applies.
+- Remove the TODO comment above the length check.
+- Add tests in `tests/test_kospex_utils.py`: GitHub (`github.com~acme~repo`), GitLab nested
+  (`gitlab.com~gitlab-org~~cloud-connector~gitlab-cloud-connector`), and the round-trip property
+  `parse_repo_id(generate_repo_id(r, o, repo))["org"] == o`. **The nested case is the whole point** —
+  a suite covering only flat ids passes the broken implementation above.
+
+> **Open decision — which `org_key` form wins?** This step originally said `org_key` should be
+> "rebuilt from the reconstructed encoded form so it round-trips", i.e. `gitlab.com~group~~subgroup`.
+> But the SQL builds it from the columns as `_git_server || '~' || _git_owner`
+> (`src/kospex_query.py`, three sites), and `_git_owner` holds the **decoded** org with a real slash
+> (`src/kospex_git.py` `add_git_to_dict` sets it from `self.org`). So for a nested group the two
+> disagree:
+>
+> | Source | `org_key` |
+> |---|---|
+> | `parse_repo_id` (as originally specced) | `gitlab.com~group~~subgroup` |
+> | SQL over `_git_server` / `_git_owner` | `gitlab.com~group/subgroup` |
+>
+> An `org_key` from the parser would not match one from a query. Pick one form and make both
+> produce it before implementing this step. Currently latent and untested — there are **no
+> nested-group repos** in the reference database, which is why nothing has surfaced it.
 
 ### Step 2 — Delete the broken builder duplicate
 
