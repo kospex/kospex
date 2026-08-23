@@ -100,18 +100,24 @@ CORPUS: list[dict] = [
                     "remain in the host"},
     {"url": "ssh://git@bitbucket.example.com:7999/PROJ/repo.git",
      "group": "bitbucket-server",
-     "known_wrong": "#160 — Bitbucket Server's default SSH URL. Port lands in "
-                    "the host, org is empty, repo keeps a '/'. The empty org "
-                    "emits a '~~' that collides with the nested-group encoding"},
+     "known_wrong": "#160 — Bitbucket Server's default SSH URL. Credentials "
+                    "and port land in the host and the repo keeps a '/', so the "
+                    "same repo over HTTPS and SSH gets two different ids"},
     {"url": "ssh://git@bitbucket.example.com/PROJ/repo.git", "group": "bitbucket-server",
      "note": "portless ssh:// parses correctly — isolates the port as the cause"},
     {"url": "https://bitbucket.example.com/scm/~personal/repo.git",
      "group": "bitbucket-server",
-     "known_wrong": "personal repos are '~username'; the leading '~' produces a "
-                    "'~~' indistinguishable from the nested-group encoding"},
+     "note": "personal repos are '~username'. The resulting '~~' round-trips "
+             "correctly; it only collides if a *repo* name contains a '~'"},
 
     # ------------------------------------------------------------ Google / Go
-    {"url": "https://go.googlesource.com/oauth2", "group": "google"},
+    {"url": "https://go.googlesource.com/oauth2", "group": "google",
+     "note": "single-segment Gerrit project; org is empty by design"},
+    {"url": "https://chromium.googlesource.com/chromium/src", "group": "google",
+     "note": "multi-segment already parses correctly via the generic rule"},
+    {"url": "https://android.googlesource.com/platform/frameworks/base",
+     "group": "google", "note": "deep path uses the nested-group encoding"},
+    {"url": "https://boringssl.googlesource.com/boringssl", "group": "google"},
 
     # ----------------------------------------------------------- Should reject
     # Nothing here is a git remote. Every one currently returns a populated

@@ -104,3 +104,63 @@ def test_extract_git_url_parts_delegates_to_parse_git_remote(url):
     """
     kg = KospexGit()
     assert kg.extract_git_url_parts(url) == KospexGit.parse_git_remote(url)
+
+
+def test_parse_git_remote_rejects_non_git_schemes():
+    """A non-git transport is not a remote. #160."""
+    assert KospexGit.parse_git_remote("ftp://not-a-git-host/whatever") is None
+
+
+def test_parse_git_remote_rejects_org_less_paths_on_unknown_hosts():
+    """A single path segment has no org, so it is not a usable remote. #160.
+
+    Gerrit hosts under *.googlesource.com are the deliberate exception -- see
+    test_parse_git_remote_allows_single_segment_googlesource.
+    """
+    assert KospexGit.parse_git_remote("https://example.com/single") is None
+
+
+def test_parse_git_remote_rejects_junk():
+    """#160 -- the old catch-all meant this returned a populated dict."""
+    for junk in ["not a url at all", "", None]:
+        assert KospexGit.parse_git_remote(junk) is None
+
+
+def test_parse_git_remote_allows_single_segment_googlesource():
+    """Gerrit projects may be a single segment with no org. #160."""
+    parts = KospexGit.parse_git_remote("https://go.googlesource.com/oauth2")
+    assert parts is not None
+    assert parts["remote"] == "go.googlesource.com"
+    assert parts["org"] == ""
+    assert parts["repo"] == "oauth2"
+
+
+def test_credentials_and_port_are_stripped_from_the_host():
+    """The same repo over SSH and HTTPS must yield one repo_id. #160.
+
+    Bitbucket Server's default SSH URL embeds git@ and port 7999; previously
+    both landed in the server segment, so an SSH clone and an HTTPS clone of
+    one repository produced two different repo_ids.
+    """
+    over_ssh = KospexGit.parse_git_remote(
+        "ssh://git@bitbucket.example.com:7999/PROJ/repo.git")
+    over_https = KospexGit.parse_git_remote(
+        "https://bitbucket.example.com/scm/PROJ/repo.git")
+
+    assert over_ssh["remote"] == "bitbucket.example.com"
+    assert "/" not in over_ssh["repo"]
+    assert KospexGit.generate_repo_id(**{k: over_ssh[k] for k in ("remote", "org", "repo")}) == \
+           KospexGit.generate_repo_id(**{k: over_https[k] for k in ("remote", "org", "repo")})
+
+
+def test_ado_clone_button_url_matches_the_plain_url():
+    """ADO's Clone button embeds the org as a username. #160.
+
+    Both forms address one repository and must produce one repo_id.
+    """
+    def rid(url):
+        p = KospexGit.parse_git_remote(url)
+        return KospexGit.generate_repo_id(p["remote"], p["org"], p["repo"])
+
+    assert rid("https://myorg@dev.azure.com/myorg/MyProject/_git/MyRepo") == \
+           rid("https://dev.azure.com/myorg/MyProject/_git/MyRepo")
