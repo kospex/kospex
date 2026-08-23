@@ -94,8 +94,13 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - `pip install -e .` - Development installation from source
 
 ### Core Operations
-- `kospex sync PATH/TO/REPO` - Sync repository data to database
-- `kgit clone https://github.com/owner/repo` - Clone with kospex structure
+- `kospex sync-directory PATH` - Sync every git repo found under PATH to the kospex DB. Works on
+  a single repo root too (`find_repos` walks from PATH itself), so this is the way to sync one
+  on-disk repo.
+- **There is no `kospex sync` command.** It is commented out in `kospex_cli.py` and deliberately
+  parked - do not document it, and do not delete the commented block. Restoring it (an auth-free
+  sync for a repo already on disk) is tracked in [#123](https://github.com/kospex/kospex/issues/123).
+- `kgit clone https://github.com/owner/repo` - Clone with kospex structure (syncs by default)
 - `kgit pull REPO_ID|--all|--org ORG_KEY|--server SERVER` - git pull (ff-only) + re-sync known local clones
 - `kgit pull --check [scope]` - offline staleness report (last_fetch / last_sync / age); no network
 - `kgit pull --no-prompt [scope]` - non-interactive auth (fail fast) for unattended runs
