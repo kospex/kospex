@@ -1,0 +1,291 @@
+{
+  "_README": [
+    "Characterisation golden for git URL parsing. Records CURRENT behaviour, bugs included -- it is not a statement of correctness.",
+    "Regenerate: UPDATE_URL_GOLDEN=1 pytest tests/test_url_parsing_characterisation.py",
+    "A diff here is the blast radius of a parser change. Review every line before committing it."
+  ],
+  "results": {
+    "": {
+      "parts": null,
+      "repo_id": null
+    },
+    "ftp://not-a-git-host/whatever": {
+      "parts": {
+        "org": "",
+        "remote": "not-a-git-host",
+        "remote_type": "ftp",
+        "repo": "whatever"
+      },
+      "repo_id": "not-a-git-host~~whatever"
+    },
+    "git@bitbucket.org:team/repo.git": {
+      "parts": {
+        "org": "team",
+        "remote": "bitbucket.org",
+        "remote_type": "ssh",
+        "repo": "repo"
+      },
+      "repo_id": "bitbucket.org~team~repo"
+    },
+    "git@github.com:acme/svc.git": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "ssh",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
+    },
+    "git@gitlab.com:group/subgroup/repo.git": {
+      "parts": {
+        "org": "group/subgroup",
+        "remote": "gitlab.com",
+        "remote_type": "ssh",
+        "repo": "repo"
+      },
+      "repo_id": "gitlab.com~group~~subgroup~repo"
+    },
+    "git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo": {
+      "parts": {
+        "org": "v3/myorg/MyProject",
+        "remote": "ssh.dev.azure.com",
+        "remote_type": "ssh",
+        "repo": "MyRepo"
+      },
+      "repo_id": "ssh.dev.azure.com~v3~~myorg~~MyProject~MyRepo"
+    },
+    "https://USERNAME@bitbucket.org/team/repo.git": {
+      "parts": {
+        "org": "team",
+        "remote": "bitbucket.org",
+        "remote_type": "https",
+        "repo": "repo"
+      },
+      "repo_id": "bitbucket.org~team~repo"
+    },
+    "https://bitbucket.example.com/scm/PROJ/repo.git": {
+      "parts": {
+        "org": "PROJ",
+        "remote": "bitbucket.example.com",
+        "remote_type": "https",
+        "repo": "repo"
+      },
+      "repo_id": "bitbucket.example.com~PROJ~repo"
+    },
+    "https://bitbucket.example.com/scm/~personal/repo.git": {
+      "parts": {
+        "org": "~personal",
+        "remote": "bitbucket.example.com",
+        "remote_type": "https",
+        "repo": "repo"
+      },
+      "repo_id": "bitbucket.example.com~~personal~repo"
+    },
+    "https://bitbucket.org/team/repo.git": {
+      "parts": {
+        "org": "team",
+        "remote": "bitbucket.org",
+        "remote_type": "https",
+        "repo": "repo"
+      },
+      "repo_id": "bitbucket.org~team~repo"
+    },
+    "https://dev.azure.com/myorg/My Project/_git/MyRepo": {
+      "parts": {
+        "org": "myorg-My Project",
+        "project": "My Project",
+        "remote": "dev.azure.com",
+        "remote_type": "https",
+        "repo": "MyRepo"
+      },
+      "repo_id": "dev.azure.com~myorg-My Project~MyRepo"
+    },
+    "https://dev.azure.com/myorg/MyProject/_git/MyRepo": {
+      "parts": {
+        "org": "myorg-MyProject",
+        "project": "MyProject",
+        "remote": "dev.azure.com",
+        "remote_type": "https",
+        "repo": "MyRepo"
+      },
+      "repo_id": "dev.azure.com~myorg-MyProject~MyRepo"
+    },
+    "https://dev.azure.com/myorg/MyProject/_git/MyRepo.git": {
+      "parts": {
+        "org": "myorg-MyProject",
+        "project": "MyProject",
+        "remote": "dev.azure.com",
+        "remote_type": "https",
+        "repo": "MyRepo"
+      },
+      "repo_id": "dev.azure.com~myorg-MyProject~MyRepo"
+    },
+    "https://example.com/a/b/c/d/e/f": {
+      "parts": {
+        "org": "a/b/c/d/e",
+        "remote": "example.com",
+        "remote_type": "https",
+        "repo": "f"
+      },
+      "repo_id": "example.com~a~~b~~c~~d~~e~f"
+    },
+    "https://example.com/single": {
+      "parts": {
+        "org": "",
+        "remote": "example.com",
+        "remote_type": "https",
+        "repo": "single"
+      },
+      "repo_id": "example.com~~single"
+    },
+    "https://github.com/Acme/Svc": {
+      "parts": {
+        "org": "Acme",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "Svc"
+      },
+      "repo_id": "github.com~Acme~Svc"
+    },
+    "https://github.com/acme/dashboard.js.git": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "dashboard.js"
+      },
+      "repo_id": "github.com~acme~dashboard.js"
+    },
+    "https://github.com/acme/svc": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
+    },
+    "https://github.com/acme/svc.git": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
+    },
+    "https://gitlab.com/a/b/c/repo.git": {
+      "parts": {
+        "org": "a/b/c",
+        "remote": "gitlab.com",
+        "remote_type": "https",
+        "repo": "repo"
+      },
+      "repo_id": "gitlab.com~a~~b~~c~repo"
+    },
+    "https://gitlab.com/group/repo.git": {
+      "parts": {
+        "org": "group",
+        "remote": "gitlab.com",
+        "remote_type": "https",
+        "repo": "repo"
+      },
+      "repo_id": "gitlab.com~group~repo"
+    },
+    "https://gitlab.com/group/subgroup/repo.git": {
+      "parts": {
+        "org": "group/subgroup",
+        "remote": "gitlab.com",
+        "remote_type": "https",
+        "repo": "repo"
+      },
+      "repo_id": "gitlab.com~group~~subgroup~repo"
+    },
+    "https://go.googlesource.com/oauth2": {
+      "parts": {
+        "org": "",
+        "remote": "go.googlesource.com",
+        "remote_type": "https",
+        "repo": "oauth2"
+      },
+      "repo_id": "go.googlesource.com~~oauth2"
+    },
+    "https://myorg.visualstudio.com/DefaultCollection/MyProject/_git/MyRepo": {
+      "parts": {
+        "org": "DefaultCollection/MyProject/_git",
+        "remote": "myorg.visualstudio.com",
+        "remote_type": "https",
+        "repo": "MyRepo"
+      },
+      "repo_id": "myorg.visualstudio.com~DefaultCollection~~MyProject~~_git~MyRepo"
+    },
+    "https://myorg.visualstudio.com/MyProject/_git/MyRepo": {
+      "parts": {
+        "org": "MyProject",
+        "project": "MyProject",
+        "remote": "myorg.visualstudio.com",
+        "remote_type": "https",
+        "repo": "MyRepo"
+      },
+      "repo_id": "myorg.visualstudio.com~MyProject~MyRepo"
+    },
+    "https://myorg@dev.azure.com/myorg/MyProject/_git/MyRepo": {
+      "parts": {
+        "org": "myorg/MyProject/_git",
+        "remote": "myorg@dev.azure.com",
+        "remote_type": "https",
+        "repo": "MyRepo"
+      },
+      "repo_id": "myorg@dev.azure.com~myorg~~MyProject~~_git~MyRepo"
+    },
+    "https://user@bitbucket.example.com/scm/PROJ/repo.git": {
+      "parts": {
+        "org": "PROJ",
+        "remote": "user@bitbucket.example.com",
+        "remote_type": "https",
+        "repo": "repo"
+      },
+      "repo_id": "user@bitbucket.example.com~PROJ~repo"
+    },
+    "not a url at all": {
+      "parts": null,
+      "repo_id": null
+    },
+    "ssh://git@bitbucket.example.com/PROJ/repo.git": {
+      "parts": {
+        "org": "PROJ",
+        "remote": "bitbucket.example.com",
+        "remote_type": "ssh",
+        "repo": "repo"
+      },
+      "repo_id": "bitbucket.example.com~PROJ~repo"
+    },
+    "ssh://git@bitbucket.example.com:7999/PROJ/repo.git": {
+      "parts": {
+        "org": "",
+        "remote": "git@bitbucket.example.com:7999",
+        "remote_type": "ssh",
+        "repo": "PROJ/repo"
+      },
+      "repo_id": "git@bitbucket.example.com:7999~~PROJ/repo"
+    },
+    "ssh://git@github.com/acme/svc.git": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "ssh",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
+    },
+    "ssh://git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo": {
+      "parts": {
+        "org": "myorg/MyProject",
+        "remote": "git@ssh.dev.azure.com:v3",
+        "remote_type": "ssh",
+        "repo": "MyRepo"
+      },
+      "repo_id": "git@ssh.dev.azure.com:v3~myorg~~MyProject~MyRepo"
+    }
+  }
+}
