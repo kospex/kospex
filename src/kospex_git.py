@@ -222,14 +222,49 @@ class KospexGit:
         url (str): The URL to extract information from.
 
         Returns:
-        dict: A dictionary containing the remote, org, repo, and remote_type.
+        dict: A dictionary containing the remote, org, repo, and remote_type,
+        or None if the URL is not a recognisable git remote.
         """
+        if not url or not isinstance(url, str):
+            return None
+
+        # Normalise scheme-based URLs before any provider rule sees them.
+        # urlparse().hostname drops embedded credentials and the port for
+        # free -- without this, 'ssh://git@host:7999/PROJ/repo.git' keeps
+        # 'git@host:7999' as the server, so the same repository cloned over
+        # SSH and HTTPS produces two different repo_ids.
+        # scp-style ('git@host:org/repo.git') has no '://' and is handled
+        # further down by parse_ssh_git_url, so leave it untouched.
+        if "://" in url:
+            try:
+                _p = urlparse(url.strip())
+            except ValueError:
+                return None
+            if _p.scheme.lower() not in ("http", "https", "ssh", "git"):
+                return None  # not a git transport
+            if not _p.hostname:
+                return None
+            if _p.username or _p.port:
+                url = f"{_p.scheme}://{_p.hostname}{_p.path}"
+
         # Regular expression to match the default pattern
         pattern = r"^(https?|git|ssh)\:\/\/(?:[\w.-]+@)?([\w.-]+)\/([\w.-]+)\/([\w.-]+)(?:\.git)?$"
         match = re.match(pattern, url)
-        # There are some Go libraries which use a different URL format from Google
-        # https://go.googlesource.com/oauth2
-        g_pattern = r"(?P<protocol>^\w+)://(?P<domain>[^\/?#]+)/(?P<directory>.*)"
+        # Gerrit hosts under *.googlesource.com (go., chromium., android.,
+        # boringssl., ...) allow a *single-segment* project path, which has no
+        # org: https://go.googlesource.com/oauth2
+        # Multi-segment paths there need no special case -- the generic nested
+        # rule below already encodes them correctly.
+        # This pattern is deliberately host-scoped. It used to be
+        # '(?P<domain>[^\/?#]+)/(?P<directory>.*)', which matched any
+        # scheme://host/path and made parse_git_remote incapable of ever
+        # returning None -- so junk was silently given a plausible repo_id
+        # instead of being rejected.
+        g_pattern = (
+            r"(?P<protocol>^https?)://"
+            r"(?P<domain>[\w.-]+\.googlesource\.com)/"
+            r"(?P<directory>[\w.-]+?)(?:\.git)?/?$"
+        )
         google_match = re.match(g_pattern, url)
 
         # gitlab_pattern = r"(?P<protocol>^https?://)" \

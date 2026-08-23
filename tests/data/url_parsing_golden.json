@@ -10,13 +10,8 @@
       "repo_id": null
     },
     "ftp://not-a-git-host/whatever": {
-      "parts": {
-        "org": "",
-        "remote": "not-a-git-host",
-        "remote_type": "ftp",
-        "repo": "whatever"
-      },
-      "repo_id": "not-a-git-host~~whatever"
+      "parts": null,
+      "repo_id": null
     },
     "git@bitbucket.org:team/repo.git": {
       "parts": {
@@ -63,6 +58,15 @@
       },
       "repo_id": "bitbucket.org~team~repo"
     },
+    "https://android.googlesource.com/platform/frameworks/base": {
+      "parts": {
+        "org": "platform/frameworks",
+        "remote": "android.googlesource.com",
+        "remote_type": "https",
+        "repo": "base"
+      },
+      "repo_id": "android.googlesource.com~platform~~frameworks~base"
+    },
     "https://bitbucket.example.com/scm/PROJ/repo.git": {
       "parts": {
         "org": "PROJ",
@@ -89,6 +93,24 @@
         "repo": "repo"
       },
       "repo_id": "bitbucket.org~team~repo"
+    },
+    "https://boringssl.googlesource.com/boringssl": {
+      "parts": {
+        "org": "",
+        "remote": "boringssl.googlesource.com",
+        "remote_type": "https",
+        "repo": "boringssl"
+      },
+      "repo_id": "boringssl.googlesource.com~~boringssl"
+    },
+    "https://chromium.googlesource.com/chromium/src": {
+      "parts": {
+        "org": "chromium",
+        "remote": "chromium.googlesource.com",
+        "remote_type": "https",
+        "repo": "src"
+      },
+      "repo_id": "chromium.googlesource.com~chromium~src"
     },
     "https://dev.azure.com/myorg/My Project/_git/MyRepo": {
       "parts": {
@@ -130,13 +152,8 @@
       "repo_id": "example.com~a~~b~~c~~d~~e~f"
     },
     "https://example.com/single": {
-      "parts": {
-        "org": "",
-        "remote": "example.com",
-        "remote_type": "https",
-        "repo": "single"
-      },
-      "repo_id": "example.com~~single"
+      "parts": null,
+      "repo_id": null
     },
     "https://github.com/Acme/Svc": {
       "parts": {
@@ -231,21 +248,22 @@
     },
     "https://myorg@dev.azure.com/myorg/MyProject/_git/MyRepo": {
       "parts": {
-        "org": "myorg/MyProject/_git",
-        "remote": "myorg@dev.azure.com",
+        "org": "myorg-MyProject",
+        "project": "MyProject",
+        "remote": "dev.azure.com",
         "remote_type": "https",
         "repo": "MyRepo"
       },
-      "repo_id": "myorg@dev.azure.com~myorg~~MyProject~~_git~MyRepo"
+      "repo_id": "dev.azure.com~myorg-MyProject~MyRepo"
     },
     "https://user@bitbucket.example.com/scm/PROJ/repo.git": {
       "parts": {
         "org": "PROJ",
-        "remote": "user@bitbucket.example.com",
+        "remote": "bitbucket.example.com",
         "remote_type": "https",
         "repo": "repo"
       },
-      "repo_id": "user@bitbucket.example.com~PROJ~repo"
+      "repo_id": "bitbucket.example.com~PROJ~repo"
     },
     "not a url at all": {
       "parts": null,
@@ -262,12 +280,12 @@
     },
     "ssh://git@bitbucket.example.com:7999/PROJ/repo.git": {
       "parts": {
-        "org": "",
-        "remote": "git@bitbucket.example.com:7999",
+        "org": "PROJ",
+        "remote": "bitbucket.example.com",
         "remote_type": "ssh",
-        "repo": "PROJ/repo"
+        "repo": "repo"
       },
-      "repo_id": "git@bitbucket.example.com:7999~~PROJ/repo"
+      "repo_id": "bitbucket.example.com~PROJ~repo"
     },
     "ssh://git@github.com/acme/svc.git": {
       "parts": {
@@ -281,11 +299,11 @@
     "ssh://git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo": {
       "parts": {
         "org": "myorg/MyProject",
-        "remote": "git@ssh.dev.azure.com:v3",
+        "remote": "ssh.dev.azure.com",
         "remote_type": "ssh",
         "repo": "MyRepo"
       },
-      "repo_id": "git@ssh.dev.azure.com:v3~myorg~~MyProject~MyRepo"
+      "repo_id": "ssh.dev.azure.com~myorg~~MyProject~MyRepo"
     }
   }
 }
