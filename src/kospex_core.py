@@ -107,6 +107,224 @@ def needs_metadata_rebuild(recorded, current, force=False):
     return False, "up to date"
 
 
+# Field separator for the commit log format. ASCII Unit Separator, because git
+# rejects control characters in name and email fields. The previous delimiter
+# was "#", which is legal in both — one "#" in an author email shifted every
+# later field and the last field silently absorbed the remainder, corrupting
+# author_email (the primary developer identity key) with no error. See #163.
+COMMIT_LOG_SEP = "\x1f"
+
+COMMIT_LOG_FIELDS = (
+    "hash",
+    "author_when",
+    "committer_when",
+    "author_name",
+    "author_email",
+    "committer_name",
+    "committer_email",
+    "parents",
+)
+
+COMMIT_LOG_FORMAT = COMMIT_LOG_SEP.join(
+    ("%H", "%aI", "%cI", "%aN", "%aE", "%cN", "%cE", "%P")
+)
+
+
+def parse_commit_log(output):
+    """Parse `git log --pretty=format:COMMIT_LOG_FORMAT --numstat` output.
+
+    Returns a list of commit dicts. Each carries the COMMIT_LOG_FIELDS plus
+    "filenames": a list of {file_path, path_change, additions, deletions}.
+
+    "parents" is a count, not the hashes: merge detection only ever asks
+    `parents > 1`. Never `== 2` — octopus merges are real (nixpkgs has 12, one
+    with 16 parents).
+
+    A header line is identified by the separator rather than by a character
+    that can occur in the data, and the field count is asserted rather than
+    unpacked optimistically. Silently absorbing overflow is exactly what kept
+    the "#" delimiter bug (#163) invisible.
+    """
+    commits = []
+    commit = None
+
+    for line in output.split("\n"):
+        if not line:
+            continue
+
+        if COMMIT_LOG_SEP in line:
+            parts = line.split(COMMIT_LOG_SEP)
+            if len(parts) != len(COMMIT_LOG_FIELDS):
+                raise ValueError(
+                    f"expected {len(COMMIT_LOG_FIELDS)} fields in commit log "
+                    f"record, got {len(parts)}: {line!r}"
+                )
+
+            commit = dict(zip(COMMIT_LOG_FIELDS, parts))
+            commit["parents"] = len(commit["parents"].split())
+            commit["author_email"] = commit["author_email"].lower()
+            commit["committer_email"] = commit["committer_email"].lower()
+            commit["filenames"] = []
+            commits.append(commit)
+            continue
+
+        fields = line.split("\t")
+        if len(fields) == 3 and commit is not None:
+            additions, deletions, filename = fields
+            # A git rename arrives as "old => new" (or "{a => b}/c"); the
+            # existing helper unpacks it to the post-rename path.
+            path_change = filename if "=>" in filename else None
+            file_path = (
+                KospexUtils.parse_git_rename_event(filename)
+                if path_change
+                else filename
+            )
+            commit["filenames"].append(
+                {
+                    "file_path": file_path,
+                    "path_change": path_change,
+                    # Binary files report "-" rather than a count.
+                    "additions": int(additions) if additions != "-" else 0,
+                    "deletions": int(deletions) if deletions != "-" else 0,
+                }
+            )
+
+    return commits
+
+
+def _git_log(repo_dir, *args, window=None):
+    """Run `git log` in repo_dir with core.quotePath disabled.
+
+    quotePath=false stops git emitting "caf\\303\\251.py" for non-ASCII paths,
+    which never matched the path anything else in kospex produced (#116).
+
+    Returns "" if git fails — a repo with no commits exits non-zero.
+    """
+    cmd = ["git", "-C", str(repo_dir), "-c", "core.quotePath=false", "log", *args]
+    cmd += list(window or [])
+    try:
+        return subprocess.run(
+            cmd, capture_output=True, text=True, check=True
+        ).stdout
+    except (subprocess.CalledProcessError, OSError) as exc:
+        log.debug("git log failed in %s: %s", repo_dir, exc)
+        return ""
+
+
+def _merge_content_mask(repo_dir, window=None):
+    """{merge_hash: {path, ...}} for files a merge changed relative to EVERY parent.
+
+    --diff-merges=combined is the only form that filters this way; --numstat
+    silently degrades to first-parent, which would attribute the whole merged
+    branch to the merge.
+    """
+    out = _git_log(
+        repo_dir,
+        f"--pretty=format:{COMMIT_LOG_SEP}%H{COMMIT_LOG_SEP}%P",
+        "--name-only",
+        "--diff-merges=combined",
+        window=window,
+    )
+
+    mask = {}
+    current = None
+
+    for line in out.split("\n"):
+        if line.startswith(COMMIT_LOG_SEP):
+            _, commit_hash, parents = line.split(COMMIT_LOG_SEP)
+            # --diff-merges only alters merges; ordinary commits still list
+            # their files here and must not be mistaken for merge content.
+            current = commit_hash if len(parents.split()) > 1 else None
+        elif line and current:
+            mask.setdefault(current, set()).add(line)
+
+    return mask
+
+
+def _closest_parent_counts(repo_dir, wanted, window=None):
+    """{hash: {path: (additions, deletions)}} against whichever parent is nearest.
+
+    `-m` emits one numstat block per parent in a single walk, so the smallest
+    change for a path is its diff against the closest parent. That isolates what
+    the merger actually typed: first-parent counts also include the branch's own
+    work, which inflates merge churn 2.7x on repos like click.
+    """
+    out = _git_log(
+        repo_dir,
+        f"--pretty=format:{COMMIT_LOG_SEP}%H",
+        "--numstat",
+        "-m",
+        window=window,
+    )
+
+    counts = {}
+    current = None
+
+    for line in out.split("\n"):
+        if line.startswith(COMMIT_LOG_SEP):
+            current = line.split(COMMIT_LOG_SEP)[1]
+            continue
+        if not current or current not in wanted:
+            continue
+
+        fields = line.split("\t")
+        if len(fields) != 3:
+            continue
+
+        additions, deletions, filename = fields
+        path = (
+            KospexUtils.parse_git_rename_event(filename)
+            if "=>" in filename
+            else filename
+        )
+        if path not in wanted[current]:
+            continue
+
+        # Binary files report "-" rather than a count.
+        pair = (
+            int(additions) if additions != "-" else 0,
+            int(deletions) if deletions != "-" else 0,
+        )
+        seen = counts.setdefault(current, {}).get(path)
+        if seen is None or sum(pair) < sum(seen):
+            counts[current][path] = pair
+
+    return counts
+
+
+def merge_file_rows(repo_dir, window=None):
+    """Content a merge introduced that exists in none of its parents.
+
+    Returns {hash: {file_path: {"additions", "deletions", "path_change"}}}.
+
+    A merge that only combines branches authored nothing and yields no rows —
+    that is why `git log --numstat` reports zero files for it, and preserving
+    that is what stops merged work being counted twice. An "evil merge" (git's
+    term) is the exception: a conflict resolution, or a file added while
+    merging, exists in no parent and is otherwise recorded nowhere (#121).
+
+    The counting walk only runs when the mask finds something, so a repo with
+    no evil merges pays for detection alone.
+    """
+    mask = _merge_content_mask(repo_dir, window=window)
+    if not mask:
+        return {}
+
+    counts = _closest_parent_counts(repo_dir, mask, window=window)
+
+    rows = {}
+    for commit_hash, paths in mask.items():
+        for path in paths:
+            additions, deletions = counts.get(commit_hash, {}).get(path, (0, 0))
+            rows.setdefault(commit_hash, {})[path] = {
+                "additions": additions,
+                "deletions": deletions,
+                "path_change": None,
+            }
+
+    return rows
+
+
 def panopticas_version():
     """Installed panopticas package version, or None if it can't be resolved."""
     try:
@@ -330,83 +548,56 @@ class Kospex:
             if latest_datetime:
                 from_date = latest_datetime
 
-        # Use hash (#) as a delimeter as names can contain spaces
-        cmd = ["git", "log", "--pretty=format:%H#%aI#%cI#%aN#%aE#%cN#%cE", "--numstat"]
+        # The window is shared with the merge-content walks below, so both see
+        # the same commits — otherwise an incremental sync would look up merge
+        # rows for merges the main walk never emitted.
+        window = []
 
         if from_date and to_date:
-            cmd += ["--since={}".format(from_date), "--until={}".format(to_date)]
+            window += ["--since={}".format(from_date), "--until={}".format(to_date)]
             print(f"Syncing commits from {from_date} to {to_date}...")
         elif from_date:
-            cmd += ["--since={}".format(from_date)]
+            window += ["--since={}".format(from_date)]
             # print("Syncing commits from {}...".format(from_date))
             print(f"Syncing commits from {from_date}...")
         elif limit:
-            cmd += ["-n", str(limit)]
+            window += ["-n", str(limit)]
             print(f"Syncing {limit} commits...")
         else:
             print("Syncing all commits...")
 
-        result = subprocess.run(cmd, capture_output=True, text=True).stdout.split("\n")
+        # No --diff-merges here on purpose: a merge that only combines branches
+        # authored nothing, so it must contribute no file rows. Adding one would
+        # re-attribute the whole merged branch to the merge and double-count
+        # work already credited to the branch commits. Content that exists in no
+        # parent is picked up separately by merge_file_rows() below.
+        log_output = _git_log(
+            self.git.repo_dir,
+            f"--pretty=format:{COMMIT_LOG_FORMAT}",
+            "--numstat",
+            window=window,
+        )
 
-        commits = []
-        commit = {}
+        commits = parse_commit_log(log_output)
 
-        for line in result:
-            if line:
-                if "\t" in line and len(line.split("\t")) == 3:
-                    # Check if the line represents file stats
-                    additions, deletions, filename = line.split("\t")
-                    if "filenames" in commit:
-                        # The following checks for git rename events which change the filename
-                        # With a git rename event, the filename will be in the format of
-                        # old_filename => new_filename
-                        if "=>" in filename:
-                            fpath = KospexUtils.parse_git_rename_event(filename)
-                            path_change = filename
-                        else:
-                            fpath = filename
-                            path_change = None
-
-                        commit["filenames"].append(
-                            {
-                                "file_path": fpath,
-                                "path_change": path_change,
-                                "additions": int(additions) if additions != "-" else 0,
-                                "deletions": int(deletions) if deletions != "-" else 0,
-                            }
-                        )
-                elif "#" in line:
-                    if commit:  # Save the previous commit
-                        commits.append(commit)
-
-                    (
-                        hash_value,
-                        author_datetime,
-                        committer_datetime,
-                        author_name,
-                        author_email,
-                        committer_name,
-                        committer_email,
-                    ) = line.split("#", 6)
-
-                    commit = {
-                        "hash": hash_value,
-                        "author_when": author_datetime,
-                        "committer_when": committer_datetime,
-                        "author_name": author_name,
-                        "author_email": author_email.lower(),
-                        "committer_name": committer_name,
-                        "committer_email": committer_email.lower(),
-                        "filenames": [],
-                    }
-
-                else:
-                    commit["filenames"].append({"filename": line, "additions": 0, "deletions": 0})
-
-            else:
-                if commit:  # Save the last commit
-                    commits.append(commit)
-                commit = {}
+        # Content a merge introduced that exists in none of its parents --
+        # conflict resolutions, files added while merging. `git log --numstat`
+        # shows nothing for a merge, so this would otherwise land nowhere (#121).
+        # Skipped entirely when no merge carries content of its own.
+        merge_rows = merge_file_rows(self.git.repo_dir, window=window)
+        if merge_rows:
+            attached = 0
+            for commit in commits:
+                own = merge_rows.get(commit["hash"])
+                if not own:
+                    continue
+                for file_path, counts in own.items():
+                    commit["filenames"].append({"file_path": file_path, **counts})
+                    attached += 1
+            log.info(
+                "%s: %d file(s) introduced by %d merge(s) with content of their own",
+                self.git.repo_dir, attached, len(merge_rows),
+            )
 
         # cursor = conn.cursor()
 
