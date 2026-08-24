@@ -21,7 +21,7 @@ from rich.table import Table as RichTable
 
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
-from kospex.db.introspect import get_kospex_tables
+from kospex.db.introspect import get_kospex_tables, get_repo_tables
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit, MissingGitDirectory
 from kospex_query import KospexData, KospexQuery
@@ -1578,6 +1578,26 @@ class Kospex:
         table = KospexUtils.get_keyvalue_table(config)
 
         return table
+
+    def repo_id_row_counts(self, repo_id):
+        """{table: row_count} for every repo table holding rows for repo_id.
+
+        Tables with no rows are omitted — a repo touches a handful of the repo
+        tables, and listing the empty ones is noise in a confirmation prompt.
+
+        Read-only. Backs `kreaper delete-repo -dry-run`, so what gets counted
+        here and what gets deleted there come from the same table list.
+        """
+        counts = {}
+
+        for table in sorted(get_repo_tables(self.kospex_db)):
+            row = self.kospex_db.execute(
+                f"SELECT COUNT(*) FROM [{table}] WHERE _repo_id = ?", [repo_id]
+            ).fetchone()
+            if row and row[0]:
+                counts[table] = row[0]
+
+        return counts
 
     def delete_repo_id_from_table(self, table, repo_id):
         """
