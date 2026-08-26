@@ -30,11 +30,30 @@ def repo_ids():
 @click.option('-repo_id', type=click.STRING)
 @click.option('-table', type=click.STRING, help="Only delete rows with repo_id elements from this table.")
 @click.option('-yes/-no', default=False)
-def delete_repo(repo_id,table,yes):
-    """ Delete a repo_id from all tables."""
+@click.option('-dry-run', 'dry_run', is_flag=True,
+              help="Show the rows that would be deleted, without deleting them.")
+def delete_repo(repo_id,table,yes,dry_run):
+    """ Delete a repo_id from all tables.
 
-    # TODO - Implement for all tables!
-    print("Warning : This function only implements table!")
+    Clears the repo from every table carrying a _repo_id column, detected at
+    runtime rather than hardcoded. That includes 'repos', so the sync
+    provenance goes too and the next sync walks the full history - which is
+    what makes this the way to reset a repo before a re-sync.
+
+    Use -dry-run first to see the row counts per table.
+    """
+    if dry_run and repo_id:
+        counts = kospex.repo_id_row_counts(repo_id)
+        if not counts:
+            print(f"No rows found for repo_id {repo_id}")
+            return
+
+        print(f"Dry run - would delete the following for repo_id {repo_id}:\n")
+        for name in sorted(counts):
+            print(f"  {name:<20} {counts[name]:>8} rows")
+        print(f"\n  {'TOTAL':<20} {sum(counts.values()):>8} rows")
+        print("\nNothing deleted. Re-run with -yes to delete.")
+        return
 
     if table:
         if table in get_kospex_tables(kospex.kospex_db):
