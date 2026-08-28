@@ -85,7 +85,7 @@ class KospexMergeStat:
         """
         params = []
         where_clause = ""
-        order_by_clause = "ORDER BY committer_when DESC"
+        order_by_clause = "ORDER BY unixepoch(committer_when) DESC"
         limit_clause = ""
 
         # How many 'previous' commits to return (and sync)

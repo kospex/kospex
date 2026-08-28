@@ -473,7 +473,7 @@ class Kospex:
             order_by = "ASC"
 
         sql_query = f"""SELECT hash, committer_when FROM {table} WHERE _repo_id = ?
-            ORDER BY committer_when {order_by} LIMIT 1"""
+            ORDER BY unixepoch(committer_when) {order_by} LIMIT 1"""
 
         # Query return value might not have a 'next' method
         # This code checks for that and returns None if there is no next
@@ -512,7 +512,7 @@ class Kospex:
     def get_latest_commit_datetime(self, repo_id):
         """Get the latest commit datetime for the given repo_id"""
         cursor = self.kospex_db.execute(
-            "SELECT MAX(committer_when) FROM commits WHERE _repo_id = ?", (repo_id,)
+            "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(committer_when)), 'unixepoch') FROM commits WHERE _repo_id = ?", (repo_id,)
         )
         latest_datetime = cursor.fetchone()[0]
         return latest_datetime
@@ -774,8 +774,8 @@ class Kospex:
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
         kd.select_as("DISTINCT(_repo_id)", "repo")
-        kd.select_as("MAX(committer_when)", "last_commit")
-        kd.select_as("MIN(committer_when)", "first_commit")
+        kd.select_latest_date("committer_when", "last_commit")
+        kd.select_earliest_date("committer_when", "first_commit")
         kd.select_raw("COUNT(DISTINCT(author_email)) as developers")
         kd.select_as("COUNT(_repo_id)", "commits")
         kd.group_by("repo")
@@ -874,8 +874,8 @@ class Kospex:
         # FROM commits'''
 
         sql = """SELECT distinct(author_email) as author,
-        MIN(author_when) as first_commit,
-        MAX(author_when) as last_commit,
+        strftime('%Y-%m-%dT%H:%M:%SZ', MIN(unixepoch(author_when)), 'unixepoch') as first_commit,
+        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(author_when)), 'unixepoch') as last_commit,
         round((julianday('now') - julianday(max(author_when))) ,1) as last_seen,
         COUNT(author_email) as commits,
         COUNT(DISTINCT(_repo_id)) as repos
