@@ -32,8 +32,12 @@ wrong or incomplete.
 recorded commit), so existing rows keep their old values until a repo is dropped
 and re-synced. `kreaper delete-repo -repo_id <id> -yes` clears every table
 carrying a `_repo_id`, including `repos`, which resets the sync provenance so the
-next sync walks full history. Use `-dry-run` first. Detection queries for which
-repos need this are in issue #165.
+next sync walks full history, then re-sync with `kospex sync-directory <path>`.
+Use `-dry-run` first, and back up `~/kospex/kospex.db` before starting.
+
+Full procedure, including the query for which repos are stale and the one thing
+a re-sync does **not** fix: **[Refreshing data → Upgrading to
+0.1.0](https://docs.kospex.io/refreshing-data#upgrading-to-010-re-syncing-after-the-ingest-fixes)**.
 
 ### Added
 - **Every kospex, kgit, krunner and kreaper command now warns when the database
