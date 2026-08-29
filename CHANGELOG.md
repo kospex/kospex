@@ -6,18 +6,26 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Upgrade notes
 
-**Reported numbers change in this release, in three ways.** Anything already
+**Reported numbers change in this release, in four ways.** Anything already
 showing kospex output — dashboards, screenshots, exported reports — will disagree
 with a post-upgrade run. None of this is a regression; the earlier figures were
 wrong or incomplete.
 
-1. **"Last commit" dates render in UTC** instead of the committer's local offset.
+1. **Per-author commit counts drop, substantially for maintainers.** Merge
+   commits are no longer counted as authorship. 12.3% of commits on a 109-repo
+   estate are merges, and the share reaches 96.3% for some authors — one
+   `pallets/click` maintainer moves from 876 commits to 326 authored plus 550
+   merges. `% commits` is computed on the authorship total, so the denominator
+   shrinks too: **a developer who never merges can see their percentage rise
+   while their own count is unchanged.** This is the largest mover in the
+   release and the one most likely to be read as a regression.
+2. **"Last commit" dates render in UTC** instead of the committer's local offset.
    Same instant, different presentation. Additionally, 7 of 109 repos in a
    109-repo estate reported the *wrong* last commit and now report the right one.
-2. **`commit_files` gains rows for content introduced by merges.** Repos whose
+3. **`commit_files` gains rows for content introduced by merges.** Repos whose
    history contains conflict resolutions get file rows that never existed before
    (0.6%–8.5% of rows on the repos measured; **0** on repos with clean merges).
-3. **`commits.parents` is populated for newly-synced commits only.** Existing
+4. **`commits.parents` is populated for newly-synced commits only.** Existing
    rows stay NULL. Treat NULL as *unknown*, not as "not a merge".
 
 **None of the fixes backfill.** Commit sync is incremental (`--since` the last
@@ -98,6 +106,18 @@ repos need this are in issue #165.
   `Kospex.repo_id_row_counts()`, which walks the same table list the delete does,
   so the preview cannot drift from the deletion. See
   `changes/202608-kreaper-dry-run.md`.
+
+- **A `merges` column in key-person output**, in the CLI table, the web table at
+  `/key_person/{repo_id}`, and `krunner`. Merging is evidence of knowledge in its
+  own right — the merger read and accepted those changes — so the count is
+  surfaced rather than discarded. It makes visible the developer with few commits
+  who integrates most of a subsystem: a continuity risk that is invisible either
+  way round under a single number, since counting merges as commits makes them
+  look like an ordinary prolific author and filtering merges out drops them off
+  the table. **Comparable within a repository only** — squash-and-merge and
+  rebase workflows produce no merge commits at all (18 of 88 repos with more than
+  200 commits measured here are below 1%), so zero means "this project squashes",
+  not "does not integrate". Both tables carry a footnote saying so.
 
 ### Changed
 - **Raised the panopticas floor to `>=0.0.19`.** 0.0.19 adds a queryable tag
@@ -186,6 +206,17 @@ repos need this are in issue #165.
   `changes/202608-remove-kospex-mergestat.md`.
 
 ### Fixed
+- **Merge commits were counted as authorship, inflating whoever merged.**
+  `commit_stats()` counted every row with `COUNT(*)`, so a merge added one to the
+  person who merged — typically a maintainer, lead or release manager, which is
+  exactly the population `key_person()` exists to measure. A commit now counts as
+  authorship unless it is a *clean* merge (`parents <= 1 OR _files > 0`); a merge
+  carrying content of its own, such as a conflict resolution, exists in no parent
+  and is real work by the merger, so it still counts. `parents` is NULL for
+  commits synced before this release, so the `_files` clause carries those rows —
+  the rule is evaluated per row and needs no migration flag on a partially
+  re-synced estate, and no follow-up once `parents` is populated. Closes #170.
+  See `changes/202608-merge-commits-and-authorship.md`.
 - **A `#` in an author or committer email silently corrupted every later field.**
   The commit ingest split git's output on `#`, which is legal in both a name and
   an email. One `#` shifted every subsequent field and the last field absorbed
