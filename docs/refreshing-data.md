@@ -156,6 +156,90 @@ re-check saved queries and dashboards after a panopticas upgrade.
 Both are reasons to refresh deliberately rather than on a schedule nobody
 watches — and to refresh *before* presenting numbers to anyone.
 
+## Upgrading to 0.1.0: re-syncing after the ingest fixes
+
+0.1.0 changed how commits are read from git. The fixes apply to **newly-synced
+commits only**, and commit sync is incremental — it walks from the last recorded
+commit — so a routine sync never revisits existing rows and nothing self-heals.
+
+Three things differ between data ingested before and after the upgrade:
+
+- merge commits are now identifiable (`commits.parents` is populated)
+- content a merge introduced that exists in no parent is now recorded in
+  `commit_files`
+- non-ASCII file paths are stored unquoted
+
+Until a repo is re-synced it keeps the old values, so an estate part-way through
+will hold a mix. Reported numbers stay self-consistent either way — the queries
+read whichever evidence is present — but merge-aware figures are only complete
+for re-synced repos.
+
+### Which repos are stale
+
+```sql
+SELECT _repo_id, COUNT(*) AS commits
+FROM commits WHERE parents IS NULL
+GROUP BY _repo_id ORDER BY commits DESC;
+```
+
+Every repo synced before 0.1.0 appears here, so on first upgrade this is your
+whole estate. It stays useful afterwards as a general staleness check: a repo
+listed here predates the current ingest.
+
+### Re-syncing a repo
+
+A re-sync has to start from an empty slate, because `sync_repo` derives its
+window from the newest commit already recorded. Clearing the repo removes its
+`repos` row along with everything else, which resets the sync provenance so the
+next sync walks the full history.
+
+```bash
+# See what would be removed - read-only, deletes nothing
+kreaper delete-repo -repo_id github.com~owner~repo -dry-run
+
+# Clear every table carrying this _repo_id, including the repos row
+kreaper delete-repo -repo_id github.com~owner~repo -yes
+
+# Re-sync from the local clone (offline; finds the repo at or below the path)
+kospex sync-directory ~/code/github.com/owner/repo
+```
+
+`kospex sync-directory` walks a directory and syncs every git repo at or below
+it, so pointing it at one repo syncs just that one, and pointing it at
+`~/code` re-syncs everything.
+
+To pull and re-sync in one step for clones kospex already knows about, use
+[`kgit pull`](kgit) instead.
+
+### One thing a re-sync will not fix
+
+Non-ASCII paths stored in their old quoted form — `"caf\303\251.py"` — do not
+get replaced. `file_path` is part of the primary key of `commit_files`, so
+unquoting produces a *different* key: a re-sync adds the correct row and leaves
+the quoted one behind as a duplicate.
+
+Check for them first:
+
+```sql
+SELECT _repo_id, COUNT(*) FROM commit_files
+WHERE file_path LIKE '"%' GROUP BY _repo_id;
+```
+
+If any exist, delete them — before or after the re-sync, but do not skip it:
+
+```sql
+DELETE FROM commit_files WHERE file_path LIKE '"%';
+```
+
+These rows are orphans that nothing joins to; the correct rows are recreated by
+the re-sync.
+
+### Back up first
+
+`kreaper` deletes. Take a copy of `~/kospex/kospex.db` before starting, and run
+`kospex upgrade-db -apply` if the database is behind — writes against a
+behind-schema database can record incomplete data.
+
 ## Checking what a repo was last built from
 
 Provenance is recorded per repo, so you can tell whether a refresh is needed
