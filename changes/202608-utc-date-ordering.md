@@ -142,6 +142,9 @@ Each checked against `ORDER BY unixepoch(committer_when) DESC LIMIT 1`.
 
 - `src/kospex_query.py` — the three helpers, plus converted sites
 - `src/kospex_core.py`, `src/kospex_git.py`, `src/kospex_mergestat.py` — raw SQL
+  (the `kospex_mergestat.py` line was in dead code — the module had been orphaned
+  since 2023 and was deleted shortly after, see
+  `202608-remove-kospex-mergestat.md`)
 - `tests/test_date_ordering.py` — 11 tests
 
 ## Note
