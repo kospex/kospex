@@ -4,6 +4,29 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+### Upgrade notes
+
+**Reported numbers change in this release, in three ways.** Anything already
+showing kospex output — dashboards, screenshots, exported reports — will disagree
+with a post-upgrade run. None of this is a regression; the earlier figures were
+wrong or incomplete.
+
+1. **"Last commit" dates render in UTC** instead of the committer's local offset.
+   Same instant, different presentation. Additionally, 7 of 109 repos in a
+   109-repo estate reported the *wrong* last commit and now report the right one.
+2. **`commit_files` gains rows for content introduced by merges.** Repos whose
+   history contains conflict resolutions get file rows that never existed before
+   (0.6%–8.5% of rows on the repos measured; **0** on repos with clean merges).
+3. **`commits.parents` is populated for newly-synced commits only.** Existing
+   rows stay NULL. Treat NULL as *unknown*, not as "not a merge".
+
+**None of the fixes backfill.** Commit sync is incremental (`--since` the last
+recorded commit), so existing rows keep their old values until a repo is dropped
+and re-synced. `kreaper delete-repo -repo_id <id> -yes` clears every table
+carrying a `_repo_id`, including `repos`, which resets the sync provenance so the
+next sync walks full history. Use `-dry-run` first. Detection queries for which
+repos need this are in issue #165.
+
 ### Added
 - **Every kospex, kgit, krunner and kreaper command now warns when the database
   is behind.** A banner on stderr reporting the pending count and
@@ -50,6 +73,31 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   **Dependencies** link, placed first in the Quick Links bar ahead of Tech
   Landscape. The `/dependencies/{repo_id}` route already existed but nothing
   linked to it, so reaching a repo's dependency list meant typing the URL.
+
+- **Content a merge introduced is now recorded.** `git log --numstat` reports no
+  files for a merge, which is correct — a merge that only combines branches
+  authored nothing, and attributing files to it double-counts work already
+  credited to the branch commits. But it also hid an *evil merge* (git's own
+  glossary term): a conflict resolution, or a file added while merging, exists
+  in no parent and landed nowhere. Those rows now appear in `commit_files`.
+  Clean merges still contribute nothing, and there is a test pinning that.
+  Additions and deletions are counted against the closest parent rather than the
+  first, which isolates what the merger actually typed — first-parent counts
+  include the branch's own work and inflate merge churn 2.7x on some repos.
+  Closes #121. See `changes/202608-merge-content-and-commit-delimiter.md`.
+- **`commits.parents` is now populated.** The column has been declared since the
+  Mergestat-derived schema and never written — 0 of 254,997 rows. It holds a
+  count, so merge detection is `parents > 1`; never `== 2`, since octopus merges
+  are real (nixpkgs has one with 16 parents). No migration: the column already
+  existed. Existing rows stay NULL until a repo is re-synced, so consumers must
+  read NULL as unknown rather than as "not a merge".
+- **`kreaper delete-repo -dry-run`** reports the row counts per table and deletes
+  nothing, so a destructive operation can be inspected first. It does not require
+  `-yes`: the dry run writes nothing, and demanding the confirmation flag to see
+  a preview only trains people to type it. Counts come from
+  `Kospex.repo_id_row_counts()`, which walks the same table list the delete does,
+  so the preview cannot drift from the deletion. See
+  `changes/202608-kreaper-dry-run.md`.
 
 ### Changed
 - **Raised the panopticas floor to `>=0.0.19`.** 0.0.19 adds a queryable tag
@@ -105,6 +153,23 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   writes only with `-save`, matching `branches` and `repo-size`, whose `-save`
   also defaults to off.
 
+- **Commit-date aggregates now render in UTC.** `last_commit` and `first_commit`
+  come back as `2026-07-10T07:45:56Z` rather than `2026-07-10T16:45:56+09:00` —
+  the same instant, the same `days_ago`, the same status bucket, in a consistent
+  zone. A column of dates in mixed offsets was never comparable by eye. The raw
+  `committer_when` on each row keeps its original offset, so nothing is lost from
+  the data. This is a **visible change to every "last commit" shown in the web UI
+  and CLI tables**.
+- **The commit log is parsed on a control-character delimiter.** The ingest
+  format moved from `#`-separated to ASCII Unit Separator (`\x1f`), and the
+  parser now asserts its field count instead of unpacking optimistically. See
+  Fixed, below, for what the old delimiter did.
+- **`KospexGit.parse_git_remote()` can now return `None`.** It previously matched
+  any `scheme://host/path` and always returned a populated dict, so every
+  `if not parts:` guard in the codebase was unreachable and junk URLs were given
+  a plausible `repo_id`. Unrecognised URLs are now rejected. Verified against the
+  live database: **0 of 109** existing repos change their `repo_id`.
+
 ### Removed
 - **`KospexGit.sync_repo`** — an abandoned Oct 2025 "work in progress refactor"
   of `Kospex.sync_repo` with no callers anywhere. It could not have run (it
@@ -113,7 +178,53 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   wired up: no `author_email`/`committer_email` lowercasing, and no
   `developer_stats` update.
 
+- **`kospex_mergestat`** — 154 lines of dead code that shipped in every wheel.
+  Mergestat was the prototype's git-query engine, replaced by direct git wrapping
+  in `d12d3dc` (2023-12-03); nothing has imported it since, and the module's own
+  header said so. Verified orphaned before deletion — no live imports, tests,
+  docs or packaging references beyond its `py-modules` entry. See
+  `changes/202608-remove-kospex-mergestat.md`.
+
 ### Fixed
+- **A `#` in an author or committer email silently corrupted every later field.**
+  The commit ingest split git's output on `#`, which is legal in both a name and
+  an email. One `#` shifted every subsequent field and the last field absorbed
+  the remainder, with no error. `NixOS/nixpkgs` has 97 commits authored
+  `git#v1@kaction.cc`, which parsed as `author_email='git'` and
+  `committer_name='v1@kaction.cc'` — and `author_email` is the primary developer
+  identity key, so those commits attributed to a developer called `git`. The
+  database could not reveal this: querying for `#` in any field returns zero rows
+  because the parse consumed the delimiter before the insert. Closes #163.
+- **`file_metadata.committer_when` was NULL for non-ASCII filenames.** git quotes
+  such paths as `"caf\303\251.py"` unless `core.quotePath=false` is set, and the
+  quoted form never matched the path panopticas walked. All git walks now disable
+  quoting. Closes #116.
+- **Repository and developer "last commit" dates could be wrong by up to 17
+  hours.** Commit dates are stored as ISO-8601 text carrying each committer's
+  local UTC offset, and text comparison of ISO-8601 is only valid when every
+  value shares one offset — there are 33 distinct offsets across 254,997 commits.
+  `MAX(committer_when)` therefore returned the wrong row whenever the true latest
+  commit had a more westerly offset than a near tie. Measured against the live
+  database: **7 of 109** repo `last_commit` values, **54 of 19,448** developer
+  last-commits, and **411 of 218,101** per-file latests. Aggregates and ordering
+  now run on the true instant. `KospexData` gains `select_latest_date()`,
+  `select_earliest_date()` and `order_by_date()` so the policy lives in one
+  place. No backfill needed — this changes how stored data is read, not what is
+  stored. Closes #154. See `changes/202608-utc-date-ordering.md`.
+- **A `file-metadata` rebuild spawned one `git log` per file.** `get_repo_files()`
+  ran a subprocess for every file in the repo, so the cost scaled with the file
+  count rather than with git's work — a run over ~105 repos was still on repo 21
+  after 40 minutes and was abandoned, leaving the estate partially re-tagged. It
+  now does a single walk per repo: **19x** faster on `pallets/click`, **57x** on
+  `facebook/react`, **167x** on `babel/babel`. Closes #152. See
+  `changes/202608-repo-files-single-git-walk.md`.
+- **Remote URLs with embedded credentials wrote the password into `repo_id`.**
+  `https://user:pw@host/o/r.git` produced `user:pw@host~~o/r` — and `repo_id` is a
+  primary key across `commits`, `commit_files` and `file_metadata`, and is
+  rendered in the web UI. Hosts are now normalised through `urlparse().hostname`,
+  which drops credentials and the port. That also makes the SSH and HTTPS clone
+  URLs for one Bitbucket Server or Azure DevOps repository resolve to the same
+  `repo_id`, where they previously produced two.
 - **A clean install never applied its database migrations.**
   `connect_or_create_kospex_db()` built the frozen v2 baseline schema and created
   an empty `schema_migrations` table, but nothing ran the migrations — only
