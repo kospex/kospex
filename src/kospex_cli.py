@@ -884,6 +884,11 @@ def key_person(directory, top):
     print()
     print(table)
     print()
+    print("Merge commits are counted separately. A merge combines work already")
+    print("credited to the branch commits, so it is not authorship - but it does")
+    print("show who integrates changes. Comparable within a repo only: a project")
+    print("using squash-and-merge produces no merge commits at all.")
+    print()
 
 
 @cli.command("stats")

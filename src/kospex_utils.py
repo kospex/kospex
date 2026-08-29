@@ -1264,11 +1264,15 @@ def key_person_prettytable():
     """ Return a prettytable object for the key_persons table."""
 
     table = PrettyTable()
-    headers = ["author", "commits", "% commits", "last_commit",
+    # "merges" sits beside "commits" so a maintainer's lower commit count is
+    # explained in place rather than needing to be taken on trust. It is only
+    # comparable within a repo — a squash-and-merge project has none. See #170.
+    headers = ["author", "commits", "merges", "% commits", "last_commit",
                "first_commit", "active_commits", "% active", "tenure"]
     table.field_names = headers
     table.align["author"] = "l"
     table.align["commits"] = "r"
+    table.align["merges"] = "r"
     table.align["last_commit"] = "r"
     table.align["first_commit"] = "r"
     table.align["active_commits"] = "r"

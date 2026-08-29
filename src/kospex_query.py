@@ -17,6 +17,18 @@ from kospex.db.introspect import get_kospex_tables
 from kospex_observation import Observation
 from kospex_utils import KospexTimer
 
+# A commit is authorship unless it is a *clean* merge — one that only combines
+# work already credited to the branch commits. A merge that carries content of
+# its own (a conflict resolution, a file added while merging) exists in no
+# parent and is real work by the merger, so it counts.
+#
+# `parents` is NULL for commits synced before #164, and NULL <= 1 is NULL, which
+# is falsy in a WHERE and falls to the ELSE of a CASE. The `_files` clause
+# carries those rows, so both clauses are needed for as long as any pre-#164
+# data remains. The pair also degrades correctly on a mixed estate, since it is
+# evaluated per row. See #170.
+AUTHORSHIP_COMMIT = "(parents <= 1 OR _files > 0)"
+
 
 class KospexQuery:
     """kospex database query functionality"""
@@ -1821,13 +1833,27 @@ class KospexQuery:
         return results
 
     def commit_stats(self, days=None, repo_id=None):
-        """Return stats about commits."""
+        """Return per-author commit stats, with merges counted separately.
+
+        ``commits`` counts authorship. ``merges`` counts clean merges — commits
+        that combine work already credited to the branch commits, and so are not
+        authorship by whoever merged (#170). Counting them as commits inflated
+        maintainers and release managers, the exact population key_person()
+        exists to find.
+
+        Merges are reported rather than discarded because merging is evidence of
+        knowledge in its own right: the merger read and accepted other people's
+        changes into the subsystem. The count is only comparable *within* a repo
+        — a project using squash-and-merge produces no merge commits at all, so
+        zero means "this repo squashes", not "does not integrate".
+        """
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
         kd.select_as("DISTINCT(author_email)", "author")
         kd.select_earliest_date("author_when", "first_commit")
         kd.select_latest_date("author_when", "last_commit")
-        kd.select_as("COUNT(*)", "commits")
+        kd.select_raw(f"SUM(CASE WHEN {AUTHORSHIP_COMMIT} THEN 1 ELSE 0 END) AS commits")
+        kd.select_raw(f"SUM(CASE WHEN {AUTHORSHIP_COMMIT} THEN 0 ELSE 1 END) AS merges")
         kd.group_by("author")
         kd.order_by("commits", "DESC")
 

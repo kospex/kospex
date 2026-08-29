@@ -129,6 +129,10 @@
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Commits
                                     </th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                        title="Merge commits, counted separately from authorship">
+                                        Merges
+                                    </th>
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         % Commits
                                     </th>
@@ -158,6 +162,9 @@
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
                                         {{ person.commits }}
                                     </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
+                                        {{ person.merges }}
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
                                         {{ person['% commits'] }}
                                     </td>
@@ -180,6 +187,13 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+                        <p class="px-6 py-4 text-xs text-gray-500 border-t border-gray-200">
+                            Merge commits are counted separately. A merge combines work
+                            already credited to the branch commits, so it is not authorship
+                            &mdash; but it does show who integrates changes in this
+                            repository. Comparable within a repository only: a project
+                            using squash-and-merge produces no merge commits at all.
+                        </p>
                     </div>
                 </div>
             </div>
