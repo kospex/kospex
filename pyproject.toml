@@ -55,7 +55,6 @@ py-modules = [
     "kospex_git",
     "kospex_github",
     "kospex_logging",
-    "kospex_mergestat",
     "kospex_observation",
     "kospex_query",
     "kospex_request_cache",

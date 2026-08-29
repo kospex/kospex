@@ -13,7 +13,6 @@ from shutil import which
 
 import click
 
-# from kospex_mergestat import KospexMergeStat
 import panopticas
 from prettytable import PrettyTable, from_db_cursor
 from rich.console import Console as RichConsole
@@ -379,7 +378,6 @@ class Kospex:
         self.repo_directory = None
         self.git = KospexGit()
         self.kospex_db = KospexSchema.connect_or_create_kospex_db()
-        # self.mergestat = KospexMergeStat()
         self.kospex_query = KospexQuery(kospex_db=self.kospex_db)
         self.dependencies = KospexDependencies(
             kospex_db=self.kospex_db, kospex_query=self.kospex_query
