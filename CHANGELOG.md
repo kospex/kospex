@@ -225,6 +225,21 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
   `changes/202608-remove-kospex-mergestat.md`.
 
 ### Fixed
+- **The table-introspection cache served one in-memory database's tables to
+  another.** `_db_key()` keyed in-memory databases by `id(db)` as a
+  "per-instance key", but `id()` is unique only among *live* objects and CPython
+  reuses addresses aggressively — 300 in-memory databases produced just 8
+  distinct keys, and 292 of 300 lookups returned a dead database's table set.
+  `KospexData` validates every table name against this cache before
+  interpolating it into SQL, so a stale answer rejects tables that exist,
+  raising `ValueError: Table '<name>' is not a known Kospex table`. File-backed
+  databases key on their path and were never affected, so the CLI and web UI
+  were correct; the defect was latent for anything building a database in
+  memory, which `KospexQuery.create_memory_kospex_query()` — used by `krunner
+  osi` — does. In-memory databases are no longer cached at all: the read costs
+  ~1.1us against ~10us for a file-backed one, so there was nothing to protect,
+  and a database built up table by table at runtime should not be cached anyway.
+  Closes #184. See `changes/202608-introspect-in-memory-cache-key.md`.
 - **`krunner osi` skipped Go and .NET dependency files entirely.** `osi` matched
   manifests with a substring chain while `kospex sca` used its own predicates, so
   `go.mod` and `*.csproj` were handled by one path and silently dropped by the
