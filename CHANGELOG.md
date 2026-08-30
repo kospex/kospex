@@ -6,7 +6,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Upgrade notes
 
-**Reported numbers change in this release, in five ways.** Anything already
+**Reported numbers change in this release, in six ways.** Anything already
 showing kospex output — dashboards, screenshots, exported reports — will disagree
 with a post-upgrade run. None of this is a regression; the earlier figures were
 wrong or incomplete.
@@ -32,6 +32,16 @@ wrong or incomplete.
    uses single-line `require` directives gain dependencies that were never parsed
    at all — such a repo may have reported **zero** Go dependencies before. Filter
    on `package_use = 'direct'` to compare like with like against an earlier run.
+6. **`krunner osi` reports Go and .NET dependencies for the first time, and Go
+   rows change `package_type`.** `osi` previously skipped `go.mod` and `*.csproj`
+   entirely — on a 109-repo estate that is **175 rows where there were none**
+   (168 Go, 7 NuGet). Separately, Go rows now carry `package_type = "go"` rather
+   than `"Go module"`; that column is part of the `dependency_data` primary key,
+   so new rows do not collide with existing ones and an `osi` run demotes the old
+   ones. Anything filtering on `package_type = 'Go module'` needs updating. Two
+   smaller shifts come with it: `requirements.py` / `.rst` / `.lock` are no longer
+   parsed as manifests (they never were manifests), and `requirements-wheel-*.txt`
+   files now are.
 
 **None of the fixes backfill.** Commit sync is incremental (`--since` the last
 recorded commit), so existing rows keep their old values until a repo is dropped
@@ -215,6 +225,31 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
   `changes/202608-remove-kospex-mergestat.md`.
 
 ### Fixed
+- **`krunner osi` skipped Go and .NET dependency files entirely.** `osi` matched
+  manifests with a substring chain while `kospex sca` used its own predicates, so
+  `go.mod` and `*.csproj` were handled by one path and silently dropped by the
+  other. Both now dispatch off the extractor registry — `classify()` selects the
+  entry, `resolve_parser()` turns its `parse_ref` into a callable, and
+  `package_type` comes from the entry rather than an `ecosystem` mapping that
+  could drift. On the reference estate this is **175 dependency rows that `osi`
+  previously produced none of** (168 Go, 7 NuGet). The registry's coverage-matrix
+  test now asserts parity instead of recording the gap, and a second test fails
+  any entry claiming only one scanner, so it cannot reopen quietly. Requirements
+  matching also delegates to `panopticas.is_pip_requirements`, which is correct
+  in both directions where kospex was not: it matches
+  `requirements-wheel-*.txt` (excluded before by a second hyphen) and rejects
+  `requirements.py` / `.rst` / `.lock`, which the substring check parsed as
+  manifests. Closes #107, advances #180. See
+  `changes/202608-osi-registry-dispatch-c1.md`.
+- **NuGet dependencies were never persisted by any path.** `nuget_assess()` built
+  its records, printed them as a table and fell off the end without returning
+  them, and `assess()`'s dispatch discarded the result anyway — two independent
+  bugs, so fixing either alone changed nothing. `.csproj` parsing now lives in
+  `kospex/extractors/nuget.py`, shared by both scan paths, and is hardened against
+  CWE-776 (uncontrolled XML entity expansion): manifests come from cloned
+  third-party repositories, and Python's ElementTree expands internal entities —
+  four nested levels reach 10,000 characters. A `DOCTYPE` is refused before
+  parsing, which no legitimate MSBuild project file carries. Closes #107.
 - **go.mod reported fewer dependencies than it declares, in three ways.** Single-line
   `require <module> <version>` directives were never parsed — `parse_go_mod_from_file()`
   gated every parse path behind an exact `require (` line, so the one-per-line form

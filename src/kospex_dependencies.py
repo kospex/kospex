@@ -365,7 +365,13 @@ class KospexDependencies:
 
         if basefile == "go.mod":
             print(f"Found Go mod package file: {basefile}")
-            package_type = "Go module"
+            # "go", not "Go module". package_type is part of the dependency_data
+            # primary key, and every other ecosystem uses the lowercase deps.dev
+            # system name (pypi / npm / nuget). "Go module" was a one-off that
+            # deps.dev does not accept as a system at all — it only ever reached
+            # the DB column because gomod_assess() hardcoded "go" for the lookup.
+            # The registry has always declared "go".
+            package_type = "go"
             results = self.gomod_assess(filename, results_file=results_file, repo_info=repo_info)
 
         elif basefile == "pyproject.toml":
@@ -386,7 +392,9 @@ class KospexDependencies:
         elif self.is_nuget_package(filename):
             print(f"Found nuget package file: {basefile}")
             package_type = "nuget"
-            self.nuget_assess(filename, results_file=results_file, repo_info=repo_info)
+            results = self.nuget_assess(
+                filename, results_file=results_file, repo_info=repo_info
+            )
 
         elif self.is_pip_requirements_file(basefile):
             print(f"Found pip requirements file: {basefile}")
@@ -1186,40 +1194,32 @@ class KospexDependencies:
         return authors
 
     def nuget_assess(self, filename, results_file=None, repo_info=None, store=True):
-        """Assess a nuget .cproj file"""
+        """Assess a nuget .csproj file, returning enriched dependency records.
+
+        Parsing is delegated to kospex.extractors.nuget, which both scan paths
+        share — this used to hold its own XML parse, build the records, print
+        them and then fall off the end without returning them, so NuGet
+        dependencies were never persisted by any path (#107).
+        """
+        from kospex.extractors.nuget import extract_csproj
 
         table = self.get_cli_pretty_table()
         table_rows = []
-        result = []
+        records = []
 
-        try:
-            with open(filename, "r") as xml_file:
-                xml_data = xml_file.read()
-            root = ET.fromstring(xml_data)
-            # Find all PackageReference elements
-            package_references = root.findall(".//PackageReference")
-            # Extract the 'Include' and 'Version' attributes
-            result = [
-                {
-                    "package_name": pkg.attrib["Include"],
-                    "package_version": pkg.attrib["Version"],
-                }
-                for pkg in package_references
-            ]
-            # print(result)
-
-        except Exception as e:
-            print(f"Error parsing {filename}: {e}")
-            return False
-
-        for pkg in result:
-            # print(f"Checking {pkg['package_name']} version {pkg['package_version']}")
+        for pkg in extract_csproj(filename):
             rec = self.depsdev_record("NuGet", pkg["package_name"], pkg["package_version"])
+            rec["package_use"] = KospexSchema.PACKAGE_USE_DIRECT
             table_rows.append(self.get_values_array(rec, self.get_table_field_names(), "-"))
+            records.append(rec)
 
         table.add_rows(table_rows)
         print(table)
-        # table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
+
+        if results_file:
+            self.write_csv(results_file, table_rows, self.get_table_field_names())
+
+        return records
 
     def find_dependency_files(self, directory):
         """Find all dependency files (package managers) in a directory and its subdirectories."""
@@ -1421,74 +1421,15 @@ class KospexDependencies:
         return records
 
     def parse_go_mod_from_file(self, file_path):
-        """Parse the go.mod file and return the dependencies and their versions."""
-        # Initialize an array to store the results
-        results = []
+        """Parse the go.mod file and return the dependencies and their versions.
 
-        try:
-            # Open the file and read the contents
-            with open(file_path, "r") as file:
-                lines = file.readlines()
-
-                # Flag to check if we're inside a require block
-                in_require_block = False
-
-                for line in lines:
-                    # Trim leading and trailing whitespace
-                    trimmed_line = line.strip()
-
-                    # Check if we're entering a require block
-                    if trimmed_line == "require (":
-                        in_require_block = True
-                        continue  # Move to the next line
-
-                    # Check if we're exiting a require block
-                    if trimmed_line == ")" and in_require_block:
-                        in_require_block = False
-                        continue  # Move to the next line
-
-                    # A require directive has two valid forms: grouped inside a
-                    # `require ( ... )` block, or one per line as
-                    # `require <module> <version>`. Only `require` lines are read —
-                    # exclude / replace / retract must never be taken as
-                    # dependencies, which is why this matches the keyword rather
-                    # than parsing every non-block line.
-                    if in_require_block:
-                        parts = trimmed_line.split()
-                    elif trimmed_line.startswith("require "):
-                        parts = trimmed_line.split()[1:]
-                    else:
-                        continue
-
-                    # Skip comment-only lines. Inside a block these split into two
-                    # or more parts and would otherwise be recorded as a module
-                    # named "//".
-                    if not parts or parts[0].startswith("//"):
-                        continue
-
-                    # Ensure the line has at least two parts: module and version
-                    if len(parts) >= 2:
-                        # Extract module and version
-                        module, version = parts[0], parts[1]
-
-                        # Check if the module is marked as indirect
-                        indirect = "indirect" in parts
-
-                        # Append the information to the results array
-                        results.append(
-                            {
-                                "module": module,
-                                "version": version,
-                                "indirect": indirect,
-                            }
-                        )
-        except FileNotFoundError:
-            print(f"File {file_path} not found.")
-        except Exception as e:
-            print(f"An error occurred while reading the file: {e}")
-
-        # Return the results array
-        return results
+        Delegates to kospex.extractors.gomod, which owns go.mod parsing. Kept as
+        a method because callers and the extractor registry reference it; the
+        logic must not be duplicated here — two parsers agreeing today is not
+        the same as two parsers staying in agreement.
+        """
+        from kospex.extractors.gomod import parse_gomod
+        return parse_gomod(file_path)
 
     def check_malware(self, package_type, package_name, api_key):
         # Beta implementation of malicious packages API
