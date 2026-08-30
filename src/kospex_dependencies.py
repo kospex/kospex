@@ -1421,74 +1421,15 @@ class KospexDependencies:
         return records
 
     def parse_go_mod_from_file(self, file_path):
-        """Parse the go.mod file and return the dependencies and their versions."""
-        # Initialize an array to store the results
-        results = []
+        """Parse the go.mod file and return the dependencies and their versions.
 
-        try:
-            # Open the file and read the contents
-            with open(file_path, "r") as file:
-                lines = file.readlines()
-
-                # Flag to check if we're inside a require block
-                in_require_block = False
-
-                for line in lines:
-                    # Trim leading and trailing whitespace
-                    trimmed_line = line.strip()
-
-                    # Check if we're entering a require block
-                    if trimmed_line == "require (":
-                        in_require_block = True
-                        continue  # Move to the next line
-
-                    # Check if we're exiting a require block
-                    if trimmed_line == ")" and in_require_block:
-                        in_require_block = False
-                        continue  # Move to the next line
-
-                    # A require directive has two valid forms: grouped inside a
-                    # `require ( ... )` block, or one per line as
-                    # `require <module> <version>`. Only `require` lines are read —
-                    # exclude / replace / retract must never be taken as
-                    # dependencies, which is why this matches the keyword rather
-                    # than parsing every non-block line.
-                    if in_require_block:
-                        parts = trimmed_line.split()
-                    elif trimmed_line.startswith("require "):
-                        parts = trimmed_line.split()[1:]
-                    else:
-                        continue
-
-                    # Skip comment-only lines. Inside a block these split into two
-                    # or more parts and would otherwise be recorded as a module
-                    # named "//".
-                    if not parts or parts[0].startswith("//"):
-                        continue
-
-                    # Ensure the line has at least two parts: module and version
-                    if len(parts) >= 2:
-                        # Extract module and version
-                        module, version = parts[0], parts[1]
-
-                        # Check if the module is marked as indirect
-                        indirect = "indirect" in parts
-
-                        # Append the information to the results array
-                        results.append(
-                            {
-                                "module": module,
-                                "version": version,
-                                "indirect": indirect,
-                            }
-                        )
-        except FileNotFoundError:
-            print(f"File {file_path} not found.")
-        except Exception as e:
-            print(f"An error occurred while reading the file: {e}")
-
-        # Return the results array
-        return results
+        Delegates to kospex.extractors.gomod, which owns go.mod parsing. Kept as
+        a method because callers and the extractor registry reference it; the
+        logic must not be duplicated here — two parsers agreeing today is not
+        the same as two parsers staying in agreement.
+        """
+        from kospex.extractors.gomod import parse_gomod
+        return parse_gomod(file_path)
 
     def check_malware(self, package_type, package_name, api_key):
         # Beta implementation of malicious packages API
