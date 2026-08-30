@@ -23,6 +23,7 @@ from packaging.version import Version, InvalidVersion
 from prettytable import PrettyTable
 
 import kospex_schema as KospexSchema
+from kospex.extractors.registry import classify, resolve_parser
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 
@@ -324,6 +325,96 @@ class KospexDependencies:
         return bool(pattern.match(filename))
 
     # def assess(self, filename, results_file=None, repo_info=None, print_table=False):
+    # requirements_type as the parsers report it -> the DB package_use value.
+    _REQ_TO_USE = {
+        "direct": KospexSchema.PACKAGE_USE_DIRECT,
+        "dev": KospexSchema.PACKAGE_USE_DEV,
+        "resolved": KospexSchema.PACKAGE_USE_TRANSITIVE,
+        "indirect": KospexSchema.PACKAGE_USE_TRANSITIVE,
+    }
+
+    def _enrich_dependency_records(self, records, extractor):
+        """Add deps.dev data and canonical DB fields to parsed records.
+
+        One enrichment path for every ecosystem. Previously each *_assess()
+        function did its own, which is how `package_type` ended up as "NuGet"
+        from one path and "nuget" from the registry, and how npm rows written by
+        assess() failed to reconcile with the same rows written by krunner osi.
+
+        `package_version` keeps the DECLARED text and only the *lookup* is
+        normalised through clean_version_spec(). package_version is part of the
+        dependency_data primary key, so rewriting it inserts duplicate rows on
+        re-sync instead of updating — the same rule
+        parse_pypi_package_declaration() follows for names and multi-specifier
+        versions.
+        """
+        package_type = extractor.package_type
+        enriched = []
+
+        for rec in records:
+            out = dict(rec)
+            declared_version = out.get("package_version", "")
+            req_type = out.get("requirements_type") or "direct"
+
+            # A lockfile closure can carry thousands of transitive entries and
+            # each lookup is an HTTP round-trip, so only declared dependencies
+            # are enriched. go.mod indirect modules ARE enriched — that list runs
+            # to tens, and a transitive dependency with a known advisory is the
+            # most valuable row in the table (#178).
+            skip_lookup = (
+                extractor.name == "pnpm-lock" and req_type not in ("direct", "dev")
+            )
+
+            if not skip_lookup:
+                lookup_version = self.clean_version_spec(declared_version or "")
+                out.update(
+                    self.depsdev_record(package_type, out.get("package_name"), lookup_version)
+                )
+                # depsdev_record echoes back the version it was given; restore
+                # the declared text so the primary key matches the manifest.
+                out["package_version"] = declared_version
+
+            out["package_type"] = package_type
+            out["package_use"] = self._REQ_TO_USE.get(req_type, KospexSchema.PACKAGE_USE_DIRECT)
+
+            if package_type == "npm":
+                # The ~ / ^ prefix is recorded separately; npm consumers use it
+                # to show how far an upgrade may drift.
+                out["semantic"] = self._semantic_prefix(declared_version)
+
+            if package_type == "pypi" and not out.get("source_repo"):
+                # deps.dev frequently has no source repo for pypi packages.
+                out["source_repo"] = self.get_pypi_source_repo(out.get("package_name"))
+
+            enriched.append(out)
+
+        return enriched
+
+    @staticmethod
+    def _semantic_prefix(version):
+        """The npm range prefix (~ or ^) of a declared version, or ""."""
+        if not version:
+            return ""
+        return version[0] if version[0] in ("~", "^") else ""
+
+    def _print_dependency_table(self, records, dev_deps=False):
+        """Print the per-package table. dev_deps controls what is SHOWN.
+
+        Extraction and the DB write are always complete; only this view is
+        filtered, so `-dev` cannot silently change what is recorded.
+        """
+        table = self.get_cli_pretty_table()
+        shown = [
+            r for r in records
+            if dev_deps or r.get("package_use") != KospexSchema.PACKAGE_USE_DEV
+        ]
+        for rec in shown:
+            table.add_row(self.get_values_array(rec, self.get_table_field_names(), "-"))
+        print(table)
+        hidden = len(records) - len(shown)
+        if hidden:
+            print(f"({hidden} dev dependency/ies recorded but not shown - use -dev)")
+
     def assess(self, filename, **kwargs):
         """Using deps.dev to assess and provide a summary of the package manager file.
         Args:
@@ -363,70 +454,29 @@ class KospexDependencies:
         #
         results = []
 
-        if basefile == "go.mod":
-            print(f"Found Go mod package file: {basefile}")
-            # "go", not "Go module". package_type is part of the dependency_data
-            # primary key, and every other ecosystem uses the lowercase deps.dev
-            # system name (pypi / npm / nuget). "Go module" was a one-off that
-            # deps.dev does not accept as a system at all — it only ever reached
-            # the DB column because gomod_assess() hardcoded "go" for the lookup.
-            # The registry has always declared "go".
-            package_type = "go"
-            results = self.gomod_assess(filename, results_file=results_file, repo_info=repo_info)
+        # Registry-driven dispatch (sub-project C2). `kospex sca` / `kospex deps`
+        # and `krunner osi` now select the parser the same way, from the same
+        # catalog — the divergence they had before is what let go.mod and
+        # *.csproj work in one path and silently vanish in the other (#180).
+        classification = classify(basefile)
+        extractor = classification.extractor
 
-        elif basefile == "pyproject.toml":
-            deps = self.parse_pyproject_file(filename)
-            package_type = "pypi"
-            results = self.pypi_assess2(deps)
-
-        elif self.is_npm_package(filename):
-            print(f"Found npm package file: {basefile}")
-            package_type = "npm"
-            results = self.npm_assess(
-                filename,
-                results_file=results_file,
-                repo_info=repo_info,
-                dev_deps=dev_deps,
-            )
-
-        elif self.is_nuget_package(filename):
-            print(f"Found nuget package file: {basefile}")
-            package_type = "nuget"
-            results = self.nuget_assess(
-                filename, results_file=results_file, repo_info=repo_info
-            )
-
-        elif self.is_pip_requirements_file(basefile):
-            print(f"Found pip requirements file: {basefile}")
-            package_type = "pypi"
-            results = self.pypi_assess(
-                filename,
-                results_file=results_file,
-                repo_info=repo_info,
-                print_table=print_table,
-            )
-
-        elif basefile == "pnpm-lock.yaml":
-            from kospex.extractors.pnpm import extract_pnpm_lock
-            package_type = "npm"
-            _req_to_use = {
-                "direct":   KospexSchema.PACKAGE_USE_DIRECT,
-                "dev":      KospexSchema.PACKAGE_USE_DEV,
-                "resolved": KospexSchema.PACKAGE_USE_TRANSITIVE,
-            }
-            packages = extract_pnpm_lock(filename)
-            for pkg in packages:
-                pkg["package_use"] = _req_to_use.get(pkg.get("requirements_type", ""), "")
-                # Only enrich declared deps — lockfile closures can have thousands of
-                # transitive entries and each depsdev_record() call is an HTTP round-trip.
-                if pkg.get("requirements_type") in ("direct", "dev"):
-                    enrichment = self.depsdev_record("npm", pkg["package_name"], pkg["package_version"])
-                    pkg.update(enrichment)
-            results = packages
-
-        else:
+        if extractor is None or not classification.supported:
             print(f"Unknown or unsupported package manager file found {basefile}")
             return None
+
+        package_type = extractor.package_type
+        print(f"Found {extractor.name} package file: {basefile}")
+
+        parser = resolve_parser(extractor, {"KospexDependencies": self})
+        results = self._enrich_dependency_records(parser(filename), extractor)
+
+        # dev_deps controls DISPLAY only. Extraction is always complete: a
+        # partial result is what made `sca -dev` inert (#181), made the two scan
+        # paths disagree, and blocks a whole-file demote in assess() (#151).
+        # Dev dependencies are tagged PACKAGE_USE_DEV so consumers can filter.
+        if print_table:
+            self._print_dependency_table(results, dev_deps=dev_deps)
 
         if results:
             for dep in results:

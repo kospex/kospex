@@ -6,7 +6,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Upgrade notes
 
-**Reported numbers change in this release, in six ways.** Anything already
+**Reported numbers change in this release, in seven ways.** Anything already
 showing kospex output — dashboards, screenshots, exported reports — will disagree
 with a post-upgrade run. None of this is a regression; the earlier figures were
 wrong or incomplete.
@@ -42,6 +42,18 @@ wrong or incomplete.
    smaller shifts come with it: `requirements.py` / `.rst` / `.lock` are no longer
    parsed as manifests (they never were manifests), and `requirements-wheel-*.txt`
    files now are.
+7. **npm projects report more dependencies from `kospex sca` / `deps`, and npm
+   `package_version` changes for caret/tilde ranges.** `devDependencies` are now
+   always extracted and tagged `package_use = 'dev'` — `-dev` controls only what
+   the printed table shows, not what is recorded — so npm counts rise for anyone
+   who was not passing the flag. Filter on `package_use = 'direct'` to compare
+   like with like. Separately, `sca`/`deps` stored `express` as `4.18.0` where the
+   manifest declared `^4.18.0` and `krunner osi` stored the declared text; both
+   now keep the declared text, so the same dependency scanned either way is one
+   row rather than two. `package_version` is in the primary key, so previously
+   written rows do not collide and are demoted by the next `osi` run. Finally,
+   `requirements.txt` and `pyproject.toml` rows gain `package_use = 'direct'`
+   where they previously stored NULL.
 
 **None of the fixes backfill.** Commit sync is incremental (`--since` the last
 recorded commit), so existing rows keep their old values until a repo is dropped
@@ -225,6 +237,25 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
   `changes/202608-remove-kospex-mergestat.md`.
 
 ### Fixed
+- **`kospex sca -dev` did nothing, and `sca` and `deps` disagreed on the same
+  file.** `sca` builds its kwargs with `params = locals()`, producing `dev`,
+  while `assess()` read `dev_deps` — so the flag never arrived and dev
+  dependencies were silently dropped, despite defaulting to on and being
+  documented as "Include dev/test dependencies". `deps` set `dev_deps`
+  correctly, so the two commands returned different results for identical input.
+  Extraction is now unconditional and complete: dev dependencies are always
+  recorded and tagged `package_use = 'dev'`, with the flag controlling only what
+  the printed table shows. A partial result was also what blocked a whole-file
+  demote in `assess()` (#151). Closes #181.
+- **`assess()` reached six hand-rolled branches to pick a parser, where `krunner
+  osi` used the registry.** `kospex sca` / `kospex deps` now dispatch through
+  `classify()` and `resolve_parser()` like `osi` does, with one shared enrichment
+  path replacing five per-ecosystem ones. That removes three divergences: npm
+  rows stored a stripped `package_version` where `osi` stored the declared text
+  (so the same dependency scanned both ways produced two rows), `requirements.txt`
+  and `pyproject.toml` rows never set `package_use`, and NuGet reached deps.dev
+  as `"NuGet"` against the registry's `"nuget"`. Advances #180. See
+  `changes/202608-assess-registry-dispatch-c2a.md`.
 - **The table-introspection cache served one in-memory database's tables to
   another.** `_db_key()` keyed in-memory databases by `id(db)` as a
   "per-instance key", but `id()` is unique only among *live* objects and CPython
