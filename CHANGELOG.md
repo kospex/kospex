@@ -6,7 +6,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Upgrade notes
 
-**Reported numbers change in this release, in four ways.** Anything already
+**Reported numbers change in this release, in five ways.** Anything already
 showing kospex output — dashboards, screenshots, exported reports — will disagree
 with a post-upgrade run. None of this is a regression; the earlier figures were
 wrong or incomplete.
@@ -27,6 +27,11 @@ wrong or incomplete.
    (0.6%–8.5% of rows on the repos measured; **0** on repos with clean merges).
 4. **`commits.parents` is populated for newly-synced commits only.** Existing
    rows stay NULL. Treat NULL as *unknown*, not as "not a merge".
+5. **Go repos report more dependencies.** Transitive (`// indirect`) modules are
+   now recorded where they were previously discarded, and repos whose `go.mod`
+   uses single-line `require` directives gain dependencies that were never parsed
+   at all — such a repo may have reported **zero** Go dependencies before. Filter
+   on `package_use = 'direct'` to compare like with like against an earlier run.
 
 **None of the fixes backfill.** Commit sync is incremental (`--since` the last
 recorded commit), so existing rows keep their old values until a repo is dropped
@@ -210,6 +215,21 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
   `changes/202608-remove-kospex-mergestat.md`.
 
 ### Fixed
+- **go.mod reported fewer dependencies than it declares, in three ways.** Single-line
+  `require <module> <version>` directives were never parsed — `parse_go_mod_from_file()`
+  gated every parse path behind an exact `require (` line, so the one-per-line form
+  that `go mod init` plus a `go get` produces was skipped entirely, and a repo using it
+  reported zero Go dependencies. `// indirect` modules were parsed and then discarded
+  by `gomod_assess()`, so transitive Go dependencies never reached `dependency_data` at
+  all; they are now recorded as `PACKAGE_USE_TRANSITIVE`, with the same deps.dev
+  enrichment as direct modules. And a bare comment line inside a `require ( ... )` block
+  was recorded as a module named `//`, because it satisfied the two-parts test. Direct
+  modules now also carry `PACKAGE_USE_DIRECT`, which `gomod_assess()` never set.
+  `exclude` / `replace` / `retract` directives remain excluded — previously only
+  incidentally, now deliberately and with a test. **go.mod repos will report more
+  dependencies after the next sync**: transitive rows appear where there were none, and
+  repos using single-line requires gain dependencies they never had. Nothing is deleted.
+  Closes #177 and #178. See `changes/202608-gomod-transitive-and-single-require.md`.
 - **Merge commits were counted as authorship, inflating whoever merged.**
   `commit_stats()` counted every row with `COUNT(*)`, so a merge added one to the
   person who merged — typically a maintainer, lead or release manager, which is

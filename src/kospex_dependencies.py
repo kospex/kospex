@@ -1387,14 +1387,24 @@ class KospexDependencies:
         deps = self.parse_go_mod_from_file(filename)
 
         for item in deps:
-            if item["indirect"] is False:
-                # details = self.get_depsdev_info('gomod', item['module'], item['version'])
-                # self.depsdev_record(repo_info, details)
-                record = self.depsdev_record("go", item["module"], item["version"])
-                print(record)
-                table_rows.append(self.get_values_array(record, self.get_table_field_names(), "-"))
-                records.append(record)
-                # print(item)
+            # Indirect (transitive) modules are recorded too, tagged
+            # PACKAGE_USE_TRANSITIVE — dropping them meant go.mod transitive
+            # dependencies never reached dependency_data at all.
+            #
+            # They get the same deps.dev enrichment as direct ones, unlike the
+            # pnpm extractor which skips it for transitive entries. A pnpm
+            # lockfile closure can carry thousands of them; a go.mod indirect
+            # list runs to tens or low hundreds, so the cost is proportionate —
+            # and a transitive dependency carrying a known advisory is the most
+            # valuable row in the table.
+            record = self.depsdev_record("go", item["module"], item["version"])
+            record["package_use"] = (
+                KospexSchema.PACKAGE_USE_TRANSITIVE if item["indirect"]
+                else KospexSchema.PACKAGE_USE_DIRECT
+            )
+            print(record)
+            table_rows.append(self.get_values_array(record, self.get_table_field_names(), "-"))
+            records.append(record)
 
         # for item in data['dependencies']:
         #    details = self.get_npm_dependency_dict(item,data)
@@ -1437,27 +1447,41 @@ class KospexDependencies:
                         in_require_block = False
                         continue  # Move to the next line
 
-                    # Parse the line if we're inside a require block
+                    # A require directive has two valid forms: grouped inside a
+                    # `require ( ... )` block, or one per line as
+                    # `require <module> <version>`. Only `require` lines are read —
+                    # exclude / replace / retract must never be taken as
+                    # dependencies, which is why this matches the keyword rather
+                    # than parsing every non-block line.
                     if in_require_block:
-                        # Split the line into parts
                         parts = trimmed_line.split()
+                    elif trimmed_line.startswith("require "):
+                        parts = trimmed_line.split()[1:]
+                    else:
+                        continue
 
-                        # Ensure the line has at least two parts: module and version
-                        if len(parts) >= 2:
-                            # Extract module and version
-                            module, version = parts[0], parts[1]
+                    # Skip comment-only lines. Inside a block these split into two
+                    # or more parts and would otherwise be recorded as a module
+                    # named "//".
+                    if not parts or parts[0].startswith("//"):
+                        continue
 
-                            # Check if the module is marked as indirect
-                            indirect = "indirect" in parts
+                    # Ensure the line has at least two parts: module and version
+                    if len(parts) >= 2:
+                        # Extract module and version
+                        module, version = parts[0], parts[1]
 
-                            # Append the information to the results array
-                            results.append(
-                                {
-                                    "module": module,
-                                    "version": version,
-                                    "indirect": indirect,
-                                }
-                            )
+                        # Check if the module is marked as indirect
+                        indirect = "indirect" in parts
+
+                        # Append the information to the results array
+                        results.append(
+                            {
+                                "module": module,
+                                "version": version,
+                                "indirect": indirect,
+                            }
+                        )
         except FileNotFoundError:
             print(f"File {file_path} not found.")
         except Exception as e:
