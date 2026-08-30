@@ -73,6 +73,47 @@ class TestExtract:
         assert extract_csproj(_write(tmp_path, "<Project></Project>")) == []
 
 
+class TestAssessPersistsNuget:
+    """#107: nuget_assess() had no return statement and assess()'s dispatch did
+    not capture its result, so NuGet dependencies were built, printed as a table
+    and discarded. Two independent bugs — fixing either alone changes nothing."""
+
+    def _kdeps(self):
+        from kospex_dependencies import KospexDependencies
+        kd = KospexDependencies()
+        kd.depsdev_record = lambda pt, pn, pv: {
+            "package_name": pn, "package_version": pv, "package_type": pt,
+        }
+        return kd
+
+    def test_nuget_assess_returns_records(self, tmp_path):
+        path = _write(tmp_path, """<Project>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>""")
+
+        records = self._kdeps().nuget_assess(path)
+
+        assert [r["package_name"] for r in records] == ["Newtonsoft.Json"]
+
+    def test_assess_returns_nuget_records(self, tmp_path):
+        """The dispatch must capture the result, not just call it."""
+        import contextlib
+        import io
+        path = _write(tmp_path, """<Project>
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="3.1.1" />
+  </ItemGroup>
+</Project>""")
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            results = self._kdeps().assess(path)
+
+        assert [r["package_name"] for r in results] == ["Serilog"]
+
+
 class TestEntityExpansion:
     """CWE-776: uncontrolled XML entity expansion.
 

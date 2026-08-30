@@ -31,6 +31,7 @@ from kospex.assessment_types import AssessmentTypes
 from kospex.db.migrator import warn_if_behind
 from kospex.extractors.workflows import extract_workflow_actions
 from kospex.extractors.pnpm import extract_pnpm_lock
+from kospex.extractors.registry import classify, resolve_parser
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
@@ -63,6 +64,37 @@ def get_repos(request_id):
         params = KospexWeb.get_id_params(request_id)
 
     return kospex.kospex_query.get_repos(**params)
+
+
+def extract_dependency_file(extractor, full_path, repo_id, provider, file_hash, kdeps):
+    """Parse one dependency file via its registry entry and stamp the row fields.
+
+    Extracted from `osi` so it is reachable without a synced database — a test
+    that re-implements this loop body proves nothing about the code that runs.
+
+    Every row must carry the SAME keys. write_dict_to_csv takes its header from
+    data[0] alone and DictWriter raises on a later row with extra keys, so a repo
+    mixing (say) requirements.txt with pnpm-lock.yaml would fail the CSV write.
+    The parsers return very different shapes — 3 keys from
+    parse_pip_requirements_file against the 11-key template from the extractors/
+    modules — so uniformity is produced here rather than assumed.
+    """
+    parser = resolve_parser(extractor, {"KospexDependencies": kdeps})
+    reqs = parser(full_path)
+
+    for req in reqs:
+        req["_repo_id"] = repo_id
+        req["hash"] = file_hash
+        req["file_path"] = provider
+        # package_type doubles as the deps.dev system name — pypi / npm / go /
+        # nuget all resolve there — so the old ecosystem -> eco_to_type
+        # round-trip is gone along with the mapping it could drift from.
+        req["package_type"] = extractor.package_type
+        req.setdefault("requirements_type", "direct")
+        req.setdefault("extras", "")
+        req.setdefault("ecosystem", extractor.package_type)
+
+    return reqs
 
 
 def load_dependency_memory_db():
@@ -638,77 +670,52 @@ def osi(all, request_id):
             console.print("tech_type:", d["tech_type"])
             full_path = os.path.join(r["file_path"], d["Provider"])
 
-            if "requirements" in d["Provider"]:
-                console.print(f"Should parse requirements {d['Provider']}")
-                reqs = kdeps.parse_pip_requirements_file(full_path)
-                for req in reqs:
-                    req["_repo_id"] = r["_repo_id"]
-                    req["hash"] = d.get("hash")
-                    req["file_path"] = d["Provider"]
-                    req["requirements_type"] = "direct"
-                    req["extras"] = ""
-                    req["ecosystem"] = "PyPi"
-                    results.append(req)
-                console.log(reqs)
+            # Registry-driven dispatch (sub-project C). The manifest type, its
+            # parser and its package_type all come from one place, so `krunner
+            # osi` and `kospex sca` cannot drift apart the way they did when each
+            # kept its own filename checks — go.mod and *.csproj were silently
+            # skipped here for exactly that reason.
+            classification = classify(d["Provider"])
+            extractor = classification.extractor
 
-            elif "pyproject" in d["Provider"]:
-                console.print(f"Should parse pyproject.toml {d['Provider']}")
-                reqs = kdeps.parse_pyproject_file(full_path)
-                for req in reqs:
-                    req["_repo_id"] = r["_repo_id"]
-                    req["hash"] = d.get("hash")
-                    req["file_path"] = d["Provider"]
-                    req["ecosystem"] = "PyPi"
-                    results.append(req)
-                console.log(reqs)
-
-            elif "package.json" in d["Provider"]:
-                console.print(f"Should parse package.json {d['Provider']}", style="blue")
-                try:
-                    reqs = kdeps.parse_package_json(file_path=full_path)
-                except (json.JSONDecodeError, OSError) as e:
-                    console.print(
-                        f"Skipping malformed package.json {d['Provider']}: {e}",
-                        style="yellow",
-                    )
-                    continue
-                for req in reqs:
-                    req["_repo_id"] = r["_repo_id"]
-                    req["hash"] = d.get("hash")
-                    req["file_path"] = d["Provider"]
-                    req["ecosystem"] = "NPM"
-                    results.append(req)
-                console.log(reqs)
-
-            elif "pnpm-lock.yaml" in d["Provider"]:
-                console.print(f"Should parse pnpm-lock.yaml {d['Provider']}", style="blue")
-                reqs = extract_pnpm_lock(full_path)
-                for req in reqs:
-                    req["_repo_id"] = r["_repo_id"]
-                    req["hash"] = d.get("hash")
-                    req["file_path"] = d["Provider"]
-                    req["ecosystem"] = "NPM"
-                    results.append(req)
-                console.log(reqs)
-
-            else:
+            if extractor is None or not classification.supported:
                 console.print(f"Unsupported depdency {d['Provider']}", style="red")
+                continue
+
+            console.print(f"Parsing {extractor.name}: {d['Provider']}", style="blue")
+            try:
+                reqs = extract_dependency_file(
+                    extractor, full_path, r["_repo_id"], d["Provider"], d.get("hash"), kdeps
+                )
+            except (json.JSONDecodeError, OSError) as e:
+                console.print(
+                    f"Skipping malformed {d['Provider']}: {e}",
+                    style="yellow",
+                )
+                continue
+
+            results.extend(reqs)
+            console.log(reqs)
 
         # console.print(deps)
         #
     # Canonical DB values, matching what `kospex sca`/assess() writes so
     # krunner osi rows reconcile with single-file scans rather than duplicating.
-    eco_to_type = {"PyPi": "pypi", "NPM": "npm"}
+    # package_type now comes from the registry entry and doubles as the deps.dev
+    # system name — pypi / npm / go / nuget all resolve there — so the previous
+    # ecosystem -> eco_to_type mapping is gone with the drift it allowed.
     req_to_use = {
         "direct": KospexSchema.PACKAGE_USE_DIRECT,
         "dev": KospexSchema.PACKAGE_USE_DEV,
         "resolved": KospexSchema.PACKAGE_USE_TRANSITIVE,
+        # go.mod marks transitive modules `// indirect`.
+        "indirect": KospexSchema.PACKAGE_USE_TRANSITIVE,
     }
 
     console.print(results)
     for d in results:
         deps_rec = kdeps.depsdev_record(
-            d["ecosystem"],
+            d["package_type"],
             d["package_name"],
             kdeps.clean_version_spec(d["package_version"]),
         )
@@ -721,9 +728,6 @@ def osi(all, request_id):
             d["published_at"] = published.split("T")[0]
         else:
             d["published_at"] = "Unknown"
-        d["package_type"] = eco_to_type.get(
-            d.get("ecosystem"), str(d.get("ecosystem", "")).lower()
-        )
         d["package_use"] = req_to_use.get(d.get("requirements_type", ""), "")
 
     if not results or len(results) == 0:

@@ -365,7 +365,13 @@ class KospexDependencies:
 
         if basefile == "go.mod":
             print(f"Found Go mod package file: {basefile}")
-            package_type = "Go module"
+            # "go", not "Go module". package_type is part of the dependency_data
+            # primary key, and every other ecosystem uses the lowercase deps.dev
+            # system name (pypi / npm / nuget). "Go module" was a one-off that
+            # deps.dev does not accept as a system at all — it only ever reached
+            # the DB column because gomod_assess() hardcoded "go" for the lookup.
+            # The registry has always declared "go".
+            package_type = "go"
             results = self.gomod_assess(filename, results_file=results_file, repo_info=repo_info)
 
         elif basefile == "pyproject.toml":
@@ -386,7 +392,9 @@ class KospexDependencies:
         elif self.is_nuget_package(filename):
             print(f"Found nuget package file: {basefile}")
             package_type = "nuget"
-            self.nuget_assess(filename, results_file=results_file, repo_info=repo_info)
+            results = self.nuget_assess(
+                filename, results_file=results_file, repo_info=repo_info
+            )
 
         elif self.is_pip_requirements_file(basefile):
             print(f"Found pip requirements file: {basefile}")
@@ -1186,40 +1194,32 @@ class KospexDependencies:
         return authors
 
     def nuget_assess(self, filename, results_file=None, repo_info=None, store=True):
-        """Assess a nuget .cproj file"""
+        """Assess a nuget .csproj file, returning enriched dependency records.
+
+        Parsing is delegated to kospex.extractors.nuget, which both scan paths
+        share — this used to hold its own XML parse, build the records, print
+        them and then fall off the end without returning them, so NuGet
+        dependencies were never persisted by any path (#107).
+        """
+        from kospex.extractors.nuget import extract_csproj
 
         table = self.get_cli_pretty_table()
         table_rows = []
-        result = []
+        records = []
 
-        try:
-            with open(filename, "r") as xml_file:
-                xml_data = xml_file.read()
-            root = ET.fromstring(xml_data)
-            # Find all PackageReference elements
-            package_references = root.findall(".//PackageReference")
-            # Extract the 'Include' and 'Version' attributes
-            result = [
-                {
-                    "package_name": pkg.attrib["Include"],
-                    "package_version": pkg.attrib["Version"],
-                }
-                for pkg in package_references
-            ]
-            # print(result)
-
-        except Exception as e:
-            print(f"Error parsing {filename}: {e}")
-            return False
-
-        for pkg in result:
-            # print(f"Checking {pkg['package_name']} version {pkg['package_version']}")
+        for pkg in extract_csproj(filename):
             rec = self.depsdev_record("NuGet", pkg["package_name"], pkg["package_version"])
+            rec["package_use"] = KospexSchema.PACKAGE_USE_DIRECT
             table_rows.append(self.get_values_array(rec, self.get_table_field_names(), "-"))
+            records.append(rec)
 
         table.add_rows(table_rows)
         print(table)
-        # table_rows.append(self.get_values_array(details, self.get_table_field_names(), '-'))
+
+        if results_file:
+            self.write_csv(results_file, table_rows, self.get_table_field_names())
+
+        return records
 
     def find_dependency_files(self, directory):
         """Find all dependency files (package managers) in a directory and its subdirectories."""
