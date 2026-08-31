@@ -366,7 +366,9 @@ class KospexDependencies:
             )
 
             if not skip_lookup:
-                lookup_version = self.clean_version_spec(declared_version or "")
+                lookup_version = self.clean_version_spec(
+                    declared_version or "", package_type
+                )
                 out.update(
                     self.depsdev_record(package_type, out.get("package_name"), lookup_version)
                 )
@@ -1583,7 +1585,7 @@ class KospexDependencies:
 
         return ":".join([system, name, version])
 
-    def clean_version_spec(self, version: str) -> str:
+    def clean_version_spec(self, version: str, package_type: str = None) -> str:
         """
         Clean version specifications and extract the lowest version from complex constraints.
 
@@ -1647,7 +1649,7 @@ class KospexDependencies:
                 continue
 
             # Extract version from constraint
-            extracted = self.extract_version_from_constraint(part)
+            extracted = self.extract_version_from_constraint(part, package_type)
             if extracted:
                 versions.append(extracted)
 
@@ -1658,7 +1660,17 @@ class KospexDependencies:
         # Return the lowest version
         return self.find_lowest_version(versions)
 
-    def extract_version_from_constraint(self, constraint: str) -> Optional[str]:
+    # Ecosystems where a leading `v` is part of the canonical version rather
+    # than decoration. Go module versions are `v1.2.3` and deps.dev 404s on
+    # `1.2.3`, so stripping it silently breaks every Go lookup.
+    _V_PREFIX_ECOSYSTEMS = ("go",)
+
+    def _keeps_v_prefix(self, package_type) -> bool:
+        return (package_type or "").lower() in self._V_PREFIX_ECOSYSTEMS
+
+    def extract_version_from_constraint(
+        self, constraint: str, package_type: str = None
+    ) -> Optional[str]:
         """
         Extract version number from a single constraint.
 
@@ -1683,8 +1695,9 @@ class KospexDependencies:
         for op in operators:
             if constraint.startswith(op):
                 version = constraint[len(op) :].strip()
-                # Remove leading 'v' if present
-                if version.startswith("v"):
+                # Remove leading 'v' if present — decoration in npm/pypi, but
+                # part of the version itself in Go.
+                if version.startswith("v") and not self._keeps_v_prefix(package_type):
                     version = version[1:]
                 return version
 
@@ -1696,7 +1709,7 @@ class KospexDependencies:
         if constraint and constraint[0].isdigit():
             return constraint
         elif constraint.startswith("v") and len(constraint) > 1 and constraint[1].isdigit():
-            return constraint[1:]
+            return constraint if self._keeps_v_prefix(package_type) else constraint[1:]
 
         return None
 

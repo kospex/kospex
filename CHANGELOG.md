@@ -237,6 +237,20 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
   `changes/202608-remove-kospex-mergestat.md`.
 
 ### Fixed
+- **Every Go dependency lookup failed, so Go rows carried no advisory data.**
+  `clean_version_spec()` strips a leading `v`, which is right for npm and pypi
+  where it is decoration and wrong for Go where it is part of the canonical
+  module version — deps.dev returns 200 for `v0.9.1` and 404 for `0.9.1`. Both
+  scan paths normalised every ecosystem through it, so Go rows were written with
+  no `advisories`, no `versions_behind` and a misleading `resolution` of
+  `package_not_found`. Wrong data rather than missing data, with nothing to
+  indicate a failure. The helper now takes the `package_type` and preserves the
+  prefix for ecosystems where it is canonical. This arrived through the
+  deduplication work itself: `gomod_assess()` passed the raw version and was
+  correct, and consolidating the five enrichment paths onto one shared path
+  propagated the npm/pypi behaviour to Go. Any Go row written since the `krunner
+  osi` go.mod support needs a re-sync to be corrected. See
+  `changes/202608-go-version-v-prefix.md`.
 - **`kospex sca -dev` did nothing, and `sca` and `deps` disagreed on the same
   file.** `sca` builds its kwargs with `params = locals()`, producing `dev`,
   while `assess()` read `dev_deps` — so the flag never arrived and dev

@@ -97,6 +97,50 @@ def extract_dependency_file(extractor, full_path, repo_id, provider, file_hash, 
     return reqs
 
 
+# requirements_type as the parsers report it -> the DB package_use value.
+# Mirrors KospexDependencies._REQ_TO_USE so osi rows reconcile with the rows
+# `kospex sca` writes for the same file.
+_REQ_TO_USE = {
+    "direct": KospexSchema.PACKAGE_USE_DIRECT,
+    "dev": KospexSchema.PACKAGE_USE_DEV,
+    "resolved": KospexSchema.PACKAGE_USE_TRANSITIVE,
+    # go.mod marks transitive modules `// indirect`.
+    "indirect": KospexSchema.PACKAGE_USE_TRANSITIVE,
+}
+
+
+def enrich_dependency_records(results, kdeps, echo=None):
+    """Add deps.dev data and canonical DB values to pooled osi records.
+
+    Extracted from `osi` so it is reachable without a synced database — the
+    version passed to the lookup is ecosystem-dependent and that is not
+    something a test should have to drive a whole CLI command to check.
+
+    `clean_version_spec` is given the package_type: a leading `v` is decoration
+    in npm and pypi but part of a Go module version, and deps.dev 404s on a Go
+    version without it.
+    """
+    for d in results:
+        deps_rec = kdeps.depsdev_record(
+            d["package_type"],
+            d["package_name"],
+            kdeps.clean_version_spec(d["package_version"], d["package_type"]),
+        )
+        if echo:
+            echo(deps_rec)
+        d["versions_behind"] = deps_rec.get("versions_behind")   # int or None, no "Unknown"
+        d["advisories"] = deps_rec.get("advisories")
+        d["resolution"] = deps_rec.get("resolution")
+        published = deps_rec.get("published_at", None)
+        if published:
+            d["published_at"] = published.split("T")[0]
+        else:
+            d["published_at"] = "Unknown"
+        d["package_use"] = _REQ_TO_USE.get(d.get("requirements_type", ""), "")
+
+    return results
+
+
 def load_dependency_memory_db():
     """
     Load tables required for dependency analysis
@@ -699,36 +743,8 @@ def osi(all, request_id):
 
         # console.print(deps)
         #
-    # Canonical DB values, matching what `kospex sca`/assess() writes so
-    # krunner osi rows reconcile with single-file scans rather than duplicating.
-    # package_type now comes from the registry entry and doubles as the deps.dev
-    # system name — pypi / npm / go / nuget all resolve there — so the previous
-    # ecosystem -> eco_to_type mapping is gone with the drift it allowed.
-    req_to_use = {
-        "direct": KospexSchema.PACKAGE_USE_DIRECT,
-        "dev": KospexSchema.PACKAGE_USE_DEV,
-        "resolved": KospexSchema.PACKAGE_USE_TRANSITIVE,
-        # go.mod marks transitive modules `// indirect`.
-        "indirect": KospexSchema.PACKAGE_USE_TRANSITIVE,
-    }
-
     console.print(results)
-    for d in results:
-        deps_rec = kdeps.depsdev_record(
-            d["package_type"],
-            d["package_name"],
-            kdeps.clean_version_spec(d["package_version"]),
-        )
-        console.print(deps_rec)
-        d["versions_behind"] = deps_rec.get("versions_behind")   # int or None, no "Unknown"
-        d["advisories"] = deps_rec.get("advisories")
-        d["resolution"] = deps_rec.get("resolution")
-        published = deps_rec.get("published_at", None)
-        if published:
-            d["published_at"] = published.split("T")[0]
-        else:
-            d["published_at"] = "Unknown"
-        d["package_use"] = req_to_use.get(d.get("requirements_type", ""), "")
+    enrich_dependency_records(results, kdeps, echo=console.print)
 
     if not results or len(results) == 0:
         console.print("No results", style="red")
