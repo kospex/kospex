@@ -76,7 +76,13 @@ class TestExtract:
 class TestAssessPersistsNuget:
     """#107: nuget_assess() had no return statement and assess()'s dispatch did
     not capture its result, so NuGet dependencies were built, printed as a table
-    and discarded. Two independent bugs — fixing either alone changes nothing."""
+    and discarded. Two independent bugs — fixing either alone changed nothing.
+
+    The function-level test that paired with this one is gone: nuget_assess()
+    was retired when assess() moved to registry dispatch (sub-project C2), and
+    a test against a deleted function proves nothing. The assess()-level
+    assertion below is the one that matters, since that is the path that runs.
+    """
 
     def _kdeps(self):
         from kospex_dependencies import KospexDependencies
@@ -85,17 +91,6 @@ class TestAssessPersistsNuget:
             "package_name": pn, "package_version": pv, "package_type": pt,
         }
         return kd
-
-    def test_nuget_assess_returns_records(self, tmp_path):
-        path = _write(tmp_path, """<Project>
-  <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-  </ItemGroup>
-</Project>""")
-
-        records = self._kdeps().nuget_assess(path)
-
-        assert [r["package_name"] for r in records] == ["Newtonsoft.Json"]
 
     def test_assess_returns_nuget_records(self, tmp_path):
         """The dispatch must capture the result, not just call it."""
