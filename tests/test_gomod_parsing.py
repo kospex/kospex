@@ -8,6 +8,9 @@ Covers two defects:
   dependencies never reached dependency_data. They are now recorded as
   PACKAGE_USE_TRANSITIVE, with the same deps.dev enrichment as direct ones.
 """
+import contextlib
+import io
+
 import kospex_schema as KospexSchema
 from kospex_dependencies import KospexDependencies
 
@@ -16,6 +19,18 @@ def _write(tmp_path, content):
     p = tmp_path / "go.mod"
     p.write_text(content)
     return str(p)
+
+
+def _assess(kd, path):
+    """Run assess() quietly.
+
+    These previously called gomod_assess() directly. That function became dead
+    when assess() moved to registry dispatch (sub-project C2), so the assertions
+    now run against the path that actually executes.
+    """
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        return kd.assess(path) or []
 
 
 def _kdeps():
@@ -122,7 +137,7 @@ require (
 )
 """)
 
-    records = kd.gomod_assess(path)
+    records = _assess(kd, path)
 
     by_name = {r["package_name"]: r for r in records}
     assert set(by_name) == {"github.com/pkg/errors", "github.com/stretchr/testify"}
@@ -141,7 +156,7 @@ require (
 )
 """)
 
-    kd.gomod_assess(path)
+    _assess(kd, path)
 
     assert ("go", "github.com/b/indirect", "v2.0.0") in calls
 
@@ -166,4 +181,4 @@ def test_gomod_with_no_dependencies_returns_empty(tmp_path):
     kd, _ = _kdeps()
     path = _write(tmp_path, "module x\ngo 1.21\n")
 
-    assert kd.gomod_assess(path) == []
+    assert _assess(kd, path) == []

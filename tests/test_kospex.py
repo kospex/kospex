@@ -149,8 +149,15 @@ def test_npm_assess_stamps_package_use(tmp_path):
     def fake_depsdev(pkg_type, name, version):
         return {"package_name": name, "package_version": version, "package_type": pkg_type}
 
+    # Previously called npm_assess() directly; that became dead when assess()
+    # moved to registry dispatch (sub-project C2).
+    import contextlib
+    import io
+
+    buf = io.StringIO()
     with patch.object(kdeps, "depsdev_record", side_effect=fake_depsdev):
-        results = kdeps.npm_assess(str(pkg_json), dev_deps=True)
+        with contextlib.redirect_stdout(buf):
+            results = kdeps.assess(str(pkg_json), dev_deps=True)
 
     by_name = {r["package_name"]: r for r in results}
     assert by_name["lodash"]["package_use"] == KospexSchema.PACKAGE_USE_DIRECT

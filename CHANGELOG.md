@@ -151,6 +151,19 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
   not "does not integrate". Both tables carry a footnote saying so.
 
 ### Changed
+- **Retired the five per-ecosystem `*_assess()` functions.** `assess()` moved to
+  registry dispatch, leaving `npm_assess`, `pypi_assess`, `pypi_assess2`,
+  `gomod_assess` and `nuget_assess` with no callers in `src/` — only tests kept
+  them alive. Removing them, plus the two helpers they orphaned
+  (`get_npm_dependency_dict`, `write_csv`), takes 341 lines out of
+  `kospex_dependencies.py` (1816 → 1488) and deletes a third `upsert_all`: a
+  database write path nothing could reach. Unreachability was confirmed three
+  ways before deleting — no non-definition references in `src/`, no registry
+  `parse_ref` pointing at any of them, and no dynamic dispatch that could reach
+  them. The four test files that called them directly now exercise `assess()`,
+  so the behaviour they cover (#177, #178, #107, #108) is still asserted against
+  the path that runs. No behaviour change. See
+  `changes/202608-retire-dead-assess-functions.md`.
 - **Raised the panopticas floor to `>=0.0.19`.** 0.0.19 adds a queryable tag
   vocabulary (`get_tags()`, `get_filetypes()`, `get_languages()`, derived from
   the detection rules so they cannot drift), `--json` on every panopticas
