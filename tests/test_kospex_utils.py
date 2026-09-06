@@ -91,7 +91,7 @@ def test_validate_includes_a_database_section(tmp_path, monkeypatch):
     validation = KospexUtils.validate_kospex_setup()
 
     assert "database" in validation
-    assert validation["database"]["pending_count"] == 3
+    assert validation["database"]["pending_count"] == 4
 
 
 def test_behind_db_is_not_healthy(tmp_path, monkeypatch):

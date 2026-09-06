@@ -44,10 +44,10 @@ def test_status_on_a_fresh_db_is_current(tmp_path, monkeypatch):
 
     assert status["exists"] is True
     assert status["pending_count"] == 0
-    assert status["applied_count"] == 3
+    assert status["applied_count"] == 4
     assert status["schema_migrations_present"] is True
     assert status["created_this_run"] is True
-    assert status["migrations_applied_this_run"] == 3
+    assert status["migrations_applied_this_run"] == 4
     assert status["migration_error"] is None
 
 
@@ -68,7 +68,7 @@ def test_status_reports_pending_on_a_behind_db(tmp_path, monkeypatch):
 
     status = db_status(db)
 
-    assert status["pending_count"] == 3
+    assert status["pending_count"] == 4
     assert status["applied_count"] == 0
     assert status["version"] == "2"
     assert "0004_repos_last_fetch" in status["pending_ids"]
@@ -84,4 +84,4 @@ def test_status_handles_a_missing_schema_migrations_table(tmp_path, monkeypatch)
     status = db_status(db)
 
     assert status["schema_migrations_present"] is False
-    assert status["pending_count"] == 3
+    assert status["pending_count"] == 4
