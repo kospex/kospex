@@ -227,3 +227,25 @@ class TestRequirementsRealignment:
         proj = _assess(kd, str(tmp_path / "pyproject.toml"))[0]
 
         assert req["package_version"] == proj["package_version"] == ">=2.0"
+
+    def test_tilde_equals_resolves_a_real_lookup_version(self, tmp_path):
+        """`~=` (PEP 440 compatible-release) was the regression this change
+
+        introduced: assess() feeds package_version into clean_version_spec()
+        for the deps.dev lookup and resolved_version. Once package_version
+        kept the operator, `~=2.3.3` hit extract_version_from_constraint's
+        caret/tilde fallback (`startswith("~")`) before its comparison-
+        operator list even ran, stripping only the tilde and leaving the
+        corrupt lookup version `=2.3.3`. resolved_version must be the bare
+        version, exactly as it is for every other operator.
+        """
+        kd = _kdeps()
+        p = tmp_path / "requirements.txt"
+        p.write_text("numpy~=2.3.3\n")
+
+        rec = _assess(kd, str(p))[0]
+
+        assert rec["package_version"] == "~=2.3.3"
+        assert rec["version_kind"] == "tilde"
+        assert rec["version_operator"] == "~="
+        assert rec["resolved_version"] == "2.3.3"

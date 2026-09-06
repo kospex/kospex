@@ -1381,12 +1381,14 @@ class KospexDependencies:
         # Remove leading operators and whitespace
         constraint = constraint.strip()
 
-        # Handle caret and tilde
-        if constraint.startswith("^") or constraint.startswith("~"):
-            return constraint[1:].strip()
-
-        # Handle comparison operators
-        operators = [">=", "<=", "==", "!=", ">", "<", "="]
+        # Handle comparison operators. Longest-first, and checked before the
+        # caret/tilde fallback below: PEP 440's `~=` and `===` both start
+        # with characters the caret/tilde check would otherwise claim first
+        # (`~=2.3.3` -> stripping only the tilde left `=2.3.3`), and a
+        # shorter operator earlier in this list can shadow a longer one that
+        # shares its prefix (`==` matching inside `=== 23.1.0` left a stray
+        # `=` masquerading as a version).
+        operators = ["===", "~=", ">=", "<=", "==", "!=", ">", "<", "="]
         for op in operators:
             if constraint.startswith(op):
                 version = constraint[len(op) :].strip()
@@ -1395,6 +1397,11 @@ class KospexDependencies:
                 if version.startswith("v") and not self._keeps_v_prefix(package_type):
                     version = version[1:]
                 return version
+
+        # Handle caret and tilde (npm ranges; not reached by pypi's `~=`,
+        # which the operator loop above already consumed).
+        if constraint.startswith("^") or constraint.startswith("~"):
+            return constraint[1:].strip()
 
         # Handle wildcards (return as is, will be handled in comparison)
         if any(char in constraint for char in ["x", "X", "*"]):

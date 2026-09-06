@@ -65,15 +65,20 @@ class TestEnvironmentMarkers:
 
 
 class TestWhitespace:
-    """Neither field may carry surrounding whitespace (defect 3)."""
+    """Neither field may carry the name's surrounding whitespace (defect 3).
 
-    def test_spaces_around_the_operator_are_stripped(self, kd):
+    Internal spacing between the operator and the version is deliberately
+    kept (Task 5, #187) — package_version stores the declaration as written,
+    the same as every other parser, so `hypothesis >= 3.30` and
+    `hypothesis>=3.30` are distinct declared texts, not two spellings of one
+    normalised value.
+    """
+
+    def test_whitespace_around_the_declaration_is_stripped_but_internal_spacing_is_kept(self, kd):
         result = kd.parse_pypi_package_declaration("hypothesis >= 3.30")
         assert result is not None
         assert result["package_name"] == "hypothesis"
-        # package_version keeps the declared text, operator included (Task
-        # 5, #187) — only the leading name (and trailing whitespace after
-        # it) is stripped. Was "3.30".
+        # Was "3.30" before Task 5 split the operator out of package_version.
         assert result["package_version"] == ">= 3.30"
         assert result["version_type"] == ">="
 
