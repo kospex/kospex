@@ -57,7 +57,10 @@ class TestEnvironmentMarkers:
         )
         assert result is not None
         assert result["package_name"] == "numpy"
-        assert result["package_version"] == "2.3.3"
+        # package_version now keeps the declared operator (Task 5, #187) —
+        # it is part of the dependency_data primary key and every other
+        # parser stores the declaration as written. Was "2.3.3".
+        assert result["package_version"] == "~=2.3.3"
         assert result["version_type"] == "~="
 
 
@@ -68,7 +71,10 @@ class TestWhitespace:
         result = kd.parse_pypi_package_declaration("hypothesis >= 3.30")
         assert result is not None
         assert result["package_name"] == "hypothesis"
-        assert result["package_version"] == "3.30"
+        # package_version keeps the declared text, operator included (Task
+        # 5, #187) — only the leading name (and trailing whitespace after
+        # it) is stripped. Was "3.30".
+        assert result["package_version"] == ">= 3.30"
         assert result["version_type"] == ">="
 
 
@@ -94,22 +100,25 @@ class TestUnpinnedDeclarations:
 class TestOperatorCoverage:
     """Every PEP 440 operator must parse, not just >=, ~= and == (defect 4)."""
 
+    # `declared_version` is the expected package_version: the declaration
+    # with only the leading name stripped, operator and whitespace kept as
+    # written (Task 5, #187). It used to be the bare version number.
     @pytest.mark.parametrize(
-        "declaration,name,version,operator",
+        "declaration,name,declared_version,operator",
         [
-            ("urllib3 < 3", "urllib3", "3", "<"),
-            ("flask != 2.0.0", "flask", "2.0.0", "!="),
-            ("django <= 4.2", "django", "4.2", "<="),
-            ("boto3 > 1.0", "boto3", "1.0", ">"),
-            ("attrs === 23.1.0", "attrs", "23.1.0", "==="),
-            ("duckdb==1.4.3", "duckdb", "1.4.3", "=="),
+            ("urllib3 < 3", "urllib3", "< 3", "<"),
+            ("flask != 2.0.0", "flask", "!= 2.0.0", "!="),
+            ("django <= 4.2", "django", "<= 4.2", "<="),
+            ("boto3 > 1.0", "boto3", "> 1.0", ">"),
+            ("attrs === 23.1.0", "attrs", "=== 23.1.0", "==="),
+            ("duckdb==1.4.3", "duckdb", "==1.4.3", "=="),
         ],
     )
-    def test_operator_parses(self, kd, declaration, name, version, operator):
+    def test_operator_parses(self, kd, declaration, name, declared_version, operator):
         result = kd.parse_pypi_package_declaration(declaration)
         assert result is not None, f"{declaration!r} must not be dropped"
         assert result["package_name"] == name
-        assert result["package_version"] == version
+        assert result["package_version"] == declared_version
         assert result["version_type"] == operator
 
 

@@ -837,7 +837,14 @@ class KospexDependencies:
             package["package_version"] = self._PYPI_NAME_EXTRAS_RE.sub("", spec_part).strip()
             package["version_type"] = "multiple"
         else:
-            package["package_version"] = specifiers[0].version
+            # Keep the declared text, as the multi-specifier branch above does.
+            # package_version is part of the dependency_data primary key and
+            # every other parser stores the declaration as written; splitting
+            # the operator out here made `flask>=2.0` indistinguishable from a
+            # pin, because version_type is in _NON_SCHEMA_FIELDS and never
+            # persisted. The operator now lives in version_operator.
+            package["package_version"] = self._PYPI_NAME_EXTRAS_RE.sub(
+                "", spec_part).strip()
             package["version_type"] = specifiers[0].operator
 
         return package

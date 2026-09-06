@@ -188,3 +188,42 @@ class TestOsiPathPopulates:
             f"last_checked did not advance on re-save ({first} -> {second}); "
             "it must be written explicitly, not left to a column default"
         )
+
+
+class TestRequirementsRealignment:
+    """requirements.txt was the only parser splitting the operator out of
+    package_version, so `flask>=2.0` stored `2.0` — indistinguishable from a
+    pin. Source files are 53% pinned while the stored data read 94% bare."""
+
+    def test_operator_stays_in_package_version(self, tmp_path):
+        kd = _kdeps()
+        p = tmp_path / "requirements.txt"
+        p.write_text("flask>=2.0\n")
+
+        rec = _assess(kd, str(p))[0]
+
+        assert rec["package_version"] == ">=2.0"
+        assert rec["version_kind"] == "gte"
+        assert rec["version_operator"] == ">="
+
+    def test_exact_pin_is_unchanged(self, tmp_path):
+        kd = _kdeps()
+        p = tmp_path / "requirements.txt"
+        p.write_text("click==8.1\n")
+
+        rec = _assess(kd, str(p))[0]
+
+        assert rec["package_version"] == "==8.1"
+        assert rec["version_kind"] == "pinned"
+
+    def test_matches_pyproject_for_the_same_declaration(self, tmp_path):
+        """The point of the realignment: one declaration, one representation."""
+        kd = _kdeps()
+        (tmp_path / "requirements.txt").write_text("flask>=2.0\n")
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname="d"\ndependencies=["flask>=2.0"]\n')
+
+        req = _assess(kd, str(tmp_path / "requirements.txt"))[0]
+        proj = _assess(kd, str(tmp_path / "pyproject.toml"))[0]
+
+        assert req["package_version"] == proj["package_version"] == ">=2.0"
