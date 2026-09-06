@@ -949,11 +949,13 @@ Under `## Unreleased` → `### Added`:
 
 - [ ] **Step 2: Add the upgrade note**
 
-The Unreleased section carries a numbered "Reported numbers change in this
-release, in N ways" list. Increment N and append:
+`CHANGELOG.md` → `## Unreleased` → `### Upgrade notes` opens with **"Reported
+numbers change in this release, in seven ways."** Change `seven` to `eight`
+(the word, not a digit — match the existing prose) and append item `8.` to the
+end of that numbered list:
 
 ```markdown
-N. **Python requirements rows show their operator.** `requirements.txt` was the
+8. **Python requirements rows show their operator.** `requirements.txt` was the
    only parser that split the operator out of `package_version`, so `flask>=2.0`
    stored `2.0` and looked pinned. It now stores `>=2.0`, matching
    `pyproject.toml`, `package.json`, `go.mod` and `.csproj`. About 464 rows
