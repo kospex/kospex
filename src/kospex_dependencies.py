@@ -23,6 +23,7 @@ from packaging.version import Version, InvalidVersion
 from prettytable import PrettyTable
 
 import kospex_schema as KospexSchema
+from kospex.extractors.constraints import classify_constraint
 from kospex.extractors.registry import classify, resolve_parser
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -365,6 +366,7 @@ class KospexDependencies:
                 extractor.name == "pnpm-lock" and req_type not in ("direct", "dev")
             )
 
+            lookup_version = ""
             if not skip_lookup:
                 lookup_version = self.clean_version_spec(
                     declared_version or "", package_type
@@ -378,6 +380,21 @@ class KospexDependencies:
 
             out["package_type"] = package_type
             out["package_use"] = self._REQ_TO_USE.get(req_type, KospexSchema.PACKAGE_USE_DIRECT)
+
+            # What the manifest declared, recorded so "are we pinned?" can be
+            # asked of the database rather than re-derived from the string.
+            kind, operator = classify_constraint(declared_version, package_type)
+            out["version_kind"] = kind
+            out["version_operator"] = operator
+
+            # What the advisory numbers actually refer to. For a range this is
+            # the floor, so `advisories` describes the worst case the constraint
+            # permits — unreadable without recording which version was queried.
+            out["resolved_version"] = "" if skip_lookup else lookup_version
+
+            # Written on every save. NOT a column default: created_at is
+            # DEFAULT CURRENT_TIMESTAMP and so never updates on an upsert.
+            out["last_checked"] = self._utc_now_iso()
 
             if package_type == "npm":
                 # The ~ / ^ prefix is recorded separately; npm consumers use it
@@ -398,6 +415,12 @@ class KospexDependencies:
         if not version:
             return ""
         return version[0] if version[0] in ("~", "^") else ""
+
+    @staticmethod
+    def _utc_now_iso():
+        """UTC timestamp for last_checked, second precision."""
+        import datetime
+        return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     def _print_dependency_table(self, records, dev_deps=False):
         """Print the per-package table. dev_deps controls what is SHOWN.

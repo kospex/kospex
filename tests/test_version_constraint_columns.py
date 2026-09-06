@@ -42,3 +42,67 @@ class TestSchema:
             assert name not in KospexSchema.SQL_CREATE_DEPENDENCY_DATA, (
                 f"{name} must be added by migration 0006 only, not the baseline"
             )
+
+
+import contextlib
+import io
+
+
+def _kdeps():
+    from kospex_dependencies import KospexDependencies
+    kd = KospexDependencies()
+    kd.depsdev_record = lambda pt, pn, pv: {
+        "package_name": pn, "package_version": pv, "package_type": pt,
+        "versions_behind": 1, "advisories": 0, "resolution": "resolved",
+        "published_at": "", "source_repo": "",
+    }
+    kd.get_pypi_source_repo = lambda n: ""
+    return kd
+
+
+def _assess(kd, path):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        return kd.assess(path) or []
+
+
+class TestAssessPathPopulates:
+    def test_npm_caret_is_classified(self, tmp_path):
+        kd = _kdeps()
+        p = tmp_path / "package.json"
+        p.write_text('{"name":"d","dependencies":{"express":"^4.18.0"}}')
+
+        rec = _assess(kd, str(p))[0]
+
+        assert rec["version_kind"] == "caret"
+        assert rec["version_operator"] == "^"
+
+    def test_resolved_version_records_the_floor(self, tmp_path):
+        """A range's advisories describe the floor, so the row has to say so."""
+        kd = _kdeps()
+        p = tmp_path / "package.json"
+        p.write_text('{"name":"d","dependencies":{"express":"^4.18.0"}}')
+
+        rec = _assess(kd, str(p))[0]
+
+        assert rec["package_version"] == "^4.18.0"   # declared text preserved
+        assert rec["resolved_version"] == "4.18.0"   # what deps.dev was asked
+
+    def test_go_pseudo_version_is_a_commit_pin(self, tmp_path):
+        kd = _kdeps()
+        p = tmp_path / "go.mod"
+        p.write_text("module x\nrequire github.com/a/b v0.0.0-20230828082145-3c4c8a2d2371\n")
+
+        rec = _assess(kd, str(p))[0]
+
+        assert rec["version_kind"] == "commit"
+
+    def test_last_checked_is_set(self, tmp_path):
+        kd = _kdeps()
+        p = tmp_path / "package.json"
+        p.write_text('{"name":"d","dependencies":{"express":"4.18.0"}}')
+
+        rec = _assess(kd, str(p))[0]
+
+        assert rec["last_checked"], "last_checked must be stamped on every save"
+        assert rec["last_checked"].startswith("20")   # ISO-ish timestamp
