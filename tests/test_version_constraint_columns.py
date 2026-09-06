@@ -106,3 +106,25 @@ class TestAssessPathPopulates:
 
         assert rec["last_checked"], "last_checked must be stamped on every save"
         assert rec["last_checked"].startswith("20")   # ISO-ish timestamp
+
+    def test_pnpm_transitive_skips_lookup_but_still_classifies(self):
+        """A pnpm-lock transitive entry never asks deps.dev (#178's skip_lookup
+        branch), so resolved_version must stay "" — but classification and the
+        last_checked stamp don't depend on the lookup having happened.
+        """
+        from kospex.extractors.registry import classify
+
+        kd = _kdeps()
+        extractor = classify("pnpm-lock.yaml").extractor
+        records = [{
+            "package_name": "lodash",
+            "package_version": "4.17.21",
+            "requirements_type": "resolved",  # transitive, not direct/dev
+        }]
+
+        rec = kd._enrich_dependency_records(records, extractor)[0]
+
+        assert rec["resolved_version"] == ""
+        assert rec["version_kind"] == "pinned"
+        assert rec["version_operator"] == ""
+        assert rec["last_checked"], "last_checked must be stamped even when the lookup is skipped"
