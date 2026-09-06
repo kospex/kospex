@@ -6,7 +6,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Upgrade notes
 
-**Reported numbers change in this release, in seven ways.** Anything already
+**Reported numbers change in this release, in eight ways.** Anything already
 showing kospex output — dashboards, screenshots, exported reports — will disagree
 with a post-upgrade run. None of this is a regression; the earlier figures were
 wrong or incomplete.
@@ -54,6 +54,14 @@ wrong or incomplete.
    written rows do not collide and are demoted by the next `osi` run. Finally,
    `requirements.txt` and `pyproject.toml` rows gain `package_use = 'direct'`
    where they previously stored NULL.
+8. **Python requirements rows show their operator.** `requirements.txt` was the
+   only parser that split the operator out of `package_version`, so `flask>=2.0`
+   stored `2.0` and looked pinned. It now stores `>=2.0`, matching
+   `pyproject.toml`, `package.json`, `go.mod` and `.csproj`. About 464 rows
+   change; `package_version` is in the primary key, so the old rows are
+   superseded rather than updated and demoted by the next `krunner osi` run.
+   Anything reading that column verbatim will show the operator — which is
+   accurate, and what `version_kind` now lets you filter on instead.
 
 **None of the fixes backfill.** Commit sync is incremental (`--since` the last
 recorded commit), so existing rows keep their old values until a repo is dropped
@@ -67,6 +75,23 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
 0.1.0](https://docs.kospex.io/refreshing-data#upgrading-to-010-re-syncing-after-the-ingest-fixes)**.
 
 ### Added
+
+- **Dependency constraints are now recorded.** Four columns on
+  `dependency_data` (migration `0006`): `version_kind` classifies how a
+  dependency is constrained (pinned / commit / caret / tilde / gte / bounded /
+  latest / workspace / link / catalog / alias / patch / none),
+  `version_operator` keeps the raw declared operator, `resolved_version`
+  records the version deps.dev was actually asked about, and `last_checked`
+  records when. Previously the classification was computed and discarded, so
+  "which of our dependencies float?" could not be asked of the database, and an
+  advisory count could not be read without knowing which version it referred to
+  or how old it was. `tilde` is deliberately separate from `caret` — `~29.0.0`
+  permits patch drift where `^4.18.0` permits minor and patch — and `commit` is
+  separate from `pinned`, since a Go pseudo-version is maximally pinned but has
+  no published release to match against. Columns are NULL on existing rows
+  until re-sync; a staleness indicator must treat NULL as "never checked", not
+  "checked long ago". See `changes/202609-version-constraint-column.md`.
+
 - **Every kospex, kgit, krunner and kreaper command now warns when the database
   is behind.** A banner on stderr reporting the pending count and
   `kospex upgrade-db -apply`. It is called from each Click group callback rather
