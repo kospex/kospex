@@ -131,6 +131,9 @@ def enrich_dependency_records(results, kdeps, echo=None):
         d["versions_behind"] = deps_rec.get("versions_behind")   # int or None, no "Unknown"
         d["advisories"] = deps_rec.get("advisories")
         d["resolution"] = deps_rec.get("resolution")
+        d["resolved_version"] = kdeps.clean_version_spec(
+            d["package_version"], d["package_type"]
+        )
         published = deps_rec.get("published_at", None)
         if published:
             d["published_at"] = published.split("T")[0]

@@ -128,3 +128,63 @@ class TestAssessPathPopulates:
         assert rec["version_kind"] == "pinned"
         assert rec["version_operator"] == ""
         assert rec["last_checked"], "last_checked must be stamped even when the lookup is skipped"
+
+
+class TestOsiPathPopulates:
+    """Both write paths must populate these. Testing one and assuming the other
+    is how the Go `v`-prefix defect reached production twice."""
+
+    def _db(self):
+        import sqlite_utils
+        import kospex_schema as KospexSchema
+        db = sqlite_utils.Database(memory=True)
+        db.execute(KospexSchema.SQL_CREATE_DEPENDENCY_DATA)
+        # SQL_CREATE_DEPENDENCY_DATA is the frozen baseline (KOSPEX_DB_VERSION
+        # = 2); these four columns are added by migration 0006. A real DB
+        # save_dependencies() writes to has always run that migration (new
+        # DBs bootstrap it, existing ones are nagged until `upgrade-db
+        # -apply`), so apply it here rather than testing against a schema
+        # save_dependencies() would never actually see in production.
+        for col in NEW_COLUMNS:
+            db.execute(f"ALTER TABLE dependency_data ADD COLUMN {col} TEXT")
+        return db
+
+    def _record(self, version="^4.18.0", name="express"):
+        return {
+            "_repo_id": "s~o~r", "hash": "h1", "file_path": "package.json",
+            "package_type": "npm", "package_name": name,
+            "package_version": version, "requirements_type": "direct",
+        }
+
+    def test_save_dependencies_classifies(self):
+        from kospex_dependencies import KospexDependencies
+        db = self._db()
+        kd = KospexDependencies(kospex_db=db)
+
+        kd.save_dependencies([self._record()], source="test")
+
+        row = next(db.query("SELECT * FROM dependency_data"))
+        assert row["version_kind"] == "caret"
+        assert row["version_operator"] == "^"
+        assert row["last_checked"]
+
+    def test_last_checked_updates_on_re_save(self):
+        """The precise bug created_at has: a DB DEFAULT is set on INSERT and
+        never again, so a row refreshed from deps.dev keeps its original date."""
+        import time
+        from kospex_dependencies import KospexDependencies
+        db = self._db()
+        kd = KospexDependencies(kospex_db=db)
+
+        kd.save_dependencies([self._record()], source="test")
+        first = next(db.query("SELECT last_checked FROM dependency_data"))["last_checked"]
+
+        time.sleep(1.1)   # second precision
+        kd.save_dependencies([self._record()], source="test")
+        second = next(db.query(
+            "SELECT last_checked FROM dependency_data WHERE latest=1"))["last_checked"]
+
+        assert second > first, (
+            f"last_checked did not advance on re-save ({first} -> {second}); "
+            "it must be written explicitly, not left to a column default"
+        )

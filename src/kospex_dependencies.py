@@ -612,6 +612,12 @@ class KospexDependencies:
             for field_name in self._NON_SCHEMA_FIELDS:
                 rec.pop(field_name, None)
             rec["latest"] = 1
+            kind, operator = classify_constraint(
+                rec.get("package_version"), rec.get("package_type")
+            )
+            rec["version_kind"] = kind
+            rec["version_operator"] = operator
+            rec["last_checked"] = self._utc_now_iso()
             if source is not None:
                 rec["source"] = source
             # Derive the _git_* columns from _repo_id when not supplied.
