@@ -617,6 +617,15 @@ class KospexDependencies:
             )
             rec["version_kind"] = kind
             rec["version_operator"] = operator
+            # Not computed here — save_dependencies() never calls deps.dev, so
+            # it has no resolved version of its own to offer. setdefault keeps
+            # an enriching caller's real value (krunner osi sets this key
+            # during enrichment) while still writing the column on every save,
+            # so an un-enriched re-save can't leave a stale resolved_version
+            # sitting under a freshly advanced last_checked — the same
+            # created_at defect this migration exists to eliminate, one
+            # column over.
+            rec.setdefault("resolved_version", "")
             rec["last_checked"] = self._utc_now_iso()
             if source is not None:
                 rec["source"] = source

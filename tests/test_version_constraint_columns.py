@@ -189,6 +189,33 @@ class TestOsiPathPopulates:
             "it must be written explicitly, not left to a column default"
         )
 
+    def test_resolved_version_does_not_survive_an_unenriched_re_save(self):
+        """save_dependencies() must write all four columns together.
+
+        krunner osi sets resolved_version on the record before calling
+        save_dependencies() (during enrichment). A caller that omits the key
+        must still get resolved_version reset to "" — otherwise a later
+        un-enriched save advances last_checked while leaving resolved_version
+        from a lookup that did not happen this time, which is the created_at
+        defect this migration exists to eliminate, one column over.
+        """
+        from kospex_dependencies import KospexDependencies
+        db = self._db()
+        kd = KospexDependencies(kospex_db=db)
+
+        enriched = self._record()
+        enriched["resolved_version"] = "4.18.0"
+        kd.save_dependencies([enriched], source="test")
+
+        unenriched = self._record()
+        kd.save_dependencies([unenriched], source="test")
+
+        row = next(db.query("SELECT resolved_version FROM dependency_data WHERE latest=1"))
+        assert row["resolved_version"] == "", (
+            f"resolved_version carried over a stale value ({row['resolved_version']!r}) "
+            "from a prior enriched save into an un-enriched one"
+        )
+
 
 class TestRequirementsRealignment:
     """requirements.txt was the only parser splitting the operator out of
