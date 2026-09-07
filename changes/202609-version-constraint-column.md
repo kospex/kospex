@@ -203,10 +203,13 @@ comparison, no sorting. The change is therefore display-only downstream.
 
 ## Impact on existing databases
 
-- **~464 requirements rows change `package_version`** (`2.0` → `>=2.0`). It is
+- **About 317 requirements rows change `package_version`** (`2.0` → `>=2.0`). It is
   part of the primary key, so new rows do not collide; the old ones are demoted
   by the next `krunner osi` run over the same file. `assess()` has no demote
-  (#151).
+  (#151). Of 465 total pypi rows from requirements-like files, 317 stored bare
+  versions and actually change, 129 carried empty versions (no specifier) and are
+  unchanged, and 19 already carried operators (multi-specifier branch) and are
+  unchanged.
 - **All four columns are NULL on existing rows** until re-sync. Any staleness UI
   must render NULL as "never checked", not "checked long ago" — the distinction
   that makes the indicator trustworthy.
