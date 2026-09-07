@@ -114,33 +114,33 @@
     },
     "https://dev.azure.com/myorg/My Project/_git/MyRepo": {
       "parts": {
-        "org": "myorg-My Project",
+        "org": "myorg/My Project",
         "project": "My Project",
         "remote": "dev.azure.com",
         "remote_type": "https",
         "repo": "MyRepo"
       },
-      "repo_id": "dev.azure.com~myorg-My Project~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~My Project~MyRepo"
     },
     "https://dev.azure.com/myorg/MyProject/_git/MyRepo": {
       "parts": {
-        "org": "myorg-MyProject",
+        "org": "myorg/MyProject",
         "project": "MyProject",
         "remote": "dev.azure.com",
         "remote_type": "https",
         "repo": "MyRepo"
       },
-      "repo_id": "dev.azure.com~myorg-MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
     },
     "https://dev.azure.com/myorg/MyProject/_git/MyRepo.git": {
       "parts": {
-        "org": "myorg-MyProject",
+        "org": "myorg/MyProject",
         "project": "MyProject",
         "remote": "dev.azure.com",
         "remote_type": "https",
         "repo": "MyRepo"
       },
-      "repo_id": "dev.azure.com~myorg-MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
     },
     "https://example.com/a/b/c/d/e/f": {
       "parts": {
@@ -238,23 +238,23 @@
     },
     "https://myorg.visualstudio.com/MyProject/_git/MyRepo": {
       "parts": {
-        "org": "MyProject",
+        "org": "myorg/MyProject",
         "project": "MyProject",
         "remote": "myorg.visualstudio.com",
         "remote_type": "https",
         "repo": "MyRepo"
       },
-      "repo_id": "myorg.visualstudio.com~MyProject~MyRepo"
+      "repo_id": "myorg.visualstudio.com~myorg~~MyProject~MyRepo"
     },
     "https://myorg@dev.azure.com/myorg/MyProject/_git/MyRepo": {
       "parts": {
-        "org": "myorg-MyProject",
+        "org": "myorg/MyProject",
         "project": "MyProject",
         "remote": "dev.azure.com",
         "remote_type": "https",
         "repo": "MyRepo"
       },
-      "repo_id": "dev.azure.com~myorg-MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
     },
     "https://user@bitbucket.example.com/scm/PROJ/repo.git": {
       "parts": {

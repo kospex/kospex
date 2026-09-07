@@ -164,3 +164,57 @@ def test_ado_clone_button_url_matches_the_plain_url():
 
     assert rid("https://myorg@dev.azure.com/myorg/MyProject/_git/MyRepo") == \
            rid("https://dev.azure.com/myorg/MyProject/_git/MyRepo")
+
+
+def _rid(url):
+    parts = KospexGit.parse_git_remote(url)
+    assert parts is not None, f"failed to parse {url}"
+    return KospexGit.generate_repo_id(parts["remote"], parts["org"], parts["repo"])
+
+
+def test_ado_org_and_project_use_the_nested_org_encoding():
+    """ADO org/project is a hierarchy, so encode it like a GitLab subgroup.
+
+    Supersedes the hyphen join specified in #50. '/' cannot appear in an ADO
+    org, project or repo name, so 'org/project' is unambiguous; '-' can, which
+    is why the hyphen join collides (see the test below).
+    """
+    parts = KospexGit.parse_git_remote(
+        "https://dev.azure.com/myorg/MyProject/_git/MyRepo")
+    assert parts["org"] == "myorg/MyProject"
+    assert _rid("https://dev.azure.com/myorg/MyProject/_git/MyRepo") == \
+        "dev.azure.com~myorg~~MyProject~MyRepo"
+
+
+def test_hyphenated_ado_org_and_project_no_longer_collide():
+    """Two different repos must not share a repo_id. #50's hyphen join did.
+
+    'my-org/Project' and 'my/org-Project' both produced
+    'dev.azure.com~my-org-Project~R'.
+    """
+    a = _rid("https://dev.azure.com/my-org/Project/_git/R")
+    b = _rid("https://dev.azure.com/my/org-Project/_git/R")
+    assert a != b
+
+
+def test_ado_repo_name_ending_in_git_characters_is_not_truncated():
+    """#135 -- rstrip('.git') strips a character set, not a suffix.
+
+    A repo named 'digit' lost everything but the leading 'd'.
+    """
+    parts = KospexGit.parse_git_remote(
+        "https://dev.azure.com/myorg/MyProject/_git/digit")
+    assert parts["repo"] == "digit"
+
+
+def test_ado_dot_git_suffix_is_still_removed():
+    parts = KospexGit.parse_git_remote(
+        "https://dev.azure.com/myorg/MyProject/_git/MyRepo.git")
+    assert parts["repo"] == "MyRepo"
+
+
+def test_legacy_visualstudio_org_comes_from_the_hostname():
+    """The org lives in the hostname; using the project as the org lost it."""
+    parts = KospexGit.parse_git_remote(
+        "https://myorg.visualstudio.com/MyProject/_git/MyRepo")
+    assert parts["org"] == "myorg/MyProject"

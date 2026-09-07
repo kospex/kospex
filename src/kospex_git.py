@@ -101,8 +101,10 @@ class KospexGit:
             None: if URL format is not recognized as Azure DevOps or visual studio team services
 
         """
-        # Remove .git suffix if present
-        clean_url = clone_url.rstrip(".git")
+        # Remove a .git suffix if present. Must be removesuffix, not rstrip:
+        # rstrip takes a *character set*, so it eats any trailing run of
+        # '.', 'g', 'i', 't' -- a repo named 'digit' became 'd'. (#135)
+        clean_url = clone_url.removesuffix(".git")
 
         # Parse the URL
         parsed = urlparse(clean_url)
@@ -117,9 +119,14 @@ class KospexGit:
                 project = path_parts[1]
                 repository = "/".join(path_parts[3:])  # Handle repos with slashes in name
 
+                # org/project is a hierarchy, encoded like a GitLab subgroup
+                # ('/' becomes '~~' in generate_repo_id). The previous hyphen
+                # join collided: '-' is legal in ADO org names, so my-org/Project
+                # and my/org-Project produced one id. '/' cannot appear in an ADO
+                # org, project or repo name, so this is unambiguous. Supersedes #50.
                 return {
                     "remote": parsed.netloc,
-                    "org": f"{organization}-{project}",
+                    "org": f"{organization}/{project}",
                     "project": project,
                     "repo": repository,
                     "remote_type": parsed.scheme,
@@ -135,10 +142,15 @@ class KospexGit:
             if len(path_parts) >= 3 and path_parts[1] == "_git":
                 project = path_parts[0]
                 repository = "/".join(path_parts[2:])  # Handle repos with slashes in name
+                # The organisation is the first hostname label. Using the project
+                # as the org (the old behaviour) discarded it entirely, so the
+                # project masqueraded as the org and the id could not be compared
+                # with the dev.azure.com form.
+                organization = parsed.netloc.split(".", 1)[0]
 
                 return {
                     "remote": parsed.netloc,
-                    "org": project,  # Use project as org for visualstudio.com
+                    "org": f"{organization}/{project}",
                     "project": project,
                     "repo": repository,
                     "remote_type": parsed.scheme,
