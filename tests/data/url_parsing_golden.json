@@ -42,12 +42,13 @@
     },
     "git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo": {
       "parts": {
-        "org": "v3/myorg/MyProject",
-        "remote": "ssh.dev.azure.com",
+        "org": "myorg/MyProject",
+        "project": "MyProject",
+        "remote": "dev.azure.com",
         "remote_type": "ssh",
         "repo": "MyRepo"
       },
-      "repo_id": "ssh.dev.azure.com~v3~~myorg~~MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
     },
     "https://USERNAME@bitbucket.org/team/repo.git": {
       "parts": {
@@ -229,12 +230,13 @@
     },
     "https://myorg.visualstudio.com/DefaultCollection/MyProject/_git/MyRepo": {
       "parts": {
-        "org": "DefaultCollection/MyProject/_git",
+        "org": "myorg/MyProject",
+        "project": "MyProject",
         "remote": "myorg.visualstudio.com",
         "remote_type": "https",
         "repo": "MyRepo"
       },
-      "repo_id": "myorg.visualstudio.com~DefaultCollection~~MyProject~~_git~MyRepo"
+      "repo_id": "myorg.visualstudio.com~myorg~~MyProject~MyRepo"
     },
     "https://myorg.visualstudio.com/MyProject/_git/MyRepo": {
       "parts": {
@@ -299,11 +301,12 @@
     "ssh://git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo": {
       "parts": {
         "org": "myorg/MyProject",
-        "remote": "ssh.dev.azure.com",
+        "project": "MyProject",
+        "remote": "dev.azure.com",
         "remote_type": "ssh",
         "repo": "MyRepo"
       },
-      "repo_id": "ssh.dev.azure.com~myorg~~MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
     }
   }
 }

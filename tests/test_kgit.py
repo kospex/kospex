@@ -218,3 +218,29 @@ def test_legacy_visualstudio_org_comes_from_the_hostname():
     parts = KospexGit.parse_git_remote(
         "https://myorg.visualstudio.com/MyProject/_git/MyRepo")
     assert parts["org"] == "myorg/MyProject"
+
+
+def test_ado_ssh_agrees_with_https():
+    """ADO's SSH clone URL addresses the same repository as the HTTPS one.
+
+    Format is 'git@ssh.dev.azure.com:v3/{org}/{project}/{repo}' -- 'v3' is a
+    path prefix, not a port, and ssh.dev.azure.com is the SSH endpoint of the
+    same service rather than a different origin. Both must yield one id.
+    """
+    https = _rid("https://dev.azure.com/myorg/MyProject/_git/MyRepo")
+    scp = _rid("git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo")
+    ssh_scheme = _rid("ssh://git@ssh.dev.azure.com/v3/myorg/MyProject/MyRepo")
+    assert scp == https
+    assert ssh_scheme == https
+
+
+def test_ado_default_collection_is_not_part_of_the_identity():
+    """Legacy collection URLs address the same project.
+
+    'DefaultCollection' sits between the host and the project on older ADO and
+    on-prem TFS URLs; it previously made the URL unparseable as ADO entirely.
+    """
+    with_collection = _rid(
+        "https://myorg.visualstudio.com/DefaultCollection/MyProject/_git/MyRepo")
+    without = _rid("https://myorg.visualstudio.com/MyProject/_git/MyRepo")
+    assert with_collection == without
