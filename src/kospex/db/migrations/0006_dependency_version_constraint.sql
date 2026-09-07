@@ -9,10 +9,15 @@
 -- version_operator  the raw declared operator, verbatim ("^", ">=", ">=,<",
 --                   "workspace:"). Empty for a bare pin — the manifest wrote
 --                   no operator and version_kind carries the meaning.
--- resolved_version  the version actually sent to deps.dev. For a range this is
---                   the floor, so advisories/versions_behind describe the worst
---                   case the constraint permits, not what is installed. Empty
---                   when nothing resolved (commit, latest, none).
+-- resolved_version  the version actually sent to deps.dev. For a range bounded
+--                   below, this is the floor. For one bounded only above
+--                   (e.g. `<4`) or excluded (`!=1.0`), it is that
+--                   ceiling/excluded version instead — either way
+--                   advisories/versions_behind describe the worst case the
+--                   constraint permits, not what is installed. Empty when
+--                   nothing resolved: commit, latest, none, or a pnpm-lock
+--                   transitive entry, where `assess()` deliberately skips
+--                   the lookup.
 -- last_checked      UTC timestamp, written on EVERY save. Deliberately not a
 --                   column DEFAULT: created_at is DEFAULT CURRENT_TIMESTAMP and
 --                   therefore never updates, so a row refreshed from deps.dev

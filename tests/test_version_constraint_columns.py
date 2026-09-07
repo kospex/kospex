@@ -244,7 +244,22 @@ class TestRequirementsRealignment:
         assert rec["version_kind"] == "pinned"
 
     def test_matches_pyproject_for_the_same_declaration(self, tmp_path):
-        """The point of the realignment: one declaration, one representation."""
+        """The normalised columns agree between the two pypi parsers; the raw
+        `package_version` text agrees only when the declaration has no
+        internal whitespace.
+
+        `parse_pypi_package_declaration()` (requirements.txt) keeps whatever
+        text followed the package name, verbatim. `parse_pyproject_file()`
+        goes through `packaging.Requirement`, whose `str(specifier)` drops
+        whitespace around the operator. For an unspaced declaration like
+        `flask>=2.0` there is nothing to drop, so both parsers land on the
+        same string by coincidence, not by design — see
+        `test_diverges_from_pyproject_for_a_spaced_declaration` below for the
+        case that shows the difference. `version_kind` and `version_operator`
+        are classified from that same text, but the classifier only cares
+        about the operator characters present, not surrounding whitespace, so
+        those two always agree regardless.
+        """
         kd = _kdeps()
         (tmp_path / "requirements.txt").write_text("flask>=2.0\n")
         (tmp_path / "pyproject.toml").write_text(
@@ -254,6 +269,46 @@ class TestRequirementsRealignment:
         proj = _assess(kd, str(tmp_path / "pyproject.toml"))[0]
 
         assert req["package_version"] == proj["package_version"] == ">=2.0"
+        assert req["version_kind"] == proj["version_kind"] == "gte"
+        assert req["version_operator"] == proj["version_operator"] == ">="
+
+    def test_diverges_from_pyproject_for_a_spaced_declaration(self, tmp_path):
+        """Known, accepted divergence: a declaration with internal whitespace
+        around the operator still reads differently in `package_version`
+        between the two pypi parsers.
+
+        requirements.txt's `parse_pypi_package_declaration()` regex-strips
+        only the package name and keeps the remainder verbatim, spaces and
+        all. pyproject.toml's `parse_pyproject_file()` renders through
+        `packaging.Requirement`/`str(specifier)`, which normalises away that
+        whitespace. This is a deliberate, kept behaviour (see
+        changes/202609-version-constraint-column.md) — `package_version` is
+        defined as the declared text, and normalising it would move ~58
+        other requirements.txt rows and the changelog's row-count figure.
+        This test pins the divergence so a change to either parser's
+        whitespace handling fails loudly here rather than silently.
+
+        What actually matters — the normalised `version_kind` and
+        `version_operator` columns — agree across both forms regardless,
+        which is asserted below and is the property `assess()` promises.
+        """
+        kd = _kdeps()
+        (tmp_path / "requirements.txt").write_text("flask >= 2.0\n")
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname="d"\ndependencies=["flask >= 2.0"]\n')
+
+        req = _assess(kd, str(tmp_path / "requirements.txt"))[0]
+        proj = _assess(kd, str(tmp_path / "pyproject.toml"))[0]
+
+        # The known divergence: requirements.txt keeps the spaces, pyproject
+        # normalises them away.
+        assert req["package_version"] == ">= 2.0"
+        assert proj["package_version"] == ">=2.0"
+        assert req["package_version"] != proj["package_version"]
+
+        # What matters: the normalised columns agree regardless of spacing.
+        assert req["version_kind"] == proj["version_kind"] == "gte"
+        assert req["version_operator"] == proj["version_operator"] == ">="
 
     def test_tilde_equals_resolves_a_real_lookup_version(self, tmp_path):
         """`~=` (PEP 440 compatible-release) was the regression this change

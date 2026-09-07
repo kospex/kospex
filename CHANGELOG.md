@@ -61,7 +61,11 @@ wrong or incomplete.
    change; `package_version` is in the primary key, so the old rows are
    superseded rather than updated and demoted by the next `krunner osi` run.
    Anything reading that column verbatim will show the operator — which is
-   accurate, and what `version_kind` now lets you filter on instead.
+   accurate, and what `version_kind` now lets you filter on instead. Note a
+   declaration written with spaces around the operator (`flask >= 2.0`) keeps
+   those spaces in `package_version`, so it still reads differently from the
+   `pyproject.toml` rendering of the same requirement, which normalises them
+   away; `version_kind` and `version_operator` agree either way.
 
 **None of the fixes backfill.** Commit sync is incremental (`--since` the last
 recorded commit), so existing rows keep their old values until a repo is dropped

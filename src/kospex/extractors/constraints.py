@@ -5,8 +5,11 @@ returns the normalised `kind` and the raw declared `operator`.
 
 Two columns rather than one because they answer different questions. `kind` is
 queryable across ecosystems — "show me everything floating" is one WHERE clause
-whether the manifest wrote `^` or `>=`. `operator` keeps the declared text, so a
-classification we get wrong is still recoverable from the row.
+whether the manifest wrote `^` or `>=`. `operator` keeps the declared operator
+text for a version constraint, so a classification we get wrong is still
+recoverable from the row. For a resolution mechanism match (`workspace:`,
+`link:`, ...), `operator` is the canonical lowercased prefix rather than the
+declared text verbatim — `WORKSPACE:^` yields `"workspace:"`, not `"WORKSPACE:"`.
 
 The vocabulary is deliberately finer than pinned/floating. `tilde` is separate
 from `caret` because `~29.0.0` permits patch drift only where `^4.18.0` permits
