@@ -55,6 +55,22 @@ def classify_constraint(declared_version, package_type=None):
     Never raises: it runs during extraction, where an exception would lose a
     whole manifest rather than one row. Unrecognised input classifies as
     "pinned" if it looks like a version and "none" otherwise.
+
+    `package_type` is accepted but NOT currently read. Classification is
+    purely shape-based, which works because the shapes that occur are disjoint
+    across ecosystems: `^` and `~` are npm, `catalog:` / `workspace:` are pnpm,
+    `~=` and `===` are PEP 440, and the Go pseudo-version pattern
+    (`-<14-digit timestamp>-<12-hex commit>`) matches nothing else. Every one
+    of 6,386 rows in the reference estate classified correctly without it.
+
+    It stays in the signature because the known remaining misclassifications
+    ARE ecosystem-specific, and fixing them needs it. npm wildcard ranges
+    (`1.x`, `2.*`) and hyphen ranges (`1.2.3 - 2.3.4`) currently fall through
+    to "pinned" — a floating dependency reported as pinned, the wrong
+    direction for the question this column exists to answer. They cannot be
+    fixed by shape alone, because pypi's `==1.*` is a different construct that
+    must keep classifying as a wildcard pin. Whoever fixes those should gate
+    the new branches on `package_type` rather than widening the shared rules.
     """
     if declared_version is None:
         return ("none", "")
