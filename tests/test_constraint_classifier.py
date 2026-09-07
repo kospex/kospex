@@ -110,7 +110,16 @@ class TestTotality:
 
     @pytest.mark.parametrize("package_type", ["npm", "pypi", "go", "nuget", None, "", "unknown"])
     def test_unknown_ecosystem_does_not_raise(self, package_type):
-        kind, operator = classify_constraint("^1.0.0", package_type)
+        # A BARE version, deliberately: `^1.0.0` returns at the caret branch
+        # and never reaches the package_type lookup, so it would test nothing
+        # about the argument this parametrisation exists to vary.
+        kind, operator = classify_constraint("1.0.0", package_type)
+        assert isinstance(kind, str) and isinstance(operator, str)
+
+    @pytest.mark.parametrize("package_type", [123, 4.5, object(), ["npm"]])
+    def test_non_string_package_type_does_not_raise(self, package_type):
+        """package_type is now read, so it must be coerced like the version."""
+        kind, operator = classify_constraint("1.0.0", package_type)
         assert isinstance(kind, str) and isinstance(operator, str)
 
 
@@ -225,6 +234,68 @@ class TestNuGetBracketNotation:
     ])
     def test_bracket_ranges(self, declared, kind):
         assert classify_constraint(declared, "nuget")[0] == kind
+
+
+class TestEcosystemRulesDoNotLeak:
+    """A rule added for one ecosystem must not fire in another.
+
+    The NuGet interval rule was originally ungated and silently reclassified
+    valid PEP 508 declarations: `requests (>=2.0)` matched the bracket
+    pattern and came back ("pinned", "") — an open floor reported as a pin
+    with the operator erased, which is worse than the defect it replaced
+    because nothing on the row records what was actually declared.
+    """
+
+    @pytest.mark.parametrize("declared,kind,operator", [
+        # PEP 508 permits parentheses around a specifier.
+        ("(>=2.0)", "gte", ">="),
+        ("(==2.31.0)", "pinned", "=="),
+        ("(>=1.0,<2.0)", "bounded", ">=,<"),
+    ])
+    def test_parenthesised_pypi_specifiers_are_not_nuget_intervals(
+            self, declared, kind, operator):
+        assert classify_constraint(declared, "pypi") == (kind, operator)
+
+    def test_hyphen_rule_does_not_fire_for_pypi(self):
+        """`\\S+` is unconstrained, so this rule must stay npm-scoped."""
+        assert classify_constraint("foo - bar", "pypi")[0] != "bounded"
+
+    def test_nuget_intervals_still_work_for_nuget(self):
+        assert classify_constraint("[1.0,2.0)", "nuget")[0] == "bounded"
+        assert classify_constraint("[3.1.1]", "nuget")[0] == "pinned"
+
+
+class TestNpmPartialVersions:
+    """npm reads a partial version as a range, with no wildcard to show it.
+
+    `"react": "16"` is `>=16.0.0 <17.0.0`; `"16.8"` is `>=16.8.0 <16.9.0`.
+    12 rows in the reference estate are this shape — three times the `==N.*`
+    family — and every one of them looked like a pin.
+    """
+
+    @pytest.mark.parametrize("declared", ["16", "16.8", "4", "19.2", "0.14"])
+    def test_npm_partial_is_a_range(self, declared):
+        assert classify_constraint(declared, "npm")[0] == "bounded"
+
+    def test_npm_full_version_is_still_a_pin(self):
+        assert classify_constraint("16.8.0", "npm") == ("pinned", "")
+
+    def test_partial_rule_is_npm_only(self):
+        """A bare `2.0` elsewhere is a full version, not a partial one."""
+        assert classify_constraint("2.0", "pypi") == ("pinned", "")
+        assert classify_constraint("2.0", None) == ("pinned", "")
+
+
+class TestMalformedNuGetIntervals:
+    """Malformed input must not come back as a confident pin.
+
+    NuGet documents `(1.0)` as invalid; `[1.0)` and `(1.0]` are mismatched.
+    Reporting any of them as `pinned` is the wrong direction of error.
+    """
+
+    @pytest.mark.parametrize("declared", ["(1.0)", "[1.0)", "(1.0]"])
+    def test_invalid_intervals_are_none(self, declared):
+        assert classify_constraint(declared, "nuget") == ("none", "")
 
 
 class TestKindVocabularyIsClosed:

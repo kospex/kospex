@@ -159,7 +159,7 @@ from the shape of the string, because the same string means different things:
 * **npm** `1.4.3` is strict equality — `pinned`.
 * **Go** `require foo v1.2.3` is a Minimal Version Selection *floor* — `gte`.
   The build selects the maximum of all minimums across the module graph, so an
-  unrelated dependency requiring `v1.5.0` bumps you without that line changing.
+  unrelated dependency requiring `v1.5.0` raises the selected version.
   A tidy'd `go.mod` records the resolved graph and so behaves lock-like, but
   that comes from the file being regenerated, not from the constraint being an
   equality — and this column records the constraint.
@@ -171,8 +171,13 @@ from the shape of the string, because the same string means different things:
 An unknown or absent ecosystem defaults to `pinned`.
 
 Measured effect on the reference estate: 79 Go rows move `pinned` → `gte` (91
-Go rows less the 12 pseudo-versions, which stay `commit`), and 4 `==N.*`
-wildcards move `pinned` → `bounded`.
+Go rows less the 12 pseudo-versions, which stay `commit`), and 16 move
+`pinned` → `bounded` — 4 `==N.*` wildcards plus 12 npm partial versions.
+
+An npm partial version (`"react": "16"`) is the subtlest of these: npm reads
+it as `>=16.0.0 <17.0.0`, but unlike `16.x` it carries no wildcard character,
+so it is indistinguishable from a pin by shape alone. Like the bare-version
+rule, it needs the ecosystem — a bare `2.0` in pypi is a full version.
 
 `commit` is deliberately distinct from `pinned`: a Go pseudo-version is
 *maximally* pinned, yet today it lands in `unresolved_spec` alongside

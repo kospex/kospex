@@ -362,12 +362,15 @@ classifier.** Recomputed over the same 6,386 rows after `pinned` was narrowed
 to "exactly one version, nothing can drift":
 
 ```
-  pinned      3217  (-83)     gte          308  (+79)     bounded   83  (+4)
+  pinned      3205  (-95)     gte          308  (+79)     bounded   95  (+16)
 ```
 
 79 Go rows moved `pinned` → `gte` (a `require` is a Minimal Version Selection
-floor; 91 Go rows less the 12 pseudo-versions, which stay `commit`), and 4
-`==N.*` wildcards moved `pinned` → `bounded`. Everything else is unchanged.
+floor; 91 Go rows less the 12 pseudo-versions, which stay `commit`). 16 moved
+`pinned` → `bounded`: 4 `==N.*` wildcards and 12 npm partial versions
+(`react "16"`, `chalk "4"`, `@types/react "19.2"`), which npm reads as ranges
+but which carry no wildcard character to give them away. Everything else is
+unchanged.
 `excluded` is 0 today only because the estate's one `!=` declaration is still
 stored flattened; it becomes 1 on re-sync.
 

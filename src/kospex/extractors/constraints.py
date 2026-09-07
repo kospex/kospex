@@ -41,7 +41,7 @@ KINDS = (
 #
 # Go: `require foo v1.2.3` is a Minimal Version Selection floor. The build
 # selects the maximum of all minimums across the module graph, so an
-# unrelated dependency requiring v1.5.0 bumps you without that line changing.
+# unrelated dependency requiring v1.5.0 raises the selected version.
 # NuGet: `PackageReference Version="3.1.1"` is documented as `>= 3.1.1`; an
 # exact pin needs the bracket form `[3.1.1]`.
 #
@@ -49,9 +49,15 @@ KINDS = (
 # a bare npm version IS strict equality. Same string, different meaning.
 _BARE_IS_MINIMUM = ("go", "nuget")
 
-# npm wildcard: 1.x, 2.*, 1.2.x — a floor and a ceiling, so `bounded`.
+# npm wildcard: 1.x, 2.*, 1.2.x, 1.x.x — a floor and a ceiling, so `bounded`.
 # Also matches the pypi `==1.*` form once the operator is stripped.
-_WILDCARD = re.compile(r"^[vV]?\d+(\.\d+)*\.[xX*]$")
+_WILDCARD = re.compile(r"^[vV]?\d+(\.\d+)*\.[xX*](\.[xX*])*$")
+
+# npm partial version: `16`, `16.8`. npm reads these as ranges — `16` is
+# `>=16.0.0 <17.0.0` — but they carry no wildcard character, so they look
+# exactly like a pin. 12 rows in the reference estate (react "16", "16.8",
+# chalk "4", @types/react "19.2"), three times the `==N.*` family.
+_PARTIAL_VERSION = re.compile(r"^[vV]?\d+(\.\d+)?$")
 
 # npm hyphen range: `1.2.3 - 2.3.4` is `>=1.2.3 <=2.3.4`. npm requires the
 # surrounding spaces, which is what distinguishes it from a prerelease
@@ -87,8 +93,9 @@ def classify_constraint(declared_version, package_type=None):
     """Return (kind, operator) for a declared version string.
 
     Never raises: it runs during extraction, where an exception would lose a
-    whole manifest rather than one row. Unrecognised input classifies as
-    "pinned" if it looks like a version and "none" otherwise.
+    whole manifest rather than one row. Unrecognised input that looks like a
+    version classifies as "pinned" — or "gte" for the ecosystems where a bare
+    version is a minimum, see below — and "none" otherwise.
 
     `package_type` decides exactly one rule: what a BARE version means.
     Everything else is shape-based, because the shapes that occur are
@@ -102,8 +109,7 @@ def classify_constraint(declared_version, package_type=None):
     * npm `1.4.3` is strict equality -> `pinned`
     * Go `v1.2.3` is a Minimal Version Selection floor -> `gte`. The build
       takes the maximum of all minimums across the module graph, so an
-      unrelated dependency requiring v1.5.0 bumps you without that line
-      changing.
+      unrelated dependency requiring v1.5.0 raises the selected version.
     * NuGet `3.1.1` is documented as `>= 3.1.1` -> `gte`. An exact NuGet pin
       needs the bracket form `[3.1.1]`.
 
@@ -138,15 +144,26 @@ def classify_constraint(declared_version, package_type=None):
     if "||" in text:
         return ("bounded", "||")
 
+    ecosystem = str(package_type or "").strip().lower()
+
     # NuGet interval notation, before the operator scan: the brackets carry
     # the bounds, and the string contains no comparison operators to find.
-    interval = _NUGET_INTERVAL.match(text)
-    if interval:
-        return _classify_interval(interval, text)
+    #
+    # GATED ON ECOSYSTEM, deliberately. PEP 508 permits parentheses around a
+    # specifier, so `requests (>=2.0)` is a valid pypi declaration that this
+    # pattern matches — and ungated it returned ("pinned", ""), an open floor
+    # reported as a pin with the operator erased. That is the exact defect
+    # this module exists to prevent.
+    if ecosystem == "nuget":
+        interval = _NUGET_INTERVAL.match(text)
+        if interval:
+            return _classify_interval(interval, text)
 
     # npm hyphen range, before the operator scan so the ' - ' separator is
-    # not mistaken for anything else.
-    if _HYPHEN_RANGE.match(text):
+    # not mistaken for anything else. Gated for the same reason: `\S+` is
+    # unconstrained, so an ungated rule would swallow anything with a spaced
+    # hyphen.
+    if ecosystem in ("npm", "") and _HYPHEN_RANGE.match(text):
         return ("bounded", "-")
 
     operators = _operators_in(text)
@@ -190,15 +207,22 @@ def classify_constraint(declared_version, package_type=None):
     if text[0] == "~":
         return ("tilde", "~")
 
-    # Bare wildcard: `1.x`, `2.*`. A floor and a ceiling, not a pin.
+    # Bare wildcard: `1.x`, `2.*`, `1.x.x`. A floor and a ceiling, not a pin.
     if _WILDCARD.match(text):
         return ("bounded", "*")
+
+    # npm partial version: `16` is `>=16.0.0 <17.0.0`, `16.8` is
+    # `>=16.8.0 <16.9.0`. A range with no wildcard character to give it away,
+    # so it reads exactly like a pin. npm-only — a bare `2.0` elsewhere is a
+    # full version, not a partial one.
+    if ecosystem == "npm" and _PARTIAL_VERSION.match(text):
+        return ("bounded", "")
 
     # A bare version, or something unrecognised that is shaped like one.
     if re.match(r"^v?\d", text):
         # The one genuinely ecosystem-dependent rule. See _BARE_IS_MINIMUM:
         # npm bare is strict equality, Go and NuGet bare are floors.
-        if (package_type or "").strip().lower() in _BARE_IS_MINIMUM:
+        if ecosystem in _BARE_IS_MINIMUM:
             return ("gte", "")
         return ("pinned", "")
 
@@ -216,9 +240,14 @@ def _classify_interval(match, text):
     low = (low or "").strip()
     high = (high or "").strip()
 
-    # `[1.0]` — a single value with no comma is an exact pin.
+    # `[1.0]` — a single value with no comma is an exact pin, but ONLY with
+    # matched inclusive brackets. NuGet documents `(1.0)` as invalid, and
+    # `[1.0)` / `(1.0]` are mismatched; reporting any of them as a confident
+    # pin would be the wrong direction of error for malformed input.
     if "," not in text:
-        return ("pinned", "") if low else ("none", "")
+        if low and open_br == "[" and close_br == "]":
+            return ("pinned", "")
+        return ("none", "")
 
     if low and high:
         return ("bounded", f"{open_br}{close_br}")
