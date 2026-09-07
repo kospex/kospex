@@ -23,6 +23,7 @@ from packaging.version import Version, InvalidVersion
 from prettytable import PrettyTable
 
 import kospex_schema as KospexSchema
+from kospex.extractors.constraints import classify_constraint
 from kospex.extractors.registry import classify, resolve_parser
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -365,6 +366,7 @@ class KospexDependencies:
                 extractor.name == "pnpm-lock" and req_type not in ("direct", "dev")
             )
 
+            lookup_version = ""
             if not skip_lookup:
                 lookup_version = self.clean_version_spec(
                     declared_version or "", package_type
@@ -378,6 +380,21 @@ class KospexDependencies:
 
             out["package_type"] = package_type
             out["package_use"] = self._REQ_TO_USE.get(req_type, KospexSchema.PACKAGE_USE_DIRECT)
+
+            # What the manifest declared, recorded so "are we pinned?" can be
+            # asked of the database rather than re-derived from the string.
+            kind, operator = classify_constraint(declared_version, package_type)
+            out["version_kind"] = kind
+            out["version_operator"] = operator
+
+            # What the advisory numbers actually refer to. For a range this is
+            # the floor, so `advisories` describes the worst case the constraint
+            # permits — unreadable without recording which version was queried.
+            out["resolved_version"] = "" if skip_lookup else lookup_version
+
+            # Written on every save. NOT a column default: created_at is
+            # DEFAULT CURRENT_TIMESTAMP and so never updates on an upsert.
+            out["last_checked"] = self._utc_now_iso()
 
             if package_type == "npm":
                 # The ~ / ^ prefix is recorded separately; npm consumers use it
@@ -398,6 +415,12 @@ class KospexDependencies:
         if not version:
             return ""
         return version[0] if version[0] in ("~", "^") else ""
+
+    @staticmethod
+    def _utc_now_iso():
+        """UTC timestamp for last_checked, second precision."""
+        import datetime
+        return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     def _print_dependency_table(self, records, dev_deps=False):
         """Print the per-package table. dev_deps controls what is SHOWN.
@@ -589,6 +612,21 @@ class KospexDependencies:
             for field_name in self._NON_SCHEMA_FIELDS:
                 rec.pop(field_name, None)
             rec["latest"] = 1
+            kind, operator = classify_constraint(
+                rec.get("package_version"), rec.get("package_type")
+            )
+            rec["version_kind"] = kind
+            rec["version_operator"] = operator
+            # Not computed here — save_dependencies() never calls deps.dev, so
+            # it has no resolved version of its own to offer. setdefault keeps
+            # an enriching caller's real value (krunner osi sets this key
+            # during enrichment) while still writing the column on every save,
+            # so an un-enriched re-save can't leave a stale resolved_version
+            # sitting under a freshly advanced last_checked — the same
+            # created_at defect this migration exists to eliminate, one
+            # column over.
+            rec.setdefault("resolved_version", "")
+            rec["last_checked"] = self._utc_now_iso()
             if source is not None:
                 rec["source"] = source
             # Derive the _git_* columns from _repo_id when not supplied.
@@ -769,15 +807,22 @@ class KospexDependencies:
         ``requests; sys_platform == 'win32'`` split on the marker's ``==`` and
         yielded a package named ``"requests; sys_platform "``.
 
-        Two deliberate non-normalisations, both because ``package_name`` and
-        ``package_version`` are part of the ``dependency_data`` primary key —
-        rewriting either inserts duplicate rows on re-sync instead of updating:
+        Three deliberate decisions, all driven by ``package_name`` and
+        ``package_version`` being part of the ``dependency_data`` primary key.
+        Two keep the declared text, because rewriting it inserts duplicate rows
+        on re-sync instead of updating:
 
         * the declared name is kept as written (``MarkupSafe``, not
           ``markupsafe``), so ``packaging`` is used to parse, never to rename;
         * for a multi-specifier line the declared text is preserved verbatim.
           ``str(SpecifierSet)`` sorts its members, turning ``>=1.0,<2.0`` into
-          ``<2.0,>=1.0``.
+          ``<2.0,>=1.0``, and the author's ordering is information.
+
+        The third goes the other way, for the same reason: a single specifier
+        has its internal whitespace removed, so ``tox ~= 4.4`` and ``tox~=4.4``
+        store one value rather than splitting one constraint into two
+        identities. PEP 440 forbids whitespace inside a version token, so
+        nothing meaningful is lost. See the ``else`` branch below.
         """
         if not package_declaration:
             return None
@@ -804,11 +849,31 @@ class KospexDependencies:
             package["package_version"] = ""
             package["version_type"] = None
         elif len(specifiers) > 1:
-            # Preserve the declared text, not packaging's sorted rendering.
+            # Preserve the declared text, not packaging's sorted rendering, and
+            # deliberately NOT normalised the way the single-specifier branch
+            # below is: the author's ordering of a compound range is
+            # information that `str(specifier)` discards by sorting. 15 lines
+            # in the reference estate are declared `>=X, <Y` with that spacing.
             package["package_version"] = self._PYPI_NAME_EXTRAS_RE.sub("", spec_part).strip()
             package["version_type"] = "multiple"
         else:
-            package["package_version"] = specifiers[0].version
+            # Keep the declared operator — splitting it out here made
+            # `flask>=2.0` indistinguishable from a pin, because version_type
+            # is in _NON_SCHEMA_FIELDS and never persisted. The operator now
+            # also lives in version_operator.
+            #
+            # Internal whitespace IS normalised, unlike the branch above:
+            # `tox ~= 4.4` and `tox~=4.4` are one constraint written two ways,
+            # and package_version is a primary-key column, so keeping them
+            # distinct splits the identity of one dependency — a
+            # GROUP BY package_version counts them separately, and the same
+            # declaration in a sibling pyproject.toml is a third value again.
+            # A single specifier is `<operator><version>` with no legitimate
+            # internal space, so removing it loses nothing. The environment
+            # marker was already stripped above, so its own operators and
+            # spacing are never touched.
+            package["package_version"] = re.sub(
+                r"\s+", "", self._PYPI_NAME_EXTRAS_RE.sub("", spec_part))
             package["version_type"] = specifiers[0].operator
 
         return package
@@ -1345,12 +1410,14 @@ class KospexDependencies:
         # Remove leading operators and whitespace
         constraint = constraint.strip()
 
-        # Handle caret and tilde
-        if constraint.startswith("^") or constraint.startswith("~"):
-            return constraint[1:].strip()
-
-        # Handle comparison operators
-        operators = [">=", "<=", "==", "!=", ">", "<", "="]
+        # Handle comparison operators. Longest-first, and checked before the
+        # caret/tilde fallback below: PEP 440's `~=` and `===` both start
+        # with characters the caret/tilde check would otherwise claim first
+        # (`~=2.3.3` -> stripping only the tilde left `=2.3.3`), and a
+        # shorter operator earlier in this list can shadow a longer one that
+        # shares its prefix (`==` matching inside `=== 23.1.0` left a stray
+        # `=` masquerading as a version).
+        operators = ["===", "~=", ">=", "<=", "==", "!=", ">", "<", "="]
         for op in operators:
             if constraint.startswith(op):
                 version = constraint[len(op) :].strip()
@@ -1359,6 +1426,11 @@ class KospexDependencies:
                 if version.startswith("v") and not self._keeps_v_prefix(package_type):
                     version = version[1:]
                 return version
+
+        # Handle caret and tilde (npm ranges; not reached by pypi's `~=`,
+        # which the operator loop above already consumed).
+        if constraint.startswith("^") or constraint.startswith("~"):
+            return constraint[1:].strip()
 
         # Handle wildcards (return as is, will be handled in comparison)
         if any(char in constraint for char in ["x", "X", "*"]):

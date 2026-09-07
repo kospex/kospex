@@ -41,6 +41,14 @@ _PK = [
 def _make_db():
     db = sqlite_utils.Database(memory=True)
     db.execute(KospexSchema.SQL_CREATE_DEPENDENCY_DATA)
+    # SQL_CREATE_DEPENDENCY_DATA is the frozen baseline (KOSPEX_DB_VERSION =
+    # 2); save_dependencies() now unconditionally sets version_kind,
+    # version_operator and last_checked (migration 0006), so any DB it writes
+    # to must already carry those columns -- exactly as a real DB does, since
+    # new installs bootstrap migrations and existing ones are nagged until
+    # `upgrade-db -apply`. Mirrors the existing `resolution` ALTER below.
+    for col in ("version_kind", "version_operator", "resolved_version", "last_checked"):
+        db.execute(f"ALTER TABLE dependency_data ADD COLUMN {col} TEXT")
     return db
 
 
@@ -124,6 +132,10 @@ def test_save_dependencies_persists_resolution():
     db = sqlite_utils.Database(memory=True)
     db.execute(KospexSchema.SQL_CREATE_DEPENDENCY_DATA)
     db.execute("ALTER TABLE dependency_data ADD COLUMN resolution TEXT")
+    # See the comment in _make_db(): save_dependencies() now also sets these
+    # migration-0006 columns unconditionally.
+    for col in ("version_kind", "version_operator", "resolved_version", "last_checked"):
+        db.execute(f"ALTER TABLE dependency_data ADD COLUMN {col} TEXT")
     kd = KospexDependencies(kospex_db=db)
     kd.save_dependencies([{
         "_repo_id": "s~o~r", "hash": "h", "file_path": "req.txt", "package_type": "pypi",

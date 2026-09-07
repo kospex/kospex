@@ -121,16 +121,22 @@ def enrich_dependency_records(results, kdeps, echo=None):
     version without it.
     """
     for d in results:
+        cleaned_version = kdeps.clean_version_spec(d["package_version"], d["package_type"])
         deps_rec = kdeps.depsdev_record(
             d["package_type"],
             d["package_name"],
-            kdeps.clean_version_spec(d["package_version"], d["package_type"]),
+            cleaned_version,
         )
         if echo:
             echo(deps_rec)
         d["versions_behind"] = deps_rec.get("versions_behind")   # int or None, no "Unknown"
         d["advisories"] = deps_rec.get("advisories")
         d["resolution"] = deps_rec.get("resolution")
+        # resolved_version is defined as "the version actually sent to
+        # deps.dev" (migration 0006) -- reuse the same value passed to
+        # depsdev_record() above rather than recomputing it, so the two
+        # cannot drift apart if this function is edited later.
+        d["resolved_version"] = cleaned_version
         published = deps_rec.get("published_at", None)
         if published:
             d["published_at"] = published.split("T")[0]
