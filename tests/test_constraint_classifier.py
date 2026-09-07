@@ -15,6 +15,12 @@ class TestVersionConstraints:
         ("1.4.3", "npm", "pinned", ""),
         ("==2.31.0", "pypi", "pinned", "=="),
         ("3.1.1", "nuget", "pinned", ""),
+        # PEP 440 arbitrary equality: a raw string comparison, not normalised
+        # version equality — ===1.0 does not match 1.0.0, ===2020.1 does not
+        # match 2020.01, and it has no wildcard support. The escape hatch for
+        # versions that are not PEP 440 compliant. Distinct operator from ==.
+        ("=== 23.1.0", "pypi", "pinned", "==="),
+        ("===23.1.0", "pypi", "pinned", "==="),
         # npm range prefixes — tilde is NOT caret: patch-only vs minor+patch
         ("^4.18.0", "npm", "caret", "^"),
         ("~29.0.0", "npm", "tilde", "~"),

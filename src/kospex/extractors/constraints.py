@@ -102,6 +102,11 @@ def classify_constraint(declared_version, package_type=None):
             return ("pinned", "==")
         if has_lower:
             return ("gte", operators[0])
+        # `===` (PEP 440 arbitrary equality) lands here deliberately: it is
+        # not `>=`/`>` (has_lower), not `~=`, and list membership means
+        # "==" in operators is False for it (the strings are unequal), so it
+        # falls through to this generic pin return with its own operator
+        # text intact — the same "pinned" kind as `==`, just recorded verbatim.
         return ("pinned", operators[0])
 
     if text[0] == "^":
@@ -119,13 +124,17 @@ def classify_constraint(declared_version, package_type=None):
 def _operators_in(text):
     """Comparison operators present in a declaration.
 
-    Two-character operators are consumed first, so the `>` inside `>=` is not
-    also counted as a bare greater-than — which would read `>=1.0` as having
-    both an inclusive and an exclusive lower bound.
+    Operators are consumed longest-first — three-character before
+    two-character before one-character — so a shorter operator that is a
+    substring of a longer one is never counted separately. Without this,
+    `>=1.0` would read as having both an inclusive lower bound (`>=`) and a
+    bare greater-than (`>`), and PEP 440 `===1.0` would read as `==` (losing
+    the third `=`, since `==` matches first and consumes two of the three
+    characters).
     """
     found = []
     remaining = text
-    for op in (">=", "<=", "==", "!=", "~="):
+    for op in ("===", ">=", "<=", "==", "!=", "~="):
         if op in remaining:
             found.append(op)
             remaining = remaining.replace(op, " ")
