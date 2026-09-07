@@ -65,22 +65,32 @@ class TestEnvironmentMarkers:
 
 
 class TestWhitespace:
-    """Neither field may carry the name's surrounding whitespace (defect 3).
+    """Neither field may carry whitespace (defect 3).
 
-    Internal spacing between the operator and the version is deliberately
-    kept (Task 5, #187) — package_version stores the declaration as written,
-    the same as every other parser, so `hypothesis >= 3.30` and
-    `hypothesis>=3.30` are distinct declared texts, not two spellings of one
-    normalised value.
+    The name's surrounding whitespace is stripped, and for a single
+    specifier the internal spacing between operator and version is removed
+    too (#187): `hypothesis >= 3.30` and `hypothesis>=3.30` are one
+    constraint written two ways, and package_version is a primary-key
+    column, so storing them separately splits one dependency's identity.
+
+    The multi-specifier branch is the deliberate exception — see
+    TestExistingBehaviourPreserved.
     """
 
-    def test_whitespace_around_the_declaration_is_stripped_but_internal_spacing_is_kept(self, kd):
+    def test_all_whitespace_is_removed_from_a_single_specifier(self, kd):
         result = kd.parse_pypi_package_declaration("hypothesis >= 3.30")
         assert result is not None
         assert result["package_name"] == "hypothesis"
-        # Was "3.30" before Task 5 split the operator out of package_version.
-        assert result["package_version"] == ">= 3.30"
+        # Was "3.30" before the operator was kept in package_version, then
+        # ">= 3.30" before internal whitespace was normalised.
+        assert result["package_version"] == ">=3.30"
         assert result["version_type"] == ">="
+
+    def test_spaced_and_unspaced_declarations_store_one_value(self, kd):
+        """The point of normalising: one constraint, one stored value."""
+        spaced = kd.parse_pypi_package_declaration("hypothesis >= 3.30")
+        tight = kd.parse_pypi_package_declaration("hypothesis>=3.30")
+        assert spaced["package_version"] == tight["package_version"] == ">=3.30"
 
 
 class TestUnpinnedDeclarations:
@@ -105,25 +115,31 @@ class TestUnpinnedDeclarations:
 class TestOperatorCoverage:
     """Every PEP 440 operator must parse, not just >=, ~= and == (defect 4)."""
 
-    # `declared_version` is the expected package_version: the declaration
-    # with only the leading name stripped, operator and whitespace kept as
-    # written (Task 5, #187). It used to be the bare version number.
+    # `expected_version` is the stored package_version: the declaration with
+    # the leading name stripped and the operator kept (#187). It used to be
+    # the bare version number, with the operator discarded.
+    #
+    # Internal whitespace is removed for a single specifier, so `urllib3 < 3`
+    # and `urllib3<3` store one value — package_version is a primary-key
+    # column, and keeping them distinct splits the identity of one
+    # constraint. The multi-specifier branch does NOT normalise; see
+    # TestExistingBehaviourPreserved.
     @pytest.mark.parametrize(
-        "declaration,name,declared_version,operator",
+        "declaration,name,expected_version,operator",
         [
-            ("urllib3 < 3", "urllib3", "< 3", "<"),
-            ("flask != 2.0.0", "flask", "!= 2.0.0", "!="),
-            ("django <= 4.2", "django", "<= 4.2", "<="),
-            ("boto3 > 1.0", "boto3", "> 1.0", ">"),
-            ("attrs === 23.1.0", "attrs", "=== 23.1.0", "==="),
+            ("urllib3 < 3", "urllib3", "<3", "<"),
+            ("flask != 2.0.0", "flask", "!=2.0.0", "!="),
+            ("django <= 4.2", "django", "<=4.2", "<="),
+            ("boto3 > 1.0", "boto3", ">1.0", ">"),
+            ("attrs === 23.1.0", "attrs", "===23.1.0", "==="),
             ("duckdb==1.4.3", "duckdb", "==1.4.3", "=="),
         ],
     )
-    def test_operator_parses(self, kd, declaration, name, declared_version, operator):
+    def test_operator_parses(self, kd, declaration, name, expected_version, operator):
         result = kd.parse_pypi_package_declaration(declaration)
         assert result is not None, f"{declaration!r} must not be dropped"
         assert result["package_name"] == name
-        assert result["package_version"] == declared_version
+        assert result["package_version"] == expected_version
         assert result["version_type"] == operator
 
 

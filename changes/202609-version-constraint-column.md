@@ -196,6 +196,22 @@ Today requirements.txt is inconsistent even with itself: single-operator lines
 are stripped to `1.4.3`, compound ones keep their text (`>=23.0, <24.3`),
 because the parser cannot split them.
 
+**One qualification to "declared text", added after the parity was measured.**
+A *single* specifier has its internal whitespace removed, so `tox ~= 4.4` and
+`tox~=4.4` both store `~=4.4`. The rule exists to protect the primary key, and
+storing one constraint as two strings is precisely what splits it: a
+`GROUP BY package_version` counts the two spellings separately, and the same
+declaration in a sibling `pyproject.toml` — which canonicalises via
+`str(req.specifier)` — is a third value again. 79 single-specifier lines across
+5 repos of the reference estate are declared with spaces, 67 of them `~=`.
+Those rows were already changing in this release, so normalising them costs no
+additional churn and the ~317 figure below is unaffected.
+
+A *compound* range keeps its declared text, spaces and all. The author's
+ordering (`>=23.0, <24.3`) is information that `packaging`'s sorted rendering
+discards, and 15 estate lines are declared that way. This is the one place the
+two pypi parsers still disagree, and it is deliberate.
+
 Nothing computes on the column. All three templates rendering it
 (`dependencies.html`, `package_check.html`, and the unrelated
 `supply_chain_search.html` form input) interpolate it verbatim — no parsing, no

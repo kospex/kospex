@@ -842,18 +842,31 @@ class KospexDependencies:
             package["package_version"] = ""
             package["version_type"] = None
         elif len(specifiers) > 1:
-            # Preserve the declared text, not packaging's sorted rendering.
+            # Preserve the declared text, not packaging's sorted rendering, and
+            # deliberately NOT normalised the way the single-specifier branch
+            # below is: the author's ordering of a compound range is
+            # information that `str(specifier)` discards by sorting. 15 lines
+            # in the reference estate are declared `>=X, <Y` with that spacing.
             package["package_version"] = self._PYPI_NAME_EXTRAS_RE.sub("", spec_part).strip()
             package["version_type"] = "multiple"
         else:
-            # Keep the declared text, as the multi-specifier branch above does.
-            # package_version is part of the dependency_data primary key and
-            # every other parser stores the declaration as written; splitting
-            # the operator out here made `flask>=2.0` indistinguishable from a
-            # pin, because version_type is in _NON_SCHEMA_FIELDS and never
-            # persisted. The operator now lives in version_operator.
-            package["package_version"] = self._PYPI_NAME_EXTRAS_RE.sub(
-                "", spec_part).strip()
+            # Keep the declared operator — splitting it out here made
+            # `flask>=2.0` indistinguishable from a pin, because version_type
+            # is in _NON_SCHEMA_FIELDS and never persisted. The operator now
+            # also lives in version_operator.
+            #
+            # Internal whitespace IS normalised, unlike the branch above:
+            # `tox ~= 4.4` and `tox~=4.4` are one constraint written two ways,
+            # and package_version is a primary-key column, so keeping them
+            # distinct splits the identity of one dependency — a
+            # GROUP BY package_version counts them separately, and the same
+            # declaration in a sibling pyproject.toml is a third value again.
+            # A single specifier is `<operator><version>` with no legitimate
+            # internal space, so removing it loses nothing. The environment
+            # marker was already stripped above, so its own operators and
+            # spacing are never touched.
+            package["package_version"] = re.sub(
+                r"\s+", "", self._PYPI_NAME_EXTRAS_RE.sub("", spec_part))
             package["version_type"] = specifiers[0].operator
 
         return package

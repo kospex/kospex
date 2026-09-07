@@ -272,43 +272,85 @@ class TestRequirementsRealignment:
         assert req["version_kind"] == proj["version_kind"] == "gte"
         assert req["version_operator"] == proj["version_operator"] == ">="
 
-    def test_diverges_from_pyproject_for_a_spaced_declaration(self, tmp_path):
-        """Known, accepted divergence: a declaration with internal whitespace
-        around the operator still reads differently in `package_version`
-        between the two pypi parsers.
+    def test_spaced_single_specifier_matches_pyproject(self, tmp_path):
+        """A spaced SINGLE specifier now normalises, so both parsers agree.
 
-        requirements.txt's `parse_pypi_package_declaration()` regex-strips
-        only the package name and keeps the remainder verbatim, spaces and
-        all. pyproject.toml's `parse_pyproject_file()` renders through
-        `packaging.Requirement`/`str(specifier)`, which normalises away that
-        whitespace. This is a deliberate, kept behaviour (see
-        changes/202609-version-constraint-column.md) — `package_version` is
-        defined as the declared text, and normalising it would move ~58
-        other requirements.txt rows and the changelog's row-count figure.
-        This test pins the divergence so a change to either parser's
-        whitespace handling fails loudly here rather than silently.
+        `tox ~= 4.4` and `tox~=4.4` are one constraint written two ways.
+        `package_version` is a primary-key column, so storing them as
+        different strings splits the identity of one dependency: a
+        `GROUP BY package_version` asking "how many projects pin this?"
+        counts them separately, and the same declaration in a sibling
+        `pyproject.toml` is a third value again.
 
-        What actually matters — the normalised `version_kind` and
-        `version_operator` columns — agree across both forms regardless,
-        which is asserted below and is the property `assess()` promises.
+        79 single-specifier lines across 5 repos of the reference estate are
+        declared with spaces (67 of them `~=`), so this is real data, not a
+        hypothetical. Those rows were already changing in this release —
+        they were stored bare before it — so normalising them costs no
+        additional row churn.
         """
         kd = _kdeps()
-        (tmp_path / "requirements.txt").write_text("flask >= 2.0\n")
+        (tmp_path / "requirements.txt").write_text("tox ~= 4.4\n")
         (tmp_path / "pyproject.toml").write_text(
-            '[project]\nname="d"\ndependencies=["flask >= 2.0"]\n')
+            '[project]\nname="d"\ndependencies=["tox ~= 4.4"]\n')
 
         req = _assess(kd, str(tmp_path / "requirements.txt"))[0]
         proj = _assess(kd, str(tmp_path / "pyproject.toml"))[0]
 
-        # The known divergence: requirements.txt keeps the spaces, pyproject
-        # normalises them away.
-        assert req["package_version"] == ">= 2.0"
-        assert proj["package_version"] == ">=2.0"
+        assert req["package_version"] == "~=4.4"
+        assert req["package_version"] == proj["package_version"]
+        assert req["version_kind"] == proj["version_kind"] == "tilde"
+        assert req["version_operator"] == proj["version_operator"] == "~="
+
+    def test_multi_specifier_keeps_its_declared_spacing(self, tmp_path):
+        """The multi-specifier branch deliberately does NOT normalise.
+
+        Only the single-specifier branch was changed. A compound range
+        carries information in its declared form that `packaging`'s sorted
+        `str(specifier)` rendering discards — the author's ordering — so it
+        is kept verbatim, spaces and all. 15 such lines in the reference
+        estate are spaced (the Sphinx `>=X, <Y` house style).
+
+        This is the asymmetry between the two branches of one parser, pinned
+        so it reads as a decision rather than an oversight, and so a later
+        change to either branch's whitespace handling fails loudly here.
+        """
+        kd = _kdeps()
+        (tmp_path / "requirements.txt").write_text("packaging >=23.0, <24.3\n")
+
+        req = _assess(kd, str(tmp_path / "requirements.txt"))[0]
+
+        assert req["package_version"] == ">=23.0, <24.3"
+        assert req["version_kind"] == "bounded"
+
+    def test_diverges_from_pyproject_only_for_multi_specifier(self, tmp_path):
+        """The residual divergence between the two pypi parsers.
+
+        Single specifiers now agree (see above). What still differs is a
+        compound range: requirements.txt keeps the declared text while
+        `parse_pyproject_file()` renders through
+        `packaging.Requirement`/`str(specifier)`, which both sorts and
+        strips whitespace.
+
+        Kept deliberately, and pinned here so it stays visible: the declared
+        ordering of a compound range is information, and `version_kind` /
+        `version_operator` — the columns consumers actually query — agree
+        across both forms regardless, which is the property `assess()`
+        promises.
+        """
+        kd = _kdeps()
+        (tmp_path / "requirements.txt").write_text("packaging >=23.0, <24.3\n")
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\nname="d"\ndependencies=["packaging >=23.0, <24.3"]\n')
+
+        req = _assess(kd, str(tmp_path / "requirements.txt"))[0]
+        proj = _assess(kd, str(tmp_path / "pyproject.toml"))[0]
+
+        assert req["package_version"] == ">=23.0, <24.3"
         assert req["package_version"] != proj["package_version"]
 
-        # What matters: the normalised columns agree regardless of spacing.
-        assert req["version_kind"] == proj["version_kind"] == "gte"
-        assert req["version_operator"] == proj["version_operator"] == ">="
+        # What matters: the normalised columns agree regardless.
+        assert req["version_kind"] == proj["version_kind"] == "bounded"
+        assert req["version_operator"] == proj["version_operator"] == ">=,<"
 
     def test_tilde_equals_resolves_a_real_lookup_version(self, tmp_path):
         """`~=` (PEP 440 compatible-release) was the regression this change
