@@ -807,15 +807,22 @@ class KospexDependencies:
         ``requests; sys_platform == 'win32'`` split on the marker's ``==`` and
         yielded a package named ``"requests; sys_platform "``.
 
-        Two deliberate non-normalisations, both because ``package_name`` and
-        ``package_version`` are part of the ``dependency_data`` primary key —
-        rewriting either inserts duplicate rows on re-sync instead of updating:
+        Three deliberate decisions, all driven by ``package_name`` and
+        ``package_version`` being part of the ``dependency_data`` primary key.
+        Two keep the declared text, because rewriting it inserts duplicate rows
+        on re-sync instead of updating:
 
         * the declared name is kept as written (``MarkupSafe``, not
           ``markupsafe``), so ``packaging`` is used to parse, never to rename;
         * for a multi-specifier line the declared text is preserved verbatim.
           ``str(SpecifierSet)`` sorts its members, turning ``>=1.0,<2.0`` into
-          ``<2.0,>=1.0``.
+          ``<2.0,>=1.0``, and the author's ordering is information.
+
+        The third goes the other way, for the same reason: a single specifier
+        has its internal whitespace removed, so ``tox ~= 4.4`` and ``tox~=4.4``
+        store one value rather than splitting one constraint into two
+        identities. PEP 440 forbids whitespace inside a version token, so
+        nothing meaningful is lost. See the ``else`` branch below.
         """
         if not package_declaration:
             return None
