@@ -101,48 +101,93 @@ class KospexGit:
             None: if URL format is not recognized as Azure DevOps or visual studio team services
 
         """
-        # Remove .git suffix if present
-        clean_url = clone_url.rstrip(".git")
+        # Remove a .git suffix if present. Must be removesuffix, not rstrip:
+        # rstrip takes a *character set*, so it eats any trailing run of
+        # '.', 'g', 'i', 't' -- a repo named 'digit' became 'd'. (#135)
+        clean_url = clone_url.removesuffix(".git")
+
+        # scp-style ADO SSH: git@ssh.dev.azure.com:v3/{org}/{project}/{repo}
+        # 'v3' is a path prefix, not a port, and there is no '_git' segment.
+        # Normalise it to the HTTPS shape so both forms yield one repo_id --
+        # ssh.dev.azure.com is the SSH endpoint of the same service, not a
+        # different origin (unlike the legacy *.visualstudio.com tenant hosts).
+        scp_ado = re.match(
+            r"^git@ssh\.dev\.azure\.com:v3/(?P<rest>.+)$", clean_url)
+        scheme_override = None
+        if scp_ado:
+            clean_url = f"https://dev.azure.com/{scp_ado.group('rest')}"
+            scheme_override = "ssh"  # the transport was SSH; only the shape is rewritten
 
         # Parse the URL
         parsed = urlparse(clean_url)
 
+        # ssh://.../v3/... is the same endpoint reached with an explicit scheme.
+        netloc = parsed.netloc
+        path = parsed.path
+        if netloc == "ssh.dev.azure.com":
+            netloc = "dev.azure.com"
+            path = re.sub(r"^/v3/", "/", path)
+
         # Check if it's a dev.azure.com URL
-        if parsed.netloc == "dev.azure.com":
+        if netloc == "dev.azure.com":
             # Format: https://dev.azure.com/{organization}/{project}/_git/{repository}
-            path_parts = parsed.path.strip("/").split("/")
+            # The SSH forms omit '_git', so accept both shapes.
+            path_parts = [seg for seg in path.strip("/").split("/") if seg]
 
-            if len(path_parts) >= 4 and path_parts[2] == "_git":
-                organization = path_parts[0]
-                project = path_parts[1]
-                repository = "/".join(path_parts[3:])  # Handle repos with slashes in name
+            if "_git" in path_parts:
+                git_at = path_parts.index("_git")
+                # project is the segment before '_git'; org is what precedes it,
+                # ignoring a legacy collection segment.
+                project = path_parts[git_at - 1] if git_at >= 1 else ""
+                organization = path_parts[0] if git_at >= 2 else ""
+                repository = "/".join(path_parts[git_at + 1:])
+            elif len(path_parts) >= 3:
+                organization, project = path_parts[0], path_parts[1]
+                repository = "/".join(path_parts[2:])
+            else:
+                organization = project = repository = ""
 
+            if organization and project and repository:
+
+                # org/project is a hierarchy, encoded like a GitLab subgroup
+                # ('/' becomes '~~' in generate_repo_id). The previous hyphen
+                # join collided: '-' is legal in ADO org names, so my-org/Project
+                # and my/org-Project produced one id. '/' cannot appear in an ADO
+                # org, project or repo name, so this is unambiguous. Supersedes #50.
                 return {
-                    "remote": parsed.netloc,
-                    "org": f"{organization}-{project}",
+                    "remote": netloc,
+                    "org": f"{organization}/{project}",
                     "project": project,
                     "repo": repository,
-                    "remote_type": parsed.scheme,
+                    "remote_type": scheme_override or parsed.scheme,
                 }
 
         # Check if it's a legacy visualstudio.com URL
-        elif parsed.netloc.endswith(".visualstudio.com"):
-            # Format: https://{organization}.visualstudio.com/{project}/_git/{repository}
-            # For visualstudio.com, we'll use the project as the "org" since domain includes organisation
-            # which makes it unique
-            path_parts = parsed.path.strip("/").split("/")
+        elif netloc.endswith(".visualstudio.com"):
+            # Format: https://{org}.visualstudio.com/[{collection}/]{project}/_git/{repo}
+            # Locate '_git' rather than assuming its index, so a legacy
+            # collection segment (e.g. 'DefaultCollection') does not make the
+            # URL unparseable -- it is routing, not identity.
+            path_parts = [seg for seg in path.strip("/").split("/") if seg]
 
-            if len(path_parts) >= 3 and path_parts[1] == "_git":
-                project = path_parts[0]
-                repository = "/".join(path_parts[2:])  # Handle repos with slashes in name
+            if "_git" in path_parts:
+                git_at = path_parts.index("_git")
+                project = path_parts[git_at - 1] if git_at >= 1 else ""
+                repository = "/".join(path_parts[git_at + 1:])
+                # The organisation is the first hostname label. Using the project
+                # as the org (the old behaviour) discarded it entirely, so the
+                # project masqueraded as the org and the id could not be compared
+                # with the dev.azure.com form.
+                organization = netloc.split(".", 1)[0]
 
-                return {
-                    "remote": parsed.netloc,
-                    "org": project,  # Use project as org for visualstudio.com
-                    "project": project,
-                    "repo": repository,
-                    "remote_type": parsed.scheme,
-                }
+                if project and repository:
+                    return {
+                        "remote": netloc,
+                        "org": f"{organization}/{project}",
+                        "project": project,
+                        "repo": repository,
+                        "remote_type": scheme_override or parsed.scheme,
+                    }
 
         # If we got here, nothing parsed, so not a valid ADO or visualstudio.com URL
         return None

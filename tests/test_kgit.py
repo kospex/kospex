@@ -164,3 +164,83 @@ def test_ado_clone_button_url_matches_the_plain_url():
 
     assert rid("https://myorg@dev.azure.com/myorg/MyProject/_git/MyRepo") == \
            rid("https://dev.azure.com/myorg/MyProject/_git/MyRepo")
+
+
+def _rid(url):
+    parts = KospexGit.parse_git_remote(url)
+    assert parts is not None, f"failed to parse {url}"
+    return KospexGit.generate_repo_id(parts["remote"], parts["org"], parts["repo"])
+
+
+def test_ado_org_and_project_use_the_nested_org_encoding():
+    """ADO org/project is a hierarchy, so encode it like a GitLab subgroup.
+
+    Supersedes the hyphen join specified in #50. '/' cannot appear in an ADO
+    org, project or repo name, so 'org/project' is unambiguous; '-' can, which
+    is why the hyphen join collides (see the test below).
+    """
+    parts = KospexGit.parse_git_remote(
+        "https://dev.azure.com/myorg/MyProject/_git/MyRepo")
+    assert parts["org"] == "myorg/MyProject"
+    assert _rid("https://dev.azure.com/myorg/MyProject/_git/MyRepo") == \
+        "dev.azure.com~myorg~~MyProject~MyRepo"
+
+
+def test_hyphenated_ado_org_and_project_no_longer_collide():
+    """Two different repos must not share a repo_id. #50's hyphen join did.
+
+    'my-org/Project' and 'my/org-Project' both produced
+    'dev.azure.com~my-org-Project~R'.
+    """
+    a = _rid("https://dev.azure.com/my-org/Project/_git/R")
+    b = _rid("https://dev.azure.com/my/org-Project/_git/R")
+    assert a != b
+
+
+def test_ado_repo_name_ending_in_git_characters_is_not_truncated():
+    """#135 -- rstrip('.git') strips a character set, not a suffix.
+
+    A repo named 'digit' lost everything but the leading 'd'.
+    """
+    parts = KospexGit.parse_git_remote(
+        "https://dev.azure.com/myorg/MyProject/_git/digit")
+    assert parts["repo"] == "digit"
+
+
+def test_ado_dot_git_suffix_is_still_removed():
+    parts = KospexGit.parse_git_remote(
+        "https://dev.azure.com/myorg/MyProject/_git/MyRepo.git")
+    assert parts["repo"] == "MyRepo"
+
+
+def test_legacy_visualstudio_org_comes_from_the_hostname():
+    """The org lives in the hostname; using the project as the org lost it."""
+    parts = KospexGit.parse_git_remote(
+        "https://myorg.visualstudio.com/MyProject/_git/MyRepo")
+    assert parts["org"] == "myorg/MyProject"
+
+
+def test_ado_ssh_agrees_with_https():
+    """ADO's SSH clone URL addresses the same repository as the HTTPS one.
+
+    Format is 'git@ssh.dev.azure.com:v3/{org}/{project}/{repo}' -- 'v3' is a
+    path prefix, not a port, and ssh.dev.azure.com is the SSH endpoint of the
+    same service rather than a different origin. Both must yield one id.
+    """
+    https = _rid("https://dev.azure.com/myorg/MyProject/_git/MyRepo")
+    scp = _rid("git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo")
+    ssh_scheme = _rid("ssh://git@ssh.dev.azure.com/v3/myorg/MyProject/MyRepo")
+    assert scp == https
+    assert ssh_scheme == https
+
+
+def test_ado_default_collection_is_not_part_of_the_identity():
+    """Legacy collection URLs address the same project.
+
+    'DefaultCollection' sits between the host and the project on older ADO and
+    on-prem TFS URLs; it previously made the URL unparseable as ADO entirely.
+    """
+    with_collection = _rid(
+        "https://myorg.visualstudio.com/DefaultCollection/MyProject/_git/MyRepo")
+    without = _rid("https://myorg.visualstudio.com/MyProject/_git/MyRepo")
+    assert with_collection == without

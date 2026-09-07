@@ -67,15 +67,17 @@ CORPUS: list[dict] = [
     # Four URL shapes reach the same repository. They currently produce four
     # different repo_ids -- the migration-relevant defect.
     {"url": "https://dev.azure.com/myorg/MyProject/_git/MyRepo", "group": "ado",
-     "known_wrong": "org and project are joined with '-', which is ambiguous "
-                    "because '-' is legal in ADO org names"},
+     "note": "org/project encoded as a hierarchy ('~~'), superseding #50's "
+             "hyphen join which collided on hyphenated org names"},
     {"url": "https://dev.azure.com/myorg/MyProject/_git/MyRepo.git", "group": "ado"},
     {"url": "https://myorg@dev.azure.com/myorg/MyProject/_git/MyRepo", "group": "ado",
-     "known_wrong": "this is ADO's own Clone-button URL. Username lands in the "
-                    "host and '_git' survives as a path segment"},
+     "note": "ADO's own Clone-button URL. Agrees with the plain form since "
+             "#162 stripped credentials from the host"},
     {"url": "https://myorg.visualstudio.com/MyProject/_git/MyRepo", "group": "ado",
-     "known_wrong": "legacy host form: the org lives in the hostname and is "
-                    "lost, so this yields a different id than dev.azure.com"},
+     "known_wrong": "legacy host: the org is now recovered from the hostname, "
+                    "but the id still differs from dev.azure.com because the "
+                    "host differs. Whether to normalise the host is an open "
+                    "decision -- doing so would make the two agree"},
     {"url": "https://myorg.visualstudio.com/DefaultCollection/MyProject/_git/MyRepo",
      "group": "ado", "known_wrong": "collection form is not recognised at all"},
     {"url": "git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo", "group": "ado",
@@ -123,11 +125,12 @@ CORPUS: list[dict] = [
     # Nothing here is a git remote. Every one currently returns a populated
     # dict rather than None (#160).
     {"url": "ftp://not-a-git-host/whatever", "group": "reject",
-     "known_wrong": "#160 — non-git scheme is accepted"},
+     "note": "rejected since #162"},
     {"url": "https://example.com/single", "group": "reject",
-     "known_wrong": "#160 — single path segment, no org, is accepted"},
-    {"url": "https://example.com/a/b/c/d/e/f", "group": "reject",
-     "known_wrong": "#160 — arbitrarily deep path is accepted"},
+     "note": "rejected since #162 -- no org segment"},
+    {"url": "https://example.com/a/b/c/d/e/f", "group": "generic",
+     "note": "NOT a reject: a deep path on an unknown host is most likely a "
+             "self-hosted GitLab subgroup, so org='a/b/c/d/e' is correct"},
     {"url": "not a url at all", "group": "reject"},
     {"url": "", "group": "reject"},
 ]
