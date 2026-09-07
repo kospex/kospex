@@ -958,7 +958,7 @@ end of that numbered list:
 8. **Python requirements rows show their operator.** `requirements.txt` was the
    only parser that split the operator out of `package_version`, so `flask>=2.0`
    stored `2.0` and looked pinned. It now stores `>=2.0`, matching
-   `pyproject.toml`, `package.json`, `go.mod` and `.csproj`. About 464 rows
+   `pyproject.toml`, `package.json`, `go.mod` and `.csproj`. About 317 rows
    change; `package_version` is in the primary key, so the old rows are
    superseded rather than updated and demoted by the next `krunner osi` run.
    Anything reading that column verbatim will show the operator — which is
