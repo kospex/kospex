@@ -45,7 +45,7 @@ Task order matters: Task 1 produces `classify_constraint()`, used by Tasks 3 and
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `classify_constraint(declared_version, package_type) -> tuple[str, str]` returning `(kind, operator)`. `kind` is one of the thirteen values below; `operator` is the raw declared operator or `""`.
+- Produces: `classify_constraint(declared_version, package_type) -> tuple[str, str]` returning `(kind, operator)`. `kind` is one of the fourteen values below; `operator` is the raw declared operator or `""`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -357,7 +357,21 @@ classifier changed behaviour:
                               patch         2   0.0%
 ```
 
-All thirteen kinds occur in real data — none is speculative. `commit` = 12 is
+**These figures predate two later corrections and no longer match the shipped
+classifier.** Recomputed over the same 6,386 rows after `pinned` was narrowed
+to "exactly one version, nothing can drift":
+
+```
+  pinned      3217  (-83)     gte          308  (+79)     bounded   83  (+4)
+```
+
+79 Go rows moved `pinned` → `gte` (a `require` is a Minimal Version Selection
+floor; 91 Go rows less the 12 pseudo-versions, which stay `commit`), and 4
+`==N.*` wildcards moved `pinned` → `bounded`. Everything else is unchanged.
+`excluded` is 0 today only because the estate's one `!=` declaration is still
+stored flattened; it becomes 1 on re-sync.
+
+All kinds except `excluded` occur in real data — none is speculative. `commit` = 12 is
 exactly the twelve `mergestat` Go pseudo-versions the spec cites, which is the
 check that the `_GO_PSEUDO` regex is matching both forms.
 

@@ -14,9 +14,18 @@ declared text verbatim — `WORKSPACE:^` yields `"workspace:"`, not `"WORKSPACE:
 The vocabulary is deliberately finer than pinned/floating. `tilde` is separate
 from `caret` because `~29.0.0` permits patch drift only where `^4.18.0` permits
 minor and patch — collapsing them misreports how far a dependency can move,
-which is the question this exists to answer. `commit` is separate from `pinned`
-because a Go pseudo-version is maximally pinned yet deps.dev has nothing to
-match it against.
+which is the question this exists to answer.
+
+`pinned` means exactly one version, nothing can drift. That is a statement
+about what a declaration PERMITS, not what it looks like: `1.x`, `==1.*` and
+`1.2.3 - 2.3.4` all start with a digit but each permits a range, so they are
+`bounded`. `!=1.0` is the opposite of a pin — every version except one — and
+is `excluded`.
+
+`commit` is separate from `pinned` because a Go pseudo-version points at a
+commit with no published release, so deps.dev has nothing to match against.
+Strictly, Minimal Version Selection makes it a floor like any other Go
+requirement, but `commit` records more than `gte` would and is kept for that.
 
 See changes/202609-version-constraint-column.md.
 """
@@ -25,8 +34,33 @@ import re
 # The closed vocabulary. A value not in here is a bug.
 KINDS = (
     "pinned", "commit", "caret", "tilde", "gte", "bounded", "latest",
-    "workspace", "link", "catalog", "alias", "patch", "none",
+    "workspace", "link", "catalog", "alias", "patch", "none", "excluded",
 )
+
+# Ecosystems where a BARE version is a minimum, not an equality.
+#
+# Go: `require foo v1.2.3` is a Minimal Version Selection floor. The build
+# selects the maximum of all minimums across the module graph, so an
+# unrelated dependency requiring v1.5.0 bumps you without that line changing.
+# NuGet: `PackageReference Version="3.1.1"` is documented as `>= 3.1.1`; an
+# exact pin needs the bracket form `[3.1.1]`.
+#
+# npm is the counter-example and the reason this cannot be decided by shape:
+# a bare npm version IS strict equality. Same string, different meaning.
+_BARE_IS_MINIMUM = ("go", "nuget")
+
+# npm wildcard: 1.x, 2.*, 1.2.x — a floor and a ceiling, so `bounded`.
+# Also matches the pypi `==1.*` form once the operator is stripped.
+_WILDCARD = re.compile(r"^[vV]?\d+(\.\d+)*\.[xX*]$")
+
+# npm hyphen range: `1.2.3 - 2.3.4` is `>=1.2.3 <=2.3.4`. npm requires the
+# surrounding spaces, which is what distinguishes it from a prerelease
+# version like `1.2.3-beta`.
+_HYPHEN_RANGE = re.compile(r"^\S+\s+-\s+\S+$")
+
+# NuGet interval notation. Each end is independent: `[`/`]` inclusive,
+# `(`/`)` exclusive, so `[1.0,2.0)` is `>=1.0 <2.0` — the idiomatic "any 1.x".
+_NUGET_INTERVAL = re.compile(r"^([\[(])\s*([^,\]\)]*)\s*(?:,\s*([^,\]\)]*)\s*)?([\])])$")
 
 # Resolution mechanisms, not version constraints. Prefix -> kind.
 _MECHANISM_PREFIXES = (
@@ -56,21 +90,25 @@ def classify_constraint(declared_version, package_type=None):
     whole manifest rather than one row. Unrecognised input classifies as
     "pinned" if it looks like a version and "none" otherwise.
 
-    `package_type` is accepted but NOT currently read. Classification is
-    purely shape-based, which works because the shapes that occur are disjoint
-    across ecosystems: `^` and `~` are npm, `catalog:` / `workspace:` are pnpm,
-    `~=` and `===` are PEP 440, and the Go pseudo-version pattern
-    (`-<14-digit timestamp>-<12-hex commit>`) matches nothing else. Every one
-    of 6,386 rows in the reference estate classified correctly without it.
+    `package_type` decides exactly one rule: what a BARE version means.
+    Everything else is shape-based, because the shapes that occur are
+    disjoint across ecosystems — `^` and `~` are npm, `catalog:` /
+    `workspace:` are pnpm, `~=` and `===` are PEP 440, and the Go
+    pseudo-version pattern matches nothing else.
 
-    It stays in the signature because the known remaining misclassifications
-    ARE ecosystem-specific, and fixing them needs it. npm wildcard ranges
-    (`1.x`, `2.*`) and hyphen ranges (`1.2.3 - 2.3.4`) currently fall through
-    to "pinned" — a floating dependency reported as pinned, the wrong
-    direction for the question this column exists to answer. They cannot be
-    fixed by shape alone, because pypi's `==1.*` is a different construct that
-    must keep classifying as a wildcard pin. Whoever fixes those should gate
-    the new branches on `package_type` rather than widening the shared rules.
+    A bare version cannot be decided by shape, because the same string means
+    different things:
+
+    * npm `1.4.3` is strict equality -> `pinned`
+    * Go `v1.2.3` is a Minimal Version Selection floor -> `gte`. The build
+      takes the maximum of all minimums across the module graph, so an
+      unrelated dependency requiring v1.5.0 bumps you without that line
+      changing.
+    * NuGet `3.1.1` is documented as `>= 3.1.1` -> `gte`. An exact NuGet pin
+      needs the bracket form `[3.1.1]`.
+
+    An unknown or absent `package_type` defaults to `pinned`: absent a reason
+    to think otherwise, a bare version is an equality.
     """
     if declared_version is None:
         return ("none", "")
@@ -100,6 +138,17 @@ def classify_constraint(declared_version, package_type=None):
     if "||" in text:
         return ("bounded", "||")
 
+    # NuGet interval notation, before the operator scan: the brackets carry
+    # the bounds, and the string contains no comparison operators to find.
+    interval = _NUGET_INTERVAL.match(text)
+    if interval:
+        return _classify_interval(interval, text)
+
+    # npm hyphen range, before the operator scan so the ' - ' separator is
+    # not mistaken for anything else.
+    if _HYPHEN_RANGE.match(text):
+        return ("bounded", "-")
+
     operators = _operators_in(text)
 
     if operators:
@@ -115,9 +164,20 @@ def classify_constraint(declared_version, package_type=None):
             # PEP 440 compatible-release: patch drift, the pypi tilde.
             return ("tilde", "~=")
         if "==" in operators:
+            # `==1.*` is a wildcard, not an equality: it permits 1.0 through
+            # 1.<anything>. Checked here so it cannot reach the pin return.
+            if _WILDCARD.match(text.split("==", 1)[1].strip()):
+                return ("bounded", "==*")
             return ("pinned", "==")
         if has_lower:
             return ("gte", operators[0])
+        if "!=" in operators:
+            # A standalone exclusion is the OPPOSITE of a pin: it permits
+            # every version except one. No floor, no ceiling, so it fits
+            # nothing else. Reached only when no other operator is present —
+            # `>=1.7.3,!=1.8.0` returns `gte` above, because the open floor
+            # is what governs drift there, not the carve-out.
+            return ("excluded", "!=")
         # `===` (PEP 440 arbitrary equality) lands here deliberately: it is
         # not `>=`/`>` (has_lower), not `~=`, and list membership means
         # "==" in operators is False for it (the strings are unequal), so it
@@ -130,10 +190,44 @@ def classify_constraint(declared_version, package_type=None):
     if text[0] == "~":
         return ("tilde", "~")
 
+    # Bare wildcard: `1.x`, `2.*`. A floor and a ceiling, not a pin.
+    if _WILDCARD.match(text):
+        return ("bounded", "*")
+
     # A bare version, or something unrecognised that is shaped like one.
     if re.match(r"^v?\d", text):
+        # The one genuinely ecosystem-dependent rule. See _BARE_IS_MINIMUM:
+        # npm bare is strict equality, Go and NuGet bare are floors.
+        if (package_type or "").strip().lower() in _BARE_IS_MINIMUM:
+            return ("gte", "")
         return ("pinned", "")
 
+    return ("none", "")
+
+
+def _classify_interval(match, text):
+    """Classify a NuGet interval like `[1.0]`, `[1.0,)` or `[1.0,2.0)`.
+
+    `[`/`]` are inclusive and `(`/`)` exclusive, and the two ends are
+    independent — so the bracket characters alone do not decide the kind.
+    What matters is which bounds are actually present.
+    """
+    open_br, low, high, close_br = match.groups()
+    low = (low or "").strip()
+    high = (high or "").strip()
+
+    # `[1.0]` — a single value with no comma is an exact pin.
+    if "," not in text:
+        return ("pinned", "") if low else ("none", "")
+
+    if low and high:
+        return ("bounded", f"{open_br}{close_br}")
+    if high:
+        # `(,2.0]` — a ceiling with an open floor, windowed above.
+        return ("bounded", f"{open_br}{close_br}")
+    if low:
+        # `[1.0,)` — a floor with no ceiling, the same shape as bare NuGet.
+        return ("gte", "")
     return ("none", "")
 
 

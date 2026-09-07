@@ -87,16 +87,20 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
 - **Dependency constraints are now recorded.** Four columns on
   `dependency_data` (migration `0006`): `version_kind` classifies how a
   dependency is constrained (pinned / commit / caret / tilde / gte / bounded /
-  latest / workspace / link / catalog / alias / patch / none),
+  excluded / latest / workspace / link / catalog / alias / patch / none),
   `version_operator` keeps the raw declared operator, `resolved_version`
   records the version deps.dev was actually asked about, and `last_checked`
   records when. Previously the classification was computed and discarded, so
   "which of our dependencies float?" could not be asked of the database, and an
   advisory count could not be read without knowing which version it referred to
-  or how old it was. `tilde` is deliberately separate from `caret` — `~29.0.0`
-  permits patch drift where `^4.18.0` permits minor and patch — and `commit` is
-  separate from `pinned`, since a Go pseudo-version is maximally pinned but has
-  no published release to match against. Columns are NULL on existing rows
+  or how old it was. `pinned` means exactly one version, nothing can drift —
+  a statement about what a declaration permits, not what it looks like, so
+  `1.x`, `==1.*` and `1.2.3 - 2.3.4` are `bounded` despite starting with a
+  digit, and `!=21.1.0` is `excluded` because it permits every version except
+  one. `tilde` is deliberately separate from `caret` — `~29.0.0` permits patch
+  drift where `^4.18.0` permits minor and patch — and `commit` is separate
+  from `pinned`, since a Go pseudo-version points at a commit with no
+  published release to match against. Columns are NULL on existing rows
   until re-sync; a staleness indicator must treat NULL as "never checked", not
   "checked long ago". See `changes/202609-version-constraint-column.md`.
 

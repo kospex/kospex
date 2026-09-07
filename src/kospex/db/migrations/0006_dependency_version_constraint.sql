@@ -4,8 +4,12 @@
 -- that data was last checked.
 --
 -- version_kind      normalised classification: pinned, commit, caret, tilde,
---                   gte, bounded, latest, workspace, link, catalog, alias,
---                   patch, none. Queryable across ecosystems.
+--                   gte, bounded, excluded, latest, workspace, link, catalog,
+--                   alias, patch, none. Queryable across ecosystems.
+--                   `pinned` means exactly one version, nothing can drift.
+--                   Note a bare version is NOT a pin everywhere: Go require
+--                   directives and NuGet PackageReference versions are
+--                   minimums, so they classify gte. npm bare is equality.
 -- version_operator  the raw declared operator, verbatim ("^", ">=", ">=,<",
 --                   "workspace:"). Empty for a bare pin — the manifest wrote
 --                   no operator and version_kind carries the meaning.

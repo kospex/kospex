@@ -121,22 +121,28 @@ meaning.
 
 ### The `version_kind` vocabulary
 
-Thirteen values. Each carries a distinct risk meaning, which is why they are not
+Fourteen values. Each carries a distinct risk meaning, which is why they are not
 collapsed into pinned/floating.
 
-`tilde` was not in the twelve shown when this was agreed — it is added here
-because `~29.0.0` is ordinary npm syntax with narrower drift than `^`, and
-folding it into `caret` would misreport how much a dependency can move. Called
-out rather than absorbed silently, since it changes an agreed vocabulary.
+Two were added after the initial twelve were agreed, both called out rather
+than absorbed silently. `tilde`, because `~29.0.0` is ordinary npm syntax with
+narrower drift than `^` and folding it into `caret` would misreport how much a
+dependency can move. `excluded`, because `!=` is the *opposite* of a pin and
+had been landing in `pinned`.
+
+**`pinned` means exactly one version, nothing can drift.** That is a statement
+about what a declaration permits, not about what it looks like — the
+distinction that decides several rows below.
 
 | kind | example | meaning |
 | --- | --- | --- |
-| `pinned` | `1.4.3`, `==2.31.0` | exact version |
-| `commit` | `v0.0.0-20230828082145-3c4c8a2d2371` | pinned to a commit, no published release |
+| `pinned` | `1.4.3` (npm), `==2.31.0`, `[3.1.1]` (nuget) | exactly one version |
+| `commit` | `v0.0.0-20230828082145-3c4c8a2d2371` | a commit with no published release |
 | `caret` | `^4.18.0` | minor and patch drift permitted |
 | `tilde` | `~29.0.0` | patch drift permitted |
-| `gte` | `>=2.0` | open floor, no upper bound |
-| `bounded` | `>=1.0,<2.0`, `^1.0.0 \|\| ^2.0.0` | windowed — an upper bound exists |
+| `gte` | `>=2.0`, `v1.2.3` (go), `3.1.1` (nuget) | open floor, no upper bound |
+| `bounded` | `>=1.0,<2.0`, `1.x`, `1.2.3 - 2.3.4`, `[1.0,2.0)` | windowed — an upper bound exists |
+| `excluded` | `!=21.1.0` | every version EXCEPT one |
 | `latest` | `latest` | unpinned entirely |
 | `workspace` | `workspace:^` | internal monorepo reference |
 | `link` | `link:../scripts/repo-utils` | internal, local path |
@@ -144,6 +150,29 @@ out rather than absorbed silently, since it changes an agreed vocabulary.
 | `alias` | `npm:@babel/core@7.24.4` | row name is not the installed package |
 | `patch` | `patch:rollup-plugin-dts@npm%3A6.1.0#...` | shipped code differs from the published artefact |
 | `none` | (empty) | no version declared |
+
+### A bare version is not a pin everywhere
+
+This is the one rule that genuinely needs `package_type`; it cannot be decided
+from the shape of the string, because the same string means different things:
+
+* **npm** `1.4.3` is strict equality — `pinned`.
+* **Go** `require foo v1.2.3` is a Minimal Version Selection *floor* — `gte`.
+  The build selects the maximum of all minimums across the module graph, so an
+  unrelated dependency requiring `v1.5.0` bumps you without that line changing.
+  A tidy'd `go.mod` records the resolved graph and so behaves lock-like, but
+  that comes from the file being regenerated, not from the constraint being an
+  equality — and this column records the constraint.
+* **NuGet** `PackageReference Version="3.1.1"` is documented as `>= 3.1.1` —
+  `gte`. An exact pin needs bracket notation `[3.1.1]`. NuGet intervals are
+  mathematical: `[`/`]` inclusive, `(`/`)` exclusive, each end independent, so
+  `[1.0,2.0)` is `>=1.0 <2.0`.
+
+An unknown or absent ecosystem defaults to `pinned`.
+
+Measured effect on the reference estate: 79 Go rows move `pinned` → `gte` (91
+Go rows less the 12 pseudo-versions, which stay `commit`), and 4 `==N.*`
+wildcards move `pinned` → `bounded`.
 
 `commit` is deliberately distinct from `pinned`: a Go pseudo-version is
 *maximally* pinned, yet today it lands in `unresolved_spec` alongside
@@ -235,7 +264,7 @@ comparison, no sorting. The change is therefore display-only downstream.
 
 ## Testing
 
-**Classifier truth-table** across all thirteen kinds and all five ecosystems,
+**Classifier truth-table** across all fourteen kinds and all five ecosystems,
 drawn from values that actually occur in the reference estate rather than
 invented ones:
 
