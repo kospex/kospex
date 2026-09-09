@@ -300,3 +300,49 @@ def test_a_bare_host_is_not_a_remote():
     """Stripping slashes must not turn 'https://host/' into something parseable."""
     for url in ["https://github.com/", "https://github.com", "/", "//"]:
         assert KospexGit.parse_git_remote(url) is None
+
+
+MIXED_CASE_HOSTS = [
+    ("https://GitHub.com/acme/svc", "https://github.com/acme/svc"),
+    ("git@GitHub.com:acme/svc.git", "git@github.com:acme/svc.git"),
+    ("ssh://git@GitLab.com/group/subgroup/repo.git",
+     "ssh://git@gitlab.com/group/subgroup/repo.git"),
+    ("https://Dev.Azure.com/myorg/MyProject/_git/MyRepo",
+     "https://dev.azure.com/myorg/MyProject/_git/MyRepo"),
+    ("https://MyOrg.VisualStudio.com/MyProject/_git/MyRepo",
+     "https://myorg.visualstudio.com/MyProject/_git/MyRepo"),
+    ("https://BitBucket.example.com/scm/PROJ/repo.git",
+     "https://bitbucket.example.com/scm/PROJ/repo.git"),
+    ("https://Go.GoogleSource.com/oauth2", "https://go.googlesource.com/oauth2"),
+]
+
+
+@pytest.mark.parametrize("mixed,lower", MIXED_CASE_HOSTS)
+def test_host_case_does_not_change_the_parse(mixed, lower):
+    """Hostnames are case-insensitive (DNS), so they must not affect the parse.
+
+    This is separate from the org/repo case question (#147): there is no
+    judgement call for a hostname.
+    """
+    assert KospexGit.parse_git_remote(mixed) == KospexGit.parse_git_remote(lower)
+
+
+@pytest.mark.parametrize("mixed,lower", MIXED_CASE_HOSTS)
+def test_mixed_case_host_is_lowercased(mixed, lower):
+    parts = KospexGit.parse_git_remote(mixed)
+    assert parts is not None
+    assert parts["remote"] == parts["remote"].lower()
+
+
+def test_mixed_case_host_still_reaches_the_ado_rule():
+    """Provider rules match the host by string equality.
+
+    'Dev.Azure.com' failed `netloc == "dev.azure.com"`, fell through to the
+    generic rule, and produced org 'myorg/MyProject/_git' -- the '_git' routing
+    segment ending up inside the organisation.
+    """
+    parts = KospexGit.parse_git_remote(
+        "https://Dev.Azure.com/myorg/MyProject/_git/MyRepo")
+    assert parts["org"] == "myorg/MyProject"
+    assert parts["repo"] == "MyRepo"
+    assert "_git" not in parts["org"]

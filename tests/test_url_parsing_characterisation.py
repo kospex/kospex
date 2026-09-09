@@ -60,6 +60,18 @@ CORPUS: list[dict] = [
     {"url": "https://gitlab.com/group/subgroup/repo.git/", "group": "gitlab",
      "note": "trailing slash on a nested group — same fix"},
 
+    {"url": "https://GitHub.com/acme/svc", "group": "github",
+     "note": "mixed-case HOST. Case-insensitive by DNS, so it must not affect "
+             "the parse -- unrelated to the org/repo case question (#147)"},
+    {"url": "git@GitHub.com:acme/svc.git", "group": "github",
+     "note": "mixed-case host, scp-style (never sees urlparse)"},
+    {"url": "https://github.com/acme/svc?ref=main", "group": "github",
+     "note": "query string: previously landed inside the repo name"},
+    {"url": "https://github.com/acme/svc.git?x=1", "group": "github",
+     "note": "query string also prevented the .git suffix being stripped"},
+    {"url": "https://github.com/acme/svc#frag", "group": "github",
+     "note": "fragment: same class as the query string"},
+
     # ---------------------------------------------------------------- GitLab
     {"url": "https://gitlab.com/group/repo.git", "group": "gitlab"},
     {"url": "https://gitlab.com/group/subgroup/repo.git", "group": "gitlab",
@@ -75,6 +87,10 @@ CORPUS: list[dict] = [
      "note": "org/project encoded as a hierarchy ('~~'), superseding #50's "
              "hyphen join which collided on hyphenated org names"},
     {"url": "https://dev.azure.com/myorg/MyProject/_git/MyRepo.git", "group": "ado"},
+    {"url": "https://Dev.Azure.com/myorg/MyProject/_git/MyRepo", "group": "ado",
+     "note": "mixed-case host must still reach the ADO rule; it matches the "
+             "host by string equality, so this used to fall through to the "
+             "generic rule and put '_git' inside the org"},
     {"url": "https://myorg@dev.azure.com/myorg/MyProject/_git/MyRepo", "group": "ado",
      "note": "ADO's own Clone-button URL. Agrees with the plain form since "
              "#162 stripped credentials from the host"},
