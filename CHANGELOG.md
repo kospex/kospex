@@ -71,6 +71,23 @@ wrong or incomplete.
    form; the author's ordering carries information that normalising discards.
    `version_kind` and `version_operator` agree either way.
 
+9. **Azure DevOps `repo_id`s change, and become fewer per repository.** The
+   organisation and project were joined with a hyphen — `dev.azure.com~myorg-MyProject~MyRepo`.
+   Hyphens are legal in ADO organisation names, so
+   `my-org/Project` and `my/org-Project` produced the **same** id and merged two
+   different repositories. They are now encoded as a hierarchy,
+   `dev.azure.com~myorg~~MyProject~MyRepo`, using the same `~~` convention as a
+   GitLab subgroup; `/` cannot appear in an ADO organisation, project or repo
+   name, so it cannot collide. Separately, ADO's SSH URL
+   (`git@ssh.dev.azure.com:v3/...`) and collection URLs
+   (`.../DefaultCollection/...`) were not recognised as ADO at all, so a single
+   repository could hold **five** different ids depending on which clone URL was
+   used; it now holds two, differing only by legacy `*.visualstudio.com` versus
+   `dev.azure.com`, which are deliberately kept distinct. Any ADO repository
+   already synced needs re-syncing to pick up the new id — see the re-sync
+   procedure below. Verified against the live database: **0 of 111** repos are
+   affected, all being `github.com`.
+
 **None of the fixes backfill.** Commit sync is incremental (`--since` the last
 recorded commit), so existing rows keep their old values until a repo is dropped
 and re-synced. `kreaper delete-repo -repo_id <id> -yes` clears every table
@@ -270,6 +287,37 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
   `if not parts:` guard in the codebase was unreachable and junk URLs were given
   a plausible `repo_id`. Unrecognised URLs are now rejected. Verified against the
   live database: **0 of 109** existing repos change their `repo_id`.
+
+- **`parse_repo_id()` and `parse_org_key()` rejected every nested organisation.**
+  Both split on each `~` and required an exact part count, so an id whose org
+  contains a `/` — a GitLab group and subgroup, or an ADO organisation and
+  project, encoded as `~~` — returned `None`. Because `kweb2` raises **HTTP 404
+  "Repository not found"** when `parse_repo_id` returns `None`, a *synced* GitLab
+  subgroup repository was unreachable in the web UI and got no organisation link.
+  Both now decode the org correctly. `org` is returned with a real `/`, matching
+  the `_git_owner` column; `org_key` stays encoded, because it is a URL path
+  segment (`/org/{org_key}`) and a `/` would split the route in two.
+
+- **`org_key` disagreed between the SQL and the parser.** Three queries built it
+  as `_git_server || '~' || _git_owner`, yielding `gitlab.com~group/subgroup`,
+  while the parser produced `gitlab.com~group~~subgroup`. Anything joining across
+  the two returned nothing — silently, since an empty join is a valid result. The
+  queries now encode to match. GitHub ids are unaffected: for a flat org the two
+  forms are the same string, which is why this never surfaced.
+
+- **Azure DevOps repo names ending in `.`, `g`, `i` or `t` were truncated.**
+  `rstrip(".git")` takes a *character set*, not a suffix, so a repository named
+  `digit` became `d`. It ran before both the `dev.azure.com` and
+  `*.visualstudio.com` branches, so both were affected. Now `removesuffix`.
+
+- **A trailing slash made a valid clone URL unparseable.** The parsers allowed a
+  trailing slash inconsistently — one in the generic rule, any number in the ADO
+  and Bitbucket Server rules, none at all in the scp-style rule — so
+  `https://github.com/acme/svc/` and `git@github.com:acme/svc.git/` returned
+  `None`. Callers compensated with their own `rstrip("/")`, but the sync path did
+  not, so a repository cloned with a trailing slash cloned successfully and then
+  failed to parse on sync. Trailing slashes are now normalised once, before any
+  rule sees the URL.
 
 ### Removed
 - **`KospexGit.sync_repo`** — an abandoned Oct 2025 "work in progress refactor"
