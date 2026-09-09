@@ -244,3 +244,16 @@ def test_ado_default_collection_is_not_part_of_the_identity():
         "https://myorg.visualstudio.com/DefaultCollection/MyProject/_git/MyRepo")
     without = _rid("https://myorg.visualstudio.com/MyProject/_git/MyRepo")
     assert with_collection == without
+
+
+def test_trailing_slash_does_not_make_a_url_unparseable():
+    """A trailing slash is a legitimate clone URL and must not change the parse.
+
+    The old dispatcher chose between two overlapping rules by counting slashes
+    in the URL, and both were anchored with no allowance for a trailing one, so
+    a valid remote returned None.
+    """
+    for base in ("https://github.com/acme/svc",
+                 "https://gitlab.com/group/subgroup/repo.git"):
+        assert KospexGit.parse_git_remote(base) == \
+               KospexGit.parse_git_remote(base + "/")
