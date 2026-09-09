@@ -244,3 +244,59 @@ def test_ado_default_collection_is_not_part_of_the_identity():
         "https://myorg.visualstudio.com/DefaultCollection/MyProject/_git/MyRepo")
     without = _rid("https://myorg.visualstudio.com/MyProject/_git/MyRepo")
     assert with_collection == without
+
+
+def test_trailing_slash_does_not_make_a_url_unparseable():
+    """A trailing slash is a legitimate clone URL and must not change the parse.
+
+    The old dispatcher chose between two overlapping rules by counting slashes
+    in the URL, and both were anchored with no allowance for a trailing one, so
+    a valid remote returned None.
+    """
+    for base in ("https://github.com/acme/svc",
+                 "https://gitlab.com/group/subgroup/repo.git"):
+        assert KospexGit.parse_git_remote(base) == \
+               KospexGit.parse_git_remote(base + "/")
+
+
+TRAILING_SLASH_SHAPES = [
+    "https://github.com/acme/svc",
+    "https://github.com/acme/svc.git",
+    "git@github.com:acme/svc.git",
+    "ssh://git@github.com/acme/svc.git",
+    "https://gitlab.com/group/subgroup/repo.git",
+    "git@gitlab.com:group/subgroup/repo.git",
+    "https://dev.azure.com/myorg/MyProject/_git/MyRepo",
+    "https://myorg.visualstudio.com/MyProject/_git/MyRepo",
+    "git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo",
+    "https://bitbucket.org/team/repo.git",
+    "https://bitbucket.example.com/scm/PROJ/repo.git",
+    "ssh://git@bitbucket.example.com:7999/PROJ/repo.git",
+    "https://go.googlesource.com/oauth2",
+    "https://android.googlesource.com/platform/frameworks/base",
+]
+
+
+@pytest.mark.parametrize("url", TRAILING_SLASH_SHAPES)
+@pytest.mark.parametrize("suffix", ["/", "//", "///"])
+def test_trailing_slashes_never_change_the_parse(url, suffix):
+    """A trailing slash carries no meaning and must not change the result.
+
+    Normalisation strips them once, so every provider rule -- including the
+    scp-style one, which never sees urlparse -- is covered by the same rule.
+    Call sites used to strip slashes themselves; the sync path did not, so a
+    repo cloned with a trailing slash parsed on clone and failed on sync.
+    """
+    assert KospexGit.parse_git_remote(url + suffix) == KospexGit.parse_git_remote(url)
+
+
+@pytest.mark.parametrize("url", TRAILING_SLASH_SHAPES)
+def test_every_shape_still_parses(url):
+    """Guards the parametrised test above from passing vacuously on None==None."""
+    assert KospexGit.parse_git_remote(url) is not None
+
+
+def test_a_bare_host_is_not_a_remote():
+    """Stripping slashes must not turn 'https://host/' into something parseable."""
+    for url in ["https://github.com/", "https://github.com", "/", "//"]:
+        assert KospexGit.parse_git_remote(url) is None

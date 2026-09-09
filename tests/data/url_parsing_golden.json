@@ -192,6 +192,15 @@
       },
       "repo_id": "github.com~acme~svc"
     },
+    "https://github.com/acme/svc/": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
+    },
     "https://gitlab.com/a/b/c/repo.git": {
       "parts": {
         "org": "a/b/c",
@@ -211,6 +220,15 @@
       "repo_id": "gitlab.com~group~repo"
     },
     "https://gitlab.com/group/subgroup/repo.git": {
+      "parts": {
+        "org": "group/subgroup",
+        "remote": "gitlab.com",
+        "remote_type": "https",
+        "repo": "repo"
+      },
+      "repo_id": "gitlab.com~group~~subgroup~repo"
+    },
+    "https://gitlab.com/group/subgroup/repo.git/": {
       "parts": {
         "org": "group/subgroup",
         "remote": "gitlab.com",

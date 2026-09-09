@@ -54,6 +54,11 @@ CORPUS: list[dict] = [
      "note": "dotted repo name; regression guard for the scp-style fix"},
     {"url": "https://github.com/Acme/Svc", "group": "github",
      "note": "mixed case — pinned so #147 shows as a diff here"},
+    {"url": "https://github.com/acme/svc/", "group": "github",
+     "note": "trailing slash: a valid clone URL. Returned None until the "
+             "dispatcher stopped routing by slash count"},
+    {"url": "https://gitlab.com/group/subgroup/repo.git/", "group": "gitlab",
+     "note": "trailing slash on a nested group — same fix"},
 
     # ---------------------------------------------------------------- GitLab
     {"url": "https://gitlab.com/group/repo.git", "group": "gitlab"},

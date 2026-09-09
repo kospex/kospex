@@ -262,6 +262,9 @@ class KospexGit:
 
         Given the org and workspace are in the URL, we'll concatenate them to form the 'org' in our schema
 
+        Dispatches to provider rules in order. Each rule takes the normalised
+        URL and returns a parts dict or None; the first match wins. Order only
+        matters where two rules can claim the same URL -- see PROVIDER_RULES.
 
         Args:
         url (str): The URL to extract information from.
@@ -270,100 +273,134 @@ class KospexGit:
         dict: A dictionary containing the remote, org, repo, and remote_type,
         or None if the URL is not a recognisable git remote.
         """
+        url = KospexGit._normalise_remote_url(url)
+        if url is None:
+            return None
+
+        # Order matters only where two rules can claim the same URL:
+        #   - ADO must precede the scp-style rule, or 'git@ssh.dev.azure.com:v3/...'
+        #     is claimed by it and 'v3' becomes the org.
+        #   - Bitbucket Server must precede the generic rule, or '/scm/' is
+        #     kept as part of the org.
+        #   - Gerrit follows the generic rule: a multi-segment googlesource
+        #     path is handled generically, and only the single-segment form
+        #     (which the generic rule declines for having no org) reaches it.
+        rules = (
+            KospexGit.parse_ado_git_url,
+            KospexGit.parse_bitbucket_onpremise_url,
+            KospexGit.parse_ssh_git_url,
+            KospexGit._parse_generic_git_url,
+            KospexGit._parse_gerrit_url,
+        )
+
+        for rule in rules:
+            parts = rule(url)
+            if parts:
+                return parts
+
+        return None
+
+    @staticmethod
+    def _normalise_remote_url(url):
+        """Return the URL with credentials and port stripped, or None if it is
+        not a git remote at all.
+
+        urlparse().hostname drops embedded credentials and the port for free --
+        without this, 'ssh://git@host:7999/PROJ/repo.git' keeps 'git@host:7999'
+        as the server, so the same repository cloned over SSH and HTTPS produces
+        two different repo_ids.
+
+        scp-style ('git@host:org/repo.git') has no '://' and is passed through
+        untouched for parse_ssh_git_url.
+        """
         if not url or not isinstance(url, str):
             return None
 
-        # Normalise scheme-based URLs before any provider rule sees them.
-        # urlparse().hostname drops embedded credentials and the port for
-        # free -- without this, 'ssh://git@host:7999/PROJ/repo.git' keeps
-        # 'git@host:7999' as the server, so the same repository cloned over
-        # SSH and HTTPS produces two different repo_ids.
-        # scp-style ('git@host:org/repo.git') has no '://' and is handled
-        # further down by parse_ssh_git_url, so leave it untouched.
-        if "://" in url:
-            try:
-                _p = urlparse(url.strip())
-            except ValueError:
-                return None
-            if _p.scheme.lower() not in ("http", "https", "ssh", "git"):
-                return None  # not a git transport
-            if not _p.hostname:
-                return None
-            if _p.username or _p.port:
-                url = f"{_p.scheme}://{_p.hostname}{_p.path}"
+        # Trailing slashes are legal in a clone URL and carry no meaning. Strip
+        # them here, once, so no provider rule has to allow for them -- several
+        # call sites used to do this themselves (and one, the sync path, did
+        # not, so a repo cloned with a trailing slash failed to parse on sync).
+        url = url.strip().rstrip("/")
+        if not url:
+            return None
 
-        # Regular expression to match the default pattern
-        pattern = r"^(https?|git|ssh)\:\/\/(?:[\w.-]+@)?([\w.-]+)\/([\w.-]+)\/([\w.-]+)(?:\.git)?$"
-        match = re.match(pattern, url)
-        # Gerrit hosts under *.googlesource.com (go., chromium., android.,
-        # boringssl., ...) allow a *single-segment* project path, which has no
-        # org: https://go.googlesource.com/oauth2
-        # Multi-segment paths there need no special case -- the generic nested
-        # rule below already encodes them correctly.
-        # This pattern is deliberately host-scoped. It used to be
-        # '(?P<domain>[^\/?#]+)/(?P<directory>.*)', which matched any
-        # scheme://host/path and made parse_git_remote incapable of ever
-        # returning None -- so junk was silently given a plausible repo_id
-        # instead of being rejected.
-        g_pattern = (
-            r"(?P<protocol>^https?)://"
-            r"(?P<domain>[\w.-]+\.googlesource\.com)/"
-            r"(?P<directory>[\w.-]+?)(?:\.git)?/?$"
-        )
-        google_match = re.match(g_pattern, url)
+        if "://" not in url:
+            return url  # scp-style, or junk that no rule will claim
 
-        # gitlab_pattern = r"(?P<protocol>^https?://)" \
-        gitlab_pattern = (
-            r"(?P<protocol>^\w+)://"
+        try:
+            parsed = urlparse(url)
+        except ValueError:
+            return None
+
+        if parsed.scheme.lower() not in ("http", "https", "ssh", "git"):
+            return None  # not a git transport
+        if not parsed.hostname:
+            return None
+
+        if parsed.username or parsed.port:
+            return f"{parsed.scheme}://{parsed.hostname}{parsed.path}"
+        return url
+
+    @staticmethod
+    def _parse_generic_git_url(url):
+        """scheme://host/<org...>/<repo> -- the shape most providers share.
+
+        The org may be several segments (GitLab groups and subgroups, Gerrit
+        project paths); generate_repo_id encodes the '/' as '~~'. This single
+        rule replaces a pair that differed only in strictness and were selected
+        between by counting slashes in the URL -- a proxy for structure that a
+        trailing slash was enough to flip.
+        """
+        pattern = (
+            r"^(?P<protocol>https?|git|ssh)://"
             r"(?P<hostname>[^/]+)"
             r"(?P<directories>(?:/[^/]+)*?)/"
-            r"(?P<last_part>[^/]+)$"
+            r"(?P<last_part>[^/]+?)$"
         )
-
-        gitlab_match = re.match(gitlab_pattern, url)
-
-        ssh_git = KospexGit.parse_ssh_git_url(url)
-
-        slashes_count = url.count("/")
-        # Looks like github URLS have 4 slashes,
-        # gitlab URLs have more than 4 slashes (more like 5 or 6 for subprojects),
-        # Google/Go URLs have 3 slashes
-
-        ado_repo = KospexGit.parse_ado_git_url(url)
-        if ado_repo:
-            return ado_repo
-
-        bitbucket_onpremise = KospexGit.parse_bitbucket_onpremise_url(url)
-        if bitbucket_onpremise:
-            return bitbucket_onpremise
-
-        # Check SSH URLs first
-        if ssh_git:
-            return ssh_git
-
-        elif slashes_count > 4 and gitlab_match:
-            return {
-                "remote": gitlab_match.group("hostname"),
-                "org": gitlab_match.group("directories").removeprefix("/"),
-                "repo": gitlab_match.group("last_part").removesuffix(".git"),
-                "remote_type": gitlab_match.group("protocol"),
-            }
-        elif match:
-            return {
-                "remote": match.group(2),
-                "org": match.group(3),
-                "repo": match.group(4).removesuffix(".git"),
-                "remote_type": match.group(1),
-            }
-        elif google_match:
-            return {
-                "remote": google_match.group("domain"),
-                "org": "",
-                "repo": google_match.group("directory").removesuffix(".git"),
-                "remote_type": google_match.group("protocol"),
-            }
-        else:
+        m = re.match(pattern, url)
+        if not m:
             return None
+
+        org = m.group("directories").removeprefix("/")
+        if not org:
+            return None  # no org segment: not addressable as {org}/{repo}
+
+        return {
+            "remote": m.group("hostname"),
+            "org": org,
+            "repo": m.group("last_part").removesuffix(".git"),
+            "remote_type": m.group("protocol"),
+        }
+
+    @staticmethod
+    def _parse_gerrit_url(url):
+        """Gerrit hosts under *.googlesource.com allow a single-segment project
+        path, which has no org: https://go.googlesource.com/oauth2
+
+        Multi-segment paths there need no special case -- the generic rule
+        already encodes them correctly (chromium/src, platform/frameworks/base).
+
+        Deliberately host-scoped. This was once
+        '(?P<domain>[^/?#]+)/(?P<directory>.*)', which matched any
+        scheme://host/path and made parse_git_remote incapable of ever returning
+        None, so junk was silently given a plausible repo_id instead of being
+        rejected. (#160)
+        """
+        pattern = (
+            r"^(?P<protocol>https?)://"
+            r"(?P<domain>[\w.-]+\.googlesource\.com)/"
+            r"(?P<directory>[\w.-]+?)(?:\.git)?$"
+        )
+        m = re.match(pattern, url)
+        if not m:
+            return None
+
+        return {
+            "remote": m.group("domain"),
+            "org": "",
+            "repo": m.group("directory").removesuffix(".git"),
+            "remote_type": m.group("protocol"),
+        }
 
     # @staticmethod
     # def get_repo_size(directory):
@@ -787,7 +824,9 @@ class KospexGit:
         code_dir = HabitatConfig.get_instance().code_dir
 
         # Trailing slashes break the parsers
-        parts = self.parse_git_remote(repo_url.rstrip("/"))
+        # No rstrip("/") here: parse_git_remote normalises trailing slashes
+        # itself, so the defence lives in one place instead of at each caller.
+        parts = self.parse_git_remote(repo_url)
         if not parts:
             print(f"ERROR: could not parse git URL: {repo_url}")
             return None
