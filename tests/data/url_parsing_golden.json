@@ -13,6 +13,15 @@
       "parts": null,
       "repo_id": null
     },
+    "git@GitHub.com:acme/svc.git": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "ssh",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
+    },
     "git@bitbucket.org:team/repo.git": {
       "parts": {
         "org": "team",
@@ -49,6 +58,25 @@
         "repo": "MyRepo"
       },
       "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
+    },
+    "https://Dev.Azure.com/myorg/MyProject/_git/MyRepo": {
+      "parts": {
+        "org": "myorg/MyProject",
+        "project": "MyProject",
+        "remote": "dev.azure.com",
+        "remote_type": "https",
+        "repo": "MyRepo"
+      },
+      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
+    },
+    "https://GitHub.com/acme/svc": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
     },
     "https://USERNAME@bitbucket.org/team/repo.git": {
       "parts": {
@@ -183,6 +211,15 @@
       },
       "repo_id": "github.com~acme~svc"
     },
+    "https://github.com/acme/svc#frag": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
+    },
     "https://github.com/acme/svc.git": {
       "parts": {
         "org": "acme",
@@ -192,7 +229,25 @@
       },
       "repo_id": "github.com~acme~svc"
     },
+    "https://github.com/acme/svc.git?x=1": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
+    },
     "https://github.com/acme/svc/": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
+    },
+    "https://github.com/acme/svc?ref=main": {
       "parts": {
         "org": "acme",
         "remote": "github.com",

@@ -325,7 +325,13 @@ class KospexGit:
             return None
 
         if "://" not in url:
-            return url  # scp-style, or junk that no rule will claim
+            # scp-style ('git@HOST:org/repo.git'), or junk no rule will claim.
+            # Lowercase the host here too -- provider rules compare it by
+            # string equality, so casing is not merely cosmetic.
+            scp = re.match(r"^(?P<user>[^@]+@)(?P<host>[^:]+)(?P<rest>:.*)$", url)
+            if scp:
+                return f"{scp.group('user')}{scp.group('host').lower()}{scp.group('rest')}"
+            return url
 
         try:
             parsed = urlparse(url)
@@ -337,9 +343,14 @@ class KospexGit:
         if not parsed.hostname:
             return None
 
-        if parsed.username or parsed.port:
-            return f"{parsed.scheme}://{parsed.hostname}{parsed.path}"
-        return url
+        # Always rebuild from parsed.hostname: it is lowercased, and drops any
+        # credentials and port. Hostnames are case-insensitive (DNS), and the
+        # provider rules match them by string equality -- 'Dev.Azure.com' failed
+        # `netloc == "dev.azure.com"`, fell through to the generic rule, and put
+        # the '_git' routing segment inside the organisation.
+        # This is independent of the org/repo case question (#147), where the
+        # answer is a judgement call rather than a protocol fact.
+        return f"{parsed.scheme.lower()}://{parsed.hostname}{parsed.path}"
 
     @staticmethod
     def _parse_generic_git_url(url):
