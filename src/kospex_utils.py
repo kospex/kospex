@@ -684,21 +684,6 @@ def parse_git_rename_event(event_str):
     # Reassemble the path
 #    return ''.join(segments)
 
-def git_url_to_repo_id(git_url):
-    """ Convert a git URL to a unique repo ID"""
-    # Remove the .git extension
-    git_url = git_url.replace('.git', '')
-
-    # Remove the protocol and username
-    git_url = re.sub(r'^https?://', '', git_url)
-    git_url = re.sub(r'^git@', '', git_url)
-    git_url = re.sub(r'[^/]+@', '', git_url)
-
-    # Remove the trailing slash
-    git_url = git_url.rstrip('/')
-
-    return git_url
-
 def parse_repo_id(repo_id):
     """Parse a repo_id into its components, or None if it is not one.
 

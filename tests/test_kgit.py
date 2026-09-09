@@ -84,26 +84,37 @@ def test_parse_ssh_git_url_rejects(url):
     assert KospexGit.parse_ssh_git_url(url) is None
 
 
-DELEGATION_URLS = [
+# Shapes that once disagreed between the two URL parsers. The deprecated
+# wrapper is gone, so what is worth asserting now is that the surviving parser
+# feeds the canonical builder for every one of them.
+CANONICAL_ID_URLS = [
     "git@github.com:company-org/dashboard.git",
     "https://dev.azure.com/myorg/myproj/_git/myrepo",
     "https://github.com/company-org/dashboard.git",
     "https://gitlab.com/group/sub/repo.git",
     "https://go.googlesource.com/oauth2",
-    "not-a-url",
 ]
 
 
-@pytest.mark.parametrize("url", DELEGATION_URLS)
-def test_extract_git_url_parts_delegates_to_parse_git_remote(url):
-    """One parser, one answer: the deprecated helper must not disagree.
+@pytest.mark.parametrize("url", CANONICAL_ID_URLS)
+def test_parsed_parts_build_a_canonical_repo_id(url):
+    """One builder, one answer.
 
-    Before this change extract_git_url_parts had no SSH branch (returning None)
-    and routed ADO URLs through the generic gitlab branch (org 'myorg/myproj/_git'
-    instead of 'myorg-myproj'), so clone and sync disagreed about the same URL.
+    repo_id_from_url_parts used to build ids by f-string without the '/' -> '~~'
+    encoding, so a nested org produced an id that sync could never have written.
+    It is deleted; this guards against another one appearing.
     """
-    kg = KospexGit()
-    assert kg.extract_git_url_parts(url) == KospexGit.parse_git_remote(url)
+    parts = KospexGit.parse_git_remote(url)
+    assert parts is not None
+    repo_id = KospexGit.generate_repo_id(
+        parts["remote"], parts["org"], parts["repo"])
+    assert "/" not in repo_id
+    assert repo_id.startswith(parts["remote"] + "~")
+    assert repo_id.endswith("~" + parts["repo"])
+
+
+def test_not_a_url_is_rejected():
+    assert KospexGit.parse_git_remote("not-a-url") is None
 
 
 def test_parse_git_remote_rejects_non_git_schemes():
