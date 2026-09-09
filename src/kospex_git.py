@@ -316,7 +316,14 @@ class KospexGit:
         if not url or not isinstance(url, str):
             return None
 
-        url = url.strip()
+        # Trailing slashes are legal in a clone URL and carry no meaning. Strip
+        # them here, once, so no provider rule has to allow for them -- several
+        # call sites used to do this themselves (and one, the sync path, did
+        # not, so a repo cloned with a trailing slash failed to parse on sync).
+        url = url.strip().rstrip("/")
+        if not url:
+            return None
+
         if "://" not in url:
             return url  # scp-style, or junk that no rule will claim
 
@@ -348,7 +355,7 @@ class KospexGit:
             r"^(?P<protocol>https?|git|ssh)://"
             r"(?P<hostname>[^/]+)"
             r"(?P<directories>(?:/[^/]+)*?)/"
-            r"(?P<last_part>[^/]+?)/?$"
+            r"(?P<last_part>[^/]+?)$"
         )
         m = re.match(pattern, url)
         if not m:
@@ -382,7 +389,7 @@ class KospexGit:
         pattern = (
             r"^(?P<protocol>https?)://"
             r"(?P<domain>[\w.-]+\.googlesource\.com)/"
-            r"(?P<directory>[\w.-]+?)(?:\.git)?/?$"
+            r"(?P<directory>[\w.-]+?)(?:\.git)?$"
         )
         m = re.match(pattern, url)
         if not m:
@@ -817,7 +824,9 @@ class KospexGit:
         code_dir = HabitatConfig.get_instance().code_dir
 
         # Trailing slashes break the parsers
-        parts = self.parse_git_remote(repo_url.rstrip("/"))
+        # No rstrip("/") here: parse_git_remote normalises trailing slashes
+        # itself, so the defence lives in one place instead of at each caller.
+        parts = self.parse_git_remote(repo_url)
         if not parts:
             print(f"ERROR: could not parse git URL: {repo_url}")
             return None
