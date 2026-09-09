@@ -531,7 +531,7 @@ class KospexQuery:
         summary_sql = """SELECT _git_server, _git_owner, count(*) 'commits',
         COUNT(DISTINCT(_git_repo)) AS repos,
         COUNT(DISTINCT(LOWER(author_email))) 'authors', COUNT(DISTINCT(LOWER(committer_email))) 'committers',
-        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(committer_when)), 'unixepoch') 'last_commit', _git_server || "~" || _git_owner AS org_key
+        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(committer_when)), 'unixepoch') 'last_commit', _git_server || "~" || REPLACE(_git_owner, '/', '~~') AS org_key
         FROM commits
         GROUP BY _git_server, _git_owner
         ORDER BY commits DESC
@@ -685,7 +685,7 @@ class KospexQuery:
                 summary_sql += " AND _git_server = ?"
                 params.append(request_id)
             elif tildes == 1:
-                summary_sql += " AND (_git_server || '~' || _git_owner) = ?"
+                summary_sql += " AND (_git_server || '~' || REPLACE(_git_owner, '/', '~~')) = ?"
                 params.append(request_id)
             else:
                 summary_sql += " AND _repo_id = ?"
@@ -782,7 +782,7 @@ class KospexQuery:
 
         if org:
             summary_sql = """SELECT _git_server, _git_owner, count(distinct(author_email)) 'devs',
-            _git_server || "~" || _git_owner AS org_key
+            _git_server || "~" || REPLACE(_git_owner, '/', '~~') AS org_key
             FROM commits
             WHERE committer_when > ?
             GROUP BY _git_server, _git_owner
