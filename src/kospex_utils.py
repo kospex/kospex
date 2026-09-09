@@ -700,42 +700,63 @@ def git_url_to_repo_id(git_url):
     return git_url
 
 def parse_repo_id(repo_id):
-    """
-    Parse a repo ID into its components
-    """
-    # TODO - Make this work with Gitlab URLs which have slashes
-    # required for web requests
+    """Parse a repo_id into its components, or None if it is not one.
 
-    if not repo_id:
+    The org may itself be a hierarchy -- a GitLab group/subgroup, or an Azure
+    DevOps organisation/project. `generate_repo_id` encodes the '/' as '~~', so
+    such an id has more than three '~'-separated segments and must NOT be
+    parsed by splitting on '~' and indexing. Peel the ends off the string
+    instead and decode the middle.
+
+    Returned keys:
+      org      -- decoded, with a real '/' (matches the _git_owner column)
+      org_key  -- still ENCODED. It is used as a URL path segment
+                  (/org/{org_key}, /graph/{org_key}), so a '/' in it would
+                  split the route into two segments.
+    """
+    if not repo_id or not isinstance(repo_id, str):
         return None
-    parts = repo_id.split('~')
-    if len(parts) != 3:
+
+    if "~" not in repo_id:
         return None
+    git_server, rest = repo_id.split("~", 1)
+
+    if "~" not in rest:
+        return None
+    org_encoded, repo = rest.rsplit("~", 1)
+
+    if not git_server or not repo:
+        return None
+
     return {
-        'git_server': parts[0],
-        'org': parts[1],
-        'repo': parts[2],
+        'git_server': git_server,
+        'org': org_encoded.replace("~~", "/"),
+        'repo': repo,
         'repo_id': repo_id,
-        'org_key': f"{parts[0]}~{parts[1]}",
+        'org_key': f"{git_server}~{org_encoded}",
     }
 
 def parse_org_key(org_key):
+    """Parse an org_key into its components, or None if it is not one.
+
+    Mirrors parse_repo_id: the org may be a hierarchy encoded with '~~', so
+    split off the server with maxsplit=1 and decode the remainder. Splitting on
+    every '~' and requiring exactly two parts rejected every nested org.
     """
-    Parse an org_key into its components
-    """
-    parts = []
-    if org_key:
-        parts = org_key.split('~')
-    else:
+    if not org_key or not isinstance(org_key, str):
         return None
 
-    if len(parts) != 2:
+    if "~" not in org_key:
+        return None
+    git_server, org_encoded = org_key.split("~", 1)
+
+    if not git_server:
         return None
 
     return {
-        'git_server': parts[0],
-        'org': parts[1],
-        'org_key': f"{org_key}",
+        'git_server': git_server,
+        'org': org_encoded.replace("~~", "/"),
+        'org_key': org_key,
     }
 
 def get_last_commit_info(filename,remote=None):
