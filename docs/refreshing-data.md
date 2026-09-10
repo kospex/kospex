@@ -274,6 +274,12 @@ rather than from whatever casing a clone URL happened to carry.
 
 ## Upgrading to 0.1.0: re-syncing after the ingest fixes
 
+> Two separate things changed in 0.1.0 and both need attention on an existing
+> database. This section covers **re-syncing** for the commit-ingest fixes.
+> [Normalising repo_id case](#normalising-repo_id-case) above covers the
+> **one-off SQL** for repo ids — do that first, since re-syncing a repo whose
+> id is still mixed-case records it twice.
+
 0.1.0 changed how commits are read from git. The fixes apply to **newly-synced
 commits only**, and commit sync is incremental — it walks from the last recorded
 commit — so a routine sync never revisits existing rows and nothing self-heals.
