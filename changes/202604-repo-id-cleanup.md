@@ -13,7 +13,7 @@
 > | 4 — replace the krunner concat | **DONE.** `extract_krunner_file_details` now splits the extension and function off the right-hand end and hands the remainder to `parse_repo_id`. It had split the whole name on `~` and indexed: a dotted repo name (`Chart.js`) parsed as repo `Chart` / function `js`, and a nested org raised `IndexError`. Backward compatibility for names already on disk was **explicitly waived** (2026-09-10) — krunner has effectively no users. |
 > | 5 — delete dead `git_url_to_repo_id` | **DONE.** Deleted, with the commented-out caller in `kospex_cli.py` that referenced it. |
 > | 6 — implement `/generate-repo-id/` | **DONE.** Uses `parse_git_remote` + `generate_repo_id`, so it reports the id sync would record, plus the parsed components. Returns 400 for a URL that is not a git remote rather than inventing an id. |
-> | 7 — route ad-hoc `split("~")` through the parsers | **Not started** (was always optional). |
+> | 7 — route ad-hoc `split("~")` through the parsers | **DONE.** Seven sites repointed through `parse_org_key` via a shared `_org_key_parts` helper. Not optional after all: every one of them hand-split on `~` and required exactly two parts, so a nested org_key raised `ValueError` from every org-scoped query and the `/org/{org_key}` page. `where_org_key` also silently skipped the filter for a malformed key, returning every row. |
 >
 > **One item is missing from this plan.** PR #126 says a pre-existing
 > `.git`-suffix-stripping bug in the Azure DevOps parser (it truncates some repo
