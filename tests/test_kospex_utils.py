@@ -156,15 +156,33 @@ def test_parse_repo_id_deeply_nested_org():
 
 
 def test_parse_repo_id_round_trips_generate_repo_id():
+    """Exact round trip, for already-lowercase input."""
     from kospex_git import KospexGit
     for server, org, repo in [
         ("github.com", "acme", "svc"),
         ("gitlab.com", "group/subgroup", "repo"),
-        ("dev.azure.com", "myorg/MyProject", "MyRepo"),
+        ("dev.azure.com", "myorg/myproject", "myrepo"),
     ]:
         rid = KospexGit.generate_repo_id(server, org, repo)
         got = KospexUtils.parse_repo_id(rid)
         assert (got["git_server"], got["org"], got["repo"]) == (server, org, repo)
+
+
+def test_round_trip_is_lowercasing_not_lossless_for_mixed_case():
+    """#147 weakened the round-trip property, deliberately.
+
+    generate_repo_id lowercases, so parse(generate(s, o, r)) returns the
+    lowercased components rather than the originals. It is idempotent from the
+    second pass on, which is the property that actually matters -- an id built
+    from a parsed id is stable.
+    """
+    from kospex_git import KospexGit
+    rid = KospexGit.generate_repo_id("GitHub.com", "MyOrg/MyProject", "MyRepo")
+    got = KospexUtils.parse_repo_id(rid)
+    assert (got["git_server"], got["org"], got["repo"]) == (
+        "github.com", "myorg/myproject", "myrepo")
+    assert KospexGit.generate_repo_id(
+        got["git_server"], got["org"], got["repo"]) == rid
 
 
 def test_parse_repo_id_rejects_junk():

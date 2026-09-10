@@ -51,23 +51,23 @@
     },
     "git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo": {
       "parts": {
-        "org": "myorg/MyProject",
-        "project": "MyProject",
+        "org": "myorg/myproject",
+        "project": "myproject",
         "remote": "dev.azure.com",
         "remote_type": "ssh",
-        "repo": "MyRepo"
+        "repo": "myrepo"
       },
-      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~myproject~myrepo"
     },
     "https://Dev.Azure.com/myorg/MyProject/_git/MyRepo": {
       "parts": {
-        "org": "myorg/MyProject",
-        "project": "MyProject",
+        "org": "myorg/myproject",
+        "project": "myproject",
         "remote": "dev.azure.com",
         "remote_type": "https",
-        "repo": "MyRepo"
+        "repo": "myrepo"
       },
-      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~myproject~myrepo"
     },
     "https://GitHub.com/acme/svc": {
       "parts": {
@@ -98,12 +98,12 @@
     },
     "https://bitbucket.example.com/scm/PROJ/repo.git": {
       "parts": {
-        "org": "PROJ",
+        "org": "proj",
         "remote": "bitbucket.example.com",
         "remote_type": "https",
         "repo": "repo"
       },
-      "repo_id": "bitbucket.example.com~PROJ~repo"
+      "repo_id": "bitbucket.example.com~proj~repo"
     },
     "https://bitbucket.example.com/scm/~personal/repo.git": {
       "parts": {
@@ -143,33 +143,33 @@
     },
     "https://dev.azure.com/myorg/My Project/_git/MyRepo": {
       "parts": {
-        "org": "myorg/My Project",
-        "project": "My Project",
+        "org": "myorg/my project",
+        "project": "my project",
         "remote": "dev.azure.com",
         "remote_type": "https",
-        "repo": "MyRepo"
+        "repo": "myrepo"
       },
-      "repo_id": "dev.azure.com~myorg~~My Project~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~my project~myrepo"
     },
     "https://dev.azure.com/myorg/MyProject/_git/MyRepo": {
       "parts": {
-        "org": "myorg/MyProject",
-        "project": "MyProject",
+        "org": "myorg/myproject",
+        "project": "myproject",
         "remote": "dev.azure.com",
         "remote_type": "https",
-        "repo": "MyRepo"
+        "repo": "myrepo"
       },
-      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~myproject~myrepo"
     },
     "https://dev.azure.com/myorg/MyProject/_git/MyRepo.git": {
       "parts": {
-        "org": "myorg/MyProject",
-        "project": "MyProject",
+        "org": "myorg/myproject",
+        "project": "myproject",
         "remote": "dev.azure.com",
         "remote_type": "https",
-        "repo": "MyRepo"
+        "repo": "myrepo"
       },
-      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~myproject~myrepo"
     },
     "https://example.com/a/b/c/d/e/f": {
       "parts": {
@@ -186,12 +186,12 @@
     },
     "https://github.com/Acme/Svc": {
       "parts": {
-        "org": "Acme",
+        "org": "acme",
         "remote": "github.com",
         "remote_type": "https",
-        "repo": "Svc"
+        "repo": "svc"
       },
-      "repo_id": "github.com~Acme~Svc"
+      "repo_id": "github.com~acme~svc"
     },
     "https://github.com/acme/dashboard.js.git": {
       "parts": {
@@ -303,42 +303,42 @@
     },
     "https://myorg.visualstudio.com/DefaultCollection/MyProject/_git/MyRepo": {
       "parts": {
-        "org": "myorg/MyProject",
-        "project": "MyProject",
+        "org": "myorg/myproject",
+        "project": "myproject",
         "remote": "myorg.visualstudio.com",
         "remote_type": "https",
-        "repo": "MyRepo"
+        "repo": "myrepo"
       },
-      "repo_id": "myorg.visualstudio.com~myorg~~MyProject~MyRepo"
+      "repo_id": "myorg.visualstudio.com~myorg~~myproject~myrepo"
     },
     "https://myorg.visualstudio.com/MyProject/_git/MyRepo": {
       "parts": {
-        "org": "myorg/MyProject",
-        "project": "MyProject",
+        "org": "myorg/myproject",
+        "project": "myproject",
         "remote": "myorg.visualstudio.com",
         "remote_type": "https",
-        "repo": "MyRepo"
+        "repo": "myrepo"
       },
-      "repo_id": "myorg.visualstudio.com~myorg~~MyProject~MyRepo"
+      "repo_id": "myorg.visualstudio.com~myorg~~myproject~myrepo"
     },
     "https://myorg@dev.azure.com/myorg/MyProject/_git/MyRepo": {
       "parts": {
-        "org": "myorg/MyProject",
-        "project": "MyProject",
+        "org": "myorg/myproject",
+        "project": "myproject",
         "remote": "dev.azure.com",
         "remote_type": "https",
-        "repo": "MyRepo"
+        "repo": "myrepo"
       },
-      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~myproject~myrepo"
     },
     "https://user@bitbucket.example.com/scm/PROJ/repo.git": {
       "parts": {
-        "org": "PROJ",
+        "org": "proj",
         "remote": "bitbucket.example.com",
         "remote_type": "https",
         "repo": "repo"
       },
-      "repo_id": "bitbucket.example.com~PROJ~repo"
+      "repo_id": "bitbucket.example.com~proj~repo"
     },
     "not a url at all": {
       "parts": null,
@@ -346,21 +346,21 @@
     },
     "ssh://git@bitbucket.example.com/PROJ/repo.git": {
       "parts": {
-        "org": "PROJ",
+        "org": "proj",
         "remote": "bitbucket.example.com",
         "remote_type": "ssh",
         "repo": "repo"
       },
-      "repo_id": "bitbucket.example.com~PROJ~repo"
+      "repo_id": "bitbucket.example.com~proj~repo"
     },
     "ssh://git@bitbucket.example.com:7999/PROJ/repo.git": {
       "parts": {
-        "org": "PROJ",
+        "org": "proj",
         "remote": "bitbucket.example.com",
         "remote_type": "ssh",
         "repo": "repo"
       },
-      "repo_id": "bitbucket.example.com~PROJ~repo"
+      "repo_id": "bitbucket.example.com~proj~repo"
     },
     "ssh://git@github.com/acme/svc.git": {
       "parts": {
@@ -373,13 +373,13 @@
     },
     "ssh://git@ssh.dev.azure.com:v3/myorg/MyProject/MyRepo": {
       "parts": {
-        "org": "myorg/MyProject",
-        "project": "MyProject",
+        "org": "myorg/myproject",
+        "project": "myproject",
         "remote": "dev.azure.com",
         "remote_type": "ssh",
-        "repo": "MyRepo"
+        "repo": "myrepo"
       },
-      "repo_id": "dev.azure.com~myorg~~MyProject~MyRepo"
+      "repo_id": "dev.azure.com~myorg~~myproject~myrepo"
     }
   }
 }

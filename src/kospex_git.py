@@ -296,6 +296,15 @@ class KospexGit:
         for rule in rules:
             parts = rule(url)
             if parts:
+                # Lowercase the identity fields here, not only in
+                # generate_repo_id: _git_owner and _git_repo are written from
+                # these values rather than derived from the id, and the
+                # org-scoped queries bind _git_owner from a split org_key. If
+                # the two disagree on case, every org lookup that starts from a
+                # repo_id silently returns nothing. (#147)
+                for field in ("org", "repo", "project"):
+                    if parts.get(field):
+                        parts[field] = parts[field].lower()
                 return parts
 
         return None
@@ -536,9 +545,14 @@ class KospexGit:
         The general format for a repo_id is
         remote~org~repo
         """
-        repo_id = f"{remote}~"
-        repo_id += org.replace("/", "~~")
-        repo_id += f"~{repo}"
+        # Lowercased: providers treat owner and repo as case-insensitive for
+        # uniqueness but case-preserving for display, so the same repository
+        # arriving with different URL casing must not mint two ids (#147).
+        # The guarantee lives on the builder as well as on parse_git_remote
+        # because consumers call this directly.
+        repo_id = f"{remote.lower()}~"
+        repo_id += org.lower().replace("/", "~~")
+        repo_id += f"~{repo.lower()}"
 
         return repo_id
 

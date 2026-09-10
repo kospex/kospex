@@ -88,6 +88,22 @@ wrong or incomplete.
    procedure below. Verified against the live database: **0 of 111** repos are
    affected, all being `github.com`.
 
+10. **`repo_id` is now lowercased, and so are `_git_owner` / `_git_repo`.**
+   Providers treat an owner and repository name as case-insensitive for
+   uniqueness, so `github.com/Kospex/Kospex` and `github.com/kospex/kospex` are
+   one repository — but kospex minted two ids for them, splitting commit history
+   and double-counting the org. The columns are lowercased with the id because
+   they are written from the parsed clone URL rather than derived from it, and
+   the org-scoped queries bind `_git_owner` from a split `org_key`; if the two
+   disagree on case, every org lookup starting from a `repo_id` silently returns
+   nothing. **Existing rows are not changed** — there is no migration, because
+   two ids that collapse to one need a decision about which row to keep. The
+   check-and-normalise SQL is documented at
+   **[Refreshing data → Normalising repo_id case](https://docs.kospex.io/refreshing-data#normalising-repo_id-case)**.
+   Measured on a 111-repo estate: 14 repos affected, no collisions. Display
+   casing is lost — `_git_owner` held the provider's canonical form and no
+   longer does.
+
 **None of the fixes backfill.** Commit sync is incremental (`--since` the last
 recorded commit), so existing rows keep their old values until a repo is dropped
 and re-synced. `kreaper delete-repo -repo_id <id> -yes` clears every table

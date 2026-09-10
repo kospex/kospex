@@ -192,9 +192,9 @@ def test_ado_org_and_project_use_the_nested_org_encoding():
     """
     parts = KospexGit.parse_git_remote(
         "https://dev.azure.com/myorg/MyProject/_git/MyRepo")
-    assert parts["org"] == "myorg/MyProject"
+    assert parts["org"] == "myorg/myproject"   # lowercased by #147
     assert _rid("https://dev.azure.com/myorg/MyProject/_git/MyRepo") == \
-        "dev.azure.com~myorg~~MyProject~MyRepo"
+        "dev.azure.com~myorg~~myproject~myrepo"
 
 
 def test_hyphenated_ado_org_and_project_no_longer_collide():
@@ -221,14 +221,14 @@ def test_ado_repo_name_ending_in_git_characters_is_not_truncated():
 def test_ado_dot_git_suffix_is_still_removed():
     parts = KospexGit.parse_git_remote(
         "https://dev.azure.com/myorg/MyProject/_git/MyRepo.git")
-    assert parts["repo"] == "MyRepo"
+    assert parts["repo"] == "myrepo"   # lowercased by #147
 
 
 def test_legacy_visualstudio_org_comes_from_the_hostname():
     """The org lives in the hostname; using the project as the org lost it."""
     parts = KospexGit.parse_git_remote(
         "https://myorg.visualstudio.com/MyProject/_git/MyRepo")
-    assert parts["org"] == "myorg/MyProject"
+    assert parts["org"] == "myorg/myproject"   # lowercased by #147
 
 
 def test_ado_ssh_agrees_with_https():
@@ -354,6 +354,54 @@ def test_mixed_case_host_still_reaches_the_ado_rule():
     """
     parts = KospexGit.parse_git_remote(
         "https://Dev.Azure.com/myorg/MyProject/_git/MyRepo")
-    assert parts["org"] == "myorg/MyProject"
-    assert parts["repo"] == "MyRepo"
+    assert parts["org"] == "myorg/myproject"
+    assert parts["repo"] == "myrepo"
     assert "_git" not in parts["org"]
+
+
+MIXED_CASE_IDENTITY = [
+    ("https://github.com/KOSPEX/Kospex", "github.com~kospex~kospex"),
+    ("https://github.com/Textualize/rich", "github.com~textualize~rich"),
+    ("git@github.com:Kludex/starlette.git", "github.com~kludex~starlette"),
+    ("https://gitlab.com/Group/SubGroup/Repo.git", "gitlab.com~group~~subgroup~repo"),
+    ("https://dev.azure.com/MyOrg/MyProject/_git/MyRepo",
+     "dev.azure.com~myorg~~myproject~myrepo"),
+    ("https://bitbucket.example.com/scm/PROJ/Repo.git",
+     "bitbucket.example.com~proj~repo"),
+]
+
+
+@pytest.mark.parametrize("url,expected", MIXED_CASE_IDENTITY)
+def test_repo_id_is_lowercased(url, expected):
+    """Providers treat owner and repo as case-insensitive for uniqueness, so
+    one repository must yield one id however the clone URL was cased (#147)."""
+    parts = KospexGit.parse_git_remote(url)
+    assert KospexGit.generate_repo_id(
+        parts["remote"], parts["org"], parts["repo"]) == expected
+
+
+@pytest.mark.parametrize("url,expected", MIXED_CASE_IDENTITY)
+def test_git_columns_match_the_id(url, expected):
+    """_git_owner and _git_repo must agree with the id.
+
+    They are written from the parsed URL, not derived from the id, and the
+    org-scoped queries bind _git_owner from a split org_key -- so if the two
+    disagree on case every org lookup starting from a repo_id returns nothing.
+    """
+    parts = KospexGit.parse_git_remote(url)
+    assert parts["org"] == parts["org"].lower()
+    assert parts["repo"] == parts["repo"].lower()
+
+
+def test_case_variant_urls_collapse_to_one_id():
+    a = KospexGit.parse_git_remote("https://github.com/KOSPEX/Kospex")
+    b = KospexGit.parse_git_remote("https://github.com/kospex/kospex")
+    assert KospexGit.generate_repo_id(a["remote"], a["org"], a["repo"]) == \
+           KospexGit.generate_repo_id(b["remote"], b["org"], b["repo"])
+
+
+def test_generate_repo_id_lowercases_its_own_arguments():
+    """The builder is called directly by consumers, so the guarantee belongs
+    on it too, not only on the parser."""
+    assert KospexGit.generate_repo_id(
+        "GitHub.com", "Acme", "Svc") == "github.com~acme~svc"
