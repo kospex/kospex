@@ -30,6 +30,7 @@ import kospex_web as KospexWeb
 from api_routes import router as api_router
 from kospex.db.migrator import warn_if_behind
 from kospex_core import Kospex
+from kospex_git import KospexGit
 from kospex_query import KospexQuery
 from kospex_request_cache import RequestCache
 from kospex_utils import KospexTimer
@@ -360,11 +361,23 @@ async def generate_repo_id(url: str):
     try:
         logger.info(f"Generate repo_id requested for URL: {url}")
 
-        # TODO: Implement repo_id generation logic
-        # For now, return a stub response
-        repo_id = "TODO_IMPLEMENT_REPO_ID_GENERATION"
+        parts = KospexGit.parse_git_remote(url)
+        if not parts:
+            return JSONResponse(
+                status_code=400,
+                content={"url": url, "error": "not a recognisable git remote URL"},
+            )
 
-        return JSONResponse(content={"url": url, "repo_id": repo_id})
+        repo_id = KospexGit.generate_repo_id(
+            parts["remote"], parts["org"], parts["repo"])
+
+        return JSONResponse(content={
+            "url": url,
+            "repo_id": repo_id,
+            "git_server": parts["remote"],
+            "org": parts["org"],
+            "repo": parts["repo"],
+        })
 
     except Exception as e:
         logger.error(f"Error in generate_repo_id endpoint: {e}")
