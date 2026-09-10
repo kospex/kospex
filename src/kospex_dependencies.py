@@ -1033,9 +1033,10 @@ class KospexDependencies:
         """Return the number of unique authors for a given repo that's been sync'ed"""
         authors = 0
         # by default, we'll return None authors if we can't find any
-        parts = self.git.extract_git_url_parts(repo_url)
+        parts = KospexGit.parse_git_remote(repo_url)
         if parts:
-            repo_id = self.git.repo_id_from_url_parts(parts)
+            repo_id = KospexGit.generate_repo_id(
+                parts["remote"], parts["org"], parts["repo"])
             # TODO - Possibly need to query # of authors
             # before this version publish date
             author_list = self.kospex_query.authors_by_repo(repo_id)

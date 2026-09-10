@@ -8,11 +8,11 @@
 > | Step | Status |
 > |---|---|
 > | 1 — fix `parse_repo_id` / `parse_org_key` for nested groups | **DONE.** Both peel the ends off the string and decode `~~` (the corrected recipe, not the original doubled-slash one). `org` is returned decoded; `org_key` stays **encoded** because it is a URL path segment. The three `kospex_query.py` sites now encode to match. |
-> | 2 — delete `repo_id_from_url_parts` | **Not started.** Still present in `kospex_git.py`, still the live path in `kospex_dependencies.py` (`get_repo_authors`). |
-> | 3 — delete `extract_git_url_parts` | **Half done by #126.** `812f0d1` made it a one-line delegation to `parse_git_remote`, so the *behavioural* problem this step existed to solve — no SSH / Azure DevOps / on-prem Bitbucket support — is **fixed**, at both call sites. What remains is cosmetic: removing the deprecated wrapper and repointing its caller. Note the caller named in Step 3 below is stale; the live one is now in `kospex_dependencies.py`, not `extract_commits_from_repo`. |
-> | 4 — replace the krunner concat | **Not started.** The manual `+ "~" +` is still in `extract_krunner_file_details`. The open question about krunner filename encoding is still open. |
-> | 5 — delete dead `git_url_to_repo_id` | **Not started.** |
-> | 6 — implement `/generate-repo-id/` | **Not started.** Still returns `TODO_IMPLEMENT_REPO_ID_GENERATION`. |
+> | 2 — delete `repo_id_from_url_parts` | **DONE.** Deleted; `get_repo_authors` now uses `parse_git_remote` + `generate_repo_id`. It had been building ids without the `~~` encoding, so a nested-group lookup used an id sync could never have written and returned 0 authors. |
+> | 3 — delete `extract_git_url_parts` | **DONE.** Wrapper deleted and its one caller repointed. (Was half done by #126.) `812f0d1` made it a one-line delegation to `parse_git_remote`, so the *behavioural* problem this step existed to solve — no SSH / Azure DevOps / on-prem Bitbucket support — is **fixed**, at both call sites. What remains is cosmetic: removing the deprecated wrapper and repointing its caller. Note the caller named in Step 3 below is stale; the live one is now in `kospex_dependencies.py`, not `extract_commits_from_repo`. |
+> | 4 — replace the krunner concat | **DONE.** `extract_krunner_file_details` now splits the extension and function off the right-hand end and hands the remainder to `parse_repo_id`. It had split the whole name on `~` and indexed: a dotted repo name (`Chart.js`) parsed as repo `Chart` / function `js`, and a nested org raised `IndexError`. Backward compatibility for names already on disk was **explicitly waived** (2026-09-10) — krunner has effectively no users. |
+> | 5 — delete dead `git_url_to_repo_id` | **DONE.** Deleted, with the commented-out caller in `kospex_cli.py` that referenced it. |
+> | 6 — implement `/generate-repo-id/` | **DONE.** Uses `parse_git_remote` + `generate_repo_id`, so it reports the id sync would record, plus the parsed components. Returns 400 for a URL that is not a git remote rather than inventing an id. |
 > | 7 — route ad-hoc `split("~")` through the parsers | **Not started** (was always optional). |
 >
 > **One item is missing from this plan.** PR #126 says a pre-existing

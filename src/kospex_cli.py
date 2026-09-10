@@ -1096,7 +1096,6 @@ def groups(name, add, remove, delete, show, file, value, email, repo):
             record["email"] = ""
             if repo:
                 kgit.set_remote_url(l)
-                # record['_repo_id'] = KospexUtils.git_url_to_repo_id(l)
                 record["_repo_id"] = kgit.get_repo_id()
                 print(f"Repo ID: {record['_repo_id']}")
 

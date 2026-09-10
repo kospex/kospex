@@ -1489,26 +1489,39 @@ class Kospex:
         return str(candidate)
 
     def extract_krunner_file_details(self, filename, krunner_home=None):
-        """Extract the repo_id and function from a krunner filename"""
-        metadata = filename.removeprefix(krunner_home + "/")
-        details = {}
-        repo_mash = metadata.split("~")
-        # repo mash will split on ~ to more easily the git server
-        # Which can have multiple . in a domain name
-        details["org"] = repo_mash[1]
-        details["git_server"] = repo_mash[0]
-        repo_function_ext = repo_mash[2]
-        parts = repo_function_ext.split(".")
-        details["repo"] = parts[0]
-        details["function"] = parts[1]
-        details["ext"] = parts[2]
-        details["repo_id"] = details["git_server"] + "~" + details["org"] + "~" + details["repo"]
+        """Parse a krunner report filename back into its parts, or None.
 
-        # parts = metadata.split(".")
-        # details['repo_id'] = parts[0]
-        # details['function'] = parts[1]
-        # details['ext'] = parts[2]
-        return details
+        The name is '{repo_id}.{function}.{ext}', and a repo_id can itself
+        contain dots (a repo named 'Chart.js') and '~~' (a nested org). So the
+        extension and function are split off the *right-hand end* and whatever
+        remains is handed to parse_repo_id.
+
+        Splitting the whole name on '~' and indexing, then splitting the
+        remainder on '.' and indexing, got both wrong: 'Chart.js' parsed as
+        repo 'Chart' / function 'js', and a nested org raised IndexError.
+        """
+        name = filename
+        if krunner_home:
+            name = name.removeprefix(krunner_home.rstrip("/") + "/")
+        name = os.path.basename(name)
+
+        parts = name.rsplit(".", 2)
+        if len(parts) != 3:
+            return None
+        repo_id, function, ext = parts
+
+        parsed = KospexUtils.parse_repo_id(repo_id)
+        if not parsed:
+            return None
+
+        return {
+            "git_server": parsed["git_server"],
+            "org": parsed["org"],
+            "repo": parsed["repo"],
+            "repo_id": parsed["repo_id"],
+            "function": function,
+            "ext": ext,
+        }
 
     def update_repo_status(self, repo_dir=None, last_sync=None, display_progress=True):
         """Update the status of a repo"""

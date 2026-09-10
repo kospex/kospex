@@ -527,24 +527,6 @@ class KospexGit:
 
         return remote_branches
 
-    def extract_git_url_parts(self, url):
-        """
-        Deprecated: use parse_git_remote().
-
-        Retained so existing callers keep working. parse_git_remote() is the
-        single source of truth and additionally handles scp-style SSH, Azure
-        DevOps and on-premise Bitbucket URLs. Collapsing the remaining parsers
-        is tracked in kospex#94.
-
-        Args:
-        url (str): The URL to extract information from.
-
-        Returns:
-        dict: A dictionary containing the remote, org, repo, and remote_type,
-        or None if the URL could not be parsed.
-        """
-        return self.parse_git_remote(url)
-
     @staticmethod
     def generate_repo_id(remote, org, repo):
         """
@@ -559,11 +541,6 @@ class KospexGit:
         repo_id += f"~{repo}"
 
         return repo_id
-
-    def repo_id_from_url_parts(self, parts):
-        """Create a simplified repo_id from the parts"""
-        org = parts["org"]
-        return f"{parts['remote']}~{parts['org']}~{parts['repo']}"
 
     def set_remote_url(self, remote_url):
         """
