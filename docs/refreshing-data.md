@@ -247,9 +247,23 @@ interactive `sqlite3` session. The first query above should then return nothing.
 
 ### What is not affected
 
-**Clone directories on disk keep their original casing.** `repos.file_path`
-records the real path and is what `kgit pull` reads, so existing clones keep
-working and nothing needs moving.
+**Existing clone directories keep their original casing, and nothing needs
+moving.** `repos.file_path` records the real path, and `kgit pull`, `kgit clone`
+and sync all read it, so an existing clone keeps working wherever it is.
+
+**New clones are lowercased**, because `kgit clone` derives the directory from
+the same parsed URL as the `repo_id`. So a disk that predates this change ends
+up mixed — `~/code/github.com/Textualize/rich` beside
+`~/code/github.com/textualize/rich` for a repo cloned later. That is cosmetic:
+each is recorded in `repos.file_path` and found through it. If you would rather
+have one convention, move the directory and update the row:
+
+```sql
+UPDATE repos SET file_path = ? WHERE _repo_id = ?;
+```
+
+On a case-insensitive filesystem (macOS by default) the two names are the same
+directory and there is nothing to do.
 
 **Display casing is lost.** `_git_owner` held the provider's canonical casing
 (`Textualize`, `NousResearch`), and after this it does not. That is a deliberate
