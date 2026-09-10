@@ -35,6 +35,10 @@ class KospexGit:
         # E.g. github.com~owner~repo
         self.repo_id = ""
         self.has_head = False
+        # Lazily constructed on first use. KospexGit() is created in hot paths,
+        # so it must not open a DB connection unless a method needs one.
+        # Assignable, so tests can inject a stand-in.
+        self.kospex_query = None
 
     def is_git_repo(self, repo_dir):
         """Simple directory check to see if directory is a git repo"""
@@ -850,6 +854,22 @@ class KospexGit:
             "parts": parts,
         }
 
+    def _recorded_clone_path(self, repo_id):
+        """The clone path recorded for repo_id, or None.
+
+        Degrades to None on any failure -- an unreadable or absent database
+        must not stop a clone.
+        """
+        try:
+            query = self.kospex_query or KospexQuery()
+            row = query.get_repo_by_id(repo_id) or {}
+        except Exception as exc:  # noqa: BLE001 - a clone must not depend on the DB
+            log.debug("could not look up %s: %s", repo_id, exc)
+            return None
+
+        file_path = row.get("file_path")
+        return Path(file_path) if file_path else None
+
     def clone_repo(self, repo_url):
         """Clone a repo into the kospex code directory.
 
@@ -872,8 +892,17 @@ class KospexGit:
 
         parts = planned["parts"]
         repo_path = Path(planned["path"])
-        org_dir = repo_path.parent
 
+        # Where a repo actually lives is repos.file_path, not the layout the URL
+        # implies. The two diverge whenever the derivation changes -- #147
+        # lowercased it -- so a repo synced beforehand sits in a mixed-case
+        # directory that the planned path no longer names. Checking the layout
+        # alone clones it a second time on a case-sensitive filesystem.
+        recorded = self._recorded_clone_path(planned["repo_id"])
+        if recorded and recorded.is_dir():
+            repo_path = recorded
+
+        org_dir = repo_path.parent
         org_dir.mkdir(parents=True, exist_ok=True)
 
         if repo_path.is_dir():
