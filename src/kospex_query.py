@@ -30,6 +30,22 @@ from kospex_utils import KospexTimer
 AUTHORSHIP_COMMIT = "(parents <= 1 OR _files > 0)"
 
 
+def _org_key_parts(org_key):
+    """(git_server, org) from an org_key, or raise ValueError.
+
+    Goes through parse_org_key so a nested org -- a GitLab group/subgroup or an
+    ADO organisation/project, encoded as '~~' -- works. Hand-splitting on '~'
+    and requiring exactly two parts rejected every one of them.
+
+    The org is returned DECODED (a real '/'), because that is what the
+    _git_owner column holds.
+    """
+    parsed = KospexUtils.parse_org_key(org_key)
+    if not parsed:
+        raise ValueError("org_key must be of the form <server>~<owner>")
+    return parsed["git_server"], parsed["org"]
+
+
 class KospexQuery:
     """kospex database query functionality"""
 
@@ -162,11 +178,9 @@ class KospexQuery:
 
         # TODO - clean this up and make more generic for use in other queries
         if org_key:
-            parts = org_key.split("~")
-            if len(parts) != 2:
-                raise ValueError("org_key must be of the form <server>~<owner>")
-            params.append(parts[0])
-            params.append(parts[1])
+            server, org = _org_key_parts(org_key)
+            params.append(server)
+            params.append(org)
             where_clause += "AND _git_server = ? AND _git_owner = ?"
 
         summary_sql = f"""SELECT Language, count(*) 'count', count(distinct(_repo_id)) 'repos'
@@ -495,11 +509,9 @@ class KospexQuery:
 
         # TODO - clean this up and make more generic for use in other queries
         if org_key:
-            parts = org_key.split("~")
-            if len(parts) != 2:
-                raise ValueError("org_key must be of the form <server>~<owner>")
-            params.append(parts[0])
-            params.append(parts[1])
+            server, org = _org_key_parts(org_key)
+            params.append(server)
+            params.append(org)
             where = "WHERE _git_server = ? AND _git_owner = ?"
         elif repo_id:
             where = "WHERE _repo_id = ?"
@@ -1059,12 +1071,13 @@ class KospexQuery:
             params.append(repo_id)
 
         if org_key:
-            parts = org_key.split("~")
-            if len(parts) != 2:
-                print("org_key must be of the form <server>~<owner>")
+            try:
+                server, org = _org_key_parts(org_key)
+            except ValueError as exc:
+                print(exc)
                 return None
-            params.append(parts[0])
-            params.append(parts[1])
+            params.append(server)
+            params.append(org)
 
             if where:
                 where_clause += " AND _git_server = ? AND _git_owner = ?"
@@ -2118,8 +2131,7 @@ class KospexQuery:
         server = None
 
         if org_key:
-            org = org_key.split("~")[1]
-            server = org_key.split("~")[0]
+            server, org = _org_key_parts(org_key)
 
         kd = KospexData(kospex_db=self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
@@ -2394,12 +2406,11 @@ class KospexData:
         """Use parse the org_key and set the required where fields
         _git_server  and _git_owner"""
 
-        if "~" in org_key:
-            parts = org_key.split("~")
-            if len(parts) != 2:
-                raise ValueError("org_key must be of the form <server>~<owner>")
-            self.where("_git_server", "=", parts[0])
-            self.where("_git_owner", "=", parts[1])
+        # No "~" guard: silently skipping the filter meant a malformed org_key
+        # returned every row rather than none. _org_key_parts raises instead.
+        server, org = _org_key_parts(org_key)
+        self.where("_git_server", "=", server)
+        self.where("_git_owner", "=", org)
 
     def where_commit_filename(self, repo_id=None, file_path=None):
         """

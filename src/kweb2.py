@@ -700,10 +700,10 @@ async def repos(request: Request, id: Optional[str] = None):
         repo_lookup = {d["_repo_id"]: d for d in all_repos}
 
         if org_key:
-            parts = org_key.split("~")
-            if len(parts) == 2:
-                page["git_server"] = parts[0]
-                page["git_owner"] = parts[1]
+            parsed = KospexUtils.parse_org_key(org_key)
+            if parsed:
+                page["git_server"] = parsed["git_server"]
+                page["git_owner"] = parsed["org"]
                 techs = kospex.tech_landscape(org_key=org_key)
                 ranges = kospex.commit_ranges2(org_key=org_key)
         elif server:

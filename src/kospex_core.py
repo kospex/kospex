@@ -898,10 +898,10 @@ class Kospex:
 
         if org_key:
             # Get the repo_id for the org_key
-            org_bits = org_key.split("~")
-            if org_bits and len(org_bits) == 2:
-                server = org_bits[0]
-                org = org_bits[1]
+            parsed = KospexUtils.parse_org_key(org_key)
+            if parsed:
+                server = parsed["git_server"]
+                org = parsed["org"]
                 # [_git_server] TEXT,
                 # [_git_owner] TEXT,
                 # where = f"WHERE _git_server = ? AND _git_owner = ? AND date(author_when) > date('now','-{days} day')"
