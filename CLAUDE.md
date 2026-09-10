@@ -173,8 +173,15 @@ The kospex DB schema is evolved via numbered migration files under `src/kospex/d
 5. **Do not edit a migration once committed and shipped.** Write a new forward migration instead. Checksums in `schema_migrations` will warn on tampering.
 6. **Verify locally:** `kospex upgrade-db` (status / dry run), then `kospex upgrade-db -apply` (execute against `~/kospex/kospex.db`). Back up the DB first. A *newly created* DB needs neither — see below.
 7. **Watch for SQL parser limitations** (CREATE TRIGGER bodies, string literals with `;`, `/* */` comments with `;`) — see the Limitations section in the migrations README. Workaround: do the nuanced part in the Python `up(db)` step using `db.execute(...)` on the raw string. **This bites in comments too** — a `;` inside a `--` comment in your migration SQL splits the statement and breaks the run.
-8. **Expect `test_fresh_db_has_no_pending_migrations` to fail** (`tests/test_kospex_schema.py`) until your migration applies cleanly on a brand-new DB. That is the point of it — it is the guard that makes "does a clean install work?" a permanent CI question. If it fails, the migration errors on a fresh baseline schema; fix the migration, do not weaken the test.
-9. **Expect to bump hardcoded migration counts in three test files.** `tests/test_db_health.py`, `tests/test_kospex_utils.py` and `tests/test_kospex_schema.py` assert exact applied/pending counts and an exact list of applied migration ids — adding `0006` moved 8 assertions across them. These failures are expected and mechanical: bump the literal, and add your migration id to the expected list. Do **not** loosen an assertion to a range or a subset to make it pass — the exactness is what makes them useful.
+8. **A data-only change is not expressible as a migration — do not force one.** A `.py`
+   migration requires a matching `.sql` (`Orphan Python migration file ... has no matching
+   .sql`), and that `.sql` cannot be empty — comments are stripped before the check. So a
+   pure backfill would need fabricated SQL wrapping it. Prefer a documented runbook, as
+   `docs/refreshing-data.md` does for `repo_id` case normalisation: it also lets the user
+   resolve cases needing judgement (two ids collapsing into one) that a migration can only
+   abort on.
+9. **Expect `test_fresh_db_has_no_pending_migrations` to fail** (`tests/test_kospex_schema.py`) until your migration applies cleanly on a brand-new DB. That is the point of it — it is the guard that makes "does a clean install work?" a permanent CI question. If it fails, the migration errors on a fresh baseline schema; fix the migration, do not weaken the test.
+10. **Expect to bump hardcoded migration counts in three test files.** `tests/test_db_health.py`, `tests/test_kospex_utils.py` and `tests/test_kospex_schema.py` assert exact applied/pending counts and an exact list of applied migration ids — adding `0006` moved 8 assertions across them. These failures are expected and mechanical: bump the literal, and add your migration id to the expected list. Do **not** loosen an assertion to a range or a subset to make it pass — the exactness is what makes them useful.
 
 #### How migrations reach a database
 
@@ -201,6 +208,48 @@ Design / spec: `changes/202605-db-migration-system.md` (migration system), `chan
 - Test modules include: `test_kospex.py`, `test_kgit.py`, `test_kospex_utils.py`, `test_kospex_schema.py`, `test_kweb_help.py`
 - Use `pytest -v` for verbose output, `pytest -k "pattern"` for specific tests
 - Docker-based testing available via `/tests/Dockerfile` and shell scripts
+- **In a worktree, run `PYTHONPATH=$PWD/src pytest`.** The editable install resolves
+  `kospex_*` to the *main* checkout, so a plain `pytest` silently exercises the wrong code.
+
+#### A green `pytest` does not cover the web layer
+
+**74 of the ~75 skips are web tests that never run.** `test_web_endpoints.py` skips
+**all 67** of its tests unless a live `kweb` is listening on `localhost:8000`; three
+other suites `importorskip("httpx")` and skip a further 7. Nothing fails, so this is
+invisible unless you look at the skip reasons (`pytest -rs`).
+
+So: **do not read a green suite as evidence that a route works.** For a small handler,
+call it directly and assert on the `JSONResponse` — `tests/test_generate_repo_id_endpoint.py`
+does this — rather than adding another test that skips. Starlette's `TestClient` needs
+`httpx2`, which is not installed here.
+
+#### Pin behaviour before refactoring a parser or a derivation
+
+`tests/test_url_parsing_characterisation.py` + `tests/data/url_parsing_golden.json` are a
+**characterisation harness**: a corpus of inputs whose current output — bugs included — is
+pinned to a golden file. It exists because changing how a `repo_id` is derived silently
+changes ids that already work, and existing `_repo_id` rows then stop matching.
+
+```bash
+pytest tests/test_url_parsing_characterisation.py          # lists every input that moved
+UPDATE_URL_GOLDEN=1 pytest tests/...                       # regenerate, once each change is intended
+```
+
+The golden diff is the review artefact — it shows a change's blast radius in one file.
+Copy the pattern for any other derivation with the same property.
+
+**An empty golden diff means "nothing I thought to cover changed", not "nothing changed."**
+It was empty twice while a real bug was present, because the corpus had no trailing-slash
+case and no mixed-case host. When a diff comes back empty, ask what the change *could* have
+affected that the corpus does not exercise.
+
+#### Two test shapes that prove nothing
+
+- **A test that reimplements the thing it checks.** A test asserting an SQL expression, that
+  contains its own copy of that expression, passes no matter what production does. Drive the
+  production call (e.g. `KospexQuery(kospex_db=db).orgs()`), not a local reconstruction.
+- **A comparison that can pass vacuously.** `assert parse(a) == parse(b)` is satisfied by
+  `None == None`. Pair it with an assertion that each side parses at all.
 
 ### Frontend Development
 - CSS: TailwindCSS utility classes, compile with `npm run build-css`
