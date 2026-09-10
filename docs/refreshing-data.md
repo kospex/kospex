@@ -156,6 +156,108 @@ re-check saved queries and dashboards after a panopticas upgrade.
 Both are reasons to refresh deliberately rather than on a schedule nobody
 watches — and to refresh *before* presenting numbers to anyone.
 
+## Normalising repo_id case
+
+`repo_id` is now lowercased. Git providers treat an owner and repository name
+as **case-insensitive for uniqueness but case-preserving for display**, so
+`github.com/Kospex/Kospex` and `github.com/kospex/kospex` are one repository —
+but kospex used to mint two ids for them, splitting the commit history and
+double-counting the org.
+
+There is **no migration for this**. It is a one-off data change with no schema
+component, and whether two ids that collapse to one should be merged depends on
+which row you want to keep — a judgement a migration cannot make. The SQL below
+is deliberately run by hand.
+
+Nothing self-heals: a repo keeps its old mixed-case id until you either
+normalise it or re-sync it.
+
+### Do you have any?
+
+```sql
+SELECT _repo_id FROM repos WHERE _repo_id <> lower(_repo_id);
+```
+
+Empty result means there is nothing to do — likely if every repo came from an
+all-lowercase URL.
+
+### Check for collisions first
+
+This is the part that needs a decision. Two ids that differ only by case
+collapse into one when lowercased, and the rows have to be merged rather than
+updated:
+
+```sql
+SELECT lower(_repo_id) AS target, group_concat(_repo_id, ' + ') AS sources
+FROM (SELECT DISTINCT _repo_id FROM repos)
+GROUP BY lower(_repo_id) HAVING COUNT(*) > 1;
+```
+
+**If this returns rows, stop.** Each pair is the same repository recorded
+twice. Decide which to keep — usually the one whose `repos.file_path` points at
+a clone that still exists — then clear the other with
+`kreaper delete-repo -repo_id <the-other-one> -yes` before running the update
+below. Re-sync afterwards.
+
+**If it returns nothing, the update is safe** — every id maps to a distinct
+lowercase id, so no rows merge.
+
+### Normalise
+
+Back up first; there is no undo.
+
+```bash
+cp ~/kospex/kospex.db ~/kospex/kospex.db.bak
+```
+
+Thirteen tables carry `_repo_id`, and `repos`, `commits`, `commit_files` and
+`file_metadata` also carry `_git_owner` / `_git_repo`, which must be lowercased
+with it. They are **not** derived from the id — they are written from the parsed
+clone URL, and the org-scoped queries bind `_git_owner` from a split `org_key`.
+If the two disagree on case, every org lookup that starts from a `repo_id`
+silently returns no rows.
+
+```sql
+BEGIN;
+
+UPDATE branch_history    SET _repo_id = lower(_repo_id);
+UPDATE branches          SET _repo_id = lower(_repo_id);
+UPDATE commit_files      SET _repo_id = lower(_repo_id);
+UPDATE commit_metadata   SET _repo_id = lower(_repo_id);
+UPDATE commits           SET _repo_id = lower(_repo_id);
+UPDATE dependency_data   SET _repo_id = lower(_repo_id);
+UPDATE developer_stats   SET _repo_id = lower(_repo_id);
+UPDATE file_metadata     SET _repo_id = lower(_repo_id);
+UPDATE kospex_groups     SET _repo_id = lower(_repo_id);
+UPDATE krunner           SET _repo_id = lower(_repo_id);
+UPDATE observations      SET _repo_id = lower(_repo_id);
+UPDATE repo_hotspots     SET _repo_id = lower(_repo_id);
+UPDATE repos             SET _repo_id = lower(_repo_id);
+
+UPDATE repos         SET _git_owner = lower(_git_owner), _git_repo = lower(_git_repo);
+UPDATE commits       SET _git_owner = lower(_git_owner), _git_repo = lower(_git_repo);
+UPDATE commit_files  SET _git_owner = lower(_git_owner), _git_repo = lower(_git_repo);
+UPDATE file_metadata SET _git_owner = lower(_git_owner), _git_repo = lower(_git_repo);
+
+COMMIT;
+```
+
+Run it with `sqlite3 ~/kospex/kospex.db < normalise.sql`, or paste it into an
+interactive `sqlite3` session. The first query above should then return nothing.
+
+### What is not affected
+
+**Clone directories on disk keep their original casing.** `repos.file_path`
+records the real path and is what `kgit pull` reads, so existing clones keep
+working and nothing needs moving.
+
+**Display casing is lost.** `_git_owner` held the provider's canonical casing
+(`Textualize`, `NousResearch`), and after this it does not. That is a deliberate
+trade: the columns have to agree with the id, and the id has to be
+case-insensitive for the identity to be correct. If canonical display names are
+wanted later they should come from the provider API, which is authoritative,
+rather than from whatever casing a clone URL happened to carry.
+
 ## Upgrading to 0.1.0: re-syncing after the ingest fixes
 
 0.1.0 changed how commits are read from git. The fixes apply to **newly-synced

@@ -30,9 +30,9 @@ def _get(url):
     ("git@github.com:acme/svc.git", "github.com~acme~svc"),
     ("https://gitlab.com/group/subgroup/repo.git", "gitlab.com~group~~subgroup~repo"),
     ("https://dev.azure.com/myorg/MyProject/_git/MyRepo",
-     "dev.azure.com~myorg~~MyProject~MyRepo"),
+     "dev.azure.com~myorg~~myproject~myrepo"),
     ("https://bitbucket.example.com/scm/PROJ/repo.git",
-     "bitbucket.example.com~PROJ~repo"),
+     "bitbucket.example.com~proj~repo"),
 ])
 def test_endpoint_returns_the_canonical_repo_id(url, expected):
     status, body = _get(url)
@@ -53,8 +53,8 @@ def test_endpoint_agrees_with_the_builder_used_by_sync():
 def test_endpoint_reports_the_components():
     _, body = _get("https://dev.azure.com/myorg/MyProject/_git/MyRepo")
     assert body["git_server"] == "dev.azure.com"
-    assert body["org"] == "myorg/MyProject"
-    assert body["repo"] == "MyRepo"
+    assert body["org"] == "myorg/myproject"
+    assert body["repo"] == "myrepo"
 
 
 @pytest.mark.parametrize("url", [

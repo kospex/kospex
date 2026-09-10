@@ -20,9 +20,9 @@ KRUNNER_HOME = "/k"
 
 ROUND_TRIP_REPOS = [
     ("github.com", "acme", "svc"),
-    ("github.com", "chartjs", "Chart.js"),          # dotted repo name
+    ("github.com", "chartjs", "chart.js"),          # dotted repo name
     ("gitlab.com", "group/subgroup", "repo"),       # nested org
-    ("dev.azure.com", "myorg/MyProject", "MyRepo"),  # ADO org/project
+    ("dev.azure.com", "myorg/myproject", "myrepo"),  # ADO org/project
     ("github.com", "acme", "dashboard.js"),
 ]
 
