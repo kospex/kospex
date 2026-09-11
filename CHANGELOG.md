@@ -2,11 +2,11 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## Unreleased
+## 0.1.0 - 2026-09-11
 
 ### Upgrade notes
 
-**Reported numbers change in this release, in eight ways.** Anything already
+**Reported numbers change in this release, in ten ways.** Anything already
 showing kospex output — dashboards, screenshots, exported reports — will disagree
 with a post-upgrade run. None of this is a regression; the earlier figures were
 wrong or incomplete.
@@ -646,6 +646,15 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
   a failing git command can strand the process working directory, and `branches`
   skips unreadable repos and carries on. A path that exists but isn't a git repo
   is handled the same way. See `changes/202607-krunner-error-tracking.md`.
+
+### Security
+
+- **Bumped `click` 8.3.1 → 8.3.3** for CVE-2026-7246 (GHSA-47fr-3ffg-hgmw): command
+  injection through the `filename` argument of `click.edit()`, which launches the editor
+  through a shell (CWE-78). kospex does not call `click.edit()`, and neither does any of its
+  installed dependencies, so kospex itself was not exploitable. The bump still matters: kospex
+  pins `click` exactly, so every install got the vulnerable version and could not upgrade it
+  on its own.
 
 ## 0.0.40 - 2026-07-27
 
