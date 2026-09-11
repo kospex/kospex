@@ -471,7 +471,7 @@ class Kospex:
             order_by = "ASC"
 
         sql_query = f"""SELECT hash, committer_when FROM {table} WHERE _repo_id = ?
-            ORDER BY unixepoch(committer_when) {order_by} LIMIT 1"""
+            ORDER BY CAST(strftime('%s', committer_when) AS INTEGER) {order_by} LIMIT 1"""
 
         # Query return value might not have a 'next' method
         # This code checks for that and returns None if there is no next
@@ -510,7 +510,7 @@ class Kospex:
     def get_latest_commit_datetime(self, repo_id):
         """Get the latest commit datetime for the given repo_id"""
         cursor = self.kospex_db.execute(
-            "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(committer_when)), 'unixepoch') FROM commits WHERE _repo_id = ?", (repo_id,)
+            "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') FROM commits WHERE _repo_id = ?", (repo_id,)
         )
         latest_datetime = cursor.fetchone()[0]
         return latest_datetime
@@ -872,8 +872,8 @@ class Kospex:
         # FROM commits'''
 
         sql = """SELECT distinct(author_email) as author,
-        strftime('%Y-%m-%dT%H:%M:%SZ', MIN(unixepoch(author_when)), 'unixepoch') as first_commit,
-        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(author_when)), 'unixepoch') as last_commit,
+        strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as first_commit,
+        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as last_commit,
         round((julianday('now') - julianday(max(author_when))) ,1) as last_seen,
         COUNT(author_email) as commits,
         COUNT(DISTINCT(_repo_id)) as repos
