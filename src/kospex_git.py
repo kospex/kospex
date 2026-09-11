@@ -926,7 +926,7 @@ class KospexGit:
     def get_latest_commit_datetime(self, repo_id):
         """Get the latest commit datetime for the given repo_id"""
         cursor = KospexQuery().kospex_db.execute(
-            "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(committer_when)), 'unixepoch') FROM commits WHERE _repo_id = ?", (repo_id,)
+            "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') FROM commits WHERE _repo_id = ?", (repo_id,)
         )
         latest_datetime = cursor.fetchone()[0]
         return latest_datetime

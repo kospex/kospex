@@ -211,6 +211,20 @@ Design / spec: `changes/202605-db-migration-system.md` (migration system), `chan
 - **In a worktree, run `PYTHONPATH=$PWD/src pytest`.** The editable install resolves
   `kospex_*` to the *main* checkout, so a plain `pytest` silently exercises the wrong code.
 
+#### SQL must run on SQLite 3.26
+
+kospex uses whatever SQLite the user's Python was built with. A distro-packaged Python
+uses the system library, which enterprise distros never upgrade: **3.26 on RHEL 8,
+3.34 on RHEL 9**. Your machine and CI have 3.45+, so a newer SQL function passes here
+and fails for the user; `unixepoch()` (3.38) did exactly that.
+
+`tests/conftest.py` refuses every SQL function newer than 3.26 on every test connection,
+so such a query fails the suite with `not authorized to use function: X`. **Don't work
+around it: use the portable form.** For epoch seconds that is
+`CAST(strftime('%s', x) AS INTEGER)`, not `unixepoch(x)`. Syntax is not covered by the
+guard (`RETURNING`, `->>`, `RIGHT JOIN`, `ALTER TABLE ... DROP COLUMN`), so avoid those
+by hand.
+
 #### A green `pytest` does not cover the web layer
 
 **74 of the ~75 skips are web tests that never run.** `test_web_endpoints.py` skips

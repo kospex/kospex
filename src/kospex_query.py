@@ -254,7 +254,7 @@ class KospexQuery:
         file_path, committer_when
         FROM commit_files
         WHERE _repo_id = ? AND file_path = ?
-        ORDER BY unixepoch(committer_when) DESC LIMIT 1
+        ORDER BY CAST(strftime('%s', committer_when) AS INTEGER) DESC LIMIT 1
         """
         params = [repo_id, file_path]
         data = next(self.kospex_db.query(sql, params), None)
@@ -420,7 +420,7 @@ class KospexQuery:
     def repos_by_author(self, author_email):
         """Find repos for the given author_email."""
 
-        summary_sql = """SELECT _repo_id, count(*) 'commits', strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(committer_when)), 'unixepoch') 'last_commit', strftime('%Y-%m-%dT%H:%M:%SZ', MIN(unixepoch(committer_when)), 'unixepoch') 'first_commit'
+        summary_sql = """SELECT _repo_id, count(*) 'commits', strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') 'last_commit', strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') 'first_commit'
         FROM commits
         WHERE LOWER(author_email) = ?
         GROUP BY _repo_id
@@ -522,7 +522,7 @@ class KospexQuery:
 
         summary_sql = f"""SELECT _repo_id, _git_server, _git_owner, _git_repo, count(*) 'commits',
         count(distinct(author_email)) 'authors', count(distinct(committer_email)) 'committers',
-        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(committer_when)), 'unixepoch') 'last_commit'
+        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') 'last_commit'
         FROM commits {where}
         GROUP BY _repo_id
         ORDER BY _repo_id
@@ -543,7 +543,7 @@ class KospexQuery:
         summary_sql = """SELECT _git_server, _git_owner, count(*) 'commits',
         COUNT(DISTINCT(_git_repo)) AS repos,
         COUNT(DISTINCT(LOWER(author_email))) 'authors', COUNT(DISTINCT(LOWER(committer_email))) 'committers',
-        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(committer_when)), 'unixepoch') 'last_commit', _git_server || "~" || REPLACE(_git_owner, '/', '~~') AS org_key
+        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') 'last_commit', _git_server || "~" || REPLACE(_git_owner, '/', '~~') AS org_key
         FROM commits
         GROUP BY _git_server, _git_owner
         ORDER BY commits DESC
@@ -613,7 +613,7 @@ class KospexQuery:
         SELECT file_path, hash, committer_when FROM (
             SELECT file_path, hash, committer_when,
                    ROW_NUMBER() OVER (
-                       PARTITION BY file_path ORDER BY unixepoch(committer_when) DESC
+                       PARTITION BY file_path ORDER BY CAST(strftime('%s', committer_when) AS INTEGER) DESC
                    ) AS rn
             FROM {KospexSchema.TBL_COMMIT_FILES}
             WHERE _repo_id = ?
@@ -727,7 +727,7 @@ class KospexQuery:
             # Need to think of a more elegant solution
             params.append(committer_email.replace(" ", "+"))
 
-        summary_sql += " ORDER BY unixepoch(committer_when) DESC"
+        summary_sql += " ORDER BY CAST(strftime('%s', committer_when) AS INTEGER) DESC"
 
         if limit:
             summary_sql += " LIMIT ?"
@@ -983,7 +983,7 @@ class KospexQuery:
         """Look for distinct developers in the last X 'days'"""
         from_date = KospexUtils.days_ago_iso_date(days)
         summary_sql = """SELECT distinct(LOWER(author_email)) AS 'author_email', count(*) AS 'commits',
-        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(committer_when)), 'unixepoch') AS 'last_commit', count(distinct(_repo_id)) AS 'repos'
+        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') AS 'last_commit', count(distinct(_repo_id)) AS 'repos'
         FROM commits
         WHERE committer_when > ? AND _repo_id = ?
         GROUP BY LOWER(author_email)
@@ -1000,8 +1000,8 @@ class KospexQuery:
 
     def authors_by_repo(self, repo_id):
         """Provide a summary of authors in the provided repo."""
-        summary_sql = """SELECT LOWER(author_email) as author_email, count(*) 'commits', strftime('%Y-%m-%dT%H:%M:%SZ', MIN(unixepoch(author_when)), 'unixepoch') 'first_commit',
-        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(author_when)), 'unixepoch') 'last_commit'
+        summary_sql = """SELECT LOWER(author_email) as author_email, count(*) 'commits', strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') 'first_commit',
+        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') 'last_commit'
         FROM commits
         WHERE _repo_id = ?
         GROUP BY LOWER(author_email)
@@ -1115,8 +1115,8 @@ class KospexQuery:
 
     def author_summary(self, repo_id):
         """Provide a summary of authors for repositories."""
-        summary_sql = """SELECT author_email, count(*) 'commits', strftime('%Y-%m-%dT%H:%M:%SZ', MIN(unixepoch(author_when)), 'unixepoch') 'first_commit',
-        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(author_when)), 'unixepoch') 'last_commit'
+        summary_sql = """SELECT author_email, count(*) 'commits', strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') 'first_commit',
+        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') 'last_commit'
         FROM commits
         WHERE _repo_id = ?
         GROUP BY author_email
@@ -1317,7 +1317,7 @@ class KospexQuery:
 
         # we need the number of distinct authors per file as well as the number of commits per file
         sql = f"""SELECT DISTINCT(author_email) as author_email, _ext, count(*) 'commits',
-        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(author_when)), 'unixepoch') 'last_commit', strftime('%Y-%m-%dT%H:%M:%SZ', MIN(unixepoch(author_when)), 'unixepoch') 'first_commit',
+        strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') 'last_commit', strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') 'first_commit',
         COUNT(DISTINCT(c._repo_id)) 'repos'
         FROM commit_files cf, commits c
         WHERE cf._repo_id = c._repo_id
@@ -1954,8 +1954,8 @@ class KospexQuery:
             SELECT
                 author_email,
                 COUNT(*) as total_commits,
-                strftime('%Y-%m-%dT%H:%M:%SZ', MIN(unixepoch(author_when)), 'unixepoch') as first_commit,
-                strftime('%Y-%m-%dT%H:%M:%SZ', MAX(unixepoch(author_when)), 'unixepoch') as last_commit,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as first_commit,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as last_commit,
                 SUM(CASE WHEN committer_when > ? THEN 1 ELSE 0 END) as commits_last_90_days
             FROM {KospexSchema.TBL_COMMITS}
             WHERE _repo_id = ?
@@ -2521,11 +2521,17 @@ class KospexData:
     # MAX(committer_when) returns the wrong row whenever the true latest commit
     # has a more westerly offset than a near tie (#154).
     #
-    # The outer strftime is not decoration: MAX(unixepoch(...)) alone returns an
+    # The instant is CAST(strftime('%s', x) AS INTEGER): epoch seconds, with the
+    # offset applied, NULL for an unparseable value. It is what unixepoch(x)
+    # returns, but unixepoch() needs SQLite 3.38, and a distro-packaged Python
+    # uses the system library -- 3.34 on RHEL 9, 3.26 on RHEL 8. The CAST
+    # matters: strftime('%s') alone returns TEXT, which sorts as text again.
+    #
+    # The outer strftime is not decoration: MAX(<epoch>) alone returns an
     # integer, which breaks days_ago() and `new Date()` in the templates. The
-    # SQLite bare-column form (SELECT MAX(unixepoch(x)), x) does return the
-    # winning row's original string, but its behaviour is undefined with more
-    # than one min/max aggregate — and several queries select first_commit and
+    # SQLite bare-column form (SELECT MAX(<epoch>), x) does return the winning
+    # row's original string, but its behaviour is undefined with more than one
+    # min/max aggregate — and several queries select first_commit and
     # last_commit together — so it can't be the general form.
     #
     # The trade-off is that these aggregates render in UTC rather than the
@@ -2540,7 +2546,7 @@ class KospexData:
 
         self.select_columns.append(
             f"strftime('{self._UTC_ISO}', "
-            f"{function_name}(unixepoch({column})), 'unixepoch') AS {alias}"
+            f"{function_name}(CAST(strftime('%s', {column}) AS INTEGER)), 'unixepoch') AS {alias}"
         )
 
     def select_latest_date(self, column, alias):
@@ -2566,7 +2572,7 @@ class KospexData:
         if not self.is_valid_sql_name(column):
             raise ValueError(f"Column '{column}' is not a valid SQL name")
 
-        self.order_by_columns.append(f"unixepoch({column}) {direction}")
+        self.order_by_columns.append(f"CAST(strftime('%s', {column}) AS INTEGER) {direction}")
 
     def select_git_details(self):
         """
