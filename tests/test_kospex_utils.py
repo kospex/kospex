@@ -201,3 +201,31 @@ def test_parse_org_key_flat_and_nested():
 def test_parse_org_key_rejects_junk():
     for bad in [None, "", "no-tilde"]:
         assert KospexUtils.parse_org_key(bad) is None
+
+
+# --- repo_id and org_key are disjoint -----------------------------------------
+# kospex_web.get_id_params() classifies a request id by trying parse_org_key
+# first. A parser that accepts both shapes sends every repo_id down the org
+# path, where the owner binds as 'acme~svc' and matches no rows.
+
+REPO_IDS = [
+    "github.com~acme~svc",
+    "gitlab.com~group~~subgroup~repo",
+    "gitlab.com~a~~b~~c~repo",
+    "dev.azure.com~myorg~~myproject~myrepo",
+]
+NESTED_ORG_KEYS = [
+    "gitlab.com~group~~subgroup",
+    "gitlab.com~a~~b~~c",
+]
+
+
+def test_parse_org_key_rejects_every_repo_id():
+    for repo_id in REPO_IDS:
+        assert KospexUtils.parse_org_key(repo_id) is None, repo_id
+
+
+def test_parse_repo_id_rejects_a_nested_org_key():
+    """'group~~subgroup' must not split into org 'group~' and repo 'subgroup'."""
+    for org_key in NESTED_ORG_KEYS:
+        assert KospexUtils.parse_repo_id(org_key) is None, org_key

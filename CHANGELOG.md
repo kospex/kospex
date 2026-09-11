@@ -312,7 +312,12 @@ a re-sync does **not** fix: **[Refreshing data → Upgrading to
   subgroup repository was unreachable in the web UI and got no organisation link.
   Both now decode the org correctly. `org` is returned with a real `/`, matching
   the `_git_owner` column; `org_key` stays encoded, because it is a URL path
-  segment (`/org/{org_key}`) and a `/` would split the route in two.
+  segment (`/org/{org_key}`) and a `/` would split the route in two. Each
+  rejects the other's shape: a `~` left after decoding `~~` separates an org from
+  a repo, so `parse_org_key` refuses every `repo_id` and `parse_repo_id` refuses
+  a nested `org_key`. That keeps the `{id}` pages — `/tenure/`, `/landscape/`,
+  `/dependencies/`, `/osi/` and others — scoped to the repository rather than to
+  an organisation that does not exist.
 
 - **`org_key` disagreed between the SQL and the parser.** Three queries built it
   as `_git_server || '~' || _git_owner`, yielding `gitlab.com~group/subgroup`,
