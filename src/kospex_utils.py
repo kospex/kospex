@@ -684,6 +684,19 @@ def parse_git_rename_event(event_str):
     # Reassemble the path
 #    return ''.join(segments)
 
+def _decode_org(org_encoded):
+    """Decode an encoded org ('group~~subgroup' -> 'group/subgroup'), or None.
+
+    A lone '~' left after decoding separates an org from a repo, so the string
+    is not an org. This is what keeps a repo_id and an org_key disjoint:
+    kospex_web.get_id_params tries parse_org_key first, and a parser accepting
+    both shapes would scope every repo page to an org that does not exist.
+    """
+    org = org_encoded.replace("~~", "/")
+    if "~" in org:
+        return None
+    return org
+
 def parse_repo_id(repo_id):
     """Parse a repo_id into its components, or None if it is not one.
 
@@ -710,12 +723,13 @@ def parse_repo_id(repo_id):
         return None
     org_encoded, repo = rest.rsplit("~", 1)
 
-    if not git_server or not repo:
+    org = _decode_org(org_encoded)
+    if not git_server or not repo or org is None:
         return None
 
     return {
         'git_server': git_server,
-        'org': org_encoded.replace("~~", "/"),
+        'org': org,
         'repo': repo,
         'repo_id': repo_id,
         'org_key': f"{git_server}~{org_encoded}",
@@ -735,12 +749,13 @@ def parse_org_key(org_key):
         return None
     git_server, org_encoded = org_key.split("~", 1)
 
-    if not git_server:
+    org = _decode_org(org_encoded)
+    if not git_server or org is None:
         return None
 
     return {
         'git_server': git_server,
-        'org': org_encoded.replace("~~", "/"),
+        'org': org,
         'org_key': org_key,
     }
 
