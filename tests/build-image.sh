@@ -13,9 +13,9 @@ IMAGE_NAME="kospex:latest"
 # vulnerabilities (127 HIGH), every one with a fix already available. The
 # identical build with --no-cache scanned clean (0/0).
 #
-# --pull also re-resolves the base image, though note the Dockerfile currently
-# pins rockylinux:9 by digest, so the base itself stays put and the refresh comes
-# from dnf.
+# --pull also re-resolves the base image, but Docker Hub's rockylinux:9 tag is
+# itself frozen at 9.3 (late 2023), so the base stays put and the refresh comes
+# from dnf. The maintained image is rockylinux/rockylinux:9.
 #
 # Pass --cache to opt back in when iterating locally and you don't need freshness.
 BUILD_ARGS="--no-cache --pull"
@@ -71,9 +71,14 @@ trivy image "$IMAGE_NAME"
 # this image last went stale it carried 127 HIGH vulnerabilities and every single
 # one had a fix available, so a fixable-only gate would have caught it while still
 # not blocking on upstream issues nobody here can resolve.
-echo "Gating on fixable $TRIVY_GATE_SEVERITY vulnerabilities"
+#
+# Accepted findings live in .trivyignore.yaml next to this script, each with a
+# reason and an expiry date. They apply to the gate only: the report above still
+# lists them, so an accepted finding stays visible in every build.
+IGNORE_FILE="$(cd "$(dirname "$0")" && pwd)/.trivyignore.yaml"
+echo "Gating on fixable $TRIVY_GATE_SEVERITY vulnerabilities (accepted: $IGNORE_FILE)"
 trivy image --quiet --exit-code 1 --ignore-unfixed \
-    --severity "$TRIVY_GATE_SEVERITY" "$IMAGE_NAME"
+    --severity "$TRIVY_GATE_SEVERITY" --ignorefile "$IGNORE_FILE" "$IMAGE_NAME"
 TRIVY_STATUS=$?
 
 if [ $TRIVY_STATUS -eq 0 ]; then
