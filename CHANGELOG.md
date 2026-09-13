@@ -2,6 +2,29 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+### Fixed
+
+- **`/dependencies/` and `/osi/` returned every row when the URL segment was a
+  base64 author email.** Both hand-rolled the scope cascade, and the fallback
+  branch printed an error then fell through with no `WHERE` clause, so the query
+  ran unscoped — 852 rows on a 111-repo database, identical to no scope at all.
+  A scope the query cannot honour is now refused, and the routes return **400**
+  rather than rendering the whole table. "No scope requested" still means all
+  scope, which `krunner` relies on.
+
+- **`/collab/` rendered an empty table for an id that was never valid.** The id
+  was passed straight to the query with no validation, so an unparseable id and
+  a repository with no collaborators looked identical. It now returns **404**,
+  with different messages for "not a repo_id" and "not in the kospex database".
+
+- **Three web routes converted their own `4xx` into a `500`.** `/collab/`,
+  `/osi/` and `/dependencies/` raised `HTTPException` inside a `try` whose
+  blanket `except Exception` re-raised it as a server error. They now re-raise
+  `HTTPException` first. **41 of the 44 route handlers still have this shape** —
+  a deliberate 404 added to any of them would surface as a 500.
+
 ## 0.1.0 - 2026-09-11
 
 ### Upgrade notes

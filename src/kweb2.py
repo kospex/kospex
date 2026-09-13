@@ -525,7 +525,12 @@ async def osi(request: Request, id: Optional[str] = None):
         logger.info(f"OSI page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
-        deps = KospexQuery().get_dependency_files(request_id=params)
+        try:
+            deps = KospexQuery().get_dependency_files(request_id=params)
+        except ValueError as exc:
+            # A scope this query cannot honour -- e.g. an author email.
+            # Refusing beats widening to every row. (#158)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         for file in deps:
             file["days_ago"] = KospexUtils.days_ago(file.get("committer_when"))
@@ -548,6 +553,10 @@ async def osi(request: Request, id: Optional[str] = None):
                 "commentary": commentary,
             },
         )
+    except HTTPException:
+        # A deliberate 4xx must not be swallowed by the handler below and
+        # re-raised as a 500 -- the request was bad, not the server.
+        raise
     except Exception as e:
         logger.error(f"Error in osi endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -559,13 +568,30 @@ async def collab(request: Request, repo_id: str):
     try:
         logger.info(f"Collaboration page requested for repo: {repo_id}")
 
+        # An unvalidated id was passed straight to the query, which returned no
+        # rows and rendered an empty table -- indistinguishable from "this repo
+        # has no collaborators". Both failures now say what is wrong. (#43)
+        if not KospexUtils.parse_repo_id(repo_id):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Not a repo_id: {repo_id} (expected server~owner~repo)")
+
         kquery = KospexQuery()
+
+        if not kquery.get_repo_by_id(repo_id):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Repository not in the kospex database: {repo_id}")
 
         collabs = kquery.get_collabs(repo_id=repo_id)
 
         return templates.TemplateResponse(
             request, "collab.html", {"repo_id": repo_id, "collabs": collabs}
         )
+    except HTTPException:
+        # A deliberate 4xx must not be swallowed by the handler below and
+        # re-raised as a 500 -- the request was bad, not the server.
+        raise
     except Exception as e:
         logger.error(f"Error in collab endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1343,9 +1369,18 @@ async def dependencies(request: Request, id: Optional[str] = None):
         logger.info(f"Dependencies page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
-        data = KospexQuery().get_dependencies(request_id=params)
+        try:
+            data = KospexQuery().get_dependencies(request_id=params)
+        except ValueError as exc:
+            # A scope this query cannot honour -- e.g. an author email.
+            # Refusing beats widening to every row. (#158)
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         return templates.TemplateResponse(request, "dependencies.html", {"data": data})
+    except HTTPException:
+        # A deliberate 4xx must not be swallowed by the handler below and
+        # re-raised as a 500 -- the request was bad, not the server.
+        raise
     except Exception as e:
         logger.error(f"Error in dependencies endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

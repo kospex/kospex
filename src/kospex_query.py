@@ -261,6 +261,37 @@ class KospexQuery:
 
         return data
 
+    def _apply_request_scope(self, kd, request_id, supports=("repo_id", "org_key", "server")):
+        """Apply the scope in request_id to kd, or raise if it cannot be honoured.
+
+        A falsy request_id means "no scope requested" -- return everything. That
+        is deliberate and krunner relies on it.
+
+        A request_id carrying a scope this query does not support is a different
+        thing entirely, and must NOT fall through to an unscoped query. It
+        previously printed an error and continued, so /osi/ and /dependencies/
+        given a base64 author_email returned the whole table -- 852 rows on a
+        111-repo database, identical to no scope at all (#158).
+
+        Note this is why set_params_by_id() is not the fix: it filters to the
+        scopes it knows and silently ignores the rest, which is the same
+        widening in a different place.
+        """
+        if not request_id:
+            return
+
+        if "repo_id" in supports and (repo_id := request_id.get("repo_id")):
+            kd.where("_repo_id", "=", repo_id)
+        elif "org_key" in supports and (org_key := request_id.get("org_key")):
+            kd.where_org_key(org_key)
+        elif "server" in supports and (server := request_id.get("server")):
+            kd.where("_git_server", "=", server)
+        else:
+            raise ValueError(
+                f"cannot scope this query by {sorted(request_id)} "
+                f"-- supported scopes are {sorted(supports)}"
+            )
+
     def get_dependency_files(self, request_id=None):
         """
         Get the dependency for the given scope.
@@ -269,15 +300,7 @@ class KospexQuery:
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_FILE_METADATA)
         kd.where("latest", "=", 1)
-        if request_id:
-            if repo_id := request_id.get("repo_id"):
-                kd.where("_repo_id", "=", repo_id)
-            elif org_key := request_id.get("org_key"):
-                kd.where_org_key(org_key)
-            elif server := request_id.get("server"):
-                kd.where("_git_server", "=", server)
-            else:
-                print(f"ERROR: can't identify {request_id}")
+        self._apply_request_scope(kd, request_id)
 
         kd.where("tech_type", "LIKE", "%|dependencies|%")
 
@@ -296,15 +319,7 @@ class KospexQuery:
         # latest=0 so this filter no longer double-counts old versions.
         kd.where("latest", "=", 1)
 
-        if request_id:
-            if repo_id := request_id.get("repo_id"):
-                kd.where("_repo_id", "=", repo_id)
-            elif org_key := request_id.get("org_key"):
-                kd.where_org_key(org_key)
-            elif server := request_id.get("server"):
-                kd.where("_git_server", "=", server)
-            else:
-                print(f"ERROR: can't identify {request_id}")
+        self._apply_request_scope(kd, request_id)
 
         results = kd.execute()
 
