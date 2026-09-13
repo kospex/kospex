@@ -19,11 +19,15 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   a repository with no collaborators looked identical. It now returns **404**,
   with different messages for "not a repo_id" and "not in the kospex database".
 
-- **Three web routes converted their own `4xx` into a `500`.** `/collab/`,
-  `/osi/` and `/dependencies/` raised `HTTPException` inside a `try` whose
-  blanket `except Exception` re-raised it as a server error. They now re-raise
-  `HTTPException` first. **41 of the 44 route handlers still have this shape** —
-  a deliberate 404 added to any of them would surface as a 500.
+- **Web routes converted their own `4xx` into a `500`.** A route raising
+  `HTTPException` inside a `try` whose `except Exception` maps everything to a
+  500 reported its own client error as a server error — `HTTPException` is an
+  `Exception`. `/file-collab/` was doing this in production: its deliberate
+  "file_path parameter is required" 400 reached clients as a 500. **All 42
+  handlers that convert to a 500 now re-raise `HTTPException` first.** Two
+  handlers that *recover* rather than convert — the 404 template fallback and
+  the supply-chain search form — are deliberately left alone, since re-raising
+  there would turn a handled error into a propagated one.
 
 ## 0.1.0 - 2026-09-11
 

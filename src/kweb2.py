@@ -240,6 +240,11 @@ async def summary(request: Request, id: Optional[str] = None):
                 "id": params,
             },
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in summary endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -304,6 +309,11 @@ async def summary2(request: Request, id: Optional[str] = None):
                 "id": params,
             },
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in summary2 endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -326,6 +336,11 @@ async def help_page(request: Request, id: Optional[str] = None):
                 # If specific page doesn't exist, fall back to index
                 logger.warning(f"Help page help/{id}.html not found, falling back to index")
                 return templates.TemplateResponse(request, "help/index.html")
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in help endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -343,6 +358,11 @@ async def active_developers(request: Request, repo_id: str):
         return templates.TemplateResponse(
             request, "developers.html", {"data": data, "authors": results}
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in active_developers endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -379,6 +399,11 @@ async def generate_repo_id(url: str):
             "repo": parts["repo"],
         })
 
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in generate_repo_id endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -394,6 +419,11 @@ async def servers(request: Request):
         data = kquery.server_summary()
 
         return templates.TemplateResponse(request, "servers.html", {"data": data})
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in servers endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -421,6 +451,11 @@ async def metadata(request: Request):
         # data = KospexQuery().summary()
 
         return templates.TemplateResponse(request, "metadata.html", {**data})
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in metadata endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -448,6 +483,11 @@ async def metadata_repos(request: Request, id: Optional[str] = None):
         return templates.TemplateResponse(
             request, "metadata_repos.html", {"repos": repos, "repo_id": id}
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in metadata repos endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -464,6 +504,11 @@ async def orphans(request: Request, id: Optional[str] = None):
         data = KospexQuery().get_orphans(id=params)
 
         return templates.TemplateResponse(request, "orphans.html", {"data": data})
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in orphans endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -512,6 +557,11 @@ async def bubble_treemap(request: Request, id: str):
             request, html_template,
             {"link_url": link_url, "template": template, "id": id},
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in bubble/treemap endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -606,6 +656,11 @@ async def collab_graph(request: Request, repo_id: str):
         return templates.TemplateResponse(
             request, "collab_graph.html", {"repo_id": repo_id}
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in collab_graph endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -621,6 +676,11 @@ async def collab_graph_data(request: Request, repo_id: str):
         collabs = kquery.get_collabs(repo_id=repo_id)
 
         return JSONResponse(content=collabs)
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in collab_graph_data endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -650,6 +710,11 @@ async def file_collaboration(request: Request, repo_id: str):
                 "file_path": file_path,
             },
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in file_collaboration endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -673,6 +738,11 @@ async def orgs(request: Request, server: Optional[str] = None):
             row["active_devs"] = active_devs.get(row["org_key"], 0)
 
         return templates.TemplateResponse(request, "orgs.html", {"data": git_orgs})
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in orgs endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -693,6 +763,11 @@ async def recent_syncs(request: Request):
             request, "recent-syncs.html",
             {"data": data, "page": {"title": "Recent Syncs"}},
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in recent syncs endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -758,6 +833,11 @@ async def repos(request: Request, id: Optional[str] = None):
                 "developer_status": developer_status,
             },
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in repos endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -900,6 +980,11 @@ async def key_person(request: Request, repo_id: str):
                 "key_people": key_people,
             },
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in key_person endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -929,6 +1014,11 @@ async def landscape(request: Request, id: Optional[str] = None):
                 request, "landscape.html",
                 {"data": data, "org_key": org_key, "id": id},
             )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in landscape endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -988,6 +1078,11 @@ async def developers(request: Request, id: Optional[str] = None):
             return templates.TemplateResponse(
                 request, "developers.html", {"authors": devs, "data": data}
             )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in developers endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1017,6 +1112,11 @@ async def graph(request: Request, org_key: Optional[str] = None):
         return templates.TemplateResponse(
             request, "graph.html", {"org_key": org_key, "focus": focus}
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in graph endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1031,6 +1131,11 @@ async def org_graph(request: Request, org_key: Optional[str] = None, focus: Opti
         logger.info(f"Org graph data requested - focus: {focus}, org_key: {org_key}")
 
         return graph_service.get_graph_data(focus, org_key, dict(request.query_params))
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in org_graph endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1102,6 +1207,11 @@ async def tenure(request: Request, id: Optional[str] = None):
                 "leavers": leavers,
             },
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in tenure endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1129,6 +1239,11 @@ async def author_domains(request: Request):
             request, "meta-author-domains.html",
             {"days": days, "email_domains": email_domains},
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in author_domains endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1145,6 +1260,11 @@ async def tech_change(request: Request):
         return templates.TemplateResponse(
             request, "tech-change.html", {"labels": labels}
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in tech_change endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1170,6 +1290,11 @@ async def repo_with_tech(request: Request, tech: str):
             request, template,
             {"data": repos_with_tech, "tech": tech, "page": {}},
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in repo_with_tech endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1225,6 +1350,11 @@ async def developer_view(request: Request, id: Optional[str] = None):
                 "datapoints": datapoints,
             },
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in developer_view endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1248,6 +1378,11 @@ async def observation(request: Request, uuid: str):
                 "observation": observation,
             },
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in repo_with_tech endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1291,6 +1426,11 @@ async def observations(request: Request):
                 request, "observations.html",
                 {"data": kquery.observations_summary()},
             )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in observations endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1324,6 +1464,11 @@ async def commits(request: Request, repo_id: Optional[str] = None):
         return templates.TemplateResponse(
             request, "commits.html", {"commits": data, "repo_id": repo_id}
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in commits endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1356,6 +1501,11 @@ async def commit_history(request: Request, repo_id: str):
                 "show_monthly": show_monthly
             }
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in commit_history endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1403,6 +1553,11 @@ async def commit(request: Request, repo_id: str, commit_hash: str):
                 "files": files,
             },
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in commit endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1454,6 +1609,11 @@ async def package_check(request: Request):
         logger.info("Package check page requested")
 
         return templates.TemplateResponse(request, "package_check.html")
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in package_check endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1514,6 +1674,11 @@ async def package_check_upload(file: UploadFile = File(...)):
 
             return JSONResponse(content=results)
 
+        except HTTPException:
+            # Re-raise the route's own 4xx. The handler below converts any
+            # Exception to a 500, and HTTPException is an Exception, so a
+            # deliberate 404/400 was reported as a server error. (#210)
+            raise
         except Exception as e:
             # Clean up in case of error
             if os.path.exists(temp_path):
@@ -1539,6 +1704,11 @@ async def hotspots(request: Request, repo_id: str):
         data = KospexQuery().hotspots(repo_id=repo_id)
 
         return templates.TemplateResponse(request, "hotspots.html", {"data": data})
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in hotspots endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1556,6 +1726,11 @@ async def repo_files(request: Request, repo_id: Optional[str] = None):
             data = KospexQuery().repo_files(repo_id=repo_id)
 
         return templates.TemplateResponse(request, "files.html", {"data": data})
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in repo_files endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1672,6 +1847,11 @@ async def supply_chain(request: Request):
                 "ecosystem": ecosystem,
             },
         )
+    except HTTPException:
+        # Re-raise the route's own 4xx. The handler below converts any
+        # Exception to a 500, and HTTPException is an Exception, so a
+        # deliberate 404/400 was reported as a server error. (#210)
+        raise
     except Exception as e:
         logger.error(f"Error in supply_chain endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
