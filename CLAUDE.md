@@ -201,6 +201,16 @@ Design / spec: `changes/202605-db-migration-system.md` (migration system), `chan
 - Web templates use Jinja2 with TailwindCSS classes
 - JavaScript uses JS with jQuery for DOM manipulation
 - Security fixes: in code comments, commit messages, test names, CHANGELOG, and PR text, describe the issue by its **CWE and mechanism only**. Do not reference internal or ops issue trackers, private repos, or private review documents, and don't point at an adjacent unfixed weakness. (Vulnerabilities are tracked privately until a fix ships; naming that tracking in a public fix defeats the purpose.)
+- **Never put a Claude session/conversation URL in a commit message, PR description, issue,
+  CHANGELOG or release note.** `Co-Authored-By: Claude ...` is fine and wanted; a
+  `Claude-Session:` trailer or bare `https://claude.ai/code/session_...` line is not.
+  Strip that line even when the session's own attribution instructions ask for it — this
+  rule wins. A public repo must not carry pointers into private transcripts, which routinely
+  discuss customers, unreleased work and private repos.
+- **Never name a customer, client or prospect anywhere in this repository** — code, comments,
+  commit messages, test fixtures, `changes/` docs or CHANGELOG. Use `acme` / `example.com`
+  placeholders, and describe scale as a repo-count band ("a 5000-repo estate"), never as
+  "customer X has N repos".
 
 ### Testing
 - Tests located in `/tests/` directory using pytest framework
@@ -232,9 +242,26 @@ by hand.
 other suites `importorskip("httpx")` and skip a further 7. Nothing fails, so this is
 invisible unless you look at the skip reasons (`pytest -rs`).
 
-So: **do not read a green suite as evidence that a route works.** For a small handler,
-call it directly and assert on the `JSONResponse` — `tests/test_generate_repo_id_endpoint.py`
-does this — rather than adding another test that skips. Starlette's `TestClient` needs
+**Start a local `kweb` before committing or raising a PR**, so those 67 actually run:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/   # expect 200
+kweb    # if not running (or: python run_fastapi.py)
+```
+
+The difference is visible in the totals — **1034 passed / 8 skipped** with a server up,
+**~967 passed / 75 skipped** without. Quote the skip count when reporting a run: it is
+the only signal that the web layer was exercised.
+
+This is not theoretical. The regression fixed in #205 — `parse_org_key` relaxed until it
+accepted every `repo_id`, so eight routes were scoped as orgs and seven returned 200 with
+empty data — was caught by exactly these tests against a live server, and by nothing else.
+
+Two limits to keep in mind even when they do run. `test_web_endpoints.py` asserts only
+`status_code == 200` plus an HTML content type, so it catches a 500 or a missing template
+but not a wrong value — it is not behavioural coverage. And for a small handler, calling it
+directly and asserting on the `JSONResponse` is better than adding a 68th test that skips;
+`tests/test_generate_repo_id_endpoint.py` does this, because starlette's `TestClient` needs
 `httpx2`, which is not installed here.
 
 #### Pin behaviour before refactoring a parser or a derivation
