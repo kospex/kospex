@@ -421,18 +421,29 @@ class Kospex:
             [repo_id]), None)
         has_commits = row is not None
 
+        # Three commands, three situations -- suggest the one that fits:
+        #   kospex sync-directory <path>  syncs what is on disk. No network.
+        #   kgit sync <URL>               clones AND syncs. Not yet cloned.
+        #   kgit pull [REPO_ID]           refreshes clones kospex already knows
+        #                                 about (git pull + sync).
+        # 'kospex sync' is not one of them -- it is commented out and parked
+        # (#123), so suggesting it sends the user to a usage error.
         target = repo_directory or "<path>"
         message = None
         if not known:
-            # Not 'kospex sync' -- that command does not exist; it is commented
-            # out and parked (#123). sync-directory walks from the path given,
-            # so it works on a single repo root.
+            # kgit pull is wrong here: its own help says it only refreshes repos
+            # kospex already knows about, and this one it does not.
             message = (f"{repo_id} is not in the kospex database. "
-                       f"Run 'kospex sync-directory {target}' first.")
+                       f"Run 'kospex sync-directory {target}' to sync it "
+                       f"(or 'kgit sync <clone-url>' if it is not cloned yet).")
         elif not has_commits:
+            # Already known, so a pull refreshes the clone and re-syncs. If only
+            # the database is stale, sync-directory does it without the network.
             message = (f"{repo_id} is in the kospex database but has no commits "
                        f"recorded - the sync may not have completed. "
-                       f"Run 'kospex sync-directory {target}' again.")
+                       f"Run 'kgit pull {repo_id}' to refresh and re-sync, "
+                       f"or 'kospex sync-directory {target}' to re-sync what is "
+                       f"already on disk.")
 
         return {"known": known, "has_commits": has_commits, "message": message}
 
@@ -1482,10 +1493,12 @@ class Kospex:
                 print(file)
 
         else:
-            # Not 'kospex sync' -- that command does not exist; it is
-            # commented out and parked (#123). (#134)
+            # The repo IS known here -- this is a stale hash, not an absent
+            # repo -- so kgit pull is the command that fits. Not 'kospex sync',
+            # which does not exist (commented out and parked, #123).
             print("\nRepo is out of sync with Kospex DB")
-            print(f"run 'kospex sync-directory {repo_directory}' to sync the repo with the DB")
+            print(f"run 'kgit pull {self.git.get_repo_id()}' to refresh and re-sync,")
+            print(f"or 'kospex sync-directory {repo_directory}' to re-sync what is on disk")
 
         self.chdir_original()
 
