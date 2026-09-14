@@ -75,3 +75,38 @@ def test_the_suggested_command_exists(kospex):
     message = kospex.repo_db_status(UNKNOWN, repo_directory="/tmp/x")["message"]
     assert "sync-directory" in message
     assert "kospex sync /" not in message
+
+
+# --- the suggested command must match the state -----------------------------
+# Three commands, three different situations:
+#   kospex sync-directory <path>  syncs what is on disk. No network.
+#   kgit sync <URL>               clones AND syncs. For a repo not yet cloned.
+#   kgit pull [REPO_ID]           "refresh the local clones kospex already
+#                                 knows about" -- git pull + sync.
+# Suggesting kgit pull for a repo kospex does not know about is wrong: that
+# command's own help says it only operates on known repos.
+
+def test_unknown_repo_is_told_to_sync_the_directory(kospex):
+    msg = kospex.repo_db_status(UNKNOWN, repo_directory="/tmp/x")["message"]
+    assert "sync-directory" in msg
+    assert "kgit pull" not in msg, "kgit pull only refreshes repos kospex already knows"
+
+
+def test_a_known_repo_missing_commits_is_told_to_pull(kospex):
+    """It is already known, so kgit pull is the command for it."""
+    msg = kospex.repo_db_status(EMPTY, repo_directory="/tmp/x")["message"]
+    assert "kgit pull" in msg
+    assert EMPTY in msg
+
+
+def test_a_known_repo_is_also_offered_the_no_network_option(kospex):
+    """If only the database is stale, sync-directory is cheaper than a pull."""
+    msg = kospex.repo_db_status(EMPTY, repo_directory="/tmp/x")["message"]
+    assert "sync-directory" in msg
+
+
+def test_no_message_suggests_a_command_that_does_not_exist(kospex):
+    """'kospex sync' is commented out and parked (#123)."""
+    for rid in (UNKNOWN, EMPTY):
+        msg = kospex.repo_db_status(rid, repo_directory="/tmp/x")["message"] or ""
+        assert "kospex sync " not in msg.replace("kospex sync-directory", "")

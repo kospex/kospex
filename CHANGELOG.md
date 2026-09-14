@@ -18,10 +18,16 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   Three states are now distinguished: not in the database, in the database with
   no commits recorded (an incomplete sync), and genuinely dormant.
 
-- **`hotspot` suggested a command that does not exist.** Its out-of-sync message
-  said to run `kospex sync <path>`; that command is commented out and parked
-  (#123). It now suggests `kospex sync-directory`, which works on a single repo
-  root.
+- **Sync suggestions named a command that does not exist, and then the wrong
+  one.** `hotspot`'s out-of-sync message said to run `kospex sync <path>` — that
+  command is commented out and parked (#123), so following it produced a usage
+  error. The suggestion now matches the situation, since the three real
+  commands do different things: `kospex sync-directory <path>` syncs what is on
+  disk with no network, `kgit sync <url>` clones **and** syncs, and `kgit pull
+  <repo_id>` refreshes a clone kospex **already knows about**. A repo absent
+  from the database is told to `sync-directory` (`kgit pull` cannot help — it
+  only refreshes known repos); a repo that is known but stale is told to `kgit
+  pull`, with `sync-directory` offered as the no-network alternative.
 
 - **`/dependencies/` and `/osi/` returned every row when the URL segment was a
   base64 author email.** Both hand-rolled the scope cascade, and the fallback
