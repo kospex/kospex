@@ -129,8 +129,7 @@ krunner osi -all            # re-parse dependencies with the current parser
 After pulling new commits into your clones:
 
 ```bash
-kgit pull DIRECTORY         # update the clones
-kospex sync-directory DIR   # commits + file metadata
+kgit pull [SEE OPTIONS]     # update the clones, syncs and updates file metadata
 krunner osi -all            # dependencies, if manifests may have changed
 ```
 
