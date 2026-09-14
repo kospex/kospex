@@ -490,6 +490,14 @@ def devs(repo, days, org_key, repo_id, server, all, out):
     """
     params = locals()
 
+    # A repo the database has never seen returns no rows, exactly like a repo
+    # that is present but dormant. Say which it is before reporting zero. (#134)
+    if repo:
+        status = kospex.repo_scope_status(repo)
+        if status["message"]:
+            click.echo(status["message"], err=True)
+            raise SystemExit(1)
+
     if all:
         click.echo("Finding all developer history")
     else:
@@ -548,6 +556,13 @@ def tech_landscape(repo, repo_id, days, metadata):
     """
     Show the tech landscape either by file extensions
     or scc metadata (use the -metadata switch)."""
+    # A repo the database has never seen returns no rows, exactly like a repo
+    # that is present but dormant. Say which it is before reporting zero. (#134)
+    if repo:
+        status = kospex.repo_scope_status(repo)
+        if status["message"]:
+            click.echo(status["message"], err=True)
+            raise SystemExit(1)
     kwargs = locals()
     kospex.tech_landscape(**kwargs)
 
@@ -581,6 +596,15 @@ def hotspot(repo, repo_id, by_file):
     """Find hotspots in the given repo."""
     params = locals()
     print("WARNING: EXPERIMENTAL")
+
+    # Same guard as developers / tech-landscape: an unsynced repo is a
+    # different answer from a stale one, and scripts need the exit code. (#134)
+    if repo:
+        status = kospex.repo_scope_status(repo)
+        if status["message"]:
+            click.echo(status["message"], err=True)
+            raise SystemExit(1)
+
     if repo or repo_id:
         kospex.hotspot(**params)
     else:

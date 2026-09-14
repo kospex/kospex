@@ -373,15 +373,68 @@ class Kospex:
         # Fallback if kospex is not installed as a package (e.g. running from source without install)
         VERSION = "unknown"
 
-    def __init__(self):
+    def __init__(self, kospex_db=None):
+        # kospex_db is injectable for tests, matching KospexQuery and
+        # KospexDependencies. The default path is unchanged, so no extra
+        # connection is opened when it is omitted.
         self.original_cwd = None
         self.repo_directory = None
         self.git = KospexGit()
-        self.kospex_db = KospexSchema.connect_or_create_kospex_db()
+        self.kospex_db = kospex_db or KospexSchema.connect_or_create_kospex_db()
         self.kospex_query = KospexQuery(kospex_db=self.kospex_db)
         self.dependencies = KospexDependencies(
             kospex_db=self.kospex_db, kospex_query=self.kospex_query
         )
+
+    def repo_scope_status(self, repo_directory):
+        """repo_db_status for a -repo directory, by deriving its repo_id.
+
+        Uses a fresh KospexGit rather than set_repo_dir, which chdirs the
+        process (#133) -- a status check should have no side effects.
+        """
+        fullpath = os.path.abspath(repo_directory)
+        if not KospexUtils.is_git(fullpath):
+            return {"known": False, "has_commits": False,
+                    "message": f"{fullpath} is not a git repository."}
+
+        probe = KospexGit()
+        probe.set_repo(fullpath)
+        return self.repo_db_status(probe.get_repo_id(), repo_directory=fullpath)
+
+    def repo_db_status(self, repo_id, repo_directory=None):
+        """What the database knows about repo_id, so callers can tell an
+        unsynced repo from a dormant one.
+
+        A query scoped to a repo the database has never seen returns no rows,
+        exactly like a repo that is present but quiet. Reporting "0 developers"
+        for both reads as "this code is abandoned" when kospex has simply never
+        looked at it -- the most damaging wrong answer for a tool whose claim is
+        spotting unmaintained code. (#134)
+
+        Returns {"known", "has_commits", "message"}. `message` is None when the
+        repo is fully known; otherwise it says what to do about it.
+        """
+        known = self.kospex_query.get_repo_by_id(repo_id) is not None
+
+        row = next(self.kospex_db.query(
+            f"SELECT 1 FROM {KospexSchema.TBL_COMMITS} WHERE _repo_id = ? LIMIT 1",
+            [repo_id]), None)
+        has_commits = row is not None
+
+        target = repo_directory or "<path>"
+        message = None
+        if not known:
+            # Not 'kospex sync' -- that command does not exist; it is commented
+            # out and parked (#123). sync-directory walks from the path given,
+            # so it works on a single repo root.
+            message = (f"{repo_id} is not in the kospex database. "
+                       f"Run 'kospex sync-directory {target}' first.")
+        elif not has_commits:
+            message = (f"{repo_id} is in the kospex database but has no commits "
+                       f"recorded - the sync may not have completed. "
+                       f"Run 'kospex sync-directory {target}' again.")
+
+        return {"known": known, "has_commits": has_commits, "message": message}
 
     def set_repo_dir(self, directory):
         """Set the repo directory"""
@@ -1429,8 +1482,10 @@ class Kospex:
                 print(file)
 
         else:
+            # Not 'kospex sync' -- that command does not exist; it is
+            # commented out and parked (#123). (#134)
             print("\nRepo is out of sync with Kospex DB")
-            print(f"run 'kospex sync {repo_directory}' to sync the repo with the DB")
+            print(f"run 'kospex sync-directory {repo_directory}' to sync the repo with the DB")
 
         self.chdir_original()
 
