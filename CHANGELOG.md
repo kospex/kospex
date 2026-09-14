@@ -6,6 +6,23 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **A repo kospex has never synced reported as having no developers.**
+  `kospex developers -repo .` on an unsynced repository printed *"No active
+  developers found in the kospex DB"* and exited 0 — byte-identical to a synced
+  repository that is genuinely dormant. The reported case had 137 commits, the
+  most recent that week. For a tool whose purpose is identifying unmaintained
+  code, a false "unmaintained" is the most damaging answer available, and the
+  wrong reading is the natural one. `developers`, `tech-landscape` and `hotspot`
+  now say which situation it is and **exit 1**, so scripted callers can branch.
+  `tech-landscape` previously rendered an empty table with no message at all.
+  Three states are now distinguished: not in the database, in the database with
+  no commits recorded (an incomplete sync), and genuinely dormant.
+
+- **`hotspot` suggested a command that does not exist.** Its out-of-sync message
+  said to run `kospex sync <path>`; that command is commented out and parked
+  (#123). It now suggests `kospex sync-directory`, which works on a single repo
+  root.
+
 - **`/dependencies/` and `/osi/` returned every row when the URL segment was a
   base64 author email.** Both hand-rolled the scope cascade, and the fallback
   branch printed an error then fell through with no `WHERE` clause, so the query
