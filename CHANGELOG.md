@@ -4,6 +4,44 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+### Upgrade notes
+
+**No data changes in this release — unlike 0.1.0, nothing needs re-syncing or
+normalising.** What changes is how kospex *responds* when it cannot answer a
+question. In four places it previously returned something that looked like an
+answer; it now says it cannot. Each is a fix, but each can break a caller that
+was relying on the old, wrong success.
+
+1. **Three CLI commands now exit 1 for a repo that is not in the database.**
+   `developers`, `tech-landscape` and `hotspot`, when scoped with **`-repo`**
+   (`-repo_id` is unaffected), previously printed an empty result and exited 0
+   for a repository kospex had never synced — indistinguishable from one that is
+   synced and genuinely dormant. They now print what is wrong and exit 1.
+   **A script that ran these and checked the exit code will now see a failure
+   where it previously saw success.** That is the point — the old success was
+   reporting "no developers" for repositories with recent commits — but a
+   pipeline that treats any non-zero as fatal will stop where it used to
+   continue. `tech-landscape` is the sharpest change: it previously printed an
+   empty table with no message at all.
+
+2. **`/dependencies/{id}` and `/osi/{id}` return 400 for an author email.**
+   A base64-encoded author email in the path is a scope these pages cannot
+   apply. They previously ignored it and rendered **every row in the table** —
+   852 rows on a 111-repo estate, identical to no filter at all. Any bookmark,
+   link or script hitting those URLs with an author id now gets a 400 instead of
+   a page full of unfiltered data.
+
+3. **`/collab/{repo_id}` returns 404 for an unknown or malformed id.**
+   It previously rendered an empty table, which reads as "this repository has no
+   collaborators". Both an unparseable id and a well-formed id for a repository
+   not in the database now 404, with different messages.
+
+4. **Routes now return their real status code instead of 500.** A route raising
+   a deliberate 404 or 400 had it converted to a 500 by its own error handler.
+   **If you alert on 5xx, expect that signal to drop** — some of what was
+   reported as kospex failing was a malformed request. `/file-collab/` without a
+   `file_path` is the clearest example: it returned 500 and now returns 400.
+
 ### Fixed
 
 - **A repo kospex has never synced reported as having no developers.**
