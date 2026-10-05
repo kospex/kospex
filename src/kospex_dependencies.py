@@ -626,6 +626,16 @@ class KospexDependencies:
             # created_at defect this migration exists to eliminate, one
             # column over.
             rec.setdefault("resolved_version", "")
+            # Same reasoning for the advisory data deps.dev returns alongside it.
+            # Resetting resolved_version alone was not enough: an un-enriched
+            # re-save left the PREVIOUS run's advisories/versions_behind under a
+            # freshly advanced last_checked, which a reader cannot tell apart
+            # from counts confirmed a moment ago. None, not 0 — "we did not ask"
+            # is not "we asked and found none". Reachable as soon as extraction
+            # and enrichment are decoupled, e.g. a batched run that parses
+            # manifests estate-wide but enriches only the current batch.
+            rec.setdefault("advisories", None)
+            rec.setdefault("versions_behind", None)
             rec["last_checked"] = self._utc_now_iso()
             if source is not None:
                 rec["source"] = source
