@@ -7,7 +7,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Upgrade notes
 
 **No data changes in this release — unlike 0.1.0, nothing needs re-syncing or
-normalising.** What changes is how kospex *responds* when it cannot answer a
+normalising — but there is one schema change.** Migration `0007` adds an index to
+`file_metadata`, so an existing database needs `kospex upgrade-db -apply`. It
+creates an index only: no rows are read, rewritten or deleted, and a database
+left un-upgraded keeps working, just without the speed-up. Newly created
+databases pick it up automatically.
+
+Otherwise what changes is how kospex *responds* when it cannot answer a
 question. In four places it previously returned something that looked like an
 answer; it now says it cannot. Each is a fix, but each can break a caller that
 was relying on the old, wrong success.
@@ -41,6 +47,35 @@ was relying on the old, wrong success.
    **If you alert on 5xx, expect that signal to drop** — some of what was
    reported as kospex failing was a malformed request. `/file-collab/` without a
    `file_path` is the clearest example: it returned 500 and now returns 400.
+
+### Changed
+
+- **`krunner osi` queries the database directly instead of copying the estate
+  into RAM.** `load_dependency_memory_db()` copied `commit_files`,
+  `file_metadata`, `repos` and `url_cache` into an in-memory database, and it ran
+  *before* osi scoped to the requested repos — so `krunner osi <repo_id>` paid a
+  whole-estate copy to look at one repo. Only two of the four tables were ever
+  read: tracing the SQL gives 5 statements to `file_metadata`, 1 to `repos`, and
+  zero to `commit_files` or `url_cache`. The copy carried no indexes either
+  (`CREATE TABLE AS SELECT` does not reproduce the primary key), so every lookup
+  was a full scan of RAM rather than a seek. On a 167-repo estate the read path
+  goes **11.51s → 5.24s** from this change alone, and ~840MB of resident memory
+  is no longer allocated. The other five `krunner` commands that build in-memory
+  databases are untouched — they read `commits`/`commit_files` and genuinely use
+  them.
+
+- **`file_metadata` is now indexed on `(_repo_id, latest)` (migration `0007`).**
+  Its only index was the primary key `(Provider, hash, _repo_id)`, led by the
+  filename, so every repo-scoped query scanned the whole table — including the
+  `UPDATE file_metadata SET LATEST = 0 WHERE _repo_id = ?` that runs on every
+  sync. For a median-sized repo, `file_metadata(repo_id)` goes 25.11ms → 0.19ms
+  at 131k rows and **8,506ms → 1.63ms at 8.05M rows**; the sync reset goes 294ms
+  → 2.4ms at 2.04M rows. Combined with the change above, the osi read path over
+  167 repos goes **11.51s → 0.40s**, returning the same 1081 dependency files.
+  Cost: roughly 9% on bulk insert and 12.6% on the `file_metadata` table (8.5%
+  on the real 2.0GB dev database). Estate-wide queries — `tech_landscape()` with
+  no repo scope, `repos_with_tech()` — never constrain `_repo_id` and cannot use
+  this index.
 
 ### Fixed
 
