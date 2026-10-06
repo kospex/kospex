@@ -27,8 +27,10 @@ def _db_key(db):
     against get_kospex_tables() before interpolating it into SQL, so a stale
     answer rejects tables that exist — it surfaced as an intermittent
     `ValueError: Table 'commits' is not a known Kospex table` (#184).
-    KospexQuery.create_memory_kospex_query(), which `krunner osi` uses, builds
-    exactly such a database.
+    KospexQuery.create_memory_kospex_query(), which `krunner key-person`,
+    `developer-tech`, `dependencies`, `devs-by-tag` and `authors` use, builds
+    exactly such a database. (`krunner osi` used to be the example here; it now
+    queries the on-disk DB directly.)
 
     Not caching them costs ~1.1us per call against ~10us for a file-backed read,
     so there is nothing to protect. Caching an in-memory database would also be

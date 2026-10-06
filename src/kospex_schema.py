@@ -23,7 +23,6 @@ TBL_KRUNNER = "krunner"
 TBL_OBSERVATIONS = "observations"
 TBL_REPOS = "repos"
 # Experimental tables
-TBL_KOSPEX_META = "kospex_meta"
 TBL_GROUPS = "kospex_groups"
 TBL_KOSPEX_CONFIG = "kospex_config"
 TBL_DEVELOPER_STATS = "developer_stats"
@@ -307,18 +306,12 @@ SQL_CREATE_OBSERVATIONS = f'''CREATE TABLE  IF NOT EXISTS [{TBL_OBSERVATIONS}] (
     PRIMARY KEY(_repo_id,hash,file_path,observation_key,latest)
     )'''
 
-# TODO - This table has not been set up properly or created yet
-# Unsure if we still need this ... 2025-02-16
-SQL_CREATE_KOSPEX_META = f'''CREATE TABLE  IF NOT EXISTS [{TBL_KOSPEX_META}] (
-    [format] TEXT,           -- format type e.g. JSON, JSONL, CSV, LINE
-    [latest] INTEGER,        -- 1 if this is the latest version of the metadata, 0 otherwise
-    [created_at] DEFAULT CURRENT_TIMESTAMP,
-    [_git_server] TEXT,
-    [_git_owner] TEXT,
-    [_git_repo] TEXT,
-    [_repo_id] TEXT,
-    PRIMARY KEY(_repo_id,hash,file_path)
-    )'''
+# kospex_meta is gone. It was an abandoned first draft of `observations`: added
+# 2024-07-27 and never executable, because its PRIMARY KEY named columns the
+# table did not declare (originally _repo_id, hash, file_path, observation_key --
+# and `observation_key` is an observations column, which is the giveaway). It was
+# never read, never written, and never created in any database: the explicit list
+# in connect_or_create_kospex_db() always omitted it. Use `observations`.
 
 #SQL_CREATE_KOSPEX_CONFIG = f'''CREATE TABLE IF NOT EXISTS [{TBL_KOSPEX_CONFIG}] (
 SQL_CREATE_KOSPEX_CONFIG = f'''CREATE TABLE IF NOT EXISTS [{TBL_KOSPEX_CONFIG}] (
@@ -422,7 +415,6 @@ DB_CREATE_STATEMENTS = {
     TBL_KRUNNER: SQL_CREATE_KRUNNER,
     TBL_OBSERVATIONS: SQL_CREATE_OBSERVATIONS,
     TBL_REPOS: SQL_CREATE_REPOS,
-    TBL_KOSPEX_META: SQL_CREATE_KOSPEX_META,
     TBL_GROUPS: SQL_CREATE_GROUPS,
     TBL_KOSPEX_CONFIG: SQL_CREATE_KOSPEX_CONFIG,
     TBL_BRANCHES: SQL_CREATE_BRANCHES,

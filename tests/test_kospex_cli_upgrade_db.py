@@ -36,8 +36,15 @@ def test_shipped_0003_adds_repos_provenance_columns(tmp_path):
     from kospex.db.migrator import Migrator
 
     db = sqlite_utils.Database(tmp_path / "kospex.db")
-    db.execute(KospexSchema.SQL_CREATE_REPOS)
-    db.execute(KospexSchema.SQL_CREATE_DEPENDENCY_DATA)
+    # Every baseline table, not only the ones the migration under test touches.
+    # apply_pending() runs the WHOLE shipped set, so a migration against any
+    # other table fails on a hand-picked subset -- 0007 indexes file_metadata
+    # and broke all three of these tests when it landed.
+    # schema_migrations is skipped because this test creates it itself below.
+    for table, create_sql in KospexSchema.DB_CREATE_STATEMENTS.items():
+        if table == KospexSchema.TBL_SCHEMA_MIGRATIONS:
+            continue
+        db.execute(create_sql)
     db.execute(
         "CREATE TABLE schema_migrations ("
         "id TEXT PRIMARY KEY, sequence INTEGER NOT NULL, checksum TEXT NOT NULL, "
