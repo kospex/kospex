@@ -1,6 +1,7 @@
 """Use case queries for the kospex DB"""
 
 import json
+import os
 import re
 import time
 from collections import defaultdict
@@ -16,6 +17,50 @@ import kospex_utils as KospexUtils
 from kospex.db.introspect import get_kospex_tables
 from kospex_observation import Observation
 from kospex_utils import KospexTimer
+
+log = KospexUtils.get_kospex_logger("kospex_query")
+
+# Default TTL for cached external responses (deps.dev, PyPI), in seconds.
+#
+# One day, not the one hour this used to be. An hour is enough for a single
+# full-estate sweep, which finishes inside the window and so reuses the packages
+# shared between repositories. It is wrong for a batched sweep -- `krunner osi`
+# run from cron across hours or days -- where every tick starts cold and
+# re-fetches the same packages. A 167-repo estate issues 6,381 lookups for 4,853
+# distinct package+version pairs, and that duplication rises with estate size as
+# repositories converge on shared internal standards.
+#
+# A day rather than a week because a cache hit means kospex did NOT contact
+# deps.dev: `dependency_data.last_checked` then attests "evaluated", not
+# "fetched", so the honest bound on advisory age is `last_checked + TTL`. A day
+# keeps that bound defensible while capturing the cross-repo reuse within any
+# one day's batches. Deployments on a slower cadence can trade more freshness
+# for less traffic via KOSPEX_URL_CACHE_SECONDS.
+DEFAULT_URL_CACHE_SECONDS = 86400
+
+
+def url_cache_seconds():
+    """The configured TTL for cached external responses.
+
+    Read per call, not at import, so a process can be reconfigured and so tests
+    can set it. A non-numeric or negative value falls back to the default rather
+    than disabling the cache, which would silently turn every run into a full
+    re-fetch of the estate.
+    """
+    raw = os.environ.get("KOSPEX_URL_CACHE_SECONDS")
+    if raw is None:
+        return DEFAULT_URL_CACHE_SECONDS
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        log.warning("KOSPEX_URL_CACHE_SECONDS=%r is not an integer, using %s",
+                    raw, DEFAULT_URL_CACHE_SECONDS)
+        return DEFAULT_URL_CACHE_SECONDS
+    if value < 0:
+        log.warning("KOSPEX_URL_CACHE_SECONDS=%r is negative, using %s",
+                    raw, DEFAULT_URL_CACHE_SECONDS)
+        return DEFAULT_URL_CACHE_SECONDS
+    return value
 
 # A commit is authorship unless it is a *clean* merge — one that only combines
 # work already credited to the branch commits. A merge that carries content of
@@ -1234,13 +1279,23 @@ class KospexQuery:
 
         return results
 
-    def url_request_with_status(self, url, cache=3600, timeout=10, headers=None):
+    def url_request_with_status(self, url, cache=None, timeout=10, headers=None):
         """Make a request to a URL, and use the cached version if less than [cache] seconds.
 
         Returns a (content, status) tuple: status is 200 on a cache hit or fresh
         success, the HTTP status on an HTTP error, or None on a network/timeout
-        error. 200 responses are cached; failures are not."""
-        # Set default cache to 1 hour (60mins * 60secs)
+        error. 200 responses are cached; failures are not.
+
+        cache=None (the default) uses url_cache_seconds() -- the configured TTL,
+        see DEFAULT_URL_CACHE_SECONDS. An explicit value always wins, so a caller
+        that genuinely needs fresher data can ask for it.
+
+        A cache hit means no request was made, so a caller recording "when did we
+        check this" is attesting evaluation, not retrieval: the real bound on the
+        data's age is the returned value's age plus nothing, and at worst the TTL.
+        """
+        if cache is None:
+            cache = url_cache_seconds()
 
         # Check the cache first
         cache_sql = f"""SELECT content, timestamp FROM {KospexSchema.TBL_URL_CACHE} WHERE url = ?"""
@@ -1269,8 +1324,12 @@ class KospexQuery:
         except requests.RequestException:
             return None, None
 
-    def url_request(self, url, cache=3600, timeout=10, headers=None):
-        """Make a request to a URL, and use the cached version is less than [cache] seconds"""
+    def url_request(self, url, cache=None, timeout=10, headers=None):
+        """Make a request to a URL, and use the cached version is less than [cache] seconds
+
+        cache=None delegates to url_request_with_status, so this inherits the
+        configured TTL rather than pinning its own default.
+        """
         content, _status = self.url_request_with_status(
             url, cache=cache, timeout=timeout, headers=headers
         )

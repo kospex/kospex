@@ -304,6 +304,14 @@ affected that the corpus does not exercise.
 - `KOSPEX_CODE` - Base directory for git repositories (default: ~/code)
 - `KOSPEX_HOME` - Config directory (default: ~/kospex)
 - `GITHUB_TOKEN` - GitHub API token for enhanced rate limits and private repo queries
+- `KOSPEX_URL_CACHE_SECONDS` - TTL for cached external responses (deps.dev, PyPI), in
+  seconds. Default **86400** (one day). Was effectively one hour, which is fine for a
+  single full-estate sweep but wrong for a batched one — every cron tick started cold
+  and re-fetched packages shared across repositories. Raise it for a slower cadence,
+  but note a cache hit means deps.dev was **not** contacted, so the honest bound on
+  advisory age is `dependency_data.last_checked + TTL`, not `last_checked`. A
+  non-numeric or negative value logs a warning and falls back to the default rather
+  than disabling the cache.
 - `BITBUCKET_API_TOKEN` - Bitbucket API token used by `kgit bitbucket`. Pair with `BITBUCKET_EMAIL` (recommended for REST) or `BITBUCKET_USERNAME` (mutually exclusive with email; also needed for git commands). Both Atlassian account API tokens (no scopes) and Bitbucket-scoped tokens work; scoped tokens need `read:project:bitbucket`, `read:repository:bitbucket`, `read:workspace:bitbucket`.
 - `BITBUCKET_EMAIL` - Atlassian account email used as the basic-auth username with `BITBUCKET_API_TOKEN`.
 - `BITBUCKET_USERNAME` - Bitbucket account username (also required by the legacy app-password path).

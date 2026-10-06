@@ -50,6 +50,22 @@ was relying on the old, wrong success.
 
 ### Changed
 
+- **The external response cache TTL is a day, not an hour, and is now
+  configurable.** Every deps.dev and PyPI lookup goes through
+  `url_request_with_status()`, whose TTL defaulted to 3600s; seven call sites rely
+  on that default and none overrode it. An hour is enough for a single
+  full-estate sweep, which finishes inside the window and so reuses the packages
+  shared between repositories — but wrong for a batched sweep run from cron over
+  hours or days, where every tick starts cold and re-fetches the same packages. A
+  167-repo estate issues 6,381 lookups for 4,853 distinct package+version pairs
+  (24% duplication), rising with estate size as repositories converge on shared
+  standards. The default is now **86400** (one day), overridable with
+  `KOSPEX_URL_CACHE_SECONDS`. A day rather than a week because a cache hit means
+  deps.dev was **not** contacted, so `dependency_data.last_checked` attests
+  "evaluated" rather than "fetched" and the honest bound on advisory age is
+  `last_checked + TTL`. An explicit `cache=` argument still wins, so a caller
+  needing fresher data can ask.
+
 - **`kospex_meta` removed from the schema definitions.** It was an abandoned
   first draft of `observations`, added 2024-07-27 and never executable: its
   `PRIMARY KEY` named columns the table did not declare, so running it raised
