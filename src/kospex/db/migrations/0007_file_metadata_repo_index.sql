@@ -1,0 +1,40 @@
+-- 0007_file_metadata_repo_index.sql
+--
+-- Index file_metadata for repo-scoped access.
+--
+-- The table's only index was its primary key, (Provider, hash, _repo_id), led
+-- by the filename. Every query that scopes to one repository therefore scanned
+-- the whole table, and repo-scoped is the common shape:
+--
+--   get_dependency_files()   krunner osi, and the /dependencies/ and /osi/ pages
+--   file_metadata(repo_id)   the repo detail page
+--   repo_files(repo_id)      the repo file list
+--   tech_landscape(repo_id)  the per-repo technology panel
+--   UPDATE file_metadata SET LATEST = 0 WHERE _repo_id = ?
+--                            run by EVERY sync before writing the repo's rows
+--
+-- Measured for a median-sized repo, before -> after:
+--
+--                           131k rows             8.05M rows
+--   file_metadata(repo_id)  25.11ms -> 0.19ms     8,506ms -> 1.63ms
+--   get_dependency_files    14.30ms -> 0.04ms    16,612ms -> 0.31ms
+--
+-- At the 8M rows a several-thousand-repo estate implies, an unindexed repo page
+-- spends 8 to 17 seconds in a single query. That is the main reason for this
+-- migration, rather than the CLI.
+--
+-- The write path gains more than it loses. The sync reset above went 294ms to
+-- 2.4ms at 2.04M rows, against roughly 9 percent added to bulk insert and 12.6
+-- percent added on disk. Index build was 7.4s on 8.05M rows.
+--
+-- Column order is deliberate. _repo_id must lead so a repo-scoped query can
+-- seek. latest is second because every one of those call sites also filters
+-- latest = 1, which keeps the index covering for that predicate.
+--
+-- Deliberately NOT addressed here: the estate-wide queries, tech_landscape()
+-- with no repo scope and repos_with_tech(), never constrain _repo_id and so
+-- cannot use this index. They need their own, and measuring one is separate
+-- work.
+
+CREATE INDEX IF NOT EXISTS idx_file_metadata_repo_latest
+    ON file_metadata (_repo_id, latest);
