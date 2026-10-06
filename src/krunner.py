@@ -147,32 +147,6 @@ def enrich_dependency_records(results, kdeps, echo=None):
     return results
 
 
-def load_dependency_memory_db():
-    """
-    Load tables required for dependency analysis
-    to an in memory database and create indexes.
-    """
-    # This will be the memory kospex query object
-    memory_kq = None
-
-    console.log("Loading data to in memory database ...")
-    with KospexTimer("Loading data to in memory database") as load_memory:
-        memory_kq = kospex.kospex_query.create_memory_kospex_query(
-            # ["commit_files", "file_metadata", "repos", "url_cache", "commits"]
-            ["commit_files", "file_metadata", "repos", "url_cache"]
-        )
-    console.log(f"Loaded tables to memory db {load_memory}")
-
-    console.log("Creating indexes ...")
-    with KospexTimer("creating indexes") as index_timer:
-        # memory_kq.kospex_db["commits"].create_index(['hash'])
-        # memory_kq.kospex_db["commit_files"].create_index(['hash'])
-        memory_kq.kospex_db["commit_files"].create_index(["committer_when"])
-    console.log(f"{index_timer}")
-
-    return memory_kq
-
-
 @cli.command("repos")
 @click.option("-file", required=False, type=click.Path(), help="filename of clone urls to check.")
 @click.argument("request_id", required=False, type=click.STRING)
@@ -700,11 +674,22 @@ def osi(all, request_id):
         console.log(f"No results found for: '{request_id}', have you sync'ed repositories for this scope?")
         sys.exit(1)
 
-    memory_kq = load_dependency_memory_db()
+    # Queried straight off disk. This used to copy commit_files, file_metadata,
+    # repos and url_cache into an in-memory database first — and it ran BEFORE
+    # the scoping below, so `krunner osi <repo_id>` paid a whole-estate copy to
+    # look at one repo. Only file_metadata and repos were ever read from it;
+    # commit_files and url_cache got zero statements, and url_cache could not be
+    # used in any case because KospexDependencies below is built on the on-disk
+    # handle, so the deps.dev cache lives there regardless.
+    #
+    # The copy also carried no indexes — create_memory_kospex_query builds its
+    # tables with CREATE TABLE AS SELECT, which does not reproduce the primary
+    # key — so each per-repo lookup was a full scan of RAM rather than of disk.
+    # It was never a substitute for an index.
     params = {}
     if request_id:
         params = KospexWeb.get_id_params(request_id)
-    repos = memory_kq.get_repos(**params)
+    repos = kospex.kospex_query.get_repos(**params)
     results = []
 
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kospex.kospex_query)
@@ -714,7 +699,7 @@ def osi(all, request_id):
         repo_req = {"repo_id": r["_repo_id"]}
 
         # console.log(r)
-        deps = memory_kq.get_dependency_files(request_id=repo_req)
+        deps = kospex.kospex_query.get_dependency_files(request_id=repo_req)
 
         for d in deps:
             console.print("tech_type:", d["tech_type"])
