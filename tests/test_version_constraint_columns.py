@@ -217,6 +217,47 @@ class TestOsiPathPopulates:
         )
 
 
+
+    def test_advisory_data_does_not_survive_an_unenriched_re_save(self):
+        """advisories/versions_behind must be reset like resolved_version is.
+
+        Same defect as test_resolved_version_does_not_survive_an_unenriched_re_save,
+        one column over. save_dependencies() never calls deps.dev, so a caller
+        that did not enrich this time must not leave the PREVIOUS run's advisory
+        counts sitting under a freshly advanced last_checked. A reader cannot
+        tell that apart from advisory data confirmed a moment ago.
+
+        This is reachable as soon as extraction and enrichment are decoupled --
+        e.g. a batched run that parses manifests estate-wide but only enriches
+        the current batch.
+        """
+        from kospex_dependencies import KospexDependencies
+        db = self._db()
+        kd = KospexDependencies(kospex_db=db)
+
+        enriched = self._record()
+        enriched["resolved_version"] = "4.18.0"
+        enriched["advisories"] = 3
+        enriched["versions_behind"] = 7
+        kd.save_dependencies([enriched], source="test")
+
+        unenriched = self._record()
+        kd.save_dependencies([unenriched], source="test")
+
+        row = next(db.query(
+            "SELECT advisories, versions_behind, resolved_version, last_checked "
+            "FROM dependency_data WHERE latest=1"))
+        assert row["resolved_version"] == ""          # already guaranteed today
+        assert row["advisories"] is None, (
+            f"advisories carried over a stale value ({row['advisories']!r}) under a "
+            "freshly advanced last_checked"
+        )
+        assert row["versions_behind"] is None, (
+            f"versions_behind carried over a stale value ({row['versions_behind']!r}) "
+            "under a freshly advanced last_checked"
+        )
+
+
 class TestRequirementsRealignment:
     """requirements.txt was the only parser splitting the operator out of
     package_version, so `flask>=2.0` stored `2.0` — indistinguishable from a

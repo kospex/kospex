@@ -44,6 +44,19 @@ was relying on the old, wrong success.
 
 ### Fixed
 
+- **Stale advisory counts survived an un-enriched re-save, under a fresh
+  `last_checked`.** `save_dependencies()` never calls deps.dev, so it resets
+  `resolved_version` to `""` for a caller that did not enrich — otherwise a
+  resolved version from a lookup that did not happen this time would sit under a
+  freshly advanced timestamp. `advisories` and `versions_behind` were not reset
+  the same way, so the *previous* run's counts carried over instead, which a
+  reader cannot tell apart from counts confirmed a moment ago. Not reachable
+  through `krunner osi`, whose only call site enriches immediately before
+  saving; it becomes reachable the moment extraction and enrichment are
+  decoupled, such as a batched run that parses manifests estate-wide but
+  enriches only the current batch. Both columns are now reset to `NULL` — not
+  `0`, since "we did not ask" is not "we asked and found none".
+
 - **A repo kospex has never synced reported as having no developers.**
   `kospex developers -repo .` on an unsynced repository printed *"No active
   developers found in the kospex DB"* and exited 0 — byte-identical to a synced
