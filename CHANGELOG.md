@@ -50,6 +50,15 @@ was relying on the old, wrong success.
 
 ### Changed
 
+- **`kospex_meta` removed from the schema definitions.** It was an abandoned
+  first draft of `observations`, added 2024-07-27 and never executable: its
+  `PRIMARY KEY` named columns the table did not declare, so running it raised
+  `no such column: hash`. In 2.2 years it was never read, never written and never
+  created in any database — `connect_or_create_kospex_db()` always omitted it.
+  **No action needed:** no database has the table, and nothing referenced the
+  constant. The practical effect is that `DB_CREATE_STATEMENTS` is now safe to
+  iterate; all 18 statements execute.
+
 - **`krunner osi` queries the database directly instead of copying the estate
   into RAM.** `load_dependency_memory_db()` copied `commit_files`,
   `file_metadata`, `repos` and `url_cache` into an in-memory database, and it ran
