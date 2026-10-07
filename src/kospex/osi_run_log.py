@@ -29,8 +29,52 @@ def _utc_now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _row_for(run_id, repo, started_at):
+    row = {
+        "run_id": run_id,
+        "_repo_id": repo.repo_id,
+        "started_at": started_at,
+        "duration_ms": repo.duration_ms,
+        "files": repo.files,
+        "packages": repo.packages,
+        "lookups": getattr(repo, "lookups", None),
+        "outcome": repo.outcome,
+    }
+    # parse_repo_id returns None for a nested-group id (#94), so the _git_*
+    # columns are left unset rather than guessed -- they are derived convenience,
+    # and _repo_id is the identity.
+    if parts := KospexUtils.parse_repo_id(repo.repo_id):
+        row["_git_server"] = parts["git_server"]
+        row["_git_owner"] = parts["org"]
+        row["_git_repo"] = parts["repo"]
+    return row
+
+
+def record_repo_run(db, run_id, repo, started_at=None):
+    """Write one repository's diagnostics, as soon as it finishes.
+
+    Per repository rather than per batch, so an interrupted run keeps the
+    measurements it earned. The previous per-batch write threw them all away on an
+    interruption -- while the matching outcome records survived, because those were
+    already per repository. That left repositories marked examined, and therefore
+    out of the queue, with no record of what they cost.
+
+    The asymmetry mattered in the direction that hurts: the runs most likely to be
+    interrupted are the long ones, and those are exactly the ones whose cost the
+    sizing question depends on.
+    """
+    db[TBL_OSI_RUNS].upsert(
+        _row_for(run_id, repo, started_at or _utc_now_iso()),
+        pk=["run_id", "_repo_id"],
+    )
+    return 1
+
+
 def record_run(db, result, started_at=None):
-    """Write one row per repository in `result`.
+    """Write a whole batch's diagnostics at once.
+
+    Retained for callers holding a complete BatchResult. `-next` uses
+    record_repo_run() per repository instead, so its rows survive an interruption.
 
     A skipped run (a live lock was held) and an empty batch both did no work, so
     neither writes anything -- a row implying a repository was processed when it
@@ -42,27 +86,7 @@ def record_run(db, result, started_at=None):
         return 0
 
     started_at = started_at or _utc_now_iso()
-    rows = []
-
-    for repo in result.repos:
-        row = {
-            "run_id": result.run_id,
-            "_repo_id": repo.repo_id,
-            "started_at": started_at,
-            "duration_ms": repo.duration_ms,
-            "files": repo.files,
-            "packages": repo.packages,
-            "lookups": getattr(repo, "lookups", None),
-            "outcome": repo.outcome,
-        }
-        # parse_repo_id returns None for a nested-group id (#94), so the _git_*
-        # columns are left unset rather than guessed -- they are derived
-        # convenience, and _repo_id is the identity.
-        if parts := KospexUtils.parse_repo_id(repo.repo_id):
-            row["_git_server"] = parts["git_server"]
-            row["_git_owner"] = parts["org"]
-            row["_git_repo"] = parts["repo"]
-        rows.append(row)
+    rows = [_row_for(result.run_id, repo, started_at) for repo in result.repos]
 
     db[TBL_OSI_RUNS].upsert_all(rows, pk=["run_id", "_repo_id"])
     return len(rows)

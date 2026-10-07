@@ -706,20 +706,31 @@ def _run_osi_next(limit, request_id, write_csv, max_seconds=None):
     _echo_staleness_bound(len(result.repos), request_id)
 
 
+def _plural(n, word):
+    """`3 repos`, `1 repo`. Mechanical "(s)" reads badly on a number that is
+    unambiguously plural, which "167 repo(s) takes 34 run(s)" was."""
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
 def _echo_staleness_bound(batch_size, request_id):
-    """Print how long a full pass takes at this batch size.
+    """Print how many runs a full pass takes at the rate just achieved.
 
     A cadence that cannot keep up should be visible from the tool rather than
-    inferred from stale data. Deliberately expressed in ticks, not time, because
-    the interval lives in cron and kospex cannot see it.
+    inferred from stale data. Expressed in runs, not time, because the interval
+    lives in cron and kospex cannot see it.
+
+    `batch_size` is the number of repositories this run actually processed, not the
+    requested limit -- a run cut short by -max-seconds did less, and the honest
+    projection is from the rate achieved rather than the rate asked for.
     """
     params = KospexWeb.get_id_params(request_id) if request_id else {}
     total = len(kospex.kospex_query.get_repos(**params))
     if not total or not batch_size:
         return
-    ticks = -(-total // batch_size)      # ceil, no float rounding
+    runs = -(-total // batch_size)      # ceil, no float rounding
     console.log(
-        f"Full pass over {total} repo(s) takes {ticks} run(s) at this batch size "
+        f"At {_plural(batch_size, 'repo')} per run, a full pass over "
+        f"{_plural(total, 'repo')} takes {_plural(runs, 'run')} "
         f"-- multiply by your interval for the worst-case staleness."
     )
 
