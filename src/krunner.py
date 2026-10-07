@@ -4,7 +4,6 @@ This is the kospex runner tool - run the same command or queries on all repos.
 """
 
 import glob
-import json
 import os
 import os.path
 import shlex
@@ -31,7 +30,8 @@ from kospex.assessment_types import AssessmentTypes
 from kospex.db.migrator import warn_if_behind
 from kospex.extractors.workflows import extract_workflow_actions
 from kospex.extractors.pnpm import extract_pnpm_lock
-from kospex.extractors.registry import classify, resolve_parser
+from kospex.extractors.registry import resolve_parser
+from kospex.osi_extract import extract_repo
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
@@ -639,13 +639,111 @@ def dependencies(csv):
         KrunnerUtils.write_dict_to_csv(filename, results)
 
 
+def _record_osi_outcomes(outcomes_by_repo):
+    """Record what each repository's files produced, so `-next` can see it.
+
+    Without this a full `osi -all` run would leave the queue untouched, and
+    `-next` would re-scan the whole estate immediately afterwards. Recording from
+    both paths is also what keeps the two consistent: the same manifest produces
+    the same record whichever command read it.
+
+    Never allowed to fail the run. The dependency rows are the product; this is
+    bookkeeping, and a repository going unrecorded only costs it being scanned
+    again sooner than it needed to be.
+    """
+    from kospex.osi_queue import record_outcome
+
+    for repo_id, outcomes in outcomes_by_repo.items():
+        try:
+            record_outcome(kospex.kospex_db, repo_id, outcomes)
+        except Exception as e:                   # noqa: BLE001
+            log.warning("could not record the osi outcome for %s: %s", repo_id, e)
+
+
+def _run_osi_next(limit, request_id, write_csv, max_seconds=None):
+    """Run one batched osi pass. Always exits 0 unless something is genuinely wrong.
+
+    Separate from osi() because the exit contract differs. `osi -all` exits 1 on
+    "No results", which for a scheduled run would report a failure on every tick
+    once the estate is current. Here nothing due is success, and so is a tick that
+    finds another run already holding the lock.
+    """
+    from kospex.osi_next import run_next_batch
+
+    if limit < 1:
+        console.log("Error: -next needs a positive number of repositories")
+        sys.exit(1)
+
+    if max_seconds is not None and max_seconds < 0:
+        console.log("Error: -max-seconds cannot be negative")
+        sys.exit(1)
+
+    params = KospexWeb.get_id_params(request_id) if request_id else None
+
+    try:
+        result = run_next_batch(
+            kospex.kospex_db, limit, request_id=params,
+            write_csv=write_csv, max_seconds=max_seconds,
+            kospex_query=kospex.kospex_query, echo=console.print,
+        )
+    except ValueError as e:
+        # An unhonourable scope, e.g. an author email. Refused rather than
+        # silently widened to the whole estate (#158).
+        console.log(f"Error: {e}", style="red")
+        sys.exit(1)
+
+    if result.skipped:
+        return
+
+    if not result.repos:
+        console.log("Nothing to scan for this scope.")
+        return
+
+    console.log(
+        f"Scanned {len(result.repos)} repo(s), {result.packages} package(s) "
+        f"in {result.duration_ms}ms  [run {result.run_id}]"
+    )
+    _echo_staleness_bound(len(result.repos), request_id)
+
+
+def _echo_staleness_bound(batch_size, request_id):
+    """Print how long a full pass takes at this batch size.
+
+    A cadence that cannot keep up should be visible from the tool rather than
+    inferred from stale data. Deliberately expressed in ticks, not time, because
+    the interval lives in cron and kospex cannot see it.
+    """
+    params = KospexWeb.get_id_params(request_id) if request_id else {}
+    total = len(kospex.kospex_query.get_repos(**params))
+    if not total or not batch_size:
+        return
+    ticks = -(-total // batch_size)      # ceil, no float rounding
+    console.log(
+        f"Full pass over {total} repo(s) takes {ticks} run(s) at this batch size "
+        f"-- multiply by your interval for the worst-case staleness."
+    )
+
+
 @cli.command("osi")
 @click.option("-all", is_flag=True, default=False, help="Show all opensource packages")
+@click.option("-next", "next_", type=click.INT, default=None,
+              help="Scan the next N repositories least recently examined. "
+                   "Composes with a request_id. For scheduled runs.")
+@click.option("-csv", "write_csv", is_flag=True, default=False,
+              help="With -next: write one OSI-<repo_id>.csv per repo to the "
+                   "assessments directory. Off by default so a scheduled run "
+                   "cannot overwrite a full export.")
+@click.option("-max-seconds", "max_seconds", type=click.FLOAT, default=None,
+              help="With -next: stop STARTING new repositories once this many "
+                   "seconds have passed. Bounds a tick when repo cost varies "
+                   "(2ms to 109s observed). A repo in flight always finishes, so "
+                   "a tick can overshoot by the cost of one repo -- sometimes a "
+                   "lot (a 10s budget gave a 109s tick on a 1101-package "
+                   "monorepo). The run says so when that happens.")
 # @click.option('-save', is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
-# @click.option('-csv', is_flag=True, default=False, help="Save to CSV file. (Default: False)")
 # @click.option('-verbose', is_flag=True, default=False, help="Verbose output. (Default: False)")
 @click.argument("request_id", required=False, type=click.STRING)
-def osi(all, request_id):
+def osi(all, next_, write_csv, max_seconds, request_id):
     """
     Run an opensource inventory process.
     Find all dependency files, extract their names and versions,
@@ -654,6 +752,26 @@ def osi(all, request_id):
     A request_id can be GIT_SERVER, GIT_SERVER~ORG, GIT_SERVER~ORG~REPO
 
     """
+
+    if next_ is not None and all:
+        console.log("Error: -next and -all are mutually exclusive")
+        console.log("-all scans everything now; -next scans a slice, for a schedule")
+        sys.exit(1)
+
+    if next_ is not None:
+        # Batched path: its own exit contract. Nothing due and a busy lock are
+        # both success, because a scheduler must not see a failure for either.
+        _run_osi_next(next_, request_id, write_csv, max_seconds)
+        return
+
+    if write_csv:
+        console.log("Error: -csv applies to -next only")
+        console.log("-all and a bare request_id already write their CSV exports")
+        sys.exit(1)
+
+    if max_seconds is not None:
+        console.log("Error: -max-seconds applies to -next only")
+        sys.exit(1)
 
     if all and request_id:
         console.log("Error: -all and request_id are mutually exclusive")
@@ -694,48 +812,32 @@ def osi(all, request_id):
 
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kospex.kospex_query)
 
+    # One extraction loop, shared with `-next`. This used to be an inline copy
+    # that swallowed parse failures with `except (JSONDecodeError, OSError):
+    # continue`, so the same manifest produced a different record depending on
+    # which command read it — exactly the drift the registry dispatch was
+    # introduced to stop, recreated one level up. extract_repo() reports a
+    # parse_error against the file instead of discarding it, and its except is
+    # broad, so a TOMLDecodeError marks one file rather than ending the run.
+    outcomes_by_repo = {}
+
     for r in repos:
         console.log(f"Running OSI on {r['_repo_id']} ...\n")
-        repo_req = {"repo_id": r["_repo_id"]}
+        reqs, outcomes = extract_repo(
+            r["_repo_id"], kospex.kospex_query, kdeps, echo=console.print)
+        outcomes_by_repo[r["_repo_id"]] = outcomes
+        results.extend(reqs)
+        for provider, outcome in sorted(outcomes.items()):
+            console.print(f"  {provider}: {outcome}")
 
-        # console.log(r)
-        deps = kospex.kospex_query.get_dependency_files(request_id=repo_req)
-
-        for d in deps:
-            console.print("tech_type:", d["tech_type"])
-            full_path = os.path.join(r["file_path"], d["Provider"])
-
-            # Registry-driven dispatch (sub-project C). The manifest type, its
-            # parser and its package_type all come from one place, so `krunner
-            # osi` and `kospex sca` cannot drift apart the way they did when each
-            # kept its own filename checks — go.mod and *.csproj were silently
-            # skipped here for exactly that reason.
-            classification = classify(d["Provider"])
-            extractor = classification.extractor
-
-            if extractor is None or not classification.supported:
-                console.print(f"Unsupported depdency {d['Provider']}", style="red")
-                continue
-
-            console.print(f"Parsing {extractor.name}: {d['Provider']}", style="blue")
-            try:
-                reqs = extract_dependency_file(
-                    extractor, full_path, r["_repo_id"], d["Provider"], d.get("hash"), kdeps
-                )
-            except (json.JSONDecodeError, OSError) as e:
-                console.print(
-                    f"Skipping malformed {d['Provider']}: {e}",
-                    style="yellow",
-                )
-                continue
-
-            results.extend(reqs)
-            console.log(reqs)
-
-        # console.print(deps)
-        #
     console.print(results)
     enrich_dependency_records(results, kdeps, echo=console.print)
+
+    # Recorded before the no-results exit below, because "examined and found
+    # nothing" is exactly the fact worth keeping -- an estate with no parseable
+    # dependencies would otherwise leave no trace of having been scanned, and
+    # `-next` would queue every repository again.
+    _record_osi_outcomes(outcomes_by_repo)
 
     if not results or len(results) == 0:
         console.print("No results", style="red")

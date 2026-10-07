@@ -27,6 +27,22 @@ Measured consequence on a 167-repo estate: the osi read path went **11.51s →
 that makes a fixed-size batch meaningful — before, every invocation paid an
 estate-wide cost regardless of `N`.
 
+## Status
+
+**Built.** Queue, outcome record, lock, per-repo extraction, CLI (`-next`, `-csv`,
+`-max-seconds`), and migration `0008` with the `osi_runs` table. 99 tests.
+
+Two things this document got wrong, found by running it rather than testing it:
+
+- The outcome roll-up ordered every non-success above `extracted`, so a repository
+  that extracted 4 packages reported `not_a_manifest` because it also held one
+  non-manifest file. Corrected to actionable → success → absence.
+- `-max-seconds` was not in the original design at all. It became obviously
+  necessary once per-repo cost was measured at 2ms to 109s.
+
+**Still open:** pruning `osi_runs` (see Open questions), and whether to split
+extraction from enrichment (see the alternative design).
+
 ## The queue
 
 ### Repo-granular, not row-granular
@@ -61,6 +77,18 @@ the same repositories forever and never reaches the other 82.
 record of "this repository was examined, and here is what happened".
 
 ### Queue definition — two axes, not one
+
+> **Superseded by the daily-read requirement.** Dependencies must be read every
+> day, because `versions_behind` and `advisories` change with upstream activity
+> rather than with manifest edits. A daily full pass makes the change-driven axis
+> redundant as a *priority* — everything is scanned every day regardless — and with
+> only one axis left nothing can starve, so **`--max-age` is dropped**. The
+> implemented queue is plain oldest-first, never-examined first.
+>
+> The reasoning below is kept because it establishes *why* change-driven priority
+> alone would be wrong, which still matters: it would stop new-CVE detection on
+> stable code. The change signal survives only as a tiebreaker between repositories
+> examined at the same moment, which is marginal.
 
 Order `repos` by the extraction-outcome record rather than by `dependency_data`.
 But "least recently examined" alone is the wrong priority, and so is "recently
@@ -284,11 +312,17 @@ What this makes answerable, which nothing is today:
 - **Coverage honesty.** Per-run repo counts show whether the schedule is actually
   completing passes or quietly falling behind.
 
-**Retention.** One row per repo per run is 6,700 rows per full pass on a large
-estate — at a daily pass, ~2.4M rows a year. That is small for SQLite but not
-nothing, so the table needs a documented pruning story (a `kreaper` target, or a
-`--prune-older-than` on `-next`) decided before it ships rather than after it
-grows.
+**Retention — still unresolved, and it ships without an answer.** One row per repo
+per run is 6,700 rows per full pass on a large estate; at a daily pass that is
+~2.4M rows a year. Small for SQLite, but unbounded growth with no pruning path is
+a thing to decide rather than discover.
+
+Shipping it anyway is a deliberate call: the table is additive and inert, nothing
+reads it yet, and a `kreaper` target or `--prune-older-than` can be added without
+migrating anything. The risk of deferring is a year of rows before anyone notices;
+the risk of blocking on it is designing retention for a table whose query patterns
+are still guesses. The first few weeks of real rows will say which columns anyone
+actually queries, and pruning should follow that.
 
 ## Locking
 
@@ -311,8 +345,12 @@ the interval".
 
 ```
 krunner osi -next N [REQUEST_ID]
-krunner osi -next N --older-than DAYS
+krunner osi -next N -csv                 # opt in: one OSI-{repo_id}.csv per repo
+krunner osi -next N -max-seconds 240     # also bound the tick by time
 ```
+
+Single-dash options, matching the existing `-all`, `-csv`, `-tag` convention in
+krunner.
 
 - `-next` is a third mode alongside `-all` and a bare `REQUEST_ID`. It **composes**
   with a scope: `-next 10 github.com~acme` batches within that org.
@@ -324,11 +362,40 @@ krunner osi -next N --older-than DAYS
 - **`sys.exit(1)` on empty results** (`krunner.py:742`) must not fire for `-next`.
   An empty batch means nothing is due, which is success. As it stands cron would
   report a failure every time the estate is fully current.
-- **CSV output must be suppressed.** `AssessmentTypes.generate_filename` produces
-  `OSI-{scope}.csv` with no timestamp (`krunner.py:756`), so every tick would
-  overwrite the file with just that batch's rows — strictly worse than not writing
-  it. The database is the store for batched runs. A per-batch filename is the
-  alternative, but 288 files a day at a 5-minute interval is not obviously better.
+- **CSV output is off by default, with an opt-in `--csv` flag.**
+  `AssessmentTypes.generate_filename` produces `OSI-{scope}.csv` with no timestamp
+  (`krunner.py:756`), so a scheduled `-next` would overwrite the estate-wide export
+  with one batch of five repos, 288 times a day — making the file actively
+  misleading rather than merely stale. The live dev install has a 1.08 MB
+  `OSI-all.csv` that this would destroy.
+
+  Nothing in kospex reads these files — `get_assessments_path` appears only in
+  write positions (`krunner.py:540`, `:764`, `:1124`), and the only `csv.DictReader`
+  in `src/` parses scc output. The `/osi/` and `/dependencies/` pages read
+  `dependency_data`. So they are exports for people and external tooling, and
+  suppressing them by default costs kospex nothing.
+
+  **`-next --csv` writes one CSV per repository, not one per batch** — reusing the
+  filename `krunner osi REPO_ID` already produces, `OSI-{repo_id}.csv`. That
+  sidesteps the question a batch file cannot answer: a batch of five arbitrary
+  repositories has no scope to name, so `OSI-NEXT-all.csv` would be a lie and
+  `OSI-NEXT-{run_id}.csv` would accumulate 288 files a day.
+
+  Per-repo files are better on every axis:
+
+  - They match the convention already on disk — the live install has
+    `OSI-github.com~kospex~kospex.csv` and seven others from targeted runs.
+  - Each file is complete and meaningful standalone, rather than a slice of
+    whatever happened to be in one batch.
+  - Re-scanning a repository refreshes its own file, which is correct rather than
+    lossy.
+  - The file count converges on the **repository** count, not runs × batch size.
+  - `OSI-all.csv` cannot be touched, which was the original worry.
+
+  One deliberate divergence from `-all`: **`-next --csv` writes only to the
+  assessments directory, not also to the current working directory.** `-all` writes
+  both (`krunner.py:758` and `:766`), which for a cron job would scatter N files per
+  tick into whatever directory the scheduler happened to start in.
 
 ## Testing
 
@@ -340,6 +407,10 @@ krunner osi -next N --older-than DAYS
   re-implementation of its loop — `tests/test_osi_reads_disk_db.py` established
   that pattern.
 - `-next` with nothing due exits **0**, writes no CSV.
+- `-next` without `--csv` writes no file at all, and specifically leaves an
+  existing `OSI-all.csv` byte-identical. That is the regression worth guarding.
+- `-next --csv` writes one `OSI-{repo_id}.csv` per repository in the batch, into
+  the assessments directory only — not the working directory.
 - A second concurrent run exits 0 and does no work; a stale lock is taken over.
 - `last_checked` only advances on rows whose enrichment ran in the same batch.
 - **The outcome record survives a third run** — the specific `IntegrityError` the
