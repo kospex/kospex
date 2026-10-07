@@ -323,7 +323,7 @@ the interval".
 
 ```
 krunner osi -next N [REQUEST_ID]
-krunner osi -next N --csv          # opt in to OSI-NEXT-{scope}.csv
+krunner osi -next N --csv          # opt in: one OSI-{repo_id}.csv per repo
 ```
 
 - `-next` is a third mode alongside `-all` and a bare `REQUEST_ID`. It **composes**
@@ -349,12 +349,27 @@ krunner osi -next N --csv          # opt in to OSI-NEXT-{scope}.csv
   `dependency_data`. So they are exports for people and external tooling, and
   suppressing them by default costs kospex nothing.
 
-  **`-next --csv` writes to a separate filename namespace: `OSI-NEXT-{scope}.csv`,
-  never `OSI-{scope}.csv`.** This is the load-bearing part. A batched run must not
-  be able to clobber a full run's export, however the operator invokes it. Within
-  that namespace the file is last-batch-only and overwritten each run, which is
-  honest for a flag someone passes deliberately on a manual run, and is why it is
-  not the default.
+  **`-next --csv` writes one CSV per repository, not one per batch** — reusing the
+  filename `krunner osi REPO_ID` already produces, `OSI-{repo_id}.csv`. That
+  sidesteps the question a batch file cannot answer: a batch of five arbitrary
+  repositories has no scope to name, so `OSI-NEXT-all.csv` would be a lie and
+  `OSI-NEXT-{run_id}.csv` would accumulate 288 files a day.
+
+  Per-repo files are better on every axis:
+
+  - They match the convention already on disk — the live install has
+    `OSI-github.com~kospex~kospex.csv` and seven others from targeted runs.
+  - Each file is complete and meaningful standalone, rather than a slice of
+    whatever happened to be in one batch.
+  - Re-scanning a repository refreshes its own file, which is correct rather than
+    lossy.
+  - The file count converges on the **repository** count, not runs × batch size.
+  - `OSI-all.csv` cannot be touched, which was the original worry.
+
+  One deliberate divergence from `-all`: **`-next --csv` writes only to the
+  assessments directory, not also to the current working directory.** `-all` writes
+  both (`krunner.py:758` and `:766`), which for a cron job would scatter N files per
+  tick into whatever directory the scheduler happened to start in.
 
 ## Testing
 
@@ -366,6 +381,10 @@ krunner osi -next N --csv          # opt in to OSI-NEXT-{scope}.csv
   re-implementation of its loop — `tests/test_osi_reads_disk_db.py` established
   that pattern.
 - `-next` with nothing due exits **0**, writes no CSV.
+- `-next` without `--csv` writes no file at all, and specifically leaves an
+  existing `OSI-all.csv` byte-identical. That is the regression worth guarding.
+- `-next --csv` writes one `OSI-{repo_id}.csv` per repository in the batch, into
+  the assessments directory only — not the working directory.
 - A second concurrent run exits 0 and does no work; a stale lock is taken over.
 - `last_checked` only advances on rows whose enrichment ran in the same batch.
 - **The outcome record survives a third run** — the specific `IntegrityError` the
