@@ -190,7 +190,12 @@ def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo, run_id=None
         # Enrich and save adjacently. save_dependencies() stamps last_checked and
         # never calls deps.dev, so anything between these two would let the
         # timestamp attest a check that did not happen.
-        enrich_dependency_records(rows, kdeps)
+        # progress goes to the log, not `echo`: a 1101-package repository would
+        # otherwise bury the per-repo summary lines in the terminal. The log is
+        # where someone looks when a run seems stuck (#224).
+        enrich_dependency_records(
+            rows, kdeps,
+            progress=lambda m: log.info("osi -next:   %s %s", repo_id, m))
         kdeps.save_dependencies(rows, source=SOURCE)
 
         if write_csv:
