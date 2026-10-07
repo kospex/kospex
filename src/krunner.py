@@ -639,7 +639,7 @@ def dependencies(csv):
         KrunnerUtils.write_dict_to_csv(filename, results)
 
 
-def _run_osi_next(limit, request_id, write_csv):
+def _run_osi_next(limit, request_id, write_csv, max_seconds=None):
     """Run one batched osi pass. Always exits 0 unless something is genuinely wrong.
 
     Separate from osi() because the exit contract differs. `osi -all` exits 1 on
@@ -653,13 +653,17 @@ def _run_osi_next(limit, request_id, write_csv):
         console.log("Error: -next needs a positive number of repositories")
         sys.exit(1)
 
+    if max_seconds is not None and max_seconds < 0:
+        console.log("Error: -max-seconds cannot be negative")
+        sys.exit(1)
+
     params = KospexWeb.get_id_params(request_id) if request_id else None
 
     try:
         result = run_next_batch(
             kospex.kospex_db, limit, request_id=params,
-            write_csv=write_csv, kospex_query=kospex.kospex_query,
-            echo=console.print,
+            write_csv=write_csv, max_seconds=max_seconds,
+            kospex_query=kospex.kospex_query, echo=console.print,
         )
     except ValueError as e:
         # An unhonourable scope, e.g. an author email. Refused rather than
@@ -708,10 +712,17 @@ def _echo_staleness_bound(batch_size, request_id):
               help="With -next: write one OSI-<repo_id>.csv per repo to the "
                    "assessments directory. Off by default so a scheduled run "
                    "cannot overwrite a full export.")
+@click.option("-max-seconds", "max_seconds", type=click.FLOAT, default=None,
+              help="With -next: stop STARTING new repositories once this many "
+                   "seconds have passed. Bounds a tick when repo cost varies "
+                   "(2ms to 109s observed). A repo in flight always finishes, so "
+                   "a tick can overshoot by the cost of one repo -- sometimes a "
+                   "lot (a 10s budget gave a 109s tick on a 1101-package "
+                   "monorepo). The run says so when that happens.")
 # @click.option('-save', is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
 # @click.option('-verbose', is_flag=True, default=False, help="Verbose output. (Default: False)")
 @click.argument("request_id", required=False, type=click.STRING)
-def osi(all, next_, write_csv, request_id):
+def osi(all, next_, write_csv, max_seconds, request_id):
     """
     Run an opensource inventory process.
     Find all dependency files, extract their names and versions,
@@ -729,12 +740,16 @@ def osi(all, next_, write_csv, request_id):
     if next_ is not None:
         # Batched path: its own exit contract. Nothing due and a busy lock are
         # both success, because a scheduler must not see a failure for either.
-        _run_osi_next(next_, request_id, write_csv)
+        _run_osi_next(next_, request_id, write_csv, max_seconds)
         return
 
     if write_csv:
         console.log("Error: -csv applies to -next only")
         console.log("-all and a bare request_id already write their CSV exports")
+        sys.exit(1)
+
+    if max_seconds is not None:
+        console.log("Error: -max-seconds applies to -next only")
         sys.exit(1)
 
     if all and request_id:
