@@ -100,3 +100,33 @@ def test_url_request_shares_the_same_ttl(kq):
     _cache_entry(kq, age_seconds=2 * 60 * 60)
 
     assert kq.url_request(URL) == CACHED_BODY
+
+
+def test_a_cache_hit_does_not_count_as_a_fetch(kq):
+    """url_fetches is the wall-clock term: round trips made, not rows served.
+
+    osi -next records it per repository so cache effectiveness is measurable over
+    time. A hit that counted would make the cache look useless.
+    """
+    _cache_entry(kq, age_seconds=60)
+    before = kq.url_fetches
+
+    kq.url_request_with_status(URL)
+
+    assert kq.url_fetches == before, "a cache hit made no request"
+
+
+def test_a_cache_miss_counts_as_a_fetch_even_when_it_fails(kq, monkeypatch):
+    """A failed round trip cost the same wall-clock time as a successful one."""
+    import requests
+
+    def _boom(*args, **kwargs):
+        raise requests.RequestException("network down")
+
+    monkeypatch.setattr(requests, "get", _boom)
+    before = kq.url_fetches
+
+    content, status = kq.url_request_with_status(URL)
+
+    assert (content, status) == (None, None)
+    assert kq.url_fetches == before + 1

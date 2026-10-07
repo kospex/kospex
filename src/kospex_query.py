@@ -98,6 +98,12 @@ class KospexQuery:
         # Initialize the kospex environment
         KospexUtils.init()
         self.kospex_db = kospex_db or Database(KospexUtils.get_kospex_db_path())
+        # External HTTP requests this instance has actually made, as opposed to
+        # served from url_cache. The difference is the cache earning its keep, and
+        # it is the term that drives wall-clock time -- a cache hit costs
+        # microseconds, a fetch costs a round trip. Read as a delta around a unit
+        # of work; see kospex.osi_run_log.
+        self.url_fetches = 0
 
     def get_kospex_db_version(self):
         """
@@ -1306,7 +1312,10 @@ class KospexQuery:
             # Cache is valid
             return result["content"], 200
 
-        # Fetch new content and update the cache
+        # Fetch new content and update the cache. Counted before the request, not
+        # after, so a failed fetch still counts as a round trip spent -- it cost
+        # the same wall-clock time as a successful one.
+        self.url_fetches += 1
         try:
             response = requests.get(url, timeout=timeout, headers=headers)
             response.raise_for_status()  # Raise an exception for HTTP errors

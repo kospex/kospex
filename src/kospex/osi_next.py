@@ -27,6 +27,7 @@ from kospex.osi_extract import extract_repo
 from kospex.osi_lock import LockBusy, OsiLock
 from kospex.osi_outcomes import repo_outcome
 from kospex.osi_queue import next_repos, record_outcome
+from kospex.osi_run_log import record_run
 
 log = KospexUtils.get_kospex_logger("krunner")
 
@@ -35,12 +36,19 @@ SOURCE = "krunner osi -next"
 
 @dataclass
 class RepoResult:
-    """What one repository cost and produced."""
+    """What one repository cost and produced.
+
+    `lookups` counts deps.dev requests that actually left the machine, as opposed
+    to `packages`, which counts rows written. The difference is the response cache
+    doing its job, and tracking the ratio over time is the only way to see whether
+    the TTL is set sensibly. None when not counted.
+    """
     repo_id: str
     files: int
     packages: int
     duration_ms: int
     outcome: str
+    lookups: Optional[int] = None
 
 
 @dataclass
@@ -137,6 +145,14 @@ def run_next_batch(db, limit, request_id=None, write_csv=False, max_seconds=None
     log.info("osi -next: run %s done, %s repos, %s packages, %sms",
              result.run_id, len(result.repos), result.packages, result.duration_ms)
 
+    # Diagnostics last, and never allowed to fail the run. The scan and its
+    # outcome records are the product; this table exists to answer questions
+    # about cost later, and losing a row of it must not cost a tick of work.
+    try:
+        record_run(db, result)
+    except Exception as e:                       # noqa: BLE001
+        log.warning("osi -next: could not record run diagnostics: %s", e)
+
     _warn_on_budget_overshoot(result, max_seconds, echo)
     return result
 
@@ -174,6 +190,7 @@ def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo):
     from krunner import enrich_dependency_records
 
     started = time.monotonic()
+    fetches_before = getattr(kospex_query, "url_fetches", 0)
     rows, outcomes = extract_repo(repo_id, kospex_query, kdeps, echo=echo)
 
     if rows:
@@ -198,9 +215,14 @@ def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo):
         echo(f"  {repo_id}  {len(outcomes)} files  {len(rows)} packages  "
              f"{duration_ms}ms  {outcome}")
 
+    # kdeps shares kospex_query, so this counts the deps.dev requests enrichment
+    # actually made for THIS repository -- packages served from url_cache do not
+    # increment it. packages minus lookups is the cache earning its keep.
+    lookups = getattr(kospex_query, "url_fetches", 0) - fetches_before
+
     return RepoResult(
         repo_id=repo_id, files=len(outcomes), packages=len(rows),
-        duration_ms=duration_ms, outcome=outcome,
+        duration_ms=duration_ms, outcome=outcome, lookups=lookups,
     )
 
 
