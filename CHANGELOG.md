@@ -7,11 +7,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Upgrade notes
 
 **No data changes in this release — unlike 0.1.0, nothing needs re-syncing or
-normalising — but there is one schema change.** Migration `0007` adds an index to
-`file_metadata`, so an existing database needs `kospex upgrade-db -apply`. It
-creates an index only: no rows are read, rewritten or deleted, and a database
-left un-upgraded keeps working, just without the speed-up. Newly created
-databases pick it up automatically.
+normalising — but there are two schema changes.** An existing database needs
+`kospex upgrade-db -apply`; newly created ones pick both up automatically.
+
+- **`0007`** adds an index to `file_metadata`. Index only: no rows are read,
+  rewritten or deleted, and a database left un-upgraded keeps working, just
+  without the speed-up.
+- **`0008`** adds the `osi_runs` table and its index, used by `krunner osi -next`
+  for per-run diagnostics. A new empty table: nothing existing is touched, and a
+  database left un-upgraded keeps working — `-next` logs that it could not record
+  diagnostics and carries on scanning, because the scan is the product and the
+  diagnostics are not.
 
 Otherwise what changes is how kospex *responds* when it cannot answer a
 question. In four places it previously returned something that looked like an
@@ -47,6 +53,57 @@ was relying on the old, wrong success.
    **If you alert on 5xx, expect that signal to drop** — some of what was
    reported as kospex failing was a malformed request. `/file-collab/` without a
    `file_path` is the clearest example: it returned 500 and now returns 400.
+
+### Added
+
+- **`krunner osi -next N` — batched, cron-friendly dependency scanning.** `osi -all`
+  is a single sweep that takes hours on a large estate, so it cannot run from a
+  scheduler and is all-or-nothing when it fails. `-next N` processes the N
+  repositories least recently examined, so a schedule of small runs converges on
+  full coverage. Composes with a scope: `-next 10 github.com~acme`.
+
+  Three things make it safe to schedule. It **exits 0 when nothing is due**, where
+  `-all` exits 1 on "No results" and would report a failure on every tick once the
+  estate is current. It takes a **run lock** and exits 0 if another run holds it,
+  since overlap is normal under a short interval; a lock older than 6 hours is
+  taken over, because one crashed run blocking the schedule forever is worse than
+  a double scan. And it **writes no CSV by default** — `-csv` opts in, writing one
+  `OSI-<repo_id>.csv` per repository to the assessments directory only, so a
+  scheduled run cannot overwrite a full `OSI-all.csv` export.
+
+- **`-max-seconds` bounds a batch by time as well as by count.** Measured per-repo
+  cost spans four orders of magnitude — 2ms for a repository with no dependency
+  files against 109s for a monorepo with 215 of them and 1101 packages — so a
+  fixed `N` gives no predictable tick duration. The budget is checked *between*
+  repositories: one in flight always finishes, because abandoning it would either
+  save rows with no outcome recorded or record an outcome for work not done. A tick
+  can therefore overshoot by the cost of one repository, sometimes greatly (a 10s
+  budget produced a 109s tick), and the run says which repository did it.
+
+- **Extraction outcomes are recorded ([#148](https://github.com/kospex/kospex/issues/148)).**
+  A manifest producing zero dependency rows used to mean several different things
+  with nothing recording which — most sharply `empty` (genuinely declares nothing,
+  fine) against `parse_error` (the parser raised and was silently skipped, a
+  defect). Six outcomes now distinguish them: `extracted`, `empty`, `unsupported`,
+  `unclassified`, `not_a_manifest`, `parse_error`, modelled on
+  `dependency_data.resolution`, which already does this one layer later. Stored
+  per repository in `observations`, no schema change. Classifying the 1081
+  dependency-tagged files on a 167-repo estate gives 70% `extracted`, 16%
+  `unsupported` (`build.gradle`, `yarn.lock`, `package-lock.json`, `uv.lock`), 12%
+  `not_a_manifest` (`dependabot.yml`, `Dockerfile`, runtime pins) and 3%
+  `unclassified` (`setup.py`, `pom.xml`, `setup.cfg`). Separating
+  `not_a_manifest` out makes the `unsupported` figure an honest parser backlog
+  rather than an inflated one.
+
+- **Per-run diagnostics in a new `osi_runs` table (migration `0008`).** One row
+  per `(run_id, repository)` with duration, files, packages, deps.dev requests
+  actually made, and outcome. The log lines cannot answer what only exists across
+  runs: what `N` fits an interval, whether a repository is getting slower, whether
+  the response cache is working, whether the schedule is completing passes.
+  `observations` cannot hold it — its primary key includes `latest`, so it keeps
+  one current row per key. `lookups` counts cache misses separately from
+  `packages` written, which makes cache effectiveness measurable: a first real run
+  shows 76% of babel's 1101 package lookups served from cache.
 
 ### Changed
 

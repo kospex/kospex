@@ -27,6 +27,22 @@ Measured consequence on a 167-repo estate: the osi read path went **11.51s →
 that makes a fixed-size batch meaningful — before, every invocation paid an
 estate-wide cost regardless of `N`.
 
+## Status
+
+**Built.** Queue, outcome record, lock, per-repo extraction, CLI (`-next`, `-csv`,
+`-max-seconds`), and migration `0008` with the `osi_runs` table. 99 tests.
+
+Two things this document got wrong, found by running it rather than testing it:
+
+- The outcome roll-up ordered every non-success above `extracted`, so a repository
+  that extracted 4 packages reported `not_a_manifest` because it also held one
+  non-manifest file. Corrected to actionable → success → absence.
+- `-max-seconds` was not in the original design at all. It became obviously
+  necessary once per-repo cost was measured at 2ms to 109s.
+
+**Still open:** pruning `osi_runs` (see Open questions), and whether to split
+extraction from enrichment (see the alternative design).
+
 ## The queue
 
 ### Repo-granular, not row-granular
@@ -296,11 +312,17 @@ What this makes answerable, which nothing is today:
 - **Coverage honesty.** Per-run repo counts show whether the schedule is actually
   completing passes or quietly falling behind.
 
-**Retention.** One row per repo per run is 6,700 rows per full pass on a large
-estate — at a daily pass, ~2.4M rows a year. That is small for SQLite but not
-nothing, so the table needs a documented pruning story (a `kreaper` target, or a
-`--prune-older-than` on `-next`) decided before it ships rather than after it
-grows.
+**Retention — still unresolved, and it ships without an answer.** One row per repo
+per run is 6,700 rows per full pass on a large estate; at a daily pass that is
+~2.4M rows a year. Small for SQLite, but unbounded growth with no pruning path is
+a thing to decide rather than discover.
+
+Shipping it anyway is a deliberate call: the table is additive and inert, nothing
+reads it yet, and a `kreaper` target or `--prune-older-than` can be added without
+migrating anything. The risk of deferring is a year of rows before anyone notices;
+the risk of blocking on it is designing retention for a table whose query patterns
+are still guesses. The first few weeks of real rows will say which columns anyone
+actually queries, and pruning should follow that.
 
 ## Locking
 
@@ -323,8 +345,12 @@ the interval".
 
 ```
 krunner osi -next N [REQUEST_ID]
-krunner osi -next N --csv          # opt in: one OSI-{repo_id}.csv per repo
+krunner osi -next N -csv                 # opt in: one OSI-{repo_id}.csv per repo
+krunner osi -next N -max-seconds 240     # also bound the tick by time
 ```
+
+Single-dash options, matching the existing `-all`, `-csv`, `-tag` convention in
+krunner.
 
 - `-next` is a third mode alongside `-all` and a bare `REQUEST_ID`. It **composes**
   with a scope: `-next 10 github.com~acme` batches within that org.
