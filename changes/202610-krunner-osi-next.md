@@ -60,17 +60,51 @@ the same repositories forever and never reaches the other 82.
 **Both failure modes are #148.** Neither is fixable by ordering; both need a
 record of "this repository was examined, and here is what happened".
 
-### Queue definition
+### Queue definition — two axes, not one
 
-Order `repos` by the extraction-outcome record, not by `dependency_data`:
+Order `repos` by the extraction-outcome record rather than by `dependency_data`.
+But "least recently examined" alone is the wrong priority, and so is "recently
+modified" alone. The queue needs both, for different reasons:
 
-1. repositories with no outcome record — never examined — first
-2. then by outcome `created_at` ascending — least recently examined
-3. optionally filtered by `--older-than DAYS`, to skip anything examined recently
+**Change-driven** — a repository whose manifest has changed has *new dependencies*
+to learn about. The precise signal is the dependency file itself, not the
+repository: `file_metadata.committer_when` for files tagged `|dependencies|`,
+which is populated for **1080 of 1081** such files on the current estate. A repo
+with 500 commits to source and no manifest change has nothing new for osi, so
+repo-level activity is the wrong proxy. `file_metadata.hash` gives the
+complementary content-identity check — if the hash recorded in the last outcome
+differs, the manifest was rewritten.
+
+`repos.last_fetch` is tempting and should **not** be the primary signal: it is
+populated for only 111 of 167 repositories, because a repo synced via
+`sync-directory` without a pull never records one.
+
+**Age-driven** — and this is the part that is easy to get wrong: **an unchanged
+manifest still needs re-checking, because advisories are published against
+versions you already have.** A manifest untouched for two years can become
+vulnerable tomorrow. A purely change-driven queue would stop detecting new CVEs on
+stable code, which is the opposite of what the tool is for.
+
+So the ordering is:
+
+1. **Never examined** — no outcome record at all
+2. **Manifest changed since last examination** — any `|dependencies|` file whose
+   `committer_when` is later than the outcome `created_at`, or whose `hash`
+   differs from the one recorded
+3. **Starvation floor** — anything not examined within `--max-age DAYS` jumps
+   ahead of (2) regardless of whether it changed
+4. **Oldest examined** — everything else, `created_at` ascending
+
+Step 3 is what keeps the two axes honest, and it is deliberately a hard floor
+rather than a weighted score. A weighting needs tuning and gives no guarantee; a
+floor gives a property that can be stated and tested: *nothing goes unexamined
+for longer than `--max-age`.* Default it generously (say 30 days) so it rarely
+fires, and when it does, it is correct that it should.
 
 Cost is O(repos), not O(dependency rows): one row per repository rather than a
 scan over millions of dependency rows per tick. At 6,700 repositories that is
-~6,700 rows to sort.
+~6,700 rows to sort. The change check joins `file_metadata` on `_repo_id`, which
+migration `0007` indexes.
 
 ## The extraction-outcome record (#148)
 
@@ -83,10 +117,38 @@ present, correctly shaped, and currently **empty** (0 rows). No schema change.
 | `observation_type` | `REPO` |
 | `_repo_id` | the repository |
 | `hash`, `file_path` | `''` — the PK is `(_repo_id, hash, file_path, observation_key, latest)` and this is a repo-level fact |
-| `latest` | `1`, demoting any prior row for the same key |
+| `latest` | always `1` — **replace in place, never demote** (see below) |
 | `created_at` | when the repository was examined |
 | `format` | `JSON` |
 | `data` | per-file outcomes, see below |
+
+### Do not demote prior rows — it fails on the third run
+
+`observations`' primary key is
+`(_repo_id, hash, file_path, observation_key, latest)`, and `latest` is **in the
+key**. The usual kospex pattern — `UPDATE ... SET latest = 0` then insert the new
+row at `latest = 1` — therefore works twice and raises on the third write:
+
+```
+run1:  [(1, 'run1')]
+run2:  [(1, 'run2'), (0, 'run1')]
+run3:  IntegrityError: UNIQUE constraint failed:
+       observations._repo_id, _hash, _file_path, _observation_key, _latest
+```
+
+Demoting run2 to `latest = 0` collides with run1 already occupying that slot. The
+table can hold exactly one current and one previous row per key, and the
+transition to a third fails hard.
+
+So the outcome record is written with `INSERT OR REPLACE` at `latest = 1` and
+**never demoted**: one row per repository per key, always current. Verified stable
+across repeated writes.
+
+This is a real constraint on the table, not a quirk of this feature. `observations`
+is empty today, so nothing has hit it — anyone adding a second `observation_key`
+needs to know. **Consequence: `observations` cannot store history.** That is fine
+for the queue, which only needs "when was this last examined and what happened",
+but it is why run diagnostics need their own table (below).
 
 ### Outcome vocabulary
 
@@ -163,6 +225,71 @@ Two couplings worth stating:
   against a two-week full pass will escalate on every run, truthfully but
   uselessly. The cache TTL from #220 is a day for the same reason.
 
+## Run diagnostics
+
+Two outputs, because they answer different questions and only one of them needs to
+survive log rotation.
+
+### Structured log lines — always
+
+Through the existing per-module logger (`krunner.log`, daily rotation,
+`KOSPEX_LOG_RETENTION_DAYS`). Human-readable narrative of a run:
+
+```
+osi -next: run 20261007T0915Z starting, N=10, scope=all
+osi -next:   github.com~acme~svc            4 files   37 packages   2.4s  extracted
+osi -next:   github.com~acme~legacy         1 file     0 packages   0.1s  empty
+osi -next:   github.com~acme~infra          2 files    0 packages   0.0s  not_a_manifest
+osi -next: run 20261007T0915Z done, 10 repos, 184 packages, 31.2s
+osi -next: queue depth 157, oldest examined 2026-09-14, bound ~1.4h at this cadence
+```
+
+Free, no schema change, and the right medium for "what happened last Tuesday".
+
+### A queryable run table — migration `0008`
+
+The log lines cannot answer the questions that matter over time: *is this
+repository getting slower? is the estate? what N actually fits my interval?* Those
+need rows, and they need history.
+
+`observations` cannot hold history — see the `IntegrityError` finding above — so
+this needs its own table. One row per (run, repository):
+
+| column | purpose |
+|---|---|
+| `run_id` | one per `-next` invocation, e.g. UTC timestamp |
+| `_repo_id` | the repository |
+| `started_at` | when this repository began |
+| `duration_ms` | how long it took |
+| `files` | `|dependencies|` files examined |
+| `packages` | dependency rows written |
+| `lookups` | deps.dev requests actually made (cache misses) |
+| `outcome` | the worst per-file outcome, from the vocabulary above |
+| `_git_server` / `_git_owner` / `_git_repo` | the usual derived columns |
+
+Primary key `(run_id, _repo_id)`, so history accumulates rather than colliding.
+
+`lookups` is worth recording separately from `packages`: it is the only way to see
+whether the cache TTL from #220 is doing its job, and it is the term that actually
+drives wall-clock time.
+
+What this makes answerable, which nothing is today:
+
+- **Sizing.** `SELECT avg(duration_ms) FROM … WHERE run_id = ?` against the
+  interval tells the operator whether `N` fits, instead of them inferring it from
+  overlap warnings.
+- **Regression.** A repository whose `duration_ms` trends upward is either growing
+  or hitting a slow path.
+- **Cache effectiveness.** `sum(lookups) / sum(packages)` per run, over time.
+- **Coverage honesty.** Per-run repo counts show whether the schedule is actually
+  completing passes or quietly falling behind.
+
+**Retention.** One row per repo per run is 6,700 rows per full pass on a large
+estate — at a daily pass, ~2.4M rows a year. That is small for SQLite but not
+nothing, so the table needs a documented pruning story (a `kreaper` target, or a
+`--prune-older-than` on `-next`) decided before it ships rather than after it
+grows.
+
 ## Locking
 
 A tick that starts while a previous one is still running must not double-scan.
@@ -215,6 +342,15 @@ krunner osi -next N --older-than DAYS
 - `-next` with nothing due exits **0**, writes no CSV.
 - A second concurrent run exits 0 and does no work; a stale lock is taken over.
 - `last_checked` only advances on rows whose enrichment ran in the same batch.
+- **The outcome record survives a third run** — the specific `IntegrityError` the
+  demote pattern causes. Worth an explicit test, since the pattern is idiomatic
+  elsewhere in kospex and someone will reintroduce it.
+- Change-driven priority: a repo whose dependency file `committer_when` moved is
+  selected ahead of an unchanged repo examined at the same time.
+- Starvation floor: an unchanged repo past `--max-age` is selected ahead of
+  changed repos. This is the guarantee, so it needs a test rather than a comment.
+- The run table records one row per (run, repo), and two runs over the same repo
+  produce two rows rather than colliding.
 
 ## Open questions
 
@@ -224,7 +360,13 @@ krunner osi -next N --older-than DAYS
    relationally queryable, at one row per manifest per run (~1,081 per run on the
    current estate). Deferred — the repo-level row is what `-next` needs, and the
    reporting shape #148 ultimately wants can be decided when something consumes it.
-2. **Should `-next` also re-examine repositories whose `last_fetch` moved?** A
-   repository pulled since its last scan is more likely to have changed
-   dependencies than one merely old in the queue. That is a smarter priority
-   function, and worth considering once the simple one is working.
+2. **Pruning the run table.** One row per repo per run accumulates. A `kreaper`
+   target or a `--prune-older-than` flag — decided before `0008` ships, not after
+   the table grows.
+3. ~~Should `-next` prioritise recently-modified repositories?~~ **Decided: yes**,
+   via the two-axis queue above. The signal is the dependency file's
+   `committer_when` and `hash`, not `repos.last_fetch` (populated for only 111 of
+   167) and not repo-level commit activity (a repo can be busy with no manifest
+   change). The `--max-age` floor is what stops it starving unchanged
+   repositories, which would otherwise silently stop new-CVE detection on stable
+   code.
