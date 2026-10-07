@@ -4,7 +4,6 @@ This is the kospex runner tool - run the same command or queries on all repos.
 """
 
 import glob
-import json
 import os
 import os.path
 import shlex
@@ -31,7 +30,8 @@ from kospex.assessment_types import AssessmentTypes
 from kospex.db.migrator import warn_if_behind
 from kospex.extractors.workflows import extract_workflow_actions
 from kospex.extractors.pnpm import extract_pnpm_lock
-from kospex.extractors.registry import classify, resolve_parser
+from kospex.extractors.registry import resolve_parser
+from kospex.osi_extract import extract_repo
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
@@ -639,6 +639,27 @@ def dependencies(csv):
         KrunnerUtils.write_dict_to_csv(filename, results)
 
 
+def _record_osi_outcomes(outcomes_by_repo):
+    """Record what each repository's files produced, so `-next` can see it.
+
+    Without this a full `osi -all` run would leave the queue untouched, and
+    `-next` would re-scan the whole estate immediately afterwards. Recording from
+    both paths is also what keeps the two consistent: the same manifest produces
+    the same record whichever command read it.
+
+    Never allowed to fail the run. The dependency rows are the product; this is
+    bookkeeping, and a repository going unrecorded only costs it being scanned
+    again sooner than it needed to be.
+    """
+    from kospex.osi_queue import record_outcome
+
+    for repo_id, outcomes in outcomes_by_repo.items():
+        try:
+            record_outcome(kospex.kospex_db, repo_id, outcomes)
+        except Exception as e:                   # noqa: BLE001
+            log.warning("could not record the osi outcome for %s: %s", repo_id, e)
+
+
 def _run_osi_next(limit, request_id, write_csv, max_seconds=None):
     """Run one batched osi pass. Always exits 0 unless something is genuinely wrong.
 
@@ -791,48 +812,32 @@ def osi(all, next_, write_csv, max_seconds, request_id):
 
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kospex.kospex_query)
 
+    # One extraction loop, shared with `-next`. This used to be an inline copy
+    # that swallowed parse failures with `except (JSONDecodeError, OSError):
+    # continue`, so the same manifest produced a different record depending on
+    # which command read it — exactly the drift the registry dispatch was
+    # introduced to stop, recreated one level up. extract_repo() reports a
+    # parse_error against the file instead of discarding it, and its except is
+    # broad, so a TOMLDecodeError marks one file rather than ending the run.
+    outcomes_by_repo = {}
+
     for r in repos:
         console.log(f"Running OSI on {r['_repo_id']} ...\n")
-        repo_req = {"repo_id": r["_repo_id"]}
+        reqs, outcomes = extract_repo(
+            r["_repo_id"], kospex.kospex_query, kdeps, echo=console.print)
+        outcomes_by_repo[r["_repo_id"]] = outcomes
+        results.extend(reqs)
+        for provider, outcome in sorted(outcomes.items()):
+            console.print(f"  {provider}: {outcome}")
 
-        # console.log(r)
-        deps = kospex.kospex_query.get_dependency_files(request_id=repo_req)
-
-        for d in deps:
-            console.print("tech_type:", d["tech_type"])
-            full_path = os.path.join(r["file_path"], d["Provider"])
-
-            # Registry-driven dispatch (sub-project C). The manifest type, its
-            # parser and its package_type all come from one place, so `krunner
-            # osi` and `kospex sca` cannot drift apart the way they did when each
-            # kept its own filename checks — go.mod and *.csproj were silently
-            # skipped here for exactly that reason.
-            classification = classify(d["Provider"])
-            extractor = classification.extractor
-
-            if extractor is None or not classification.supported:
-                console.print(f"Unsupported depdency {d['Provider']}", style="red")
-                continue
-
-            console.print(f"Parsing {extractor.name}: {d['Provider']}", style="blue")
-            try:
-                reqs = extract_dependency_file(
-                    extractor, full_path, r["_repo_id"], d["Provider"], d.get("hash"), kdeps
-                )
-            except (json.JSONDecodeError, OSError) as e:
-                console.print(
-                    f"Skipping malformed {d['Provider']}: {e}",
-                    style="yellow",
-                )
-                continue
-
-            results.extend(reqs)
-            console.log(reqs)
-
-        # console.print(deps)
-        #
     console.print(results)
     enrich_dependency_records(results, kdeps, echo=console.print)
+
+    # Recorded before the no-results exit below, because "examined and found
+    # nothing" is exactly the fact worth keeping -- an estate with no parseable
+    # dependencies would otherwise leave no trace of having been scanned, and
+    # `-next` would queue every repository again.
+    _record_osi_outcomes(outcomes_by_repo)
 
     if not results or len(results) == 0:
         console.print("No results", style="red")
