@@ -352,6 +352,138 @@ krunner osi -next N --older-than DAYS
 - The run table records one row per (run, repo), and two runs over the same repo
   produce two rows rather than colliding.
 
+## Alternative design: split extraction from enrichment
+
+Everything above is **repo-centric**: `-next N` visits N repositories and does
+both jobs for each. A daily read requirement exposes a problem with that, because
+the two jobs change on completely different schedules.
+
+| | changes when | how often |
+|---|---|---|
+| **manifest content** | someone edits a dependency file | rarely |
+| **package metadata** (`versions_behind`, `advisories`) | upstream publishes a release or a CVE lands | continuously |
+
+`versions_behind` and `advisories` are properties of
+**`(package_type, package_name, package_version)`** — not of a repository. A
+repository's row is manifest content × package metadata. Scanning repositories
+daily therefore re-parses 1,081 manifests that almost never changed, in order to
+refresh metadata that is not repo-specific in the first place.
+
+### The split
+
+Two jobs, two schedules, one axis each:
+
+| job | unit of work | driven by | cadence |
+|---|---|---|---|
+| **extraction** | repository | manifest changed, or repo is new (`file_metadata.committer_when` / `hash`) | on change |
+| **enrichment** | distinct package+version | oldest `last_checked` first, NULLs first | daily |
+
+This is what the two-axis queue above was really trying to be. Conflating the two
+jobs is why it needed a starvation floor: separate them and each gets exactly one
+natural ordering, and nothing can starve.
+
+### Work volume
+
+On the current estate:
+
+| | repo-centric daily | package-centric daily |
+|---|---|---|
+| manifests parsed | 1,081 | only those that changed |
+| deps.dev lookups | 6,387 row-lookups, deduped by cache to ~4,864 | **exactly 4,864** |
+| scales with | repository count | **distinct dependency surface** |
+
+Package-centric makes the lookup count exact by construction rather than dependent
+on cache hits landing inside the TTL window. More importantly it scales on the
+right axis: two estates with 6,700 repositories each cost very differently if one
+has 50,000 distinct package+versions and the other 200,000, and it is the latter
+number that determines whether a daily pass is achievable.
+
+### The fan-out update
+
+One lookup updates every row holding that package identity:
+
+```sql
+UPDATE dependency_data
+   SET versions_behind = ?, advisories = ?, published_at = ?,
+       resolution = ?, resolved_version = ?, last_checked = ?
+ WHERE latest = 1
+   AND package_type = ? AND package_name = ? AND package_version = ?
+```
+
+Every column there is a function of the package identity alone, so writing it
+uniformly across rows is correct.
+
+**What this update must NOT touch**, because these are not package properties:
+
+- `package_use` — `direct` / `dev` / `transitive` depends on *which manifest*
+  declared it, and differs between rows for the same package
+- `version_kind`, `version_operator` — set at extraction from the declared string
+- anything `_repo_id`-derived
+
+That boundary is checkable and worth a test, because the whole design rests on it.
+
+It needs an index. The query is currently a full scan — the primary key leads with
+`_repo_id`:
+
+```
+EXPLAIN QUERY PLAN → SCAN dependency_data
+```
+
+So migration `0008` would add `(package_type, package_name, package_version, latest)`.
+
+### It fixes `last_checked` properly
+
+Under this split, the only thing that writes `last_checked` is the thing that
+actually asks deps.dev. The column finally means what its name says, rather than
+"when a row was last written by a process that happened to have enriched first".
+
+That requires extraction to stop stamping it — which means **parameterising the
+timestamp in `save_dependencies`**, exactly what the concurrent-session brief
+asked for and I argued against. I was right that it is wrong for the *current*
+design, where the stamp is deliberate and four tests specify it. It becomes right
+under *this* design. Worth recording, because the brief's instinct was about where
+this should go, not about what the code currently means.
+
+Those four tests (`test_last_checked_is_set`,
+`test_pnpm_transitive_skips_lookup_but_still_classifies`,
+`test_last_checked_updates_on_re_save`,
+`test_resolved_version_does_not_survive_an_unenriched_re_save`) encode the current
+meaning and would need revisiting deliberately, not deleting.
+
+May also resolve [#193](https://github.com/kospex/kospex/issues/193)
+(*resolved_version means different things depending on which tool wrote the row*),
+since one writer would own the column.
+
+### Costs and risks
+
+1. **Two commands and two schedules to operate**, not one. The main argument
+   against.
+2. **A newly extracted package has no advisory data until enrichment reaches it.**
+   Under repo-centric it is enriched in the same breath. Mitigated by enrichment
+   ordering NULLs first — a never-checked package is always at the queue head —
+   but the window is real and should be stated rather than hidden.
+3. **Migration `0008`** plus its write cost on `dependency_data`.
+4. **Four tests to revisit**, as above.
+5. The enrichment pass is only correct if `latest = 1` rows are an accurate
+   current set, which depends on the demote logic in `save_dependencies` (#217).
+
+### Recommendation
+
+**Package-centric is the better fit for a daily read requirement**, because it
+makes cost scale with the dependency surface rather than the repository count, and
+because it makes `last_checked` honest instead of incidental.
+
+But repo-centric `-next` is a smaller change and is sufficient while the estate is
+small — at 167 repositories a daily pass needs N=1 every 5 minutes, which is
+trivially affordable even with the duplicate parsing. The cost of being wrong is
+also asymmetric: `-next` is additive, whereas the split touches the write path and
+the meaning of an existing column.
+
+A reasonable path is to build `-next` first (it is needed either way for new and
+changed repositories), run it, and use the run-diagnostics table to measure whether
+duplicate parsing and cache-dependent dedup actually cost anything at the target
+scale — then split if the numbers say so, with data instead of this argument.
+
 ## Open questions
 
 1. **Should the outcome record be per-file as well as per-repo?** The repo-level
