@@ -32,20 +32,29 @@ UNCLASSIFIED = "unclassified"      # matched no registry entry -- investigate
 NOT_A_MANIFEST = "not_a_manifest"  # runtime pin, container, scan config, lockfile
 PARSE_ERROR = "parse_error"        # parser raised -- the one that is actually broken
 
-# Worst-first. A repository's roll-up takes the first of these present, so a
-# problem is never masked by a benign sibling file.
+# Priority for a repository's single headline outcome: **actionable first, then
+# success, then absence of data.**
 #
 # parse_error leads because it is the only outcome meaning something is broken.
-# unclassified outranks unsupported: "we cannot even name this file" is a bigger
-# gap than "we named it and have not written the parser". not_a_manifest and empty
-# are both benign, and extracted is the ordinary case.
-SEVERITY = (
+# unclassified outranks unsupported -- "we cannot even name this file" is a bigger
+# gap than "we named it and have not written the parser yet".
+#
+# extracted then sits ABOVE empty and not_a_manifest, which is the part that is
+# easy to get wrong. An earlier ordering had every non-success outcome outrank
+# extracted, on the reasoning "worst first so nothing is masked". A real run showed
+# why that is wrong: agronholm/anyio has one real manifest and one non-manifest
+# file, extracted 4 packages, and was reported `not_a_manifest` -- as though
+# nothing had been found. not_a_manifest and empty are benign *absences*, not
+# problems, so they must not outrank a successful extraction in the same
+# repository. A repo reports `empty` or `not_a_manifest` only when that is all
+# there was.
+OUTCOME_PRIORITY = (
     PARSE_ERROR,
     UNCLASSIFIED,
     UNSUPPORTED,
-    NOT_A_MANIFEST,
-    EMPTY,
     EXTRACTED,
+    EMPTY,
+    NOT_A_MANIFEST,
 )
 
 # Kinds that declare no library dependencies of their own. Tagged
@@ -83,15 +92,19 @@ def classify_outcome(filename, row_count=0, error=None):
     return EXTRACTED if row_count else EMPTY
 
 
-def worst_outcome(outcomes):
-    """One value summarising a repository, worst-first.
+def repo_outcome(outcomes):
+    """One headline value for a repository, by OUTCOME_PRIORITY.
 
     `outcomes` maps file_path -> outcome. An empty mapping rolls up to `empty`:
     a repository with no dependency files was examined and genuinely had nothing
     to find, which is the fact that stops it being retried forever.
+
+    Not "worst" -- a successful extraction outranks the benign absences, so a
+    repository that got data says so even when it also contains a Dockerfile. See
+    the note on OUTCOME_PRIORITY.
     """
     present = set(outcomes.values())
-    for outcome in SEVERITY:
+    for outcome in OUTCOME_PRIORITY:
         if outcome in present:
             return outcome
     return EMPTY

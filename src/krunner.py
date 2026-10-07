@@ -639,13 +639,79 @@ def dependencies(csv):
         KrunnerUtils.write_dict_to_csv(filename, results)
 
 
+def _run_osi_next(limit, request_id, write_csv):
+    """Run one batched osi pass. Always exits 0 unless something is genuinely wrong.
+
+    Separate from osi() because the exit contract differs. `osi -all` exits 1 on
+    "No results", which for a scheduled run would report a failure on every tick
+    once the estate is current. Here nothing due is success, and so is a tick that
+    finds another run already holding the lock.
+    """
+    from kospex.osi_next import run_next_batch
+
+    if limit < 1:
+        console.log("Error: -next needs a positive number of repositories")
+        sys.exit(1)
+
+    params = KospexWeb.get_id_params(request_id) if request_id else None
+
+    try:
+        result = run_next_batch(
+            kospex.kospex_db, limit, request_id=params,
+            write_csv=write_csv, kospex_query=kospex.kospex_query,
+            echo=console.print,
+        )
+    except ValueError as e:
+        # An unhonourable scope, e.g. an author email. Refused rather than
+        # silently widened to the whole estate (#158).
+        console.log(f"Error: {e}", style="red")
+        sys.exit(1)
+
+    if result.skipped:
+        return
+
+    if not result.repos:
+        console.log("Nothing to scan for this scope.")
+        return
+
+    console.log(
+        f"Scanned {len(result.repos)} repo(s), {result.packages} package(s) "
+        f"in {result.duration_ms}ms  [run {result.run_id}]"
+    )
+    _echo_staleness_bound(len(result.repos), request_id)
+
+
+def _echo_staleness_bound(batch_size, request_id):
+    """Print how long a full pass takes at this batch size.
+
+    A cadence that cannot keep up should be visible from the tool rather than
+    inferred from stale data. Deliberately expressed in ticks, not time, because
+    the interval lives in cron and kospex cannot see it.
+    """
+    params = KospexWeb.get_id_params(request_id) if request_id else {}
+    total = len(kospex.kospex_query.get_repos(**params))
+    if not total or not batch_size:
+        return
+    ticks = -(-total // batch_size)      # ceil, no float rounding
+    console.log(
+        f"Full pass over {total} repo(s) takes {ticks} run(s) at this batch size "
+        f"-- multiply by your interval for the worst-case staleness."
+    )
+
+
 @cli.command("osi")
 @click.option("-all", is_flag=True, default=False, help="Show all opensource packages")
+@click.option("-next", "next_", type=click.INT, default=None,
+              help="Scan the next N repositories least recently examined. "
+                   "Composes with a request_id. For scheduled runs.")
+@click.option("-csv", "write_csv", is_flag=True, default=False,
+              help="With -next: write one OSI-<repo_id>.csv per repo to the "
+                   "assessments directory. Off by default so a scheduled run "
+                   "cannot overwrite a full export.")
 # @click.option('-save', is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
-# @click.option('-csv', is_flag=True, default=False, help="Save to CSV file. (Default: False)")
 # @click.option('-verbose', is_flag=True, default=False, help="Verbose output. (Default: False)")
 @click.argument("request_id", required=False, type=click.STRING)
-def osi(all, request_id):
+def osi(all, next_, write_csv, request_id):
     """
     Run an opensource inventory process.
     Find all dependency files, extract their names and versions,
@@ -654,6 +720,22 @@ def osi(all, request_id):
     A request_id can be GIT_SERVER, GIT_SERVER~ORG, GIT_SERVER~ORG~REPO
 
     """
+
+    if next_ is not None and all:
+        console.log("Error: -next and -all are mutually exclusive")
+        console.log("-all scans everything now; -next scans a slice, for a schedule")
+        sys.exit(1)
+
+    if next_ is not None:
+        # Batched path: its own exit contract. Nothing due and a busy lock are
+        # both success, because a scheduler must not see a failure for either.
+        _run_osi_next(next_, request_id, write_csv)
+        return
+
+    if write_csv:
+        console.log("Error: -csv applies to -next only")
+        console.log("-all and a bare request_id already write their CSV exports")
+        sys.exit(1)
 
     if all and request_id:
         console.log("Error: -all and request_id are mutually exclusive")

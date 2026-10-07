@@ -22,7 +22,7 @@ from kospex.osi_outcomes import (
     UNCLASSIFIED,
     UNSUPPORTED,
     classify_outcome,
-    worst_outcome,
+    repo_outcome,
 )
 
 
@@ -88,25 +88,45 @@ def test_parse_error_wins_over_every_other_signal():
 
 # --- repo-level roll-up ------------------------------------------------------
 
-def test_the_worst_outcome_summarises_a_repo():
-    """One value per repo for reporting, worst-first, so problems surface."""
-    assert worst_outcome({"a": EXTRACTED, "b": EMPTY}) == EMPTY
-    assert worst_outcome({"a": EXTRACTED, "b": UNSUPPORTED}) == UNSUPPORTED
-    assert worst_outcome({"a": EMPTY, "b": PARSE_ERROR}) == PARSE_ERROR
-    assert worst_outcome({"a": UNSUPPORTED, "b": UNCLASSIFIED}) == UNCLASSIFIED
+def test_an_actionable_outcome_outranks_a_successful_one():
+    """A problem must surface rather than be masked by a sibling that worked."""
+    assert repo_outcome({"a": EXTRACTED, "b": UNSUPPORTED}) == UNSUPPORTED
+    assert repo_outcome({"a": EXTRACTED, "b": PARSE_ERROR}) == PARSE_ERROR
+    assert repo_outcome({"a": UNSUPPORTED, "b": UNCLASSIFIED}) == UNCLASSIFIED
 
 
-def test_parse_error_is_the_worst():
+def test_a_successful_extraction_outranks_a_benign_absence():
+    """Regression: a real run reported a repo that extracted 4 packages as
+    `not_a_manifest`, because it also contained one non-manifest file.
+
+    agronholm/anyio: one real manifest plus one non-manifest, 4 packages
+    extracted, headline outcome `not_a_manifest` -- as though nothing was found.
+    not_a_manifest and empty are benign *absences*, not problems, so they must not
+    outrank a successful extraction in the same repository.
+    """
+    assert repo_outcome({"a": EXTRACTED, "b": NOT_A_MANIFEST}) == EXTRACTED
+    assert repo_outcome({"a": EXTRACTED, "b": EMPTY}) == EXTRACTED
+    assert repo_outcome({"a": EXTRACTED, "b": EMPTY, "c": NOT_A_MANIFEST}) == EXTRACTED
+
+
+def test_a_benign_absence_is_reported_when_it_is_all_there_was():
+    """The flip side: nothing found must still say so."""
+    assert repo_outcome({"a": EMPTY}) == EMPTY
+    assert repo_outcome({"a": NOT_A_MANIFEST}) == NOT_A_MANIFEST
+    assert repo_outcome({"a": EMPTY, "b": NOT_A_MANIFEST}) == EMPTY
+
+
+def test_parse_error_outranks_everything():
     """It is the only outcome that means something is broken."""
     every = {str(i): o for i, o in enumerate(
         [EXTRACTED, EMPTY, NOT_A_MANIFEST, UNSUPPORTED, UNCLASSIFIED, PARSE_ERROR])}
-    assert worst_outcome(every) == PARSE_ERROR
+    assert repo_outcome(every) == PARSE_ERROR
 
 
 def test_a_repo_with_no_dependency_files_rolls_up_to_empty():
     """"Examined, found nothing" -- the record that stops it being retried."""
-    assert worst_outcome({}) == EMPTY
+    assert repo_outcome({}) == EMPTY
 
 
 def test_all_extracted_rolls_up_to_extracted():
-    assert worst_outcome({"a": EXTRACTED, "b": EXTRACTED}) == EXTRACTED
+    assert repo_outcome({"a": EXTRACTED, "b": EXTRACTED}) == EXTRACTED
