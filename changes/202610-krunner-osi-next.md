@@ -62,6 +62,18 @@ record of "this repository was examined, and here is what happened".
 
 ### Queue definition — two axes, not one
 
+> **Superseded by the daily-read requirement.** Dependencies must be read every
+> day, because `versions_behind` and `advisories` change with upstream activity
+> rather than with manifest edits. A daily full pass makes the change-driven axis
+> redundant as a *priority* — everything is scanned every day regardless — and with
+> only one axis left nothing can starve, so **`--max-age` is dropped**. The
+> implemented queue is plain oldest-first, never-examined first.
+>
+> The reasoning below is kept because it establishes *why* change-driven priority
+> alone would be wrong, which still matters: it would stop new-CVE detection on
+> stable code. The change signal survives only as a tiebreaker between repositories
+> examined at the same moment, which is marginal.
+
 Order `repos` by the extraction-outcome record rather than by `dependency_data`.
 But "least recently examined" alone is the wrong priority, and so is "recently
 modified" alone. The queue needs both, for different reasons:
@@ -311,7 +323,7 @@ the interval".
 
 ```
 krunner osi -next N [REQUEST_ID]
-krunner osi -next N --older-than DAYS
+krunner osi -next N --csv          # opt in to OSI-NEXT-{scope}.csv
 ```
 
 - `-next` is a third mode alongside `-all` and a bare `REQUEST_ID`. It **composes**
@@ -324,11 +336,25 @@ krunner osi -next N --older-than DAYS
 - **`sys.exit(1)` on empty results** (`krunner.py:742`) must not fire for `-next`.
   An empty batch means nothing is due, which is success. As it stands cron would
   report a failure every time the estate is fully current.
-- **CSV output must be suppressed.** `AssessmentTypes.generate_filename` produces
-  `OSI-{scope}.csv` with no timestamp (`krunner.py:756`), so every tick would
-  overwrite the file with just that batch's rows — strictly worse than not writing
-  it. The database is the store for batched runs. A per-batch filename is the
-  alternative, but 288 files a day at a 5-minute interval is not obviously better.
+- **CSV output is off by default, with an opt-in `--csv` flag.**
+  `AssessmentTypes.generate_filename` produces `OSI-{scope}.csv` with no timestamp
+  (`krunner.py:756`), so a scheduled `-next` would overwrite the estate-wide export
+  with one batch of five repos, 288 times a day — making the file actively
+  misleading rather than merely stale. The live dev install has a 1.08 MB
+  `OSI-all.csv` that this would destroy.
+
+  Nothing in kospex reads these files — `get_assessments_path` appears only in
+  write positions (`krunner.py:540`, `:764`, `:1124`), and the only `csv.DictReader`
+  in `src/` parses scc output. The `/osi/` and `/dependencies/` pages read
+  `dependency_data`. So they are exports for people and external tooling, and
+  suppressing them by default costs kospex nothing.
+
+  **`-next --csv` writes to a separate filename namespace: `OSI-NEXT-{scope}.csv`,
+  never `OSI-{scope}.csv`.** This is the load-bearing part. A batched run must not
+  be able to clobber a full run's export, however the operator invokes it. Within
+  that namespace the file is last-batch-only and overwritten each run, which is
+  honest for a flag someone passes deliberately on a manual run, and is why it is
+  not the default.
 
 ## Testing
 
