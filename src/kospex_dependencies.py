@@ -357,26 +357,35 @@ class KospexDependencies:
             declared_version = out.get("package_version", "")
             req_type = out.get("requirements_type") or "direct"
 
-            # A lockfile closure can carry thousands of transitive entries and
-            # each lookup is an HTTP round-trip, so only declared dependencies
-            # are enriched. go.mod indirect modules ARE enriched — that list runs
-            # to tens, and a transitive dependency with a known advisory is the
-            # most valuable row in the table (#178).
-            skip_lookup = (
-                extractor.name == "pnpm-lock" and req_type not in ("direct", "dev")
+            # Every entry is looked up, transitive included (#225).
+            #
+            # pnpm transitives used to be skipped, on the grounds that a lockfile
+            # closure can carry thousands of entries and each lookup is an HTTP
+            # round-trip. That lost the data that matters most: on one real
+            # repository it left 1991 of 2079 packages (96%) with no advisories
+            # and no versions_behind, concentrated in the layer where supply-chain
+            # compromise actually lands. Transitives are where malware hides
+            # precisely because nobody inspects them, and the same reasoning
+            # already applied to go.mod indirect modules, which were always
+            # enriched (#178).
+            #
+            # It was also an osi / sca divergence: krunner osi's enrichment has no
+            # skip, so the same manifest produced different advisory data
+            # depending on which tool read it.
+            #
+            # Cost is real and is handled where it belongs rather than by not
+            # looking: depsdev_record already short-circuits a version it cannot
+            # resolve, so a `workspace:*` entry still costs no round trip, and
+            # making the lookups themselves faster is #226.
+            lookup_version = self.clean_version_spec(
+                declared_version or "", package_type
             )
-
-            lookup_version = ""
-            if not skip_lookup:
-                lookup_version = self.clean_version_spec(
-                    declared_version or "", package_type
-                )
-                out.update(
-                    self.depsdev_record(package_type, out.get("package_name"), lookup_version)
-                )
-                # depsdev_record echoes back the version it was given; restore
-                # the declared text so the primary key matches the manifest.
-                out["package_version"] = declared_version
+            out.update(
+                self.depsdev_record(package_type, out.get("package_name"), lookup_version)
+            )
+            # depsdev_record echoes back the version it was given; restore
+            # the declared text so the primary key matches the manifest.
+            out["package_version"] = declared_version
 
             out["package_type"] = package_type
             out["package_use"] = self._REQ_TO_USE.get(req_type, KospexSchema.PACKAGE_USE_DIRECT)
@@ -390,7 +399,7 @@ class KospexDependencies:
             # What the advisory numbers actually refer to. For a range this is
             # the floor, so `advisories` describes the worst case the constraint
             # permits — unreadable without recording which version was queried.
-            out["resolved_version"] = "" if skip_lookup else lookup_version
+            out["resolved_version"] = lookup_version
 
             # Written on every save. NOT a column default: created_at is
             # DEFAULT CURRENT_TIMESTAMP and so never updates on an upsert.
