@@ -27,7 +27,7 @@ from kospex.osi_extract import extract_repo
 from kospex.osi_lock import LockBusy, OsiLock
 from kospex.osi_outcomes import repo_outcome
 from kospex.osi_queue import next_repos, record_outcome
-from kospex.osi_run_log import record_run
+from kospex.osi_run_log import record_repo_run
 
 log = KospexUtils.get_kospex_logger("krunner")
 
@@ -119,7 +119,8 @@ def run_next_batch(db, limit, request_id=None, write_csv=False, max_seconds=None
 
         for repo_id in queue:
             result.repos.append(
-                _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo))
+                _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo,
+                              run_id=result.run_id))
 
             # Checked after, never before: the first repository always runs, so a
             # budget can slow the schedule but can never stall it to zero
@@ -144,14 +145,6 @@ def run_next_batch(db, limit, request_id=None, write_csv=False, max_seconds=None
     result.duration_ms = int((time.monotonic() - started) * 1000)
     log.info("osi -next: run %s done, %s repos, %s packages, %sms",
              result.run_id, len(result.repos), result.packages, result.duration_ms)
-
-    # Diagnostics last, and never allowed to fail the run. The scan and its
-    # outcome records are the product; this table exists to answer questions
-    # about cost later, and losing a row of it must not cost a tick of work.
-    try:
-        record_run(db, result)
-    except Exception as e:                       # noqa: BLE001
-        log.warning("osi -next: could not record run diagnostics: %s", e)
 
     _warn_on_budget_overshoot(result, max_seconds, echo)
     return result
@@ -185,7 +178,7 @@ def _warn_on_budget_overshoot(result, max_seconds, echo):
              f"{slowest.repo_id} alone took {slowest.duration_ms / 1000:.0f}s")
 
 
-def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo):
+def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo, run_id=None):
     """One repository: extract, enrich, save, then record the outcome."""
     from krunner import enrich_dependency_records
 
@@ -197,7 +190,12 @@ def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo):
         # Enrich and save adjacently. save_dependencies() stamps last_checked and
         # never calls deps.dev, so anything between these two would let the
         # timestamp attest a check that did not happen.
-        enrich_dependency_records(rows, kdeps)
+        # progress goes to the log, not `echo`: a 1101-package repository would
+        # otherwise bury the per-repo summary lines in the terminal. The log is
+        # where someone looks when a run seems stuck (#224).
+        enrich_dependency_records(
+            rows, kdeps,
+            progress=lambda m: log.info("osi -next:   %s %s", repo_id, m))
         kdeps.save_dependencies(rows, source=SOURCE)
 
         if write_csv:
@@ -220,10 +218,26 @@ def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo):
     # increment it. packages minus lookups is the cache earning its keep.
     lookups = getattr(kospex_query, "url_fetches", 0) - fetches_before
 
-    return RepoResult(
+    repo_result = RepoResult(
         repo_id=repo_id, files=len(outcomes), packages=len(rows),
         duration_ms=duration_ms, outcome=outcome, lookups=lookups,
     )
+
+    # Written now, not at the end of the batch, so an interrupted run keeps the
+    # measurements it earned -- and so this stays consistent with the outcome
+    # record written just above, which was always per repository.
+    #
+    # Never allowed to fail the repository. The scan and its outcome are the
+    # product; this is bookkeeping, and losing a row of it must not cost work that
+    # has already been done.
+    if run_id:
+        try:
+            record_repo_run(db, run_id, repo_result)
+        except Exception as e:                   # noqa: BLE001
+            log.warning("osi -next: could not record diagnostics for %s: %s",
+                        repo_id, e)
+
+    return repo_result
 
 
 def _write_repo_csv(repo_id, rows, echo=None):

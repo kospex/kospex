@@ -109,7 +109,14 @@ _REQ_TO_USE = {
 }
 
 
-def enrich_dependency_records(results, kdeps, echo=None):
+# How often enrichment reports progress, in packages. Low enough that a slow
+# repository shows movement within a few seconds of real time at the ~0.33s per
+# lookup measured against deps.dev; high enough that 1101 packages produce ~22
+# lines rather than 1101.
+ENRICH_PROGRESS_EVERY = 50
+
+
+def enrich_dependency_records(results, kdeps, echo=None, progress=None):
     """Add deps.dev data and canonical DB values to pooled osi records.
 
     Extracted from `osi` so it is reachable without a synced database — the
@@ -119,8 +126,33 @@ def enrich_dependency_records(results, kdeps, echo=None):
     `clean_version_spec` is given the package_type: a leading `v` is decoration
     in npm and pypi but part of a Go module version, and deps.dev 404s on a Go
     version without it.
+
+    `progress` reports how far along the lookups are (#224). Each one is an HTTPS
+    round trip, ~0.33s measured, and nothing used to be logged for a *successful*
+    lookup -- only the unresolved branches of depsdev_record call log.info. So a
+    repository whose packages all resolve was completely silent for however long it
+    took, and one real run went 12+ minutes with no output, indistinguishable from
+    a hang until the process was stack-sampled.
+
+    The size of the work is reported BEFORE the first lookup, because that single
+    line is what makes the duration explicable. Progress then comes every
+    ENRICH_PROGRESS_EVERY packages rather than per package.
     """
-    for d in results:
+    def _say(message):
+        if not progress:
+            return
+        try:
+            progress(message)
+        except Exception as e:                   # noqa: BLE001
+            # Reporting is bookkeeping and must not cost the enrichment. A broken
+            # logging sink should not lose a repository's advisory data.
+            log.warning("could not report enrichment progress: %s", e)
+
+    total = len(results)
+    if total:
+        _say(f"enriching {total} package{'' if total == 1 else 's'} from deps.dev")
+
+    for position, d in enumerate(results, start=1):
         cleaned_version = kdeps.clean_version_spec(d["package_version"], d["package_type"])
         deps_rec = kdeps.depsdev_record(
             d["package_type"],
@@ -143,6 +175,11 @@ def enrich_dependency_records(results, kdeps, echo=None):
         else:
             d["published_at"] = "Unknown"
         d["package_use"] = _REQ_TO_USE.get(d.get("requirements_type", ""), "")
+
+        # Not on the final package: the caller's own per-repo line reports the
+        # total immediately afterwards, so a "312 of 312" here would just repeat it.
+        if position % ENRICH_PROGRESS_EVERY == 0 and position != total:
+            _say(f"  {position} of {total} packages")
 
     return results
 
@@ -706,20 +743,31 @@ def _run_osi_next(limit, request_id, write_csv, max_seconds=None):
     _echo_staleness_bound(len(result.repos), request_id)
 
 
+def _plural(n, word):
+    """`3 repos`, `1 repo`. Mechanical "(s)" reads badly on a number that is
+    unambiguously plural, which "167 repo(s) takes 34 run(s)" was."""
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
 def _echo_staleness_bound(batch_size, request_id):
-    """Print how long a full pass takes at this batch size.
+    """Print how many runs a full pass takes at the rate just achieved.
 
     A cadence that cannot keep up should be visible from the tool rather than
-    inferred from stale data. Deliberately expressed in ticks, not time, because
-    the interval lives in cron and kospex cannot see it.
+    inferred from stale data. Expressed in runs, not time, because the interval
+    lives in cron and kospex cannot see it.
+
+    `batch_size` is the number of repositories this run actually processed, not the
+    requested limit -- a run cut short by -max-seconds did less, and the honest
+    projection is from the rate achieved rather than the rate asked for.
     """
     params = KospexWeb.get_id_params(request_id) if request_id else {}
     total = len(kospex.kospex_query.get_repos(**params))
     if not total or not batch_size:
         return
-    ticks = -(-total // batch_size)      # ceil, no float rounding
+    runs = -(-total // batch_size)      # ceil, no float rounding
     console.log(
-        f"Full pass over {total} repo(s) takes {ticks} run(s) at this batch size "
+        f"At {_plural(batch_size, 'repo')} per run, a full pass over "
+        f"{_plural(total, 'repo')} takes {_plural(runs, 'run')} "
         f"-- multiply by your interval for the worst-case staleness."
     )
 
@@ -831,7 +879,9 @@ def osi(all, next_, write_csv, max_seconds, request_id):
             console.print(f"  {provider}: {outcome}")
 
     console.print(results)
-    enrich_dependency_records(results, kdeps, echo=console.print)
+    enrich_dependency_records(
+        results, kdeps, echo=console.print,
+        progress=lambda m: log.info("osi: %s", m))
 
     # Recorded before the no-results exit below, because "examined and found
     # nothing" is exactly the fact worth keeping -- an estate with no parseable
