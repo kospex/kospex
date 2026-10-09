@@ -107,10 +107,18 @@ class TestAssessPathPopulates:
         assert rec["last_checked"], "last_checked must be stamped on every save"
         assert rec["last_checked"].startswith("20")   # ISO-ish timestamp
 
-    def test_pnpm_transitive_skips_lookup_but_still_classifies(self):
-        """A pnpm-lock transitive entry never asks deps.dev (#178's skip_lookup
-        branch), so resolved_version must stay "" — but classification and the
-        last_checked stamp don't depend on the lookup having happened.
+    def test_pnpm_transitive_is_looked_up_and_classified(self):
+        """Reversed by #225: a pnpm transitive entry IS asked about now.
+
+        This test previously asserted the opposite -- that `resolved_version`
+        stayed "" because the lookup was skipped. That skip left 1991 of 2079
+        packages (96%) on a real repository with no advisory data, in the layer
+        where supply-chain compromise lands, and diverged from `krunner osi`,
+        which never skipped. Behaviour reversed deliberately, not deleted: see
+        tests/test_sca_enriches_transitives.py for the full case.
+
+        What has NOT changed is that classification and the last_checked stamp
+        come from the declared string and the save, not from the lookup.
         """
         from kospex.extractors.registry import classify
 
@@ -124,10 +132,11 @@ class TestAssessPathPopulates:
 
         rec = kd._enrich_dependency_records(records, extractor)[0]
 
-        assert rec["resolved_version"] == ""
+        assert rec["resolved_version"] == "4.17.21", (
+            "a transitive entry must record the version its advisory data refers to")
         assert rec["version_kind"] == "pinned"
         assert rec["version_operator"] == ""
-        assert rec["last_checked"], "last_checked must be stamped even when the lookup is skipped"
+        assert rec["last_checked"], "last_checked is stamped on every save"
 
 
 class TestOsiPathPopulates:

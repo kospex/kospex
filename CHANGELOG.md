@@ -164,6 +164,20 @@ was relying on the old, wrong success.
 
 ### Fixed
 
+- **`kospex sca` recorded no advisory data for pnpm transitive dependencies.** One
+  condition in `_enrich_dependency_records` skipped deps.dev entirely when a
+  `pnpm-lock.yaml` entry was neither `direct` nor `dev`. On a real repository that
+  left **1991 of 2079 packages (96%)** with no `advisories` and no
+  `versions_behind` — concentrated in the layer where supply-chain compromise
+  actually lands, since transitives are where malware hides precisely because
+  nobody inspects them. It was also an `osi`/`sca` divergence: `krunner osi` never
+  skipped, so the same manifest produced different advisory data depending on which
+  tool read it. The skip is removed; every entry is looked up, and transitives stay
+  labelled `transitive` so a consumer can still tell a declared dependency from one
+  pulled in beneath it. The cost that motivated the skip is handled where it
+  belongs rather than by not looking — `depsdev_record` already short-circuits a
+  version it cannot resolve, so a `workspace:*` entry still costs no round trip.
+
 - **Stale advisory counts survived an un-enriched re-save, under a fresh
   `last_checked`.** `save_dependencies()` never calls deps.dev, so it resets
   `resolved_version` to `""` for a caller that did not enrich — otherwise a
