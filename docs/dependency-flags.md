@@ -20,8 +20,8 @@ count — inherits the error silently.
 
 | question | npm | pnpm v6 | pnpm v9 | Maven | Cargo | Python | Go |
 |---|---|---|---|---|---|---|---|
-| reaches production? | `dev` / `devOptional` | `dev` | not in `packages:` | `<scope>` | section | group name | — |
-| may not install? | `optional` / `devOptional` | `optional` | `optionalDependencies` in `snapshots:` | — | `optional` + features | extra name | — |
+| reaches production? | `dev` / `devOptional` | `dev` | not recorded | `<scope>` | section | group name | — |
+| may not install? | `optional` / `devOptional` | `optional` | `optional` in `snapshots:` | — | `optional` + features | extra name | — |
 | executes at install? | `hasInstallScript` | `requiresBuild` | — | — | `[build-dependencies]` | — | — |
 | transitive? | path nesting | graph walk | `snapshots:` | transitive per scope | — | — | `// indirect` |
 
@@ -135,8 +135,40 @@ dependency path.
 
 So a parser handling only `packages:` gets rich install-state data from v6 and
 **nothing** from v9, silently. v9 is the current format, so that is the common case
-rather than the edge case. Anything equivalent in v9 has to come from `snapshots:`
-or from the package's own manifest.
+rather than the edge case.
+
+#### `snapshots:` does carry `optional`
+
+One of the three survives, in the other section. A `snapshots:` entry can hold an
+`optional` key alongside its dependency edges, and the observed key set across two
+v9 files is `dependencies`, `optionalDependencies`, `transitivePeerDependencies`
+and `optional`:
+
+```yaml
+snapshots:
+
+  '@esbuild/darwin-arm64@0.27.7':
+    optional: true
+```
+
+Snapshot keys use the same `name@version(peer@x)` form as `packages:` keys, so
+after stripping the peer suffix they line up 1:1 with the packages entries — 569 of
+569 and 306 of 306 in the two files measured. In file C, 208 packages are optional
+by this route, which a parser reading only `packages:` records as *not optional*.
+
+Two cautions for anyone implementing it:
+
+- **Match on the normalised key, not the raw one.** Peer suffixes mean a package
+  can appear in `snapshots:` under several keys while `packages:` has one entry.
+  Exact-key matching found 204 of the 208.
+- **A package is optional only if *every* path to it is optional.** Those multiple
+  variants can disagree — in file C, one package of 569 is optional on one peer
+  path and required on another. Since the question is "may this fail to install",
+  one required path settles it: it installs.
+
+`dev` and `requiresBuild` have no equivalent in v9 at all. Dev-ness is recoverable
+only by walking the graph from each importer's `devDependencies`, and pnpm tracks
+which packages were built outside the lockfile entirely.
 
 ### Workspace attribution requires a graph walk
 
