@@ -48,6 +48,13 @@ def _template():
         "versions_behind": "",
         "advisories": "",
         "published_at": "",
+        # Install state (#227). None means the format could not say -- which
+        # for pnpm depends on the lockfile version, not on pnpm. See
+        # _install_state_from_packages / _install_state_from_snapshot.
+        "is_dev": None,
+        "is_optional": None,
+        "runs_install_script": None,
+        "declared_scope": None,
     }
 
 
@@ -79,6 +86,112 @@ def _split_v5_key(key):
         return None, None
     version = version.split("_", 1)[0]
     return name, version
+
+
+
+#: ``packages:`` flag → the column it projects onto. The raw key name is kept
+#: in ``declared_scope`` because the mapping is lossy: pnpm's requiresBuild is
+#: "lifecycle scripts OR a native module that needs building", a strict
+#: superset of npm's hasInstallScript, which the shared column name hides.
+_PACKAGES_FLAGS = (
+    ("dev", "is_dev"),
+    ("optional", "is_optional"),
+    ("requiresBuild", "runs_install_script"),
+)
+
+#: Nothing was said, so claim nothing. Distinct from all-False, which claims
+#: the file was read and answered no.
+_UNKNOWN = {
+    "is_dev": None,
+    "is_optional": None,
+    "runs_install_script": None,
+    "declared_scope": None,
+}
+
+
+def _install_state_from_packages(meta):
+    """v5 / v6: all three flags live on the ``packages:`` entry.
+
+    These versions omit a key when it is false, so absence here IS a no --
+    the format answers for every entry. That is a v5/v6 property and not a
+    pnpm one: see _install_state_from_snapshot for what v9 can say.
+
+    ``declared_scope`` keeps the raw key names, sorted and comma-joined, so
+    the projection above stays auditable and ``dev,optional`` remains
+    distinguishable from npm's ``devOptional`` -- a third state rather than
+    the union of two (#229).
+    """
+    if not isinstance(meta, dict):
+        return dict(_UNKNOWN)
+
+    state, declared = {}, []
+    for raw, column in _PACKAGES_FLAGS:
+        value = bool(meta.get(raw, False))
+        state[column] = value
+        if value:
+            declared.append(raw)
+
+    state["declared_scope"] = ",".join(sorted(declared)) or None
+    return state
+
+
+def _install_state_from_snapshot(variants):
+    """v9: only ``optional`` is recorded, and it is in ``snapshots:``.
+
+    v9 moved the resolved graph out of ``packages:``, which now carries
+    resolution / engines / os / cpu / peerDependencies and nothing about
+    install state. The 9.0 spec documents no ``dev`` and no
+    ``requiresBuild`` anywhere, so both stay None: dev-ness is only
+    derivable by walking the graph from each importer's devDependencies,
+    which this parser does not do, and pnpm tracks built packages outside
+    the lockfile entirely.
+
+    Args:
+        variants: the ``optional`` values of every ``snapshots:`` key that
+            resolves to this name@version -- peer-dependency suffixes mean
+            one package can appear several times. Empty when no snapshot
+            mentions it at all.
+
+    A package counts as optional only if EVERY path to it is optional. One
+    required path means it installs, and ``is_optional`` says "may not
+    install", so ``any()`` would assert something false. On one real v9
+    lockfile the two rules differ by a single package of 569 -- the rule is
+    chosen for being right, not for the count.
+    """
+    if not variants:
+        return dict(_UNKNOWN)
+
+    optional = all(variants)
+    return {
+        "is_dev": None,
+        "is_optional": optional,
+        "runs_install_script": None,
+        # Qualified by section: a reader can tell this from a v6 packages:
+        # flag of the same name, which came with two companions.
+        "declared_scope": "snapshots:optional" if optional else None,
+    }
+
+
+def _snapshot_optionals(doc, splitter):
+    """Index ``snapshots:`` by (name, version) → list of ``optional`` values.
+
+    Snapshot keys carry the same ``(peer@x)`` suffixes as ``packages:`` keys
+    and are normalised with the same splitter, so several keys can collapse
+    onto one package. Matching on the raw key instead missed 5 of 209
+    optional packages on one real lockfile, the suffixed ones.
+    """
+    snapshots = doc.get("snapshots")
+    if not isinstance(snapshots, dict):
+        return {}
+
+    index = {}
+    for key, meta in snapshots.items():
+        name, version = splitter(key)
+        if not name or not version:
+            continue
+        value = bool(meta.get("optional")) if isinstance(meta, dict) else False
+        index.setdefault((name, version), []).append(value)
+    return index
 
 
 def _collect_direct_dev(doc):
@@ -151,14 +264,18 @@ def extract_pnpm_lock(path):
         logger.warning("Unknown pnpm lockfileVersion %r in %s", lv, path)
         return []
 
+    # Where install state lives is a per-version fact, not a pnpm fact.
+    from_snapshots = lv_major == "9"
+
     packages = doc.get("packages")
     if not isinstance(packages, dict):
         return []
 
     direct, dev = _collect_direct_dev(doc)
+    snapshot_optionals = _snapshot_optionals(doc, splitter) if from_snapshots else {}
 
     records = []
-    for key in packages:
+    for key, meta in packages.items():
         name, version = splitter(key)
         if not name or not version:
             continue
@@ -173,6 +290,11 @@ def extract_pnpm_lock(path):
         rec["package_version"] = version
         rec["ecosystem"] = "npm"
         rec["requirements_type"] = req_type
+        if from_snapshots:
+            rec.update(_install_state_from_snapshot(
+                snapshot_optionals.get((name, version), [])))
+        else:
+            rec.update(_install_state_from_packages(meta))
         records.append(rec)
 
     return records

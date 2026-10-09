@@ -56,6 +56,50 @@ was relying on the old, wrong success.
 
 ### Added
 
+- **Lockfile install state is recorded: `is_dev`, `is_optional`,
+  `runs_install_script` (migration `0009`).** Lockfiles state per entry whether a
+  dependency reaches production, whether it installs at all, and whether it
+  **executes code at install time**. kospex read the name and version and discarded
+  the rest. `requirements_type` cannot carry these — its `dev` value means
+  "declared as a devDependency", and a transitive entry has no declaration of its
+  own, so on one real repository 870 dev-only transitive packages were recorded
+  identically to the 1169 production ones. `runs_install_script` is the notable
+  one: it answers "which of these executes during install", which is what
+  distinguishes a compromised package that ran from one merely present in a tree.
+
+  **NULL means unknown, not false.** A manifest declares intent, not install state
+  — `requirements.txt` cannot say whether a package runs an install script — and
+  `lockfileVersion: 1` `package-lock.json` files record no flags at all. Claiming
+  `false` there would assert something the file does not say. Same distinction
+  `resolution` draws for the resolve layer and `last_checked` for staleness.
+
+  Populated by the pnpm extractor today; named format-neutrally so the parsers in
+  #229 land in the same columns rather than inventing their own.
+
+  **`declared_scope` holds the raw string the file used**, verbatim, in that
+  format's own vocabulary — `dev`, `optional,requiresBuild`,
+  `snapshots:optional`, and later Maven's `provided` or a Python extra's name.
+  The booleans are a projection of it. The column exists because every mapping
+  error in building them happened at write time, where it is unrecoverable:
+  pnpm's `requiresBuild` is not npm's `hasInstallScript` (it additionally covers
+  native modules with no scripts), and an absent key means false in pnpm v6 but
+  unknown in v9. With the declared string stored, a mapping that turns out wrong
+  is a query to correct rather than a re-parse of every lockfile in an estate.
+  `docs/dependency-flags.md` is the column's reference page, carrying each
+  format's own definition, quoted and linked.
+
+  **Install state is read per lockfile version, because where it lives is a
+  version fact, not a pnpm fact.** v5/v6 put all three flags in `packages:` and
+  omit a key when false, so absence there is a genuine no. v9 moved the resolved
+  graph to a separate `snapshots:` section and records none of them in
+  `packages:` — so v9 reads `optional` from `snapshots:` and leaves `is_dev` and
+  `runs_install_script` NULL, dev-ness being derivable only by walking the graph
+  from each importer's `devDependencies` and built packages not being tracked in
+  the lockfile at all. A package counts as optional only if **every** resolution
+  path to it is optional: peer-dependency suffixes put one `name@version` in
+  `snapshots:` several times and the variants can disagree, and one required path
+  means it installs.
+
 - **`krunner osi -next N` — batched, cron-friendly dependency scanning.** `osi -all`
   is a single sweep that takes hours on a large estate, so it cannot run from a
   scheduler and is all-or-nothing when it fails. `-next N` processes the N

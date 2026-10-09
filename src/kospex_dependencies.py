@@ -796,6 +796,14 @@ class KospexDependencies:
         p_template["versions_behind"] = ""
         p_template["advisories"] = ""
         p_template["published_at"] = ""
+        # Install state (#227). None, not "", because NULL means the lockfile
+        # format could not answer -- `lockfileVersion: 1` package-lock.json
+        # records no flags at all. An empty string would land in an INTEGER
+        # column as a third thing meaning neither true, false, nor unknown.
+        p_template["is_dev"] = None
+        p_template["is_optional"] = None
+        p_template["runs_install_script"] = None
+        p_template["declared_scope"] = None
 
         return p_template
 

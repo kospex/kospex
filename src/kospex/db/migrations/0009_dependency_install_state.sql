@@ -1,0 +1,78 @@
+-- 0009_dependency_install_state.sql
+--
+-- Whether a dependency reaches production, whether it installs at all, and
+-- whether it executes code at install time.
+--
+-- Lockfiles record all three per entry. kospex read the name and version and
+-- discarded the rest (#227).
+--
+-- requirements_type cannot carry these. Its `dev` value means "declared as a
+-- devDependency", and a transitive entry has no declaration of its own -- so on
+-- one real repository 814 dev-only transitive packages were recorded identically
+-- to production transitives. The lockfile knew. kospex did not keep it.
+--
+-- is_dev              not in the production closure
+-- is_optional         may not install: platform, architecture or opt-in
+-- runs_install_script executes code during install
+--
+-- NULL means UNKNOWN, not false. This is the load-bearing part of the column
+-- semantics, and the first cut of this migration got it wrong. `lockfileVersion:
+-- 1` package-lock.json files carry no flags at all -- one in the dev estate has
+-- 493 entries and none of these fields -- and pnpm lockfileVersion 9 carries
+-- neither dev nor requiresBuild anywhere, having moved the resolved graph into a
+-- separate snapshots: section. A parser reading either genuinely cannot
+-- answer. Writing 0 there would assert that nothing in that tree runs an
+-- install script, which is not something the file says. "We did not look"
+-- and "we looked and it is not" are different facts.
+--
+-- The same distinction is already drawn twice in this schema: `resolution` for
+-- the resolve layer, and `last_checked` in 0006, whose comment says a staleness
+-- indicator "must render NULL as never checked, not checked long ago".
+--
+-- Stored as INTEGER rather than a CHECK-constrained text, matching `latest` and
+-- the other booleans in this table. SQLite has no boolean type, and three-valued
+-- logic needs NULL to remain available.
+--
+-- runs_install_script is the column to notice. It is what says a compromised
+-- package actually executed, as opposed to merely being present in a tree, and
+-- is worth populating before a malware feed is integrated rather than after --
+-- retrofitting means re-parsing every lockfile in an estate instead of reading a
+-- populated column.
+--
+-- declared_scope holds the RAW string the file used, verbatim, in that format's
+-- own vocabulary. The three booleans are a projection of it.
+--
+-- This column exists because every error in building the booleans happened at
+-- write time, where it is unrecoverable. pnpm's requiresBuild was read as
+-- equivalent to npm's hasInstallScript -- it is not, it additionally covers
+-- native modules with no scripts at all. An absent key was read as false -- true
+-- of pnpm v6, which omits the key when false, and wrong for v9, which does not
+-- carry the field. With the declared string stored, a mapping that turns out
+-- wrong is a query to correct rather than a re-parse of every lockfile.
+--
+-- The vocabulary is deliberately NOT normalised, so no mapping decision is baked
+-- in at write time:
+--
+--   pnpm v6     dev / optional / requiresBuild, sorted and comma-joined
+--   pnpm v9     snapshots:optional  (qualified, because v9 records it in a
+--               different section and only this one of the three)
+--   npm         dev / optional / devOptional / hasInstallScript  (#229) --
+--               devOptional is a THIRD state, not the union of two, so
+--               `dev,optional` and `devOptional` must stay distinguishable
+--   Maven       test / provided / runtime / compile / system / import (#229)
+--   Cargo       dev-dependencies / build-dependencies (#229)
+--   Python      the extra or group NAME, which is the information (#229)
+--
+-- Cross-ecosystem queries use the booleans. declared_scope is the evidence
+-- behind them. Same split as 0006's version_operator beside version_kind.
+-- docs/dependency-flags.md is this column's reference page -- it carries each
+-- format's own definition, quoted and linked.
+--
+-- Populated by the pnpm extractor only for now. NULL elsewhere means no parser
+-- has read that format yet (#229), which is the same "we did not look" the
+-- booleans mean.
+
+ALTER TABLE dependency_data ADD COLUMN is_dev INTEGER;
+ALTER TABLE dependency_data ADD COLUMN is_optional INTEGER;
+ALTER TABLE dependency_data ADD COLUMN runs_install_script INTEGER;
+ALTER TABLE dependency_data ADD COLUMN declared_scope TEXT;
