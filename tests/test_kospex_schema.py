@@ -79,9 +79,10 @@ def test_fresh_db_records_migrations_as_applied(tmp_path, monkeypatch):
         "0006_dependency_version_constraint",
         "0007_file_metadata_repo_index",
         "0008_osi_runs",
+        "0009_dependency_install_state",
     ]
     assert KospexSchema.LAST_BOOTSTRAP["created"] is True
-    assert KospexSchema.LAST_BOOTSTRAP["migrations_applied"] == 6
+    assert KospexSchema.LAST_BOOTSTRAP["migrations_applied"] == 7
     assert KospexSchema.LAST_BOOTSTRAP["migration_error"] is None
 
 

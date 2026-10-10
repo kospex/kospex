@@ -93,6 +93,15 @@ def extract_dependency_file(extractor, full_path, repo_id, provider, file_hash, 
         req.setdefault("requirements_type", "direct")
         req.setdefault("extras", "")
         req.setdefault("ecosystem", extractor.package_type)
+        # Install state (#227). setdefault, so a lockfile parser that CAN answer
+        # keeps its real values while a manifest parser that cannot gets None ->
+        # NULL. A manifest declares intent, not install state: requirements.txt
+        # cannot say whether a package runs an install script, and claiming False
+        # would assert something the file does not say.
+        req.setdefault("is_dev", None)
+        req.setdefault("is_optional", None)
+        req.setdefault("runs_install_script", None)
+        req.setdefault("declared_scope", None)
 
     return reqs
 

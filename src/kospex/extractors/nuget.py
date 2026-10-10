@@ -45,6 +45,15 @@ def _template():
         "versions_behind": "",
         "advisories": "",
         "published_at": "",
+        # Install state (#227). None means this format cannot say: neither
+        # go.mod nor a .csproj records dev/optional/install-script state the way
+        # a lockfile does, and NULL is how "we did not look" is distinguished
+        # from "we looked and it is not". Present so every extractor emits the
+        # same keys -- write_dict_to_csv takes its header from row 0 alone.
+        "is_dev": None,
+        "is_optional": None,
+        "runs_install_script": None,
+        "declared_scope": None,
     }
 
 
