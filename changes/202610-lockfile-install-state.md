@@ -132,10 +132,24 @@ The load-bearing part of the column semantics.
 | **NULL** | **the format cannot say** |
 
 `requirements.txt` cannot state whether a package runs an install script. A
-`lockfileVersion: 1` `package-lock.json` records no flags — one in the dev estate
-has 493 entries and none of these fields. `go.mod` has no dev concept. Writing
-`false` there asserts something the file does not say, and a reader then cannot
-tell "we checked and it does not" from "we never knew".
+`lockfileVersion: 1` `package-lock.json` records no `hasInstallScript`. `go.mod`
+has no dev concept. Writing `false` there asserts something the file does not say,
+and a reader then cannot tell "we checked and it does not" from "we never knew".
+
+> **Correction, 2026-10-11.** This document and migration `0009`'s own SQL comment
+> both originally said a `lockfileVersion: 1` `package-lock.json` "records no flags
+> at all", citing a 493-entry file. Both halves were wrong. Enumerating every key
+> in both v1 files on disk: v1 **does** record `dev` (673 of 673 entries in one
+> file) and `optional` (93), and no v1 file has 493 entries. What v1 actually lacks
+> is `hasInstallScript`, `devOptional`, `inBundle`, `peer` and all the metadata
+> fields. The practical effect is on #229's parser: its v1 branch can populate
+> `is_dev` and `is_optional`, and only `runs_install_script` must be NULL.
+>
+> **`0009`'s comment is left as written.** `Migration.checksum()` hashes the raw
+> file bytes, comments included, so editing it would make `verify_checksums()`
+> report `checksum_mismatch` on every database that has already applied it. The
+> comment cites `docs/dependency-flags.md` as the column's reference page, and that
+> page is corrected — so a reader following the citation gets the right answer.
 
 The same distinction is already drawn twice in this schema: `resolution` for the
 resolve layer, and `last_checked` in `0006`, whose comment insists a staleness

@@ -20,9 +20,9 @@ count — inherits the error silently.
 
 | question | npm | pnpm v6 | pnpm v9 | Maven | Cargo | Python | Go |
 |---|---|---|---|---|---|---|---|
-| reaches production? | `dev` / `devOptional` | `dev` | not recorded | `<scope>` | section | group name | — |
+| reaches production? | `dev` / `devOptional` (v1: `dev`) | `dev` | not recorded | `<scope>` | section | group name | — |
 | may not install? | `optional` / `devOptional` | `optional` | `optional` in `snapshots:` | — | `optional` + features | extra name | — |
-| executes at install? | `hasInstallScript` | `requiresBuild` | — | — | `[build-dependencies]` | — | — |
+| executes at install? | `hasInstallScript` (not in v1) | `requiresBuild` | — | — | `[build-dependencies]` | — | — |
 | transitive? | path nesting | graph walk | `snapshots:` | transitive per scope | — | — | `// indirect` |
 
 Blanks are genuinely absent, not merely unparsed. Where a format cannot answer,
@@ -73,11 +73,69 @@ Keys are paths — `node_modules/a/node_modules/b` — so nesting, and therefore
 package pulled a dependency in, is readable directly. 259 of 1285 entries in one
 real file are nested.
 
-### lockfileVersion 1 records none of this
+### lockfileVersion 1 records two of the five flags
 
-v1 has no `packages:` section, only a nested `dependencies` tree and no flags at
-all. One file in a real estate has 493 entries and cannot answer any question on
-this page. A parser reading v1 must record *unknown*, not *false*.
+**Corrected 2026-10-11.** This section previously claimed v1 "has no flags at all"
+and cited a 493-entry file that does not exist. Both were wrong, and the error
+mattered: it would have sent a v1 parser to NULL for fields the file answers.
+Re-measured by enumerating every key in both v1 files on disk.
+
+v1 has no `packages:` section — only a nested `dependencies` tree, where each
+entry's own transitive dependencies are the `dependencies` map inside it. Entry
+keys across the two v1 files:
+
+```
+lodash            v1  673 entries   version 673 · resolved 673 · integrity 673
+                                    dev 673 · requires 312 · optional 93
+Dist-DataTables   v1    2 entries   version 2 · resolved 2 · integrity 2 · dev 2
+```
+
+So v1 **does** record `dev` and `optional`. What it lacks is `devOptional`,
+`hasInstallScript`, `inBundle`, `peer` — and `license`, `engines`, `os`/`cpu` and
+every other metadata field v2/v3 carry.
+
+**Consequence for a parser:** v1 can answer "does this reach production" and "may
+this fail to install", and must record *unknown* — not *false* — for whether a
+package runs an install script. Note also that v1 cannot distinguish the
+`devOptional` case at all, so a package that is both dev and optional is
+indistinguishable from one that is merely dev.
+
+### What else each entry carries
+
+The flags above are a small part of the file. Measured across all 31
+`package-lock.json` files on disk (14,264 `packages:` entries), by key:
+
+| key | entries | example |
+|---|---|---|
+| `version` | 14221 | `"1.1.1"` |
+| `resolved` | 12732 | registry tarball URL |
+| `integrity` | 12719 | `sha512-…` |
+| `license` | 11507 | `"MIT"` |
+| `engines` | 8285 | `{"node": ">=0.4.2"}` |
+| `dependencies` | 7434 | the resolved edge list for that entry |
+| `dev` | 7414 | `true` |
+| `funding` | 4012 | |
+| `peerDependencies` | 1155 | |
+| `optional` | 1092 | `true` |
+| `os` / `cpu` / `libc` | 908 / 905 / 113 | `["darwin"]` / `["arm64"]` / `["glibc"]` |
+| `bin` | 778 | `{"cake": "bin/cake"}` |
+| `peer` | 271 | |
+| `optionalDependencies` | 180 | |
+| `inBundle` | 143 | |
+| `devOptional` | 71 | |
+| `deprecated` | 68 | npm's own deprecation text |
+| `hasInstallScript` | 46 | |
+| `link` | 13 | workspace link |
+
+Two of these are worth more than the install-state flags this page was written
+for. `license` is present on 81% of entries, and `deprecated` carries npm's own
+notice as text. `dependencies` is the resolved graph per entry, which is what
+makes attribution free (above).
+
+Structurally: **v3** has only `packages:`; **v2** carries both `packages:` and the
+v1-style `dependencies:` tree for backwards compatibility — one file here has 819
+and 638 — so a v2 parser should read `packages:` and ignore the duplicate; **v1**
+has only `dependencies:`.
 
 ---
 
