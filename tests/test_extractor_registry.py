@@ -30,6 +30,7 @@ CASES = [
     ("uv.lock", Kind.PACKAGE, False),
     ("package-lock.json", Kind.PACKAGE, False),
     ("build.gradle", Kind.PACKAGE, False),
+    ("pom.xml", Kind.PACKAGE, False),
     (".python-version", Kind.RUNTIME, False),
     (".nvmrc", Kind.RUNTIME, False),
     ("Dockerfile", Kind.CONTAINER, False),
