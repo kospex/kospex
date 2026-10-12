@@ -136,6 +136,7 @@ REGISTRY: tuple[Extractor, ...] = (
     Extractor("uv-lock", Kind.PACKAGE, _matcher(r"uv\.lock"), (), "pypi", None),
     Extractor("npm-lock", Kind.PACKAGE, _matcher(r"package-lock\.json"), (), "npm", None),
     Extractor("gradle-build", Kind.PACKAGE, _matcher(r"build\.gradle(\.kts)?"), (), "maven", None),
+    Extractor("maven-pom", Kind.PACKAGE, _matcher(r"pom\.xml"), (), "maven", None),
     # --- runtime ---
     Extractor("python-version", Kind.RUNTIME, _matcher(r"\.python-version"), (), None, None),
     Extractor("nvmrc", Kind.RUNTIME, _matcher(r"\.nvmrc"), (), None, None),
