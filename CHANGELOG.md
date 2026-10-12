@@ -281,6 +281,14 @@ was relying on the old, wrong success.
   the supply-chain search form — are deliberately left alone, since re-raising
   there would turn a handled error into a propagated one.
 
+- **`pom.xml` was reported as `unclassified` rather than `unsupported`
+  ([#221](https://github.com/kospex/kospex/issues/221)).** It had no extractor
+  registry entry, so a Maven manifest looked like a file kospex had never heard
+  of instead of one it recognises but cannot yet read. It is now registered as
+  a `maven` package manifest with no parser, alongside `build.gradle`. Nothing
+  is extracted from it yet — this only moves it into the parser backlog that
+  `unsupported` is meant to count.
+
 ## 0.1.0 - 2026-09-11
 
 ### Upgrade notes
