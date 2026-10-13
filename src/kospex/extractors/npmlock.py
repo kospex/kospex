@@ -497,8 +497,25 @@ def _extract_from_dependencies_tree(dependencies):
             claims = {"name": alias_name if alias_name != name else None,
                       "version": alias_version,
                       "resolved": meta.get("resolved")}
-            for identity in _identities(name, claims):
-                for version in _entry_versions(claims):
+            identities = _identities(name, claims)
+            versions = _entry_versions(claims)
+
+            # Both package_name and package_version are part of the
+            # dependency_data primary key, so an entry missing either cannot be
+            # written. Say so: the v2/v3 path reports this, and dropping the
+            # same malformed entry silently here made it visible in one npm
+            # format and invisible in the other.
+            if not identities:
+                logger.warning(
+                    "v1 entry %r asserts no usable package name; it cannot be "
+                    "recorded", name)
+            elif not versions:
+                logger.warning(
+                    "v1 entry %r has no version and none could be recovered "
+                    "from its resolved URL; it cannot be recorded", name)
+
+            for identity in identities:
+                for version in versions:
                     found.append((identity, version, meta, name))
             # Nested transitives live inside their parent's own dependencies
             # map. Walked even when the parent was skipped.

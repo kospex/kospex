@@ -522,6 +522,68 @@ class TestAnUnusualPathCannotHideADependency:
         assert [r["package_name"] for r in records] == ["lodash"]
 
 
+class TestTheV1PathReportsWhatItDrops:
+    """v2/v3 logs an entry it cannot record; the v1 walk did not.
+
+    An entry with no usable name, or no version anywhere, cannot be written --
+    both columns are part of the dependency_data primary key, so there is
+    nothing to key the row on. That much is unavoidable. Dropping it *silently*
+    is not: the v2/v3 path warns and the v1 path did not, so the same malformed
+    entry was reported in one format and invisible in the other.
+
+    Measured: the name check accepts all 14,927 real package names in the
+    reference estate, so this affects malformed input only.
+    """
+
+    def test_an_unusable_v1_key_is_logged(self, tmp_path, caplog):
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {
+                "evil pkg": {"version": "1.2.3"},
+                "another-pkg": {"version": "2.0.0"},
+            },
+        }
+        with caplog.at_level("WARNING"):
+            records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["another-pkg"]
+        assert "evil pkg" in caplog.text
+
+    def test_a_v1_entry_with_no_version_is_logged(self, tmp_path, caplog):
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {
+                "evil-pkg": {"integrity": "sha512-xxx"},
+                "another-pkg": {"version": "2.0.0"},
+            },
+        }
+        with caplog.at_level("WARNING"):
+            records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["another-pkg"]
+        assert "evil-pkg" in caplog.text
+
+    def test_an_unusable_key_with_a_url_is_still_recorded(self, tmp_path):
+        # The URL supplies an identity, so there is something to key on and the
+        # entry is not dropped at all.
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {
+                "evil pkg": {
+                    "version": "1.2.3",
+                    "resolved": "https://registry.npmjs.org/evil-pkg/-/"
+                                "evil-pkg-1.2.3.tgz"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["evil-pkg"]
+
+    def test_a_normal_v1_entry_logs_nothing(self, tmp_path, caplog):
+        doc = {"lockfileVersion": 1,
+               "dependencies": {"lodash": {"version": "4.17.21"}}}
+        with caplog.at_level("WARNING"):
+            extract_package_lock(_write(tmp_path, doc))
+        assert caplog.text == ""
+
+
 class TestAPrivateRegistryIsStillAFetch:
     """The unusual-path gate asked the wrong question.
 
