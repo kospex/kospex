@@ -209,9 +209,21 @@ genuinely installed and may genuinely be vulnerable. A clean result and an
 unanswerable one become indistinguishable, which is the failure this whole page
 exists to prevent.
 
-kospex prefers the entry's `name` and falls back to the path only when the field
-is absent or unusable. The alias is still matched when deciding `direct` / `dev`,
-because a project declares an aliased dependency *by its alias*.
+kospex uses the entry's `name`, but **only when `resolved` corroborates it**. A
+lockfile is untrusted input, and `name` on its own is a claim: a file can install
+`evil-pkg` at `node_modules/evil-pkg` while claiming `name: "lodash"`, and a
+parser that trusts the field reports a clean, well-known package. The entry also
+carries `resolved`, the tarball URL npm fetched, whose path encodes a package
+name — and on all 30 genuine aliases the two agree, 30 of 30 with no
+disagreements. An uncorroborated or implausible name falls back to the install
+path, which is what npm actually created on disk.
+
+That removes the single-field claim; it does not make a lockfile honest. A file
+that lies consistently in both fields is beyond a parser, and the `integrity`
+hash is the only thing that would settle it.
+
+The alias is still matched when deciding `direct` / `dev`, because a project
+declares an aliased dependency *by its alias*.
 
 v1 has no `name` field and encodes the same thing in the version:
 `{"foo": {"version": "npm:left-pad@1.2.3"}}`. Stored verbatim that is a package

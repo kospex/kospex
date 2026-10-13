@@ -503,7 +503,23 @@ class KospexDependencies:
         print(f"Found {extractor.name} package file: {basefile}")
 
         parser = resolve_parser(extractor, {"KospexDependencies": self})
-        results = self._enrich_dependency_records(parser(filename), extractor)
+        try:
+            parsed = parser(filename)
+        except Exception as e:                      # noqa: BLE001 -- see below
+            # Deliberately broad, and deliberately not silent. A parser may
+            # raise rather than return [] when a file is unreadable, precisely
+            # so an unread file is not reported as one with nothing in it --
+            # see kospex.extractors.npmlock.UnreadableLockfile. The osi path
+            # already does this (osi_extract records a `parse_error` outcome);
+            # without it here, the same file crashes `kospex sca` instead.
+            #
+            # Every other parser returns [] today, so this is inert for them.
+            log.warning("Could not parse %s: %s: %s",
+                        filename, type(e).__name__, e)
+            print(f"Error: could not parse {basefile}: {e}")
+            return None
+
+        results = self._enrich_dependency_records(parsed, extractor)
 
         # dev_deps controls DISPLAY only. Extraction is always complete: a
         # partial result is what made `sca -dev` inert (#181), made the two scan

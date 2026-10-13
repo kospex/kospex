@@ -13,6 +13,7 @@ import os
 import pytest
 
 from kospex.extractors.npmlock import (
+    UnreadableLockfile,
     extract_package_lock,
     _package_name_from_key,
     _template,
@@ -117,6 +118,8 @@ class TestAliasedDependencies:
                 "node_modules/string-width-cjs": {
                     "name": "string-width",
                     "version": "4.2.3",
+                    "resolved": "https://registry.npmjs.org/string-width/-/"
+                                "string-width-4.2.3.tgz",
                 },
             },
         }
@@ -131,6 +134,8 @@ class TestAliasedDependencies:
                 "node_modules/react-loadable": {
                     "name": "@docusaurus/react-loadable",
                     "version": "6.0.0",
+                    "resolved": "https://registry.npmjs.org/@docusaurus/"
+                                "react-loadable/-/react-loadable-6.0.0.tgz",
                 },
             },
         }
@@ -172,7 +177,9 @@ class TestAliasedDependencies:
             "packages": {
                 "": {"name": "root", "version": "1.0.0"},
                 "node_modules/string-width-cjs": {
-                    "name": "string-width", "version": "4.2.3", "dev": True},
+                    "name": "string-width", "version": "4.2.3", "dev": True,
+                    "resolved": "https://registry.npmjs.org/string-width/-/"
+                                "string-width-4.2.3.tgz"},
                 "node_modules/wrap-ansi-cjs/node_modules/string-width": {
                     "version": "4.2.3"},
             },
@@ -188,7 +195,9 @@ class TestAliasedDependencies:
             "packages": {
                 "": {"name": "root", "version": "1.0.0"},
                 "node_modules/string-width-cjs": {
-                    "name": "string-width", "version": "4.2.3"},
+                    "name": "string-width", "version": "4.2.3",
+                    "resolved": "https://registry.npmjs.org/string-width/-/"
+                                "string-width-4.2.3.tgz"},
                 "node_modules/string-width": {"version": "5.1.2"},
             },
         }
@@ -244,7 +253,9 @@ class TestAliasedDependencies:
                 "": {"name": "root", "version": "1.0.0",
                      "dependencies": {"string-width-cjs": "npm:string-width@^4.2.3"}},
                 "node_modules/string-width-cjs": {
-                    "name": "string-width", "version": "4.2.3"},
+                    "name": "string-width", "version": "4.2.3",
+                    "resolved": "https://registry.npmjs.org/string-width/-/"
+                                "string-width-4.2.3.tgz"},
             },
         }
         records = extract_package_lock(_write(tmp_path, doc))
@@ -258,15 +269,20 @@ class TestAliasedDependencies:
                 "": {"name": "root", "version": "1.0.0",
                      "devDependencies": {"sw-cjs": "npm:string-width@^4.2.3"}},
                 "node_modules/sw-cjs": {
-                    "name": "string-width", "version": "4.2.3"},
+                    "name": "string-width", "version": "4.2.3",
+                    "resolved": "https://registry.npmjs.org/string-width/-/"
+                                "string-width-4.2.3.tgz"},
             },
         }
         records = extract_package_lock(_write(tmp_path, doc))
         assert records[0]["requirements_type"] == "dev"
 
-    def test_v1_a_malformed_npm_alias_is_dropped_not_stored_raw(self, tmp_path):
-        # "npm:" with nothing parseable after it names no package. Storing the
-        # raw string would put a non-version in a primary-key column.
+    def test_v1_a_malformed_npm_alias_is_still_reported(self, tmp_path):
+        # "npm:" with nothing parseable after it names no package kospex can
+        # look up. It is recorded anyway, under the name the file declares:
+        # dropping it let `version: "npm:anything"` hide a dependency, and an
+        # un-enrichable row is still visible to a reader.
+        # See TestNothingIsHiddenByAFlag for the evasion this prevents.
         doc = {
             "lockfileVersion": 1,
             "dependencies": {
@@ -276,7 +292,232 @@ class TestAliasedDependencies:
             },
         }
         records = extract_package_lock(_write(tmp_path, doc))
+        assert sorted(r["package_name"] for r in records) == [
+            "alsobroken", "broken", "lodash",
+        ]
+
+
+class TestTheNameFieldIsNotTrusted:
+    """`name` is attacker-controlled, and the previous commit made it
+    authoritative on a type check alone.
+
+    That closed one evasion and opened its mirror image: a lockfile can install
+    `evil-pkg` at `node_modules/evil-pkg` while claiming `name: "lodash"`, and
+    kospex would report a clean, well-known package.
+
+    The entry also carries `resolved`, the tarball URL npm fetched, whose path
+    encodes a package name. Measured: on all 30 genuine aliases in the reference
+    estate the two agree — 30 of 30, zero disagreements — so corroboration
+    accepts every real alias while rejecting an uncorroborated claim.
+    """
+
+    def _doc(self, meta):
+        return {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/evil-pkg": dict(meta, version="1.2.3"),
+            },
+        }
+
+    def test_a_name_corroborated_by_the_tarball_url_is_used(self, tmp_path):
+        rec = extract_package_lock(_write(tmp_path, self._doc({
+            "name": "string-width",
+            "resolved":
+                "https://registry.npmjs.org/string-width/-/string-width-1.2.3.tgz",
+        })))[0]
+        assert rec["package_name"] == "string-width"
+
+    def test_a_scoped_name_corroborated_by_the_url_is_used(self, tmp_path):
+        rec = extract_package_lock(_write(tmp_path, self._doc({
+            "name": "@docusaurus/react-loadable",
+            "resolved": "https://registry.npmjs.org/@docusaurus/react-loadable/-/"
+                        "react-loadable-1.2.3.tgz",
+        })))[0]
+        assert rec["package_name"] == "@docusaurus/react-loadable"
+
+    def test_a_name_the_url_contradicts_is_refused(self, tmp_path):
+        # The impersonation case: claim a benign package, resolve from another.
+        rec = extract_package_lock(_write(tmp_path, self._doc({
+            "name": "lodash",
+            "resolved": "https://registry.npmjs.org/evil-pkg/-/evil-pkg-1.2.3.tgz",
+        })))[0]
+        assert rec["package_name"] == "evil-pkg", \
+            "an uncorroborated name must not override the install path"
+
+    def test_an_uncorroborated_name_falls_back_to_the_install_path(self, tmp_path):
+        # No `resolved` at all: nothing to check the claim against, so prefer
+        # the path npm actually created on disk.
+        rec = extract_package_lock(_write(tmp_path, self._doc({
+            "name": "lodash",
+        })))[0]
+        assert rec["package_name"] == "evil-pkg"
+
+    def test_a_name_with_a_non_registry_resolved_falls_back(self, tmp_path):
+        rec = extract_package_lock(_write(tmp_path, self._doc({
+            "name": "lodash",
+            "resolved": "git+ssh://git@example.com/acme/evil.git#abc123",
+        })))[0]
+        assert rec["package_name"] == "evil-pkg"
+
+    def test_a_name_that_is_not_a_package_name_is_refused(self, tmp_path):
+        # Defence in depth. A lockfile is untrusted text, and package_name is
+        # written to CSV exports and a primary key, so a value that cannot be an
+        # npm package name is not one however it is corroborated.
+        for bad in ("=cmd|' /C calc'!A0", "has space", "a\tb", "x" * 215,
+                    ".leading-dot", "_leading-underscore", "a\nb"):
+            rec = extract_package_lock(_write(tmp_path, self._doc({
+                "name": bad,
+                "resolved": "https://registry.npmjs.org/%s/-/x-1.2.3.tgz" % bad,
+            })))[0]
+            assert rec["package_name"] == "evil-pkg", bad
+
+    def test_the_ordinary_case_is_unaffected(self, tmp_path):
+        # 99.8% of entries carry no `name`, and their URL agrees with the path.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/lodash": {
+                    "version": "4.17.21",
+                    "resolved":
+                        "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+                },
+            },
+        }
+        assert [r["package_name"] for r in
+                extract_package_lock(_write(tmp_path, doc))] == ["lodash"]
+
+
+class TestNothingIsHiddenByAFlag:
+    """A single key must not remove a package from the scan.
+
+    Each case below is a package that npm would install and that an earlier cut
+    of this parser dropped silently. A dropped row is invisible; a row kospex
+    cannot enrich is at least visible, so these record rather than skip.
+    """
+
+    def test_a_link_entry_that_has_a_version_is_still_recorded(self, tmp_path):
+        # Real link: entries carry only {link, resolved} -- all 13 in the
+        # reference estate have no version. One WITH a version is anomalous, and
+        # skipping it would let `link: true` hide any dependency.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/evil-pkg": {"version": "1.2.3", "link": True},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert sorted(r["package_name"] for r in records) == ["evil-pkg", "lodash"]
+
+    def test_a_real_link_entry_is_still_skipped(self, tmp_path):
+        # Unchanged: no version means no primary key, and these are symlinks to
+        # workspace directories rather than fetched packages.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/@acme/shared": {"link": True, "resolved": "apps/shared"},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
         assert [r["package_name"] for r in records] == ["lodash"]
+
+    def test_v1_an_unparseable_npm_alias_is_recorded_not_dropped(self, tmp_path):
+        # Previously dropped, which let `version: "npm:anything"` hide a
+        # package. Recorded under its declared name with the version npm wrote,
+        # so it is visible even though it cannot be looked up.
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {
+                "evil-pkg": {"version": "npm:whatever"},
+                "lodash": {"version": "4.17.21"},
+            },
+        }
+        records = _by_name(extract_package_lock(_write(tmp_path, doc)))
+        assert sorted(records) == ["evil-pkg", "lodash"]
+        assert records["evil-pkg"]["package_version"] == "npm:whatever"
+
+    def test_v2_a_package_only_in_the_legacy_tree_is_not_lost(self, tmp_path):
+        # npm 6 reads `dependencies:` from a v2 lockfile, so a package present
+        # only there is installed by a real client but was invisible to kospex.
+        doc = {
+            "lockfileVersion": 2,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+            "dependencies": {
+                "lodash": {"version": "4.17.21"},
+                "evil-pkg": {"version": "1.2.3"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert sorted(r["package_name"] for r in records) == ["evil-pkg", "lodash"]
+
+    def test_v2_the_legacy_tree_does_not_double_count_or_alter_flags(self, tmp_path):
+        # The duplicate is still not merged: `packages:` owns the flags for any
+        # package it lists, because the legacy tree cannot express
+        # hasInstallScript and would flip an aggregate computed with all().
+        doc = {
+            "lockfileVersion": 2,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/lodash": {
+                    "version": "4.17.21", "dev": True, "hasInstallScript": True},
+            },
+            "dependencies": {
+                "lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert len(records) == 1
+        assert records[0]["is_dev"] is True, "the legacy tree must not clear dev"
+        assert records[0]["runs_install_script"] is True
+
+
+class TestLockfileVersionIsReadLiberally:
+    """npm writes an integer, but a parser that only accepts one fails open.
+
+    `lockfileVersion: "3"` produced zero rows and an `empty` outcome -- a
+    one-character edit that hid every dependency behind a result meaning
+    "examined and genuinely had nothing to find".
+    """
+
+    def _doc(self, lv):
+        return {
+            "lockfileVersion": lv,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+
+    def test_a_string_version_is_accepted(self, tmp_path):
+        assert len(extract_package_lock(_write(tmp_path, self._doc("3")))) == 1
+
+    def test_a_string_version_one_selects_the_v1_reader(self, tmp_path):
+        doc = {"lockfileVersion": "1",
+               "dependencies": {"lodash": {"version": "4.17.21"}}}
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
+        assert records[0]["runs_install_script"] is None, "read as v1, not v3"
+
+    def test_a_float_version_is_accepted(self, tmp_path):
+        assert len(extract_package_lock(_write(tmp_path, self._doc(3.0)))) == 1
+
+    def test_a_padded_string_version_is_accepted(self, tmp_path):
+        assert len(extract_package_lock(_write(tmp_path, self._doc(" 3 ")))) == 1
+
+    def test_a_genuinely_unknown_version_is_reported_as_unreadable(self, tmp_path):
+        # Not guessed at, and not passed off as empty -- see
+        # TestUnreadableFilesAreNotReportedAsEmpty.
+        for lv in (4, "abc", None, True, 3.5):
+            with pytest.raises(UnreadableLockfile):
+                extract_package_lock(_write(tmp_path, self._doc(lv)))
 
 
 class TestWhichEntriesBecomeRows:
@@ -717,10 +958,31 @@ class TestLockfileVersion1:
 class TestLockfileVersion2:
     """v2 carries both sections; only packages: is read."""
 
-    def test_the_duplicate_dependencies_tree_is_ignored(self, tmp_path):
-        # Measured: one v2 file in the reference estate has 819 packages:
-        # entries and 638 dependencies: entries describing the same closure.
-        # Reading both would double-count, and the versions can disagree.
+    def test_the_duplicate_dependencies_tree_does_not_double_count(self, tmp_path):
+        # `packages:` is authoritative for anything it lists, so the tree's own
+        # copy of lodash@4.17.21 adds nothing and does not disturb its flags.
+        doc = {
+            "lockfileVersion": 2,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0",
+                     "dependencies": {"lodash": "^4.17.21"}},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+            "dependencies": {
+                "lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [(r["package_name"], r["package_version"]) for r in records] == [
+            ("lodash", "4.17.21"),
+        ]
+
+    def test_a_version_only_the_legacy_tree_knows_is_also_reported(self, tmp_path):
+        # The two sections CAN disagree, and npm 6 installs from the tree while
+        # npm 7+ installs from packages:. Picking one silently would hide a
+        # version a real client installs, so both are reported and the reader
+        # decides. Previously this test asserted the tree was ignored, which is
+        # what made the discrepancy invisible.
         doc = {
             "lockfileVersion": 2,
             "packages": {
@@ -734,8 +996,11 @@ class TestLockfileVersion2:
             },
         }
         records = extract_package_lock(_write(tmp_path, doc))
-        assert [(r["package_name"], r["package_version"]) for r in records] == [
+        assert sorted(
+            (r["package_name"], r["package_version"]) for r in records) == [
+            ("lodash", "4.17.20"),
             ("lodash", "4.17.21"),
+            ("only-in-the-old-tree", "1.0.0"),
         ]
 
     def test_v2_reads_install_state_like_v3(self, tmp_path):
@@ -743,41 +1008,135 @@ class TestLockfileVersion2:
         assert rec["runs_install_script"] is True
 
 
-class TestErrorHandling:
-    """Unreadable or unrecognised files return [] and log, per convention."""
+class TestUnreadableFilesAreNotReportedAsEmpty:
+    """A file kospex could not read must not look like one with nothing in it.
+
+    This parser raises instead of returning [], which is a deliberate departure
+    from the other extractors. `osi_extract` catches it and records
+    `parse_error`; returning [] produces `empty`, whose documented meaning is
+    "examined, nothing to find" -- the result that stops a repository being
+    re-queued.
+
+    The difference is an evasion. Before this, changing `lockfileVersion: 3` to
+    `"3"` read zero packages out of a real lockfile and reported the repository
+    as cleanly empty. Every case below hid every dependency in the file.
+    """
 
     def test_missing_file(self, tmp_path):
-        assert extract_package_lock(str(tmp_path / "nope.json")) == []
+        with pytest.raises(UnreadableLockfile):
+            extract_package_lock(str(tmp_path / "nope.json"))
 
     def test_invalid_json(self, tmp_path):
         p = tmp_path / "package-lock.json"
         p.write_text("{not json at all")
-        assert extract_package_lock(str(p)) == []
+        with pytest.raises(UnreadableLockfile):
+            extract_package_lock(str(p))
+
+    def test_a_truncated_file(self, tmp_path):
+        # The shape a partial write or a tampered file takes.
+        p = tmp_path / "package-lock.json"
+        p.write_text('{"lockfileVersion": 3, "packages": {')
+        with pytest.raises(UnreadableLockfile):
+            extract_package_lock(str(p))
 
     def test_empty_file(self, tmp_path):
         p = tmp_path / "package-lock.json"
         p.write_text("")
-        assert extract_package_lock(str(p)) == []
+        with pytest.raises(UnreadableLockfile):
+            extract_package_lock(str(p))
 
     def test_json_that_is_not_an_object(self, tmp_path):
         p = tmp_path / "package-lock.json"
         p.write_text("[1, 2, 3]")
-        assert extract_package_lock(str(p)) == []
+        with pytest.raises(UnreadableLockfile):
+            extract_package_lock(str(p))
 
     def test_unknown_lockfile_version(self, tmp_path):
         doc = {"lockfileVersion": 4, "packages": {
             "node_modules/x": {"version": "1.0.0"}}}
-        assert extract_package_lock(_write(tmp_path, doc)) == []
+        with pytest.raises(UnreadableLockfile):
+            extract_package_lock(_write(tmp_path, doc))
 
     def test_missing_lockfile_version(self, tmp_path):
         doc = {"packages": {"node_modules/x": {"version": "1.0.0"}}}
-        assert extract_package_lock(_write(tmp_path, doc)) == []
+        with pytest.raises(UnreadableLockfile):
+            extract_package_lock(_write(tmp_path, doc))
 
     def test_v3_without_a_packages_section(self, tmp_path):
-        assert extract_package_lock(_write(tmp_path, {"lockfileVersion": 3})) == []
+        # npm always writes `packages:` for v2/v3, even for a project with no
+        # dependencies, so its absence is a malformed file rather than an empty
+        # one. Contrast test_a_lockfile_with_only_a_root_entry below.
+        with pytest.raises(UnreadableLockfile):
+            extract_package_lock(_write(tmp_path, {"lockfileVersion": 3}))
+
+    def test_the_error_names_the_file_and_the_reason(self, tmp_path):
+        # The message reaches the operator through osi_extract's `echo`, so it
+        # has to say which file and why.
+        doc = {"lockfileVersion": 4, "packages": {}}
+        path = _write(tmp_path, doc)
+        with pytest.raises(UnreadableLockfile) as caught:
+            extract_package_lock(path)
+        assert "lockfileVersion" in str(caught.value)
+        assert "4" in str(caught.value)
+
+
+class TestBothScanPathsHandleAnUnreadableFile:
+    """Raising is only honest if both scanners act on it.
+
+    `osi_extract` already maps an exception to a `parse_error` outcome. The
+    `kospex sca` path called the parser with no guard at all, so the same file
+    would have crashed the command instead of being reported. Both are checked
+    here, because a parser contract only one caller honours is not a contract.
+    """
+
+    def _bad(self, tmp_path):
+        doc = {"lockfileVersion": 4,
+               "packages": {"node_modules/evil-pkg": {"version": "1.2.3"}}}
+        return _write(tmp_path, doc)
+
+    def test_the_osi_path_propagates_so_the_outcome_is_parse_error(self, tmp_path):
+        # extract_dependency_file is the osi loop body, reachable without a
+        # synced database. osi_extract wraps it in `except Exception ->
+        # PARSE_ERROR`, so propagating is what produces the honest outcome.
+        from krunner import extract_dependency_file
+        from kospex.extractors.registry import classify
+        from kospex_dependencies import KospexDependencies
+
+        extractor = classify("package-lock.json").extractor
+        with pytest.raises(UnreadableLockfile):
+            extract_dependency_file(
+                extractor, self._bad(tmp_path), "s~o~r",
+                "package-lock.json", "abc123", KospexDependencies(),
+            )
+
+    def test_an_unreadable_file_classifies_as_parse_error_not_empty(self, tmp_path):
+        # The mapping that makes the raise worth doing.
+        from kospex.osi_outcomes import EMPTY, PARSE_ERROR, classify_outcome
+
+        assert classify_outcome("package-lock.json", row_count=0) == EMPTY
+        assert classify_outcome(
+            "package-lock.json", row_count=0,
+            error=UnreadableLockfile("bad")) == PARSE_ERROR
+
+    def test_the_sca_path_reports_rather_than_crashing(self, tmp_path):
+        # Previously `parser(filename)` was unguarded here, so an unreadable
+        # lockfile raised out of `kospex sca` entirely.
+        from kospex_dependencies import KospexDependencies
+
+        assert KospexDependencies().assess(self._bad(tmp_path)) is None
+
+
+class TestGenuinelyEmptyFilesStillReadAsEmpty:
+    """The other half of the distinction: nothing declared is not an error."""
 
     def test_v1_without_a_dependencies_tree(self, tmp_path):
+        # v1 omits `dependencies` for a project with none, so this is empty
+        # rather than malformed.
         assert extract_package_lock(_write(tmp_path, {"lockfileVersion": 1})) == []
+
+    def test_v1_with_an_empty_dependencies_tree(self, tmp_path):
+        assert extract_package_lock(
+            _write(tmp_path, {"lockfileVersion": 1, "dependencies": {}})) == []
 
     def test_a_lockfile_with_only_a_root_entry(self, tmp_path):
         # A project with no dependencies at all. Distinct from a parse failure:

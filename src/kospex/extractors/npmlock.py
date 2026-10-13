@@ -22,17 +22,40 @@ record rather than overwriting each other. See _aggregate_flags. The paths
 themselves are then discarded; storing the parent is #227.
 
 Integrity/checksum hashes are intentionally dropped -- SCA does not consume
-them. On missing / invalid / unknown-lockfileVersion files we log a warning
-and return [] (extractors package convention).
+them.
+
+Unlike the other extractors, a missing / invalid / unknown-lockfileVersion
+file raises UnreadableLockfile rather than returning []. See that class: an
+empty list is reported as `empty`, which asserts the file was read and
+declared nothing, and that difference is exploitable.
 """
 
 import json
+import re
+from urllib.parse import unquote, urlparse
 
 from kospex_utils import get_kospex_logger
 
 logger = get_kospex_logger("extractors.npmlock")
 
 _NODE_MODULES = "node_modules/"
+
+
+class UnreadableLockfile(Exception):
+    """This file could not be read, so nothing is known about its contents.
+
+    Raised instead of returning [], which is what the other extractors do. The
+    distinction is not stylistic: `osi_extract` turns an exception into a
+    `parse_error` outcome, while an empty list becomes `empty` -- whose
+    documented meaning is "examined, nothing to find", and which is the result
+    that stops a repository being re-queued.
+
+    Reporting an unreadable lockfile as empty is an evasion. Changing
+    `lockfileVersion: 3` to `"3"` in a real lockfile read zero of its packages
+    and reported the repository as cleanly empty; so did bumping it to 4,
+    deleting the field, or truncating the JSON. One edit, every dependency
+    hidden, and a benign-looking scan result.
+    """
 
 
 def _template():
@@ -67,28 +90,108 @@ def _template():
 _NPM_ALIAS = "npm:"
 
 
+#: An npm registry tarball path: ``/<name>/-/<file>-<version>.tgz``, where the
+#: name may be scoped. 89.5% of installed entries in the reference estate carry
+#: one.
+_TARBALL_PATH = re.compile(r"^/(?P<name>(?:@[^/]+/)?[^/]+)/-/")
+
+#: A conservative npm package name. The length cap and the leading dot /
+#: underscore rules are npm's own. The character class allows every real name,
+#: including the historic uppercase ones npm no longer issues, while excluding
+#: whitespace, control characters and the punctuation that makes a value
+#: dangerous once it leaves here -- this string becomes part of a primary key
+#: and is written into CSV exports.
+_PACKAGE_NAME = re.compile(r"^(?:@[A-Za-z0-9._~-]+/)?[A-Za-z0-9._~-]+$")
+
+
+def _is_package_name(value):
+    """Could `value` be an npm package name at all?"""
+    return (
+        isinstance(value, str)
+        and 0 < len(value) <= 214
+        and not value.startswith((".", "_"))
+        and bool(_PACKAGE_NAME.match(value))
+    )
+
+
+def _name_from_resolved(url):
+    """The package name encoded in a registry tarball URL, or None.
+
+    Only a registry tarball is read. A git, file or workspace URL names no
+    package, and neither does a URL whose path does not look like one.
+    """
+    if not isinstance(url, str) or not url:
+        return None
+    try:
+        path = unquote(urlparse(url).path or "")
+    except ValueError:
+        return None
+
+    match = _TARBALL_PATH.match(path)
+    if not match:
+        return None
+    name = match.group("name")
+    return name if _is_package_name(name) else None
+
+
 def _real_package_name(path_name, meta):
-    """Prefer the entry's own ``name`` over the install path.
+    """The package an entry installs: its ``name``, but only if corroborated.
 
     ``npm i foo@npm:bar`` installs *bar* at ``node_modules/foo`` and records
-    ``name: "bar"`` on the entry. The path segment is the alias the project
-    chose; the ``name`` is the package that is actually on disk. Recording the
-    alias means the deps.dev lookup is for a package that does not exist, so
-    the row comes back with no advisories and no versions_behind -- a silently
-    clean SCA result for whatever was really installed.
+    ``name: "bar"``. Reading the path instead records a package that is not on
+    the registry, so the deps.dev lookup returns nothing and the row shows no
+    advisories for something genuinely installed. 30 entries across the
+    reference estate are aliases, and every entry carrying a ``name`` has one
+    that differs from its path.
 
-    Not hypothetical: 30 entries across the reference estate are aliases, and
-    every entry carrying a ``name`` has one that differs from its path (e.g.
-    ``node_modules/string-width-cjs`` is ``string-width@4.2.3``).
+    But a lockfile is untrusted input, and ``name`` alone is a claim: a file can
+    install ``evil-pkg`` at ``node_modules/evil-pkg`` while claiming
+    ``name: "lodash"``, which would report a clean, well-known package. So the
+    claim must be corroborated by ``resolved`` -- the tarball URL npm fetched --
+    and on all 30 genuine aliases the two agree, 30 of 30 with no
+    disagreements. An uncorroborated or implausible name falls back to the
+    install path, which is what npm actually created on disk.
 
-    A lockfile is attacker-controlled input, so a missing, empty or non-string
-    ``name`` falls back to the path rather than producing a nameless row --
-    package_name is part of the primary key.
+    This does not make the lockfile honest; a file that lies consistently in
+    both fields is beyond a parser's reach. It removes the one-field claim.
     """
     declared = meta.get("name")
-    if isinstance(declared, str) and declared.strip():
-        return declared.strip()
+    if not _is_package_name(declared):
+        return path_name
+
+    if _name_from_resolved(meta.get("resolved")) == declared:
+        return declared
+
+    logger.warning(
+        "entry claims name %r but `resolved` does not corroborate it; "
+        "recording the install path %r instead", declared, path_name)
     return path_name
+
+
+def _lockfile_version(raw):
+    """``lockfileVersion`` as an int, or None if it is not unambiguously one.
+
+    npm writes an integer, but a parser that insists on the int *type* fails
+    open: ``lockfileVersion: "3"`` read nothing and reported the file as
+    `empty`, which means "read, and genuinely declared nothing" -- so a
+    one-character edit hid every dependency behind a clean-looking result.
+    Accept any value that unambiguously IS an integer.
+
+    `bool` is checked first because it is an int subclass in Python, and
+    ``lockfileVersion: true`` is not version 1.
+    """
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float):
+        return int(raw) if raw == int(raw) else None
+    if isinstance(raw, str):
+        try:
+            return int(raw.strip())
+        except ValueError:
+            return None
+    return None
 
 
 def _v1_identity(name, version):
@@ -99,16 +202,21 @@ def _v1_identity(name, version):
     version ``npm:left-pad@1.2.3`` -- neither of which is true, and the version
     is not a version.
 
-    Returns (name, version) unchanged for an ordinary entry, and (None, None)
-    when an ``npm:`` spec names nothing parseable, so the caller drops it
-    rather than writing a non-version into a primary-key column.
+    Returns (name, version) unchanged for an ordinary entry. An ``npm:`` spec
+    that names nothing parseable is ALSO returned unchanged rather than
+    dropped: dropping let ``version: "npm:anything"`` remove a package from the
+    scan entirely, and a row kospex cannot look up is still a row someone can
+    see.
     """
     if not isinstance(version, str) or not version.startswith(_NPM_ALIAS):
         return name, version
 
     real_name, sep, real_version = version[len(_NPM_ALIAS):].rpartition("@")
-    if not sep or not real_name or not real_version:
-        return None, None
+    if not sep or not _is_package_name(real_name) or not real_version:
+        logger.warning(
+            "could not read the alias %r for %r; recording it as declared",
+            version, name)
+        return name, version
     return real_name, real_version
 
 
@@ -334,11 +442,15 @@ def _extract_from_packages(packages):
             continue
         if not isinstance(meta, dict):
             continue
-        # A link: entry is a symlink to a workspace dir, and carries no
-        # version. package_version is part of the dependency_data primary key,
-        # so a version-less row could never update -- only duplicate.
-        if meta.get("link"):
-            continue
+        # No explicit `link` check. A real link: entry is a symlink to a
+        # workspace directory and carries only {link, resolved} -- all 13 in
+        # the reference estate have no `version`, so the check below already
+        # excludes them. Skipping on `link` as well would mean one extra key
+        # could remove any dependency from the scan.
+        #
+        # A version is required because package_version is part of the
+        # dependency_data primary key: a version-less row could never update,
+        # only duplicate on each re-sync.
         version = meta.get("version")
         if not version:
             continue
@@ -386,33 +498,52 @@ def extract_package_lock(path):
         with open(path) as f:
             doc = json.load(f)
     except json.JSONDecodeError as e:
-        logger.warning("Error parsing package-lock.json %s: %s", path, e)
-        return []
-    except FileNotFoundError:
-        logger.warning("File not found: %s", path)
-        return []
+        raise UnreadableLockfile(f"{path}: invalid JSON: {e}") from e
+    except FileNotFoundError as e:
+        raise UnreadableLockfile(f"{path}: file not found") from e
     except (OSError, UnicodeDecodeError) as e:
-        logger.warning("Could not read package-lock.json %s: %s", path, e)
-        return []
+        raise UnreadableLockfile(f"{path}: could not read: {e}") from e
 
     if not doc or not isinstance(doc, dict):
-        return []
+        raise UnreadableLockfile(
+            f"{path}: not a JSON object, so not a lockfile")
 
-    lv = doc.get("lockfileVersion")
+    raw_lv = doc.get("lockfileVersion")
+    lv = _lockfile_version(raw_lv)
     if lv not in (1, 2, 3):
-        logger.warning("Unknown npm lockfileVersion %r in %s", lv, path)
-        return []
+        raise UnreadableLockfile(
+            f"{path}: unsupported lockfileVersion {raw_lv!r} -- refusing to "
+            f"report this file as empty, because its dependencies are unread")
 
     if lv == 1:
+        # v1 omits `dependencies` for a project that has none, so an absent
+        # tree is genuinely empty rather than malformed.
         return _extract_from_dependencies_tree(doc.get("dependencies"))
 
-    # v2 carries the v1-style `dependencies:` tree as well, describing the same
-    # closure. Only `packages:` is read: the two can disagree on versions, and
-    # reading both double-counts.
     packages = doc.get("packages")
     if not isinstance(packages, dict):
-        logger.warning(
-            "lockfileVersion %r has no packages section in %s", lv, path)
-        return []
+        # npm always writes `packages:` for v2/v3, even when the only entry is
+        # the root, so its absence means the file is malformed -- not that the
+        # project declares nothing.
+        raise UnreadableLockfile(
+            f"lockfileVersion {lv} file has no packages section: {path}")
 
-    return _extract_from_packages(packages)
+    records = _extract_from_packages(packages)
+
+    # v2 carries the v1-style `dependencies:` tree as well, describing the same
+    # closure. `packages:` OWNS the flags for every package it lists -- the
+    # legacy tree cannot express hasInstallScript, so merging its entries would
+    # flip an aggregate computed with all(). But a package present only in the
+    # tree is one an npm 6 client installs and kospex would never have seen, so
+    # it is added rather than ignored.
+    if lv == 2:
+        known = {(r["package_name"], r["package_version"]) for r in records}
+        for extra in _extract_from_dependencies_tree(doc.get("dependencies")):
+            if (extra["package_name"], extra["package_version"]) not in known:
+                logger.warning(
+                    "%s: %s@%s is in the legacy dependencies tree but not in "
+                    "packages:", path, extra["package_name"],
+                    extra["package_version"])
+                records.append(extra)
+
+    return records

@@ -309,6 +309,15 @@ was relying on the old, wrong success.
     `dev` or `optional`, and means "reachable only via a dev path *or* an
     optional path" without saying which. The package does not reach production,
     but whether it may fail to install is genuinely unstated, so NULL.
+  - **An npm lockfile kospex cannot read is reported as `parse_error`, not
+    `empty`** (CWE-703). `empty` means "examined, nothing to find", so a file
+    whose dependencies were never read must not claim it. An unsupported
+    `lockfileVersion`, a missing one or malformed JSON now raise, and
+    `lockfileVersion` itself is read liberally so `"3"` works as well as `3`.
+    `kospex sca` previously called parsers with no guard and would have crashed
+    on this; it now reports the file and continues, which is what the `krunner
+    osi` path has done since #148. Genuinely empty lockfiles still report
+    `empty`.
   - **An aliased dependency is recorded as the package it actually is.**
     `npm i foo@npm:bar` installs *bar* at `node_modules/foo`, and npm names the
     real package in a `name` field on that entry. Reading the install path
@@ -318,6 +327,12 @@ was relying on the old, wrong success.
     is still matched when deciding `direct` / `dev`, since a project declares an
     aliased dependency by its alias. v1 encodes the same thing as
     `version: "npm:bar@1.2.3"`, which is parsed rather than stored verbatim.
+
+    The `name` field is believed only when the entry's `resolved` tarball URL
+    names the same package (CWE-807): on its own it is an attacker-controlled
+    claim, and a lockfile could otherwise install one package while naming a
+    well-known one. On every genuine alias measured the two agree, so this
+    accepts real aliases and refuses unsupported claims.
   - **A package reached by several install paths is reconciled, not
     overwritten.** `packages:` keys are install paths and the primary key has
     no path column, so the same `name@version` at two depths collapses to one

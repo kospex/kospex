@@ -102,6 +102,94 @@ exactly this class of mistake, which is worth noting: an inventory is only as
 good as its completeness, and a key present on 30 of 14,222 entries is easy to
 miss and expensive to miss.
 
+### An unreadable lockfile is not an empty one
+
+**CWE-703, improper handling of an exceptional condition.** The extractors
+convention is to log and return `[]`. For a lockfile parser that is wrong, and
+the difference is reachable from the file being parsed.
+
+`classify_outcome` maps an empty result to `empty`, whose documented meaning is
+"examined, nothing to find" — the outcome that stops a repository being
+re-queued. So anything that made the parser return `[]` reported the repository
+as cleanly dependency-free:
+
+| edit to a real lockfile | rows read | reported as |
+|---|---|---|
+| `lockfileVersion: 3` → `"3"` | 0 | `empty` |
+| `lockfileVersion: 3` → `4` | 0 | `empty` |
+| `lockfileVersion` deleted | 0 | `empty` |
+| JSON truncated | 0 | `empty` |
+
+One character, every dependency hidden, and a benign-looking result. Note this
+was a *regression in signal*: before a parser existed the same file reported
+`unsupported`, which is honest.
+
+Two changes:
+
+- **`lockfileVersion` is read liberally** — any value that unambiguously *is* an
+  integer, so `"3"`, `3.0` and `3` all work. `true` does not, because `bool` is
+  an `int` subclass in Python and `lockfileVersion: true` is not version 1.
+- **A genuinely unreadable file raises `UnreadableLockfile`** rather than
+  returning `[]`. `osi_extract` already turns an exception into a `parse_error`
+  outcome; `[]` cannot express "I could not read this".
+
+`kospex sca` called `parser(filename)` with no guard, so raising would have
+crashed the command instead of reporting the file. It now catches, logs and
+reports, matching what the osi path has done since #148. Every other parser
+returns `[]` today, so that guard is inert for them — but the two paths no
+longer disagree about what an unreadable file means, which is what #180 was for.
+
+Genuinely empty files still read as empty: a v3 lockfile whose only `packages:`
+entry is the root, and a v1 lockfile with no `dependencies` tree, both return
+`[]` and report `empty`. npm always writes `packages:` for v2/v3, so its
+*absence* is malformed rather than empty.
+
+### `name` is a claim, not a fact
+
+**CWE-807, reliance on an untrusted input in a security decision.** Preferring
+the entry's `name` (above) fixed one evasion and opened its mirror image: a
+lockfile can install `evil-pkg` while claiming `name: "lodash"`, and kospex would
+report a clean, well-known package.
+
+So the claim must be corroborated by `resolved`, the tarball URL npm fetched,
+whose path encodes a package name. Measured: on all 30 genuine aliases the two
+agree — 30 of 30, no disagreements — so corroboration accepts every real alias
+while refusing an unsupported claim. An uncorroborated, non-registry or
+implausible name falls back to the install path.
+
+A name is also checked against npm's own rules (≤214 characters, no leading dot
+or underscore, no whitespace or control characters) before it is believed at all.
+`package_name` becomes part of a primary key and is written into exports, so a
+value that cannot be an npm package name is not treated as one.
+
+This removes the single-field claim. It does not make a lockfile honest: a file
+that lies consistently in both fields is beyond a parser, and only `integrity`
+would settle it. Worth stating rather than implying.
+
+### A single key must not hide a package
+
+Three places dropped an entry silently, each reachable by adding or editing one
+key. All three now record:
+
+- **`link: true`** — real link entries are symlinks to workspace directories and
+  carry only `{link, resolved}`; all 13 in the estate have no `version`, so the
+  version check already excludes them. Skipping on `link` as well meant one key
+  could remove any dependency.
+- **A v2 package present only in the legacy `dependencies:` tree** — npm 6
+  installs from that tree while npm 7+ installs from `packages:`, so a package
+  there is one a real client installs and kospex never saw. `packages:` still
+  owns the flags for anything it lists, because the legacy tree cannot express
+  `hasInstallScript` and merging it would flip an aggregate computed with
+  `all()`. Where the two sections disagree on a version, both are reported
+  rather than one being chosen silently.
+- **An unparseable `npm:` alias in v1** — `version: "npm:anything"` dropped the
+  entry. It is now recorded as declared. A row kospex cannot enrich is still a
+  row a reader can see; a dropped row is not.
+
+The principle behind all three: **prefer recording something visible over
+recording nothing.** A gap in a dependency inventory is indistinguishable from
+an absence, which is the failure this whole format matters for.
+
 ### One package, several paths: aggregate, don't overwrite
 
 Found by writing real rows into a copy of the live database rather than trusting
