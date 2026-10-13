@@ -1,0 +1,699 @@
+"""Tests for the package-lock.json extractor.
+
+Mirrors tests/test_extractors_pnpm.py: template contract, helper-level tests,
+extract-level tests per lockfileVersion, then error handling.
+
+The fixtures are built from dicts and json.dumps'd rather than written as JSON
+string literals, so a key name appears once and cannot drift between the
+fixture and the assertion.
+"""
+import json
+import os
+
+import pytest
+
+from kospex.extractors.npmlock import (
+    extract_package_lock,
+    _package_name_from_key,
+    _template,
+)
+
+
+def _write(tmp_path, doc, name="package-lock.json"):
+    p = tmp_path / name
+    p.write_text(json.dumps(doc))
+    return str(p)
+
+
+def _by_name(records):
+    return {r["package_name"]: r for r in records}
+
+
+# A v3 lockfile exercising every structural case at once: the root entry, a
+# direct dep, a dev dep, a scoped name, and a nested transitive.
+V3 = {
+    "name": "acme-app",
+    "lockfileVersion": 3,
+    "requires": True,
+    "packages": {
+        "": {
+            "name": "acme-app",
+            "version": "1.0.0",
+            "license": "MIT",
+            "dependencies": {"lodash": "^4.17.21"},
+            "devDependencies": {"mocha": "^10.0.0"},
+        },
+        "node_modules/lodash": {
+            "version": "4.17.21",
+            "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+            "integrity": "sha512-xxx",
+            "license": "MIT",
+        },
+        "node_modules/mocha": {"version": "10.2.0", "dev": True},
+        "node_modules/@babel/core": {"version": "7.21.3"},
+        "node_modules/findup-sync/node_modules/glob": {"version": "7.1.6"},
+    },
+}
+
+
+class TestTemplateContract:
+    """The local record template must stay in sync with KospexDependencies."""
+
+    def test_template_matches_get_package_template(self):
+        from kospex_dependencies import KospexDependencies
+        assert set(_template().keys()) == set(
+            KospexDependencies().get_package_template().keys()
+        )
+
+
+class TestPackageNameFromKey:
+    """packages: keys are install paths, not names."""
+
+    def test_plain_dependency(self):
+        assert _package_name_from_key("node_modules/lodash") == "lodash"
+
+    def test_scoped_dependency_keeps_its_scope(self):
+        assert _package_name_from_key("node_modules/@babel/core") == "@babel/core"
+
+    def test_nested_key_yields_the_innermost_package(self):
+        # A transitive installed under its parent. The name is the last
+        # segment, not the path -- otherwise the row is named
+        # "findup-sync/node_modules/glob" and matches nothing in deps.dev.
+        assert _package_name_from_key(
+            "node_modules/findup-sync/node_modules/glob"
+        ) == "glob"
+
+    def test_deeply_nested_scoped(self):
+        assert _package_name_from_key(
+            "node_modules/a/node_modules/@scope/b"
+        ) == "@scope/b"
+
+    def test_root_entry_has_no_package_name(self):
+        assert _package_name_from_key("") is None
+
+    def test_workspace_importer_has_no_package_name(self):
+        # A local workspace dir, not an installed package: no node_modules/.
+        assert _package_name_from_key("apps/desktop") is None
+
+
+class TestWhichEntriesBecomeRows:
+    """Three kinds of packages: entry are not installed third-party packages."""
+
+    def test_a_normal_entry_becomes_one_row(self, tmp_path):
+        records = _by_name(extract_package_lock(_write(tmp_path, V3)))
+        assert records["lodash"]["package_version"] == "4.17.21"
+        assert records["lodash"]["ecosystem"] == "npm"
+
+    def test_every_installed_package_becomes_a_row(self, tmp_path):
+        records = extract_package_lock(_write(tmp_path, V3))
+        assert sorted(r["package_name"] for r in records) == [
+            "@babel/core", "glob", "lodash", "mocha",
+        ]
+
+    def test_the_root_entry_is_not_a_row(self, tmp_path):
+        # The "" entry is the project itself. It carries a name and version and
+        # would otherwise be recorded as a dependency on itself.
+        records = extract_package_lock(_write(tmp_path, V3))
+        assert "acme-app" not in {r["package_name"] for r in records}
+
+    def test_a_workspace_importer_is_not_a_row(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "apps/desktop": {"name": "desktop", "version": "2.0.0",
+                                 "dependencies": {"lodash": "^4.0.0"}},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
+
+    def test_a_link_entry_is_not_a_row(self, tmp_path):
+        # link:true entries are symlinks back at a workspace dir. Every one of
+        # the 13 in the reference estate has no `version` key at all, and
+        # package_version is part of the dependency_data primary key -- so a row
+        # from one could never be updated, only duplicated.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/@acme/shared": {"link": True, "resolved": "apps/shared"},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
+
+    def test_an_entry_without_a_version_is_not_a_row(self, tmp_path):
+        # Belt and braces for the same primary-key reason, for any future
+        # version-less shape that is not flagged as a link.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/mystery": {"resolved": "somewhere"},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
+
+
+class TestPackageUse:
+    """requirements_type -> the DB package_use value, as the scanners map it."""
+
+    def test_a_root_dependency_is_direct(self, tmp_path):
+        records = _by_name(extract_package_lock(_write(tmp_path, V3)))
+        assert records["lodash"]["requirements_type"] == "direct"
+
+    def test_a_root_dev_dependency_is_dev(self, tmp_path):
+        records = _by_name(extract_package_lock(_write(tmp_path, V3)))
+        assert records["mocha"]["requirements_type"] == "dev"
+
+    def test_anything_else_is_resolved(self, tmp_path):
+        records = _by_name(extract_package_lock(_write(tmp_path, V3)))
+        assert records["@babel/core"]["requirements_type"] == "resolved"
+        assert records["glob"]["requirements_type"] == "resolved"
+
+    def test_a_workspace_importers_dependencies_count_as_direct(self, tmp_path):
+        # Same rule as pnpm's _collect_direct_dev: a dep declared by any
+        # importer is direct to the repository, not transitive.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "apps/desktop": {
+                    "name": "desktop", "version": "2.0.0",
+                    "dependencies": {"lodash": "^4.0.0"},
+                    "devDependencies": {"mocha": "^10.0.0"},
+                },
+                "node_modules/lodash": {"version": "4.17.21"},
+                "node_modules/mocha": {"version": "10.2.0"},
+            },
+        }
+        records = _by_name(extract_package_lock(_write(tmp_path, doc)))
+        assert records["lodash"]["requirements_type"] == "direct"
+        assert records["mocha"]["requirements_type"] == "dev"
+
+
+def _one(tmp_path, meta, lockfile_version=3):
+    """Extract a single-package v2/v3 lockfile and return its one record."""
+    doc = {
+        "lockfileVersion": lockfile_version,
+        "packages": {
+            "": {"name": "root", "version": "1.0.0"},
+            "node_modules/thing": dict(meta, version="1.0.0"),
+        },
+    }
+    records = extract_package_lock(_write(tmp_path, doc))
+    assert len(records) == 1, records
+    return records[0]
+
+
+class TestInstallStateV2V3:
+    """packages: entries answer all three axes, so absence means no, not unknown.
+
+    npm omits each of these keys when false, so a v2/v3 lockfile genuinely
+    answers the question for every entry -- unlike v1, and unlike pnpm v9.
+    """
+
+    def test_no_flags_is_false_not_null(self, tmp_path):
+        rec = _one(tmp_path, {})
+        assert rec["is_dev"] is False
+        assert rec["is_optional"] is False
+        assert rec["runs_install_script"] is False
+        assert rec["declared_scope"] is None
+
+    def test_dev(self, tmp_path):
+        rec = _one(tmp_path, {"dev": True})
+        assert rec["is_dev"] is True
+        assert rec["is_optional"] is False
+        assert rec["declared_scope"] == "dev"
+
+    def test_optional(self, tmp_path):
+        rec = _one(tmp_path, {"optional": True})
+        assert rec["is_optional"] is True
+        assert rec["is_dev"] is False
+        assert rec["declared_scope"] == "optional"
+
+    def test_has_install_script(self, tmp_path):
+        rec = _one(tmp_path, {"hasInstallScript": True})
+        assert rec["runs_install_script"] is True
+        assert rec["declared_scope"] == "hasInstallScript"
+
+    def test_dev_and_optional_together(self, tmp_path):
+        # Measured: this combination occurs 555 times across the reference
+        # estate, so dev and optional are NOT mutually exclusive in npm.
+        rec = _one(tmp_path, {"dev": True, "optional": True})
+        assert rec["is_dev"] is True
+        assert rec["is_optional"] is True
+        assert rec["declared_scope"] == "dev,optional"
+
+
+class TestDevOptional:
+    """npm's third state, which is not the union of the other two.
+
+    Measured across the reference estate: `devOptional` appears on 71 entries
+    and never co-occurs with `dev` or `optional`, while `dev` and `optional` do
+    co-occur 555 times. So npm sets exactly one of the three, and devOptional
+    means "reachable only via a dev path OR an optional path" without
+    resolving which.
+    """
+
+    def test_dev_optional_is_dev(self, tmp_path):
+        # It definitely does not reach production.
+        rec = _one(tmp_path, {"devOptional": True})
+        assert rec["is_dev"] is True
+
+    def test_dev_optional_leaves_optionality_unknown(self, tmp_path):
+        # NULL, not False: npm has not said whether it may fail to install.
+        # False would assert "we checked and it always installs".
+        rec = _one(tmp_path, {"devOptional": True})
+        assert rec["is_optional"] is None
+
+    def test_dev_optional_records_the_raw_key(self, tmp_path):
+        # The lossy projection above stays auditable: a reader can tell this
+        # from a plain `dev` entry, which is a different claim.
+        rec = _one(tmp_path, {"devOptional": True})
+        assert rec["declared_scope"] == "devOptional"
+
+    def test_dev_optional_still_answers_install_script(self, tmp_path):
+        rec = _one(tmp_path, {"devOptional": True})
+        assert rec["runs_install_script"] is False
+
+    def test_dev_optional_with_an_install_script(self, tmp_path):
+        # This exact combination occurs once in the reference estate.
+        rec = _one(tmp_path, {"devOptional": True, "hasInstallScript": True})
+        assert rec["runs_install_script"] is True
+        assert rec["declared_scope"] == "devOptional,hasInstallScript"
+
+
+class TestFlagsWithNoColumn:
+    """peer and inBundle have no boolean column, so declared_scope carries them.
+
+    Recording the raw key keeps them queryable without inventing a column per
+    flag, and keeps declared_scope a complete audit trail of what npm said
+    rather than only the part that projected cleanly.
+    """
+
+    def test_peer_is_recorded_in_declared_scope(self, tmp_path):
+        rec = _one(tmp_path, {"peer": True})
+        assert rec["declared_scope"] == "peer"
+
+    def test_peer_does_not_become_a_package_use(self, tmp_path):
+        # PACKAGE_USE_PEER exists but neither scanner's _REQ_TO_USE maps it,
+        # and the two disagree on the fallback (direct vs ""). Routing new data
+        # through that would mean silently wrong package_use values.
+        rec = _one(tmp_path, {"peer": True})
+        assert rec["requirements_type"] == "resolved"
+
+    def test_in_bundle_is_recorded_in_declared_scope(self, tmp_path):
+        rec = _one(tmp_path, {"inBundle": True})
+        assert rec["declared_scope"] == "inBundle"
+
+    def test_scope_keys_are_sorted_so_the_value_is_stable(self, tmp_path):
+        rec = _one(tmp_path, {"peer": True, "dev": True, "optional": True})
+        assert rec["declared_scope"] == "dev,optional,peer"
+
+
+def _two_paths(tmp_path, meta_a, meta_b, name="chalk", version="5.6.2"):
+    """One package at two install depths, as npm records a non-hoisted dep."""
+    doc = {
+        "lockfileVersion": 3,
+        "packages": {
+            "": {"name": "root", "version": "1.0.0"},
+            "node_modules/%s" % name: dict(meta_a, version=version),
+            "node_modules/parent/node_modules/%s" % name: dict(
+                meta_b, version=version),
+        },
+    }
+    records = extract_package_lock(_write(tmp_path, doc))
+    return records
+
+
+class TestSeveralPathsToOnePackage:
+    """dependency_data's primary key has no install-path column.
+
+    (_repo_id, hash, file_path, package_type, package_name, package_version) --
+    so two packages: entries for the same name@version at different depths
+    collapse to ONE row. Measured across the reference estate: 14,884 entries
+    hold 13,729 distinct name@version, so 1,155 collapse, and of the 479
+    duplicate groups the entries disagree on `dev` in 53, `optional` in 48,
+    `inBundle` in 18, and `devOptional` and `peer` in 4 each.
+
+    Left to the upsert, which value survives depends on JSON key order. So the
+    parser aggregates instead, by the rule already settled for pnpm v9: a
+    package is excluded only if EVERY path agrees it is.
+    """
+
+    def test_one_record_per_name_and_version(self, tmp_path):
+        records = _two_paths(tmp_path, {}, {})
+        assert len(records) == 1
+
+    def test_a_single_production_path_means_it_is_not_dev_only(self, tmp_path):
+        # chalk@5.6.2 in the reference estate: three non-dev paths and one dev.
+        # It ships, so is_dev must be False -- `any()` would hide it from a
+        # "what reaches production" query.
+        records = _two_paths(tmp_path, {"dev": True}, {})
+        assert records[0]["is_dev"] is False
+
+    def test_dev_survives_when_every_path_agrees(self, tmp_path):
+        records = _two_paths(tmp_path, {"dev": True}, {"dev": True})
+        assert records[0]["is_dev"] is True
+
+    def test_a_single_required_path_means_it_is_not_optional(self, tmp_path):
+        # Same reasoning as pnpm v9: is_optional says "may not install", and
+        # one required path means it installs.
+        records = _two_paths(tmp_path, {"optional": True}, {})
+        assert records[0]["is_optional"] is False
+
+    def test_optional_survives_when_every_path_agrees(self, tmp_path):
+        records = _two_paths(tmp_path, {"optional": True}, {"optional": True})
+        assert records[0]["is_optional"] is True
+
+    def test_an_install_script_on_any_path_counts(self, tmp_path):
+        # Unlike dev/optional, this is a property of the package tarball rather
+        # than of the path, so it aggregates with any(). Measured: zero
+        # duplicate groups disagree on it, which is consistent with that.
+        records = _two_paths(tmp_path, {"hasInstallScript": True}, {})
+        assert records[0]["runs_install_script"] is True
+
+    def test_declared_scope_describes_the_aggregate_not_one_path(self, tmp_path):
+        # Recording "dev" here would contradict is_dev=False in the same row.
+        records = _two_paths(tmp_path, {"dev": True}, {})
+        assert records[0]["declared_scope"] is None
+
+    def test_dev_optional_on_one_path_only_does_not_make_it_unknown(self, tmp_path):
+        # tinyglobby@0.2.17 in the reference estate: devOptional on one path,
+        # a plain production path under npm/ on the other. It installs, so
+        # is_optional is False rather than NULL.
+        records = _two_paths(tmp_path, {"devOptional": True}, {})
+        assert records[0]["is_dev"] is False
+        assert records[0]["is_optional"] is False
+        assert records[0]["declared_scope"] is None
+
+    def test_dev_optional_survives_when_every_path_agrees(self, tmp_path):
+        records = _two_paths(tmp_path, {"devOptional": True}, {"devOptional": True})
+        assert records[0]["is_dev"] is True
+        assert records[0]["is_optional"] is None
+        assert records[0]["declared_scope"] == "devOptional"
+
+    def test_peer_on_any_path_is_recorded(self, tmp_path):
+        # It is a peer dependency somewhere, which is what the flag records.
+        records = _two_paths(tmp_path, {"peer": True}, {})
+        assert records[0]["declared_scope"] == "peer"
+
+    def test_the_first_paths_version_is_kept(self, tmp_path):
+        # Different versions are different packages and must stay separate --
+        # they are distinct primary keys, not duplicates.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/chalk": {"version": "5.6.2"},
+                "node_modules/parent/node_modules/chalk": {"version": "4.1.2"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert sorted(r["package_version"] for r in records) == ["4.1.2", "5.6.2"]
+
+    def test_requirements_type_is_kept_for_the_declared_copy(self, tmp_path):
+        # A direct dependency that also appears nested stays direct.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0",
+                     "dependencies": {"chalk": "^5.0.0"}},
+                "node_modules/chalk": {"version": "5.6.2"},
+                "node_modules/parent/node_modules/chalk": {"version": "5.6.2"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert len(records) == 1
+        assert records[0]["requirements_type"] == "direct"
+
+
+class TestV1SeveralPaths:
+    """The v1 tree has the same problem, more so -- it nests by default."""
+
+    def test_duplicates_collapse_in_v1_too(self, tmp_path):
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {
+                "chalk": {"version": "5.6.2", "dev": True},
+                "parent": {
+                    "version": "1.0.0",
+                    "dependencies": {"chalk": {"version": "5.6.2"}},
+                },
+            },
+        }
+        records = _by_name(extract_package_lock(_write(tmp_path, doc)))
+        assert len(records) == 2
+        assert records["chalk"]["is_dev"] is False
+
+
+# A v1 lockfile: no packages: section, a nested dependencies tree, and only two
+# of the install-state flags available.
+V1 = {
+    "name": "acme-app",
+    "lockfileVersion": 1,
+    "dependencies": {
+        "lodash": {
+            "version": "4.17.21",
+            "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+            "integrity": "sha512-xxx",
+        },
+        "mocha": {
+            "version": "10.2.0",
+            "dev": True,
+            "requires": {"glob": "7.1.6"},
+            "dependencies": {
+                "glob": {"version": "7.1.6", "dev": True},
+            },
+        },
+        "fsevents": {"version": "2.3.2", "optional": True},
+    },
+}
+
+
+class TestLockfileVersion1:
+    """v1 answers two of the three axes, not none of them.
+
+    docs/dependency-flags.md asserted v1 "records none of this" and a 493-entry
+    file that does not exist. Re-measured: v1 records `dev` on every entry and
+    `optional` on some. It carries no `hasInstallScript`, so only that axis is
+    genuinely unknown.
+    """
+
+    def test_the_nested_tree_is_walked(self, tmp_path):
+        records = extract_package_lock(_write(tmp_path, V1))
+        assert sorted(r["package_name"] for r in records) == [
+            "fsevents", "glob", "lodash", "mocha",
+        ]
+
+    def test_a_nested_entry_keeps_its_own_version(self, tmp_path):
+        records = _by_name(extract_package_lock(_write(tmp_path, V1)))
+        assert records["glob"]["package_version"] == "7.1.6"
+
+    def test_dev_is_read(self, tmp_path):
+        records = _by_name(extract_package_lock(_write(tmp_path, V1)))
+        assert records["mocha"]["is_dev"] is True
+        assert records["mocha"]["declared_scope"] == "dev"
+
+    def test_dev_is_read_at_depth(self, tmp_path):
+        records = _by_name(extract_package_lock(_write(tmp_path, V1)))
+        assert records["glob"]["is_dev"] is True
+
+    def test_optional_is_read(self, tmp_path):
+        records = _by_name(extract_package_lock(_write(tmp_path, V1)))
+        assert records["fsevents"]["is_optional"] is True
+        assert records["fsevents"]["declared_scope"] == "optional"
+
+    def test_absent_flags_are_false_because_v1_does_state_these_two(self, tmp_path):
+        records = _by_name(extract_package_lock(_write(tmp_path, V1)))
+        assert records["lodash"]["is_dev"] is False
+        assert records["lodash"]["is_optional"] is False
+        assert records["lodash"]["declared_scope"] is None
+
+    def test_install_script_is_null_because_the_format_cannot_say(self, tmp_path):
+        # The one axis v1 genuinely cannot answer. False would assert npm had
+        # checked and found no install script.
+        records = extract_package_lock(_write(tmp_path, V1))
+        assert {r["runs_install_script"] for r in records} == {None}
+
+    def test_nothing_is_called_direct_because_v1_cannot_tell(self, tmp_path):
+        # v1's top level is the HOISTED install set, not the declared set, so a
+        # transitive lifted to the root is indistinguishable from a direct
+        # dependency. Claiming "direct" for all four would be a guess;
+        # `is_dev` still carries what npm did state.
+        records = extract_package_lock(_write(tmp_path, V1))
+        assert {r["requirements_type"] for r in records} == {"resolved"}
+
+
+class TestLockfileVersion2:
+    """v2 carries both sections; only packages: is read."""
+
+    def test_the_duplicate_dependencies_tree_is_ignored(self, tmp_path):
+        # Measured: one v2 file in the reference estate has 819 packages:
+        # entries and 638 dependencies: entries describing the same closure.
+        # Reading both would double-count, and the versions can disagree.
+        doc = {
+            "lockfileVersion": 2,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0",
+                     "dependencies": {"lodash": "^4.17.21"}},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+            "dependencies": {
+                "lodash": {"version": "4.17.20"},
+                "only-in-the-old-tree": {"version": "1.0.0"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [(r["package_name"], r["package_version"]) for r in records] == [
+            ("lodash", "4.17.21"),
+        ]
+
+    def test_v2_reads_install_state_like_v3(self, tmp_path):
+        rec = _one(tmp_path, {"hasInstallScript": True}, lockfile_version=2)
+        assert rec["runs_install_script"] is True
+
+
+class TestErrorHandling:
+    """Unreadable or unrecognised files return [] and log, per convention."""
+
+    def test_missing_file(self, tmp_path):
+        assert extract_package_lock(str(tmp_path / "nope.json")) == []
+
+    def test_invalid_json(self, tmp_path):
+        p = tmp_path / "package-lock.json"
+        p.write_text("{not json at all")
+        assert extract_package_lock(str(p)) == []
+
+    def test_empty_file(self, tmp_path):
+        p = tmp_path / "package-lock.json"
+        p.write_text("")
+        assert extract_package_lock(str(p)) == []
+
+    def test_json_that_is_not_an_object(self, tmp_path):
+        p = tmp_path / "package-lock.json"
+        p.write_text("[1, 2, 3]")
+        assert extract_package_lock(str(p)) == []
+
+    def test_unknown_lockfile_version(self, tmp_path):
+        doc = {"lockfileVersion": 4, "packages": {
+            "node_modules/x": {"version": "1.0.0"}}}
+        assert extract_package_lock(_write(tmp_path, doc)) == []
+
+    def test_missing_lockfile_version(self, tmp_path):
+        doc = {"packages": {"node_modules/x": {"version": "1.0.0"}}}
+        assert extract_package_lock(_write(tmp_path, doc)) == []
+
+    def test_v3_without_a_packages_section(self, tmp_path):
+        assert extract_package_lock(_write(tmp_path, {"lockfileVersion": 3})) == []
+
+    def test_v1_without_a_dependencies_tree(self, tmp_path):
+        assert extract_package_lock(_write(tmp_path, {"lockfileVersion": 1})) == []
+
+    def test_a_lockfile_with_only_a_root_entry(self, tmp_path):
+        # A project with no dependencies at all. Distinct from a parse failure:
+        # #148's vocabulary reports this as `empty`, not `parse_error`.
+        doc = {"lockfileVersion": 3, "packages": {
+            "": {"name": "root", "version": "1.0.0"}}}
+        assert extract_package_lock(_write(tmp_path, doc)) == []
+
+
+# --- against real lockfiles --------------------------------------------------
+#
+# Synthetic fixtures pin the rules; these guard against the parser silently
+# reading nothing, or reading a whole file as one shape. Every count below was
+# taken from the file independently of the parser, so agreement means something.
+# Skipped when the clone is absent, as the pnpm suite does.
+
+V1_REAL = os.path.expanduser("~/code/github.com/lodash/lodash/package-lock.json")
+V2_REAL = os.path.expanduser(
+    "~/code/github.com/facebook/react/fixtures/ssr2/package-lock.json")
+V3_REAL = os.path.expanduser(
+    "~/code/github.com/mergestat/mergestat/ui/package-lock.json")
+
+
+@pytest.mark.skipif(not os.path.exists(V1_REAL),
+                    reason="needs the lodash clone this was measured against")
+def test_the_real_v1_lockfile_answers_two_axes_not_none():
+    """The error docs/dependency-flags.md shipped, as a test.
+
+    The page claimed a v1 package-lock.json "has no flags at all", which would
+    have sent this branch to NULL for both axes the file does answer.
+
+    Counts from the file: 673 install-path entries holding 602 distinct
+    name@version, so 71 collapse. `dev` is set on every path of all 602.
+    `optional` is set on 93 entries but on *every* path of only 55 -- the other
+    38 are reachable by a required path too, so they install.
+    """
+    rows = extract_package_lock(V1_REAL)
+    assert len(rows) == 602
+
+    assert sum(1 for r in rows if r["is_dev"] is True) == 602, \
+        "v1 records dev on every entry here; NULL would discard it"
+    assert sum(1 for r in rows if r["is_optional"] is True) == 55, \
+        "93 entries carry optional, but only 55 packages are optional by every path"
+    assert all(r["runs_install_script"] is None for r in rows), \
+        "v1 has no hasInstallScript; False would claim nothing executes"
+
+
+@pytest.mark.skipif(not os.path.exists(V2_REAL),
+                    reason="needs the react clone this was measured against")
+def test_the_real_v2_lockfile_is_not_double_counted():
+    """v2's two sections describe the same closure.
+
+    The file has 819 `packages:` entries (818 real ones plus the root) and 818
+    `dependencies:` tree entries. Reading both would report 1636. The 818
+    install paths hold 715 distinct name@version.
+    """
+    rows = extract_package_lock(V2_REAL)
+    assert len(rows) == 715
+
+
+@pytest.mark.skipif(not os.path.exists(V3_REAL),
+                    reason="needs the mergestat clone this was measured against")
+def test_the_real_v3_lockfile_separates_dev_optional_from_optional():
+    """The devOptional decision, against the file with the most of them.
+
+    Counts from the file: 1284 install-path entries holding 1141 distinct
+    name@version. Of those, 669 are dev by every path and 15 are devOptional by
+    every path, so is_dev is True for 669 + 15 = 684. 14 are optional by every
+    path, and `hasInstallScript` appears on 2.
+
+    The 16th devOptional entry is the one this aggregation exists for:
+    tinyglobby@0.2.17 is devOptional on one path and a plain production
+    dependency under npm/ on the other, so it installs and is_optional is False
+    rather than NULL.
+    """
+    rows = extract_package_lock(V3_REAL)
+    assert len(rows) == 1141
+
+    assert sum(1 for r in rows if r["is_dev"] is True) == 684
+    assert sum(1 for r in rows if r["is_optional"] is True) == 14
+    assert sum(1 for r in rows if r["is_optional"] is None) == 15
+    assert sum(1 for r in rows if r["declared_scope"] == "devOptional") == 15
+    assert sum(1 for r in rows if r["runs_install_script"] is True) == 2
+
+
+@pytest.mark.skipif(not os.path.exists(V3_REAL),
+                    reason="needs the mergestat clone this was measured against")
+def test_a_real_lockfile_is_not_recorded_as_all_one_thing():
+    """The shape of the pnpm v9 regression, as a guard for this parser.
+
+    That bug wrote a confident False for every entry in a file the format could
+    not speak for. The failure mode is a uniform column, so assert no column is
+    uniform where the file is mixed.
+    """
+    rows = extract_package_lock(V3_REAL)
+
+    assert len({r["is_dev"] for r in rows}) > 1, "is_dev is uniform"
+    assert len({r["requirements_type"] for r in rows}) > 1, \
+        "every package has the same package_use"
+    assert any(r["declared_scope"] for r in rows), "no flags read at all"
+    assert any(r["declared_scope"] is None for r in rows), \
+        "every entry carries a flag, which no real lockfile does"

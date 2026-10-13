@@ -30,6 +30,7 @@ from kospex.osi_outcomes import (
 
 @pytest.mark.parametrize("filename", [
     "requirements.txt", "pyproject.toml", "package.json", "go.mod", "app.csproj",
+    "pnpm-lock.yaml", "package-lock.json",
 ])
 def test_a_parsed_file_with_rows_is_extracted(filename):
     assert classify_outcome(filename, row_count=3) == EXTRACTED
@@ -46,7 +47,7 @@ def test_a_parsed_file_with_no_rows_is_empty(filename):
 
 
 @pytest.mark.parametrize("filename", [
-    "yarn.lock", "uv.lock", "package-lock.json", "build.gradle", "build.gradle.kts",
+    "yarn.lock", "uv.lock", "build.gradle", "build.gradle.kts",
     "pom.xml",
 ])
 def test_a_recognised_manifest_with_no_parser_is_unsupported(filename):

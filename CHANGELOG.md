@@ -289,6 +289,42 @@ was relying on the old, wrong success.
   is extracted from it yet — this only moves it into the parser backlog that
   `unsupported` is meant to count.
 
+### Added
+
+- **`package-lock.json` is now parsed** ([#229](https://github.com/kospex/kospex/issues/229)).
+  The extractor registry has classified npm lockfiles since July 2026 without
+  being able to read one, so a repository whose only manifest was a
+  `package-lock.json` produced no dependency rows at all. All three lockfile
+  versions are read: v3 and v2 from `packages:`, v1 from its nested
+  `dependencies:` tree. A v2 file's duplicate `dependencies:` tree is ignored,
+  since it describes the same closure.
+
+  The four install-state columns from migration `0009` are populated —
+  `is_dev`, `is_optional`, `runs_install_script` and `declared_scope` — so npm
+  rows now answer the same questions as pnpm rows. Three npm-specific points
+  are worth knowing before querying them:
+
+  - **`devOptional` records `is_dev=1` with `is_optional` NULL.** It is npm's
+    third state rather than the union of the other two: it never co-occurs with
+    `dev` or `optional`, and means "reachable only via a dev path *or* an
+    optional path" without saying which. The package does not reach production,
+    but whether it may fail to install is genuinely unstated, so NULL.
+  - **A package reached by several install paths is reconciled, not
+    overwritten.** `packages:` keys are install paths and the primary key has
+    no path column, so the same `name@version` at two depths collapses to one
+    row. `dev` / `optional` / `devOptional` are true only when *every* path
+    agrees — one production path means the package ships — while
+    `hasInstallScript` / `peer` / `inBundle` are true if any path says so.
+  - **`lockfileVersion: 1` rows are all `transitive`.** v1's top level is the
+    hoisted install set rather than the declared set, so a direct dependency
+    cannot be told from a transitive lifted to the root. `is_dev` is still
+    populated; `runs_install_script` is NULL, because v1 has no
+    `hasInstallScript` field.
+
+  Expect a larger first scan. On a reference estate this adds ~13,700 rows from
+  ~7,400 distinct packages, around 5,900 of which have never been looked up, so
+  the first sweep does that many deps.dev calls.
+
 ## 0.1.0 - 2026-09-11
 
 ### Upgrade notes

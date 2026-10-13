@@ -67,11 +67,57 @@ and `devOptional` is not simply shorthand for both.
 closure" for those 175 entries, which is wrong — they are dev-only. Two booleans
 cannot represent five states.
 
-### Attribution is free
+### Attribution is free in the file, but kospex does not store it
 
 Keys are paths — `node_modules/a/node_modules/b` — so nesting, and therefore which
 package pulled a dependency in, is readable directly. 259 of 1285 entries in one
-real file are nested.
+real file are nested; across all 31 files, 2331 entries sit at depth 2 and 47 at
+depth 3.
+
+kospex does not record it. `dependency_data`'s primary key is
+`(_repo_id, hash, file_path, package_type, package_name, package_version)` with no
+install-path column, so the parser reads the paths and then discards them. Storing
+the parent is tracked in [#227](https://github.com/kospex/kospex/issues/227), which
+owns attribution for every format.
+
+### One package, several paths
+
+Because the key is a path, the same `name@version` can appear many times. Across
+the 31 `package-lock.json` files on disk, 14,884 install-path entries hold 13,729
+distinct `name@version` — so 1,155 collapse onto a row that already exists, in 479
+groups of two or more.
+
+Those entries can disagree, because `dev` and `optional` describe how a package was
+*reached*, not what it is:
+
+| flag | duplicate groups that disagree |
+|---|---|
+| `dev` | 53 |
+| `optional` | 48 |
+| `inBundle` | 18 |
+| `devOptional` | 4 |
+| `peer` | 4 |
+| `hasInstallScript` | 0 |
+
+`chalk@5.6.2` is a clear case: four entries, three reached from production paths
+and one from `npm/`'s dev tree. It plainly ships.
+
+**kospex aggregates rather than letting the last write win**, which would otherwise
+pick a value by JSON key order:
+
+- `dev`, `optional`, `devOptional` — true only when **every** path agrees. One
+  production path means the package ships; one required path means it installs. The
+  same rule pnpm v9 needs for `snapshots:`.
+- `hasInstallScript`, `peer`, `inBundle` — true when **any** path says so. These
+  describe the package itself, which is consistent with `hasInstallScript` being the
+  one flag no duplicate group disagrees on.
+
+`declared_scope` is built from the aggregate, so it cannot contradict the booleans
+beside it: the `chalk` row above reads `is_dev=0` with an empty scope, not `dev`.
+
+The effect is not marginal. In one v1 file, 93 entries carry `optional` but only 55
+packages are optional by every path — reading the flag per entry would mark 38
+packages as "may not install" when a required path installs them.
 
 ### lockfileVersion 1 records two of the five flags
 

@@ -1,0 +1,154 @@
+# `package-lock.json` extractor
+
+Adds the npm lockfile parser, the first of the four formats parked under
+[#229](https://github.com/kospex/kospex/issues/229) ("sub-project D"). The
+registry has classified `package-lock.json` since July 2026 with `scanners=()`
+— named but unreadable. It is now read by both scan paths.
+
+#229 ranked it first of the four despite `yarn.lock` being more numerous,
+because it records the same install-state axes as `pnpm-lock.yaml` and in
+places more. That held up.
+
+## Files changed
+
+| file | change |
+|---|---|
+| `src/kospex/extractors/npmlock.py` | new — the parser |
+| `src/kospex/extractors/registry.py` | `npm-lock` gains `("sca", "osi")` and its `parse_ref`, and moves to the parser-backed block |
+| `tests/test_extractors_npmlock.py` | new — 67 tests |
+| `tests/test_extractor_registry.py` | `package-lock.json` is supported; `npm-lock` joins the both-scanners list |
+| `tests/test_osi_outcomes.py` | moves from `unsupported` to `extracted` |
+| `src/kospex_dependencies.py` | corrects a stale comment on `get_package_template` |
+| `docs/dependency-flags.md` | two new sections; qualifies one existing claim |
+| `docs/sitemap.xml` | `lastmod` |
+
+No migration. The four install-state columns already exist from `0009`.
+
+## What the format actually holds
+
+Measured across all 31 `package-lock.json` files on disk — 14,884 install-path
+entries — because the previous round of this work shipped three artifacts
+repeating a remembered claim that was wrong.
+
+Files split 25 × v3, 4 × v2, 2 × v1. The structural difference a parser must
+branch on:
+
+- **v3** — `packages:` only.
+- **v2** — both `packages:` and the v1-style `dependencies:` tree, describing
+  the same closure. One file here has 819 and 818. Only `packages:` is read;
+  reading both would report 1637 for 715 packages.
+- **v1** — `dependencies:` only, nested.
+
+Three key shapes are *not* installed packages, and all three are excluded:
+
+| excluded | count | why |
+|---|---|---|
+| root `""` entry | 29 | the project itself; would be recorded as depending on itself |
+| workspace importers (`apps/desktop`, `..`) | 13 | local packages, not fetched |
+| `link: true` | 13 | symlinks back at those importers |
+
+The `link` rule is load-bearing rather than cosmetic: those 13 are **exactly**
+the entries with no `version`, and `package_version` is part of the
+`dependency_data` primary key, so each would have inserted a row that could
+never update — only duplicate on every re-sync.
+
+## Decisions
+
+### `devOptional` → `is_dev=1`, `is_optional=NULL`
+
+npm's third state, and not the union of the other two. Measured rather than
+recalled: `devOptional` appears on 71 entries and **never** alongside `dev` or
+`optional`, while `dev` and `optional` co-occur 555 times. So npm sets exactly
+one of the three, and `devOptional` means "reachable only via a dev path *or* an
+optional path" without resolving which.
+
+It therefore sets `is_dev` — it certainly does not reach production — and leaves
+`is_optional` NULL, because `false` would claim npm had confirmed the package
+always installs. `declared_scope="devOptional"` keeps that distinguishable from
+a plain `dev` entry, since the projection is lossy.
+
+### One package, several paths: aggregate, don't overwrite
+
+Found by writing real rows into a copy of the live database rather than trusting
+the unit tests. The parser offered 2775 rows and the database stored 2458.
+
+`packages:` keys are install paths, and the `dependency_data` primary key has no
+install-path column, so the same `name@version` at two depths collapses onto one
+row. Across the estate, 14,884 entries hold 13,729 distinct `name@version` —
+1,155 collapse, in 479 groups.
+
+Those entries disagree more often than is comfortable, because `dev` and
+`optional` describe how a package was *reached*:
+
+| flag | groups that disagree |
+|---|---|
+| `dev` | 53 |
+| `optional` | 48 |
+| `inBundle` | 18 |
+| `devOptional` | 4 |
+| `peer` | 4 |
+| `hasInstallScript` | 0 |
+
+Left to the upsert, which value survives depends on JSON key order. So the
+parser reconciles them first:
+
+- `dev` / `optional` / `devOptional` — true only when **every** path agrees. One
+  production path means it ships; one required path means it installs. This is
+  the rule already settled for pnpm v9 `snapshots:`, for the same reason.
+- `hasInstallScript` / `peer` / `inBundle` — true when **any** path says so.
+  These describe the package itself, which is consistent with
+  `hasInstallScript` being the one flag no duplicate group disagrees on.
+
+`declared_scope` is built from the aggregate, so it cannot contradict the
+booleans in its own row.
+
+The effect is not marginal. In one v1 file, 93 entries carry `optional` but only
+55 packages are optional by every path — per-entry reading would mark 38
+packages "may not install" when a required path installs them. `chalk@5.6.2` has
+four entries, three from production paths and one from a dev tree; it ships.
+
+### v1 reports nothing as `direct`
+
+v1's top level is the **hoisted** install set, not the declared set, so a
+transitive lifted to the root is indistinguishable from a declared dependency.
+Claiming `direct` for the top level would be a guess, so every v1 row is
+`transitive`. `is_dev` still carries what npm did state, at every depth.
+
+This is the one place the parser is less informative than the file feels, and it
+is a property of v1 rather than a shortcut. Two files on disk are affected.
+
+### `peer` does not become `package_use`
+
+`PACKAGE_USE_PEER` and `PACKAGE_USE_OPTIONAL` exist in `kospex_schema.py`, but
+neither scan path's `_REQ_TO_USE` maps them, and the two disagree on the
+fallback: `KospexDependencies` defaults to `direct`, `krunner` to `""`. Emitting
+them would write silently wrong values down one path or the other. The flags are
+preserved in `declared_scope` instead, and the mapping gap is left as it was
+rather than quietly worked around.
+
+## What this adds to the database
+
+13,729 rows across the estate, from 7,386 distinct `name@version`, of which
+5,915 are not currently in `dependency_data` at all. A first sweep is therefore
+~5,900 deps.dev lookups — roughly half an hour at the 0.33s per lookup measured
+in [#226](https://github.com/kospex/kospex/issues/226). That is the same bet
+[#225](https://github.com/kospex/kospex/issues/225) already took deliberately
+for pnpm transitives, but it lands on serial enrichment rather than avoiding it.
+
+Verified end to end through `classify()` and `resolve_parser()` — not by
+importing the parser directly — with `requirements_type` mapped through *both*
+scan paths' real `_REQ_TO_USE`. Every value maps, the two paths agree on all of
+them, and no column holds a value of the wrong type for it. Rows were then
+written into a throwaway copy of `kospex.db` via `save_dependencies()`, the same
+function `krunner osi` calls: 2458 offered, 2458 stored.
+
+## Out of scope, deliberately
+
+- **Attribution** — nesting is readable for free (2,331 entries at depth 2, 47
+  at depth 3) and is then discarded, because there is no column for it.
+  [#227](https://github.com/kospex/kospex/issues/227) owns it across all formats.
+- **`license`** — on 81% of entries and stored nowhere;
+  [#239](https://github.com/kospex/kospex/issues/239).
+- **`deprecated`** — npm's own notice on 68 entries, no home;
+  also #239.
+- **The other three formats** in #229: `yarn.lock`, `uv.lock`, `build.gradle`.
