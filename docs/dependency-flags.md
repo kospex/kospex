@@ -173,6 +173,50 @@ The flags above are a small part of the file. Measured across all 31
 | `hasInstallScript` | 46 | |
 | `link` | 13 | workspace link |
 
+**Corrected 2026-10-13.** The table above omitted four keys. Re-enumerated over
+the 14,222 *installed* entries (excluding the 29 root and 13 importer entries,
+which is the population a parser iterates):
+
+| key | entries | what it means |
+|---|---|---|
+| `peerDependenciesMeta` | 380 | per-peer `{"optional": true}` |
+| **`name`** | **30** | **the real package, when the install path is an alias** |
+| `workspaces` | 11 | workspace globs, on an importer |
+| `bundleDependencies` | 3 | names bundled into the tarball |
+
+`name` is the one that matters, and it was the omission that caused a bug. See
+the next section.
+
+### An install path is not a package name
+
+`npm i foo@npm:bar` installs **bar** at `node_modules/foo`, and npm records the
+real package in a `name` field on that entry. The path segment is the alias the
+project chose.
+
+Every one of the 30 entries carrying a `name` has one that differs from its path:
+
+```
+node_modules/string-width-cjs     ->  string-width@4.2.3
+node_modules/strip-ansi-cjs       ->  strip-ansi@6.0.1
+node_modules/react-helmet-async   ->  @slorber/react-helmet-async@1.3.0
+node_modules/react-loadable       ->  @docusaurus/react-loadable@6.0.0
+```
+
+**Consequence for a parser:** taking the name from the path records a package
+that does not exist on the registry, so the deps.dev lookup returns nothing and
+the row carries no advisories and no `versions_behind` — for a package that is
+genuinely installed and may genuinely be vulnerable. A clean result and an
+unanswerable one become indistinguishable, which is the failure this whole page
+exists to prevent.
+
+kospex prefers the entry's `name` and falls back to the path only when the field
+is absent or unusable. The alias is still matched when deciding `direct` / `dev`,
+because a project declares an aliased dependency *by its alias*.
+
+v1 has no `name` field and encodes the same thing in the version:
+`{"foo": {"version": "npm:left-pad@1.2.3"}}`. Stored verbatim that is a package
+called `foo` at a version that is not a version.
+
 Two of these are worth more than the install-state flags this page was written
 for. `license` is present on 81% of entries, and `deprecated` carries npm's own
 notice as text. `dependencies` is the resolved graph per entry, which is what

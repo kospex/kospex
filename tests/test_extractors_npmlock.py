@@ -96,6 +96,189 @@ class TestPackageNameFromKey:
         assert _package_name_from_key("apps/desktop") is None
 
 
+class TestAliasedDependencies:
+    """`npm i foo@npm:bar` installs bar at the path node_modules/foo.
+
+    npm records the real package in a `name` field on the entry, so taking the
+    name from the install path records a package that does not exist. The
+    deps.dev lookup then returns nothing and the row carries no advisories --
+    the SCA result is silently clean for whatever is actually installed.
+
+    This is not hypothetical: 30 entries across the reference estate are
+    aliases, and every entry that carries a `name` has one that differs from
+    its path.
+    """
+
+    def test_the_real_package_name_is_recorded_not_the_alias(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/string-width-cjs": {
+                    "name": "string-width",
+                    "version": "4.2.3",
+                },
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["string-width"]
+
+    def test_a_scoped_alias_target_keeps_its_scope(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/react-loadable": {
+                    "name": "@docusaurus/react-loadable",
+                    "version": "6.0.0",
+                },
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert records[0]["package_name"] == "@docusaurus/react-loadable"
+
+    def test_a_name_matching_the_path_is_unchanged(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/lodash": {"name": "lodash", "version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert records[0]["package_name"] == "lodash"
+
+    def test_a_useless_name_falls_back_to_the_path(self, tmp_path):
+        # Don't trust the field blindly: the file is attacker-controlled, and an
+        # empty or non-string name must not produce a nameless row, which would
+        # be an unusable primary key.
+        for bad in ("", None, 42, {"not": "a string"}):
+            doc = {
+                "lockfileVersion": 3,
+                "packages": {
+                    "": {"name": "root", "version": "1.0.0"},
+                    "node_modules/lodash": {"name": bad, "version": "4.17.21"},
+                },
+            }
+            records = extract_package_lock(_write(tmp_path, doc))
+            assert [r["package_name"] for r in records] == ["lodash"], bad
+
+    def test_an_alias_and_its_target_at_one_version_are_one_package(self, tmp_path):
+        # node_modules/string-width-cjs and
+        # node_modules/wrap-ansi-cjs/node_modules/string-width are both
+        # string-width@4.2.3 -- the same package by two routes, so one row.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/string-width-cjs": {
+                    "name": "string-width", "version": "4.2.3", "dev": True},
+                "node_modules/wrap-ansi-cjs/node_modules/string-width": {
+                    "version": "4.2.3"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert len(records) == 1
+        assert records[0]["package_name"] == "string-width"
+        assert records[0]["is_dev"] is False, "one non-dev route means it ships"
+
+    def test_a_different_version_of_the_alias_target_stays_separate(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/string-width-cjs": {
+                    "name": "string-width", "version": "4.2.3"},
+                "node_modules/string-width": {"version": "5.1.2"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert sorted((r["package_name"], r["package_version"]) for r in records) == [
+            ("string-width", "4.2.3"), ("string-width", "5.1.2"),
+        ]
+
+    def test_v1_records_an_alias_in_the_version_string(self, tmp_path):
+        # v1 has no `name` field, so it encodes the alias as
+        # version: "npm:<name>@<version>". Storing that verbatim gives a
+        # package_version that is not a version at all.
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {
+                "foo": {"version": "npm:left-pad@1.2.3"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [(r["package_name"], r["package_version"]) for r in records] == [
+            ("left-pad", "1.2.3"),
+        ]
+
+    def test_v1_alias_to_a_scoped_package(self, tmp_path):
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {
+                "helmet": {"version": "npm:@slorber/react-helmet-async@1.3.0"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [(r["package_name"], r["package_version"]) for r in records] == [
+            ("@slorber/react-helmet-async", "1.3.0"),
+        ]
+
+    def test_v1_a_normal_version_is_untouched(self, tmp_path):
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {"lodash": {"version": "4.17.21"}},
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [(r["package_name"], r["package_version"]) for r in records] == [
+            ("lodash", "4.17.21"),
+        ]
+
+    def test_an_aliased_direct_dependency_is_still_direct(self, tmp_path):
+        # The root declares the ALIAS ("string-width-cjs": "npm:string-width@…"),
+        # so resolving the row to the real name must not lose the fact that the
+        # project declared it. Membership is tested against both names.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0",
+                     "dependencies": {"string-width-cjs": "npm:string-width@^4.2.3"}},
+                "node_modules/string-width-cjs": {
+                    "name": "string-width", "version": "4.2.3"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert records[0]["package_name"] == "string-width"
+        assert records[0]["requirements_type"] == "direct"
+
+    def test_an_aliased_dev_dependency_is_still_dev(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0",
+                     "devDependencies": {"sw-cjs": "npm:string-width@^4.2.3"}},
+                "node_modules/sw-cjs": {
+                    "name": "string-width", "version": "4.2.3"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert records[0]["requirements_type"] == "dev"
+
+    def test_v1_a_malformed_npm_alias_is_dropped_not_stored_raw(self, tmp_path):
+        # "npm:" with nothing parseable after it names no package. Storing the
+        # raw string would put a non-version in a primary-key column.
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {
+                "broken": {"version": "npm:"},
+                "alsobroken": {"version": "npm:noversion"},
+                "lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
+
+
 class TestWhichEntriesBecomeRows:
     """Three kinds of packages: entry are not installed third-party packages."""
 
@@ -678,6 +861,37 @@ def test_the_real_v3_lockfile_separates_dev_optional_from_optional():
     assert sum(1 for r in rows if r["is_optional"] is None) == 15
     assert sum(1 for r in rows if r["declared_scope"] == "devOptional") == 15
     assert sum(1 for r in rows if r["runs_install_script"] is True) == 2
+
+
+ALIAS_REAL = os.path.expanduser(
+    "~/code/github.com/NixOS/nixpkgs/ci/github-script/package-lock.json")
+
+
+@pytest.mark.skipif(not os.path.exists(ALIAS_REAL),
+                    reason="needs the nixpkgs clone this was measured against")
+def test_a_real_aliased_dependency_resolves_to_the_installed_package():
+    """The SCA-evasion case, against a real file that contains it.
+
+    This lockfile holds three aliases — `string-width-cjs`, `strip-ansi-cjs`
+    and `wrap-ansi-cjs` — each installing the plain package at an older major.
+    Recording the alias would send three deps.dev lookups to packages that do
+    not exist, and return no advisories for three that do.
+
+    It also holds the genuine `string-width@5.1.2`, so the two must stay
+    separate rows while `string-width@4.2.3` (reached as the alias AND nested
+    under `wrap-ansi-cjs`) is one.
+    """
+    rows = extract_package_lock(ALIAS_REAL)
+    names = {r["package_name"] for r in rows}
+    pairs = {(r["package_name"], r["package_version"]) for r in rows}
+
+    for alias in ("string-width-cjs", "strip-ansi-cjs", "wrap-ansi-cjs"):
+        assert alias not in names, "%s is an install path, not a package" % alias
+
+    assert ("string-width", "4.2.3") in pairs
+    assert ("string-width", "5.1.2") in pairs
+    assert ("strip-ansi", "6.0.1") in pairs
+    assert ("wrap-ansi", "7.0.0") in pairs
 
 
 @pytest.mark.skipif(not os.path.exists(V3_REAL),

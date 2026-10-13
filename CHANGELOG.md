@@ -309,6 +309,15 @@ was relying on the old, wrong success.
     `dev` or `optional`, and means "reachable only via a dev path *or* an
     optional path" without saying which. The package does not reach production,
     but whether it may fail to install is genuinely unstated, so NULL.
+  - **An aliased dependency is recorded as the package it actually is.**
+    `npm i foo@npm:bar` installs *bar* at `node_modules/foo`, and npm names the
+    real package in a `name` field on that entry. Reading the install path
+    instead would record a package that is not on the registry, so its deps.dev
+    lookup returns nothing and the row shows no advisories for something that is
+    genuinely installed. 30 entries on a reference estate are aliases. The alias
+    is still matched when deciding `direct` / `dev`, since a project declares an
+    aliased dependency by its alias. v1 encodes the same thing as
+    `version: "npm:bar@1.2.3"`, which is parsed rather than stored verbatim.
   - **A package reached by several install paths is reconciled, not
     overwritten.** `packages:` keys are install paths and the primary key has
     no path column, so the same `name@version` at two depths collapses to one
@@ -324,6 +333,9 @@ was relying on the old, wrong success.
   Expect a larger first scan. On a reference estate this adds ~13,700 rows from
   ~7,400 distinct packages, around 5,900 of which have never been looked up, so
   the first sweep does that many deps.dev calls.
+
+  `docs/dependency-flags.md` carries the measured per-key inventory and the
+  per-version detail behind all of this.
 
 ## 0.1.0 - 2026-09-11
 

@@ -67,6 +67,41 @@ It therefore sets `is_dev` — it certainly does not reach production — and le
 always installs. `declared_scope="devOptional"` keeps that distinguishable from
 a plain `dev` entry, since the projection is lossy.
 
+### An install path is not a package name
+
+`npm i foo@npm:bar` installs **bar** at `node_modules/foo`, with the real
+package in a `name` field on the entry. Taking the name from the path records a
+package that is not on the registry, so the deps.dev lookup returns nothing —
+the row shows no advisories and no `versions_behind` for a package that is
+genuinely installed.
+
+Not hypothetical: **30 entries** across the estate are aliases, and every entry
+carrying a `name` has one that differs from its path.
+
+```
+node_modules/string-width-cjs     ->  string-width@4.2.3
+node_modules/react-helmet-async   ->  @slorber/react-helmet-async@1.3.0
+node_modules/react-loadable       ->  @docusaurus/react-loadable@6.0.0
+```
+
+The entry's `name` wins, falling back to the path only when the field is absent
+or unusable — a lockfile is attacker-controlled input and `package_name` is part
+of the primary key, so an empty or non-string `name` must not produce a nameless
+row. v1 has no `name` field and encodes the same thing as
+`version: "npm:left-pad@1.2.3"`, which is parsed; an `npm:` spec naming nothing
+parseable is dropped rather than stored raw.
+
+The alias is still matched when deciding `direct` / `dev`, because a project
+declares an aliased dependency *by its alias*. Resolving the name without that
+would have reclassified every aliased direct dependency as transitive.
+
+**The key inventory this parser was designed from had omitted `name`** — along
+with `peerDependenciesMeta` (380), `workspaces` (11) and `bundleDependencies`
+(3). `docs/dependency-flags.md` is corrected. That inventory existed to stop
+exactly this class of mistake, which is worth noting: an inventory is only as
+good as its completeness, and a key present on 30 of 14,222 entries is easy to
+miss and expensive to miss.
+
 ### One package, several paths: aggregate, don't overwrite
 
 Found by writing real rows into a copy of the live database rather than trusting
@@ -128,8 +163,8 @@ rather than quietly worked around.
 
 ## What this adds to the database
 
-13,729 rows across the estate, from 7,386 distinct `name@version`, of which
-5,915 are not currently in `dependency_data` at all. A first sweep is therefore
+13,707 rows across the estate, from 7,383 distinct `name@version`, of which
+~5,900 are not currently in `dependency_data` at all. A first sweep is therefore
 ~5,900 deps.dev lookups — roughly half an hour at the 0.33s per lookup measured
 in [#226](https://github.com/kospex/kospex/issues/226). That is the same bet
 [#225](https://github.com/kospex/kospex/issues/225) already took deliberately

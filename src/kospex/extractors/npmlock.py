@@ -63,6 +63,55 @@ def _template():
     }
 
 
+#: How npm encodes an alias in a v1 version string: `npm:<name>@<version>`.
+_NPM_ALIAS = "npm:"
+
+
+def _real_package_name(path_name, meta):
+    """Prefer the entry's own ``name`` over the install path.
+
+    ``npm i foo@npm:bar`` installs *bar* at ``node_modules/foo`` and records
+    ``name: "bar"`` on the entry. The path segment is the alias the project
+    chose; the ``name`` is the package that is actually on disk. Recording the
+    alias means the deps.dev lookup is for a package that does not exist, so
+    the row comes back with no advisories and no versions_behind -- a silently
+    clean SCA result for whatever was really installed.
+
+    Not hypothetical: 30 entries across the reference estate are aliases, and
+    every entry carrying a ``name`` has one that differs from its path (e.g.
+    ``node_modules/string-width-cjs`` is ``string-width@4.2.3``).
+
+    A lockfile is attacker-controlled input, so a missing, empty or non-string
+    ``name`` falls back to the path rather than producing a nameless row --
+    package_name is part of the primary key.
+    """
+    declared = meta.get("name")
+    if isinstance(declared, str) and declared.strip():
+        return declared.strip()
+    return path_name
+
+
+def _v1_identity(name, version):
+    """v1 has no ``name`` field, so it encodes an alias in the version.
+
+    ``{"foo": {"version": "npm:left-pad@1.2.3"}}`` means left-pad@1.2.3 is
+    installed as ``foo``. Stored verbatim that is a package called ``foo`` at
+    version ``npm:left-pad@1.2.3`` -- neither of which is true, and the version
+    is not a version.
+
+    Returns (name, version) unchanged for an ordinary entry, and (None, None)
+    when an ``npm:`` spec names nothing parseable, so the caller drops it
+    rather than writing a non-version into a primary-key column.
+    """
+    if not isinstance(version, str) or not version.startswith(_NPM_ALIAS):
+        return name, version
+
+    real_name, sep, real_version = version[len(_NPM_ALIAS):].rpartition("@")
+    if not sep or not real_name or not real_version:
+        return None, None
+    return real_name, real_version
+
+
 def _package_name_from_key(key):
     """``packages:`` key (an install path) → package name, or None.
 
@@ -180,15 +229,23 @@ def _install_state_from_v1(metas):
     }
 
 
-def _group_by_package(pairs):
-    """[(name, version, meta), ...] → {(name, version): [meta, ...]}, in order.
+def _group_by_package(entries):
+    """[(name, version, meta, alias)] → {(name, version): (metas, names)}.
 
     Insertion-ordered so the records a parse returns follow the file, which
     keeps diffs between two runs readable.
+
+    ``names`` collects every name the package was reached under -- its own and
+    any alias it was installed as. A project declares an alias by the alias, so
+    direct/dev lookups have to match on either.
     """
     groups = {}
-    for name, version, meta in pairs:
-        groups.setdefault((name, version), []).append(meta)
+    for name, version, meta, alias in entries:
+        metas, names = groups.setdefault((name, version), ([], set()))
+        metas.append(meta)
+        names.add(name)
+        if alias:
+            names.add(alias)
     return groups
 
 
@@ -212,9 +269,11 @@ def _extract_from_dependencies_tree(dependencies):
         for name, meta in block.items():
             if not isinstance(meta, dict):
                 continue
-            version = meta.get("version")
-            if name and version:
-                found.append((name, version, meta))
+            # v1 encodes an alias in the version string, so the identity has to
+            # be resolved before the entry is recorded at all.
+            real_name, version = _v1_identity(name, meta.get("version"))
+            if real_name and version:
+                found.append((real_name, version, meta, name))
             # Nested transitives live inside their parent's own dependencies
             # map. Walked even when the parent was skipped.
             walk(meta.get("dependencies"))
@@ -222,7 +281,7 @@ def _extract_from_dependencies_tree(dependencies):
     walk(dependencies)
 
     records = []
-    for (name, version), metas in _group_by_package(found).items():
+    for (name, version), (metas, _names) in _group_by_package(found).items():
         record = _template()
         record["package_name"] = name
         record["package_version"] = version
@@ -270,8 +329,8 @@ def _extract_from_packages(packages):
     found = []
 
     for key, meta in packages.items():
-        name = _package_name_from_key(key)
-        if name is None:
+        path_name = _package_name_from_key(key)
+        if path_name is None:
             continue
         if not isinstance(meta, dict):
             continue
@@ -283,17 +342,20 @@ def _extract_from_packages(packages):
         version = meta.get("version")
         if not version:
             continue
-        found.append((name, version, meta))
+        # The path segment can be an alias; the entry's `name` is the package.
+        found.append((_real_package_name(path_name, meta), version, meta, path_name))
 
     records = []
-    for (name, version), metas in _group_by_package(found).items():
+    for (name, version), (metas, names) in _group_by_package(found).items():
         record = _template()
         record["package_name"] = name
         record["package_version"] = version
         record["ecosystem"] = "npm"
-        if name in direct:
+        # Matched on every name it was reached under, because a project
+        # declares an aliased dependency by its alias, not by its real name.
+        if names & direct:
             record["requirements_type"] = "direct"
-        elif name in dev:
+        elif names & dev:
             record["requirements_type"] = "dev"
         else:
             # Not "peer" or "optional" even when npm flags them. Those
