@@ -193,6 +193,32 @@ The mechanism is not theoretical. The only two entries in the estate whose
 `node_modules/express-exp` resolving to the `exit` tarball — are both in malware
 test fixtures.
 
+### The same rule, in the version column and the path
+
+Having settled "no field is authoritative" for names, two places had not been
+brought into line.
+
+**`version` was still trusted alone.** Both it and the version inside the
+`resolved` tarball URL are attacker-supplied, so a lockfile could declare
+`version: "99.0.0"` while the URL fetched `1.2.3` — deps.dev has nothing to
+answer for a version that does not exist, so a genuinely vulnerable package
+reported no advisories. Both versions are now recorded. Measured: they agree on
+all **12,719** entries where both exist, so a disagreement never occurs in an
+honest file.
+
+**A dependency at an unusual path disappeared.** A `packages:` key with no
+`node_modules/` segment is a workspace importer — a local directory, built
+rather than downloaded — and was skipped on the strength of the key alone. So
+`"vendor/evil-pkg": {version, resolved, integrity}` was invisible. A real
+importer is never fetched: measured, **none** of the 13 in the estate carries
+both a version and a registry tarball URL, so an entry that carries both is
+treated as the dependency it is. Real importers still contribute their
+`dependencies` blocks, so an aliased or workspace-declared package stays
+`direct`.
+
+Neither change costs anything on real data — the estate total is identical at
+13,739 rows, because no honest file triggers either rule.
+
 ### A missing key must not hide an entry
 
 `version` is part of the primary key, so an entry without one cannot be written

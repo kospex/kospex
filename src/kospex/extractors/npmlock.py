@@ -189,28 +189,64 @@ def _identities(path_name, meta):
     return names
 
 
-def _entry_version(meta):
-    """The entry's ``version``, or the one in its tarball URL.
+def _entry_versions(meta):
+    """Every version this entry claims, the declared one first.
 
-    ``version`` is part of the dependency_data primary key, so an entry without
-    one cannot be written -- and silently skipping meant deleting a single key
-    removed a package from the scan while ``resolved`` and ``integrity`` still
+    The same rule as _identities, in the other primary-key column, and for the
+    same reason: ``version`` and the version inside the ``resolved`` tarball URL
+    are both attacker-supplied, so neither vouches for the other. Trusting
+    ``version`` alone let a lockfile claim a version that does not exist --
+    deps.dev then has nothing to answer with, so a genuinely vulnerable package
+    reported no advisories. That is identity spoofing in the version field.
+
+    Measured: the two agree on all 12,719 entries where both are present, so a
+    disagreement never occurs in an honest file and recording both costs
+    nothing. 1,490 entries have no parseable tarball URL and are unaffected.
+
+    This also covers an absent ``version``: deleting that one key used to remove
+    the entry from the scan entirely, while ``resolved`` and ``integrity`` still
     told npm exactly what to fetch.
-
-    Measured: all 13 version-less entries in the reference estate are
-    ``link: true`` symlinks to workspace directories, which have no version to
-    recover and are not fetched packages. A non-link entry without a version
-    does not occur naturally, so recovering one from the URL costs nothing.
     """
-    version = meta.get("version")
-    if version:
-        return version
+    versions = []
+
+    declared = meta.get("version")
+    if isinstance(declared, str) and declared:
+        versions.append(declared)
 
     url = meta.get("resolved")
-    if not isinstance(url, str) or not url:
-        return None
-    match = _TARBALL_VERSION.search(url)
-    return match.group("version") if match else None
+    if isinstance(url, str) and url:
+        match = _TARBALL_VERSION.search(url)
+        if match and match.group("version") not in versions:
+            versions.append(match.group("version"))
+
+    if len(versions) > 1:
+        logger.warning(
+            "entry claims more than one version %r; recording each -- the "
+            "declared version and the tarball URL disagree", versions)
+
+    return versions
+
+
+def _is_installed_entry(key, meta):
+    """Does this ``packages:`` entry describe a fetched package?
+
+    The root ``""`` entry is the project. A key with no ``node_modules/``
+    segment is normally a workspace importer: a local directory that is built,
+    not downloaded.
+
+    But testing the key alone let a dependency parked at ``vendor/evil-pkg``
+    disappear, because nothing about such a key is checked against its content.
+    A real importer is never fetched -- measured, none of the 13 in the
+    reference estate carries both a version and a registry tarball URL -- so an
+    entry that carries both is a dependency at an unusual path, and skipping it
+    would hide it.
+    """
+    if key == "":
+        return False
+    if _NODE_MODULES in key:
+        return True
+    return bool(_entry_versions(meta)) and bool(
+        _name_from_resolved(meta.get("resolved")))
 
 
 def _lockfile_version(raw):
@@ -424,15 +460,16 @@ def _extract_from_dependencies_tree(dependencies):
                 continue
             # v1 encodes an alias in the version string, so the identity has to
             # be resolved before the entry is recorded at all.
-            alias_name, version = _v1_identity(name, meta.get("version"))
-            if not version:
-                version = _entry_version(meta)
-            if version:
-                # Same rule as v2/v3: every identity the entry asserts, with
-                # the declared key first. See _identities.
-                for identity in _identities(
-                        name, {"name": alias_name if alias_name != name else None,
-                               "resolved": meta.get("resolved")}):
+            alias_name, alias_version = _v1_identity(name, meta.get("version"))
+
+            # Same rules as v2/v3: every identity and every version the entry
+            # asserts, with the declared ones first. See _identities and
+            # _entry_versions.
+            claims = {"name": alias_name if alias_name != name else None,
+                      "version": alias_version,
+                      "resolved": meta.get("resolved")}
+            for identity in _identities(name, claims):
+                for version in _entry_versions(claims):
                     found.append((identity, version, meta, name))
             # Nested transitives live inside their parent's own dependencies
             # map. Walked even when the parent was skipped.
@@ -464,10 +501,10 @@ def _collect_direct_dev(packages):
     direct, dev = set(), set()
 
     for key, meta in packages.items():
-        if _package_name_from_key(key) is not None:
-            continue  # an installed package, not an importer
         if not isinstance(meta, dict):
             continue
+        if _is_installed_entry(key, meta):
+            continue  # a fetched package, not an importer
         for block in ("dependencies", "optionalDependencies"):
             value = meta.get(block)
             if isinstance(value, dict):
@@ -489,11 +526,14 @@ def _extract_from_packages(packages):
     found = []
 
     for key, meta in packages.items():
-        path_name = _package_name_from_key(key)
-        if path_name is None:
-            continue
         if not isinstance(meta, dict):
             continue
+        if not _is_installed_entry(key, meta):
+            continue
+        # The install path's own name: the last node_modules/ segment, or the
+        # last path segment for a dependency parked somewhere unusual.
+        path_name = _package_name_from_key(key) or key.rsplit("/", 1)[-1]
+
         # No explicit `link` check. A real link: entry is a symlink to a
         # workspace directory and carries only {link, resolved} -- all 13 in
         # the reference estate have no `version`, so the check below already
@@ -502,19 +542,20 @@ def _extract_from_packages(packages):
         #
         # A version is required because package_version is part of the
         # dependency_data primary key: a version-less row could never update,
-        # only duplicate on each re-sync. Recovered from the tarball URL when
-        # the field is absent, so deleting one key cannot hide the entry.
-        version = _entry_version(meta)
-        if not version:
+        # only duplicate on each re-sync.
+        versions = _entry_versions(meta)
+        if not versions:
             if not meta.get("link"):
                 logger.warning(
                     "%s has no version and none could be recovered from its "
                     "resolved URL; it cannot be recorded", path_name)
             continue
 
-        # One row per identity the entry asserts -- see _identities.
+        # One row per identity AND per version the entry asserts, because no
+        # field of a lockfile corroborates another. See _identities.
         for name in _identities(path_name, meta):
-            found.append((name, version, meta, path_name))
+            for version in versions:
+                found.append((name, version, meta, path_name))
 
     records = []
     for (name, version), (metas, names) in _group_by_package(found).items():

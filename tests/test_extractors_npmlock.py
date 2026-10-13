@@ -399,6 +399,129 @@ class TestEveryIdentityIsRecorded:
         assert {r["requirements_type"] for r in records} == {"direct"}
 
 
+class TestEveryVersionIsRecorded:
+    """The identity rule applied to versions, which it originally was not.
+
+    `version` was trusted alone. Both it and the version in the tarball URL are
+    attacker-supplied, so neither vouches for the other -- and claiming a
+    version that does not exist means deps.dev has nothing to answer with, so a
+    genuinely vulnerable package reports no advisories. That is the name
+    problem again, in the other primary-key column.
+
+    Measured: the two agree on all 12,719 entries where both are present, so a
+    disagreement never occurs in an honest file and recording both costs
+    nothing.
+    """
+
+    def _doc(self, meta):
+        return {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/evil-pkg": meta,
+            },
+        }
+
+    def test_agreement_produces_one_row(self, tmp_path):
+        records = extract_package_lock(_write(tmp_path, self._doc({
+            "version": "1.2.3",
+            "resolved":
+                "https://registry.npmjs.org/evil-pkg/-/evil-pkg-1.2.3.tgz"})))
+        assert [r["package_version"] for r in records] == ["1.2.3"]
+
+    def test_a_declared_version_the_url_contradicts_records_both(self, tmp_path):
+        # 99.0.0 does not exist, so deps.dev answers nothing for it. 1.2.3 is
+        # what the tarball URL fetches, and is the version that can be checked.
+        records = extract_package_lock(_write(tmp_path, self._doc({
+            "version": "99.0.0",
+            "resolved":
+                "https://registry.npmjs.org/evil-pkg/-/evil-pkg-1.2.3.tgz"})))
+        assert sorted(r["package_version"] for r in records) == ["1.2.3", "99.0.0"]
+
+    def test_no_url_leaves_the_declared_version_alone(self, tmp_path):
+        # 1,490 entries have no parseable tarball URL; nothing changes for them.
+        records = extract_package_lock(_write(tmp_path, self._doc(
+            {"version": "1.2.3"})))
+        assert [r["package_version"] for r in records] == ["1.2.3"]
+
+    def test_v1_records_both_versions_too(self, tmp_path):
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {
+                "evil-pkg": {
+                    "version": "99.0.0",
+                    "resolved": "https://registry.npmjs.org/evil-pkg/-/"
+                                "evil-pkg-1.2.3.tgz"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert sorted(r["package_version"] for r in records) == ["1.2.3", "99.0.0"]
+
+
+class TestAnUnusualPathCannotHideADependency:
+    """A `packages:` key with no `node_modules/` segment is a workspace
+    importer -- a local directory, not a fetched package -- and is skipped.
+
+    But that test is on the key alone, so a dependency parked at
+    `vendor/evil-pkg` with a version and a registry URL disappeared entirely.
+    One path spelling, nothing recorded.
+
+    Measured: of the 13 importer entries in the reference estate, **none**
+    carries both a version and a registry tarball URL, because a real importer
+    is never fetched. So an entry that does is not an importer, and treating it
+    as a package costs nothing on honest files.
+    """
+
+    def test_a_dependency_at_an_unusual_path_is_recorded(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "vendor/evil-pkg": {
+                    "version": "1.2.3",
+                    "resolved": "https://registry.npmjs.org/evil-pkg/-/"
+                                "evil-pkg-1.2.3.tgz",
+                    "integrity": "sha512-xxx"},
+                "node_modules/another-pkg": {"version": "2.0.0"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert "evil-pkg" in {r["package_name"] for r in records}
+
+    def test_a_real_workspace_importer_is_still_an_importer(self, tmp_path):
+        # It has a version but no tarball: it is a local package, and its
+        # dependency blocks still mark its deps direct rather than becoming a
+        # dependency row of its own.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "apps/desktop": {
+                    "name": "desktop", "version": "2.0.0",
+                    "dependencies": {"lodash": "^4.0.0"}},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
+        assert records[0]["requirements_type"] == "direct", \
+            "the importer must still contribute its declarations"
+
+    def test_an_importer_with_a_relative_resolved_is_still_an_importer(self, tmp_path):
+        # `resolved` on a link points at a directory, not a tarball.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "apps/shared": {"name": "shared", "version": "1.0.0",
+                                "resolved": "apps/shared"},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
+
+
 class TestAMissingVersionCannotHideAnEntry:
     """Omitting one key removed a package from the scan entirely.
 
