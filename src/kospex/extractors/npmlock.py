@@ -172,7 +172,11 @@ def _identities(path_name, meta):
     registries (Artifactory, GitHub Packages) are normal in the estates kospex
     scans and an allowlist would quietly degrade them.
     """
-    names = [path_name]
+    # The install path is checked like any other candidate. A key such as a
+    # bare `node_modules/` yields an empty segment, and an empty package_name
+    # is an unusable primary key -- the entry's other identities still record
+    # it, so refusing the blank name does not hide anything.
+    names = [path_name] if _is_package_name(path_name) else []
 
     for candidate in (meta.get("name"), _name_from_resolved(meta.get("resolved"))):
         # Still not a free-for-all: this string becomes part of a primary key
@@ -245,8 +249,33 @@ def _is_installed_entry(key, meta):
         return False
     if _NODE_MODULES in key:
         return True
-    return bool(_entry_versions(meta)) and bool(
-        _name_from_resolved(meta.get("resolved")))
+    return bool(_entry_versions(meta)) and _looks_fetched(meta)
+
+
+def _looks_fetched(meta):
+    """Was this entry downloaded from somewhere, rather than built in place?
+
+    The question is deliberately "is there a URL", not "is it a recognisable
+    npm tarball". Requiring the latter asked the wrong thing: Artifactory and
+    Nexus serve packages under a repository prefix
+    (``/api/npm/npm-remote/lodash/-/lodash-4.17.21.tgz``), so their URLs do not
+    parse as a public registry path -- and those are exactly the registries the
+    estates kospex scans use, which would have left the unusual-path hole open
+    for them while closing it for everyone else.
+
+    A workspace link's ``resolved`` is a relative directory
+    (``apps/shared``) with no scheme, and measured, none of the 13 importer
+    entries in the reference estate has one with a scheme. So a scheme is the
+    distinction, and it covers https, http, git+ssh and file alike.
+    """
+    url = meta.get("resolved")
+    if not isinstance(url, str) or not url:
+        return False
+    try:
+        return bool(urlparse(url).scheme)
+    except ValueError:
+        # A malformed URL is still an assertion that something was fetched.
+        return True
 
 
 def _lockfile_version(raw):
@@ -553,7 +582,13 @@ def _extract_from_packages(packages):
 
         # One row per identity AND per version the entry asserts, because no
         # field of a lockfile corroborates another. See _identities.
-        for name in _identities(path_name, meta):
+        identities = _identities(path_name, meta)
+        if not identities:
+            logger.warning(
+                "entry %r asserts no usable package name; it cannot be "
+                "recorded", key)
+            continue
+        for name in identities:
             for version in versions:
                 found.append((name, version, meta, path_name))
 

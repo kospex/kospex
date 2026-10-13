@@ -522,6 +522,137 @@ class TestAnUnusualPathCannotHideADependency:
         assert [r["package_name"] for r in records] == ["lodash"]
 
 
+class TestAPrivateRegistryIsStillAFetch:
+    """The unusual-path gate asked the wrong question.
+
+    It required the `resolved` URL to parse as a PUBLIC npm tarball path
+    (`/<name>/-/<file>.tgz`). Artifactory and Nexus put the package under a
+    repository prefix, so their URLs do not match — and the estates kospex is
+    built for use exactly those. A dependency parked at `vendor/evil-pkg` with
+    an Artifactory URL stayed hidden.
+
+    What actually distinguishes a fetched package from a workspace importer is
+    whether it was fetched at all. Measured: none of the 13 importer entries in
+    the reference estate has a `resolved` with a URL scheme — a link's
+    `resolved` is a relative directory path like `apps/shared`.
+    """
+
+    def _doc(self, resolved):
+        return {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "vendor/evil-pkg": {"version": "1.2.3", "resolved": resolved},
+                "node_modules/another-pkg": {"version": "2.0.0"},
+            },
+        }
+
+    def test_an_artifactory_url_counts_as_a_fetch(self, tmp_path):
+        records = extract_package_lock(_write(tmp_path, self._doc(
+            "https://artifactory.example.com/api/npm/npm-remote/evil-pkg/-/"
+            "evil-pkg-1.2.3.tgz")))
+        assert "evil-pkg" in {r["package_name"] for r in records}
+
+    def test_a_nexus_url_counts_as_a_fetch(self, tmp_path):
+        records = extract_package_lock(_write(tmp_path, self._doc(
+            "https://nexus.example.com/repository/npm-group/evil-pkg/-/"
+            "evil-pkg-1.2.3.tgz")))
+        assert "evil-pkg" in {r["package_name"] for r in records}
+
+    def test_a_git_url_counts_as_a_fetch(self, tmp_path):
+        records = extract_package_lock(_write(tmp_path, self._doc(
+            "git+ssh://git@example.com/acme/evil.git#abc123")))
+        assert "evil-pkg" in {r["package_name"] for r in records}
+
+    def test_a_relative_resolved_is_a_workspace_link_not_a_fetch(self, tmp_path):
+        # What all 13 real importers look like.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "apps/shared": {"name": "shared", "version": "1.0.0",
+                                "resolved": "apps/shared",
+                                "dependencies": {"lodash": "^4.0.0"}},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
+        assert records[0]["requirements_type"] == "direct"
+
+    def test_a_private_registry_dependency_at_a_normal_path_still_works(
+            self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/lodash": {
+                    "version": "4.17.21",
+                    "resolved": "https://artifactory.example.com/api/npm/"
+                                "npm-remote/lodash/-/lodash-4.17.21.tgz"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [(r["package_name"], r["package_version"]) for r in records] == [
+            ("lodash", "4.17.21"),
+        ]
+
+
+class TestAnUnusableNameIsNotInvented:
+    """A regression introduced when the unusual-path gate was added.
+
+    Accepting any key containing `node_modules/` and then falling back to the
+    last path segment gave `""` for a bare `node_modules/` key — an empty
+    `package_name`, which is part of the primary key. The previous gate skipped
+    such a key because `_package_name_from_key` returned None.
+
+    Hiding is still the worse failure, so the entry is not dropped: the other
+    identities it asserts are recorded. Only the unusable name is refused.
+    """
+
+    def test_a_bare_node_modules_key_produces_no_empty_name(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/": {
+                    "version": "1.2.3",
+                    "resolved": "https://registry.npmjs.org/x/-/x-1.2.3.tgz"},
+                "node_modules/another-pkg": {"version": "2.0.0"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        names = {r["package_name"] for r in records}
+        assert "" not in names, "an empty package_name is an unusable key"
+        # Not hidden: the URL still names a package, so it is recorded.
+        assert names == {"x", "another-pkg"}
+
+    def test_a_trailing_nested_node_modules_key(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/parent/node_modules/": {"version": "1.2.3"},
+                "node_modules/another-pkg": {"version": "2.0.0"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert "" not in {r["package_name"] for r in records}
+
+    def test_an_entry_with_no_usable_identity_at_all_is_reported(self, tmp_path):
+        # Nothing to record it under. Logged rather than written as a blank row.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/": {"version": "1.2.3"},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
+
+
 class TestAMissingVersionCannotHideAnEntry:
     """Omitting one key removed a package from the scan entirely.
 

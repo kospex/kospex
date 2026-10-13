@@ -219,6 +219,24 @@ treated as the dependency it is. Real importers still contribute their
 Neither change costs anything on real data — the estate total is identical at
 13,739 rows, because no honest file triggers either rule.
 
+**The first cut of that path gate asked the wrong question**, and it is worth
+recording because the mistake was characteristic. It required `resolved` to
+parse as a *public* npm tarball path (`/<name>/-/<file>.tgz`). Artifactory and
+Nexus serve packages under a repository prefix
+(`/api/npm/npm-remote/lodash/-/lodash-4.17.21.tgz`), so their URLs do not match
+— which would have closed the hole for public-registry estates and left it open
+for exactly the enterprise estates kospex exists to scan. The question is "was
+this fetched at all", so the test is now simply whether `resolved` has a URL
+scheme: a workspace link's is a relative directory path, and measured, none of
+the 13 importer entries has a scheme.
+
+The same gate also introduced a regression, caught by the same review round:
+accepting any key containing `node_modules/` and then falling back to the last
+path segment produced an empty `package_name` for a bare `node_modules/` key,
+which is an unusable primary key. The install path is now checked like any other
+identity candidate, so a blank name is refused while the entry's other
+identities still record it.
+
 ### A missing key must not hide an entry
 
 `version` is part of the primary key, so an entry without one cannot be written
