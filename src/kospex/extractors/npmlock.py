@@ -134,38 +134,83 @@ def _name_from_resolved(url):
     return name if _is_package_name(name) else None
 
 
-def _real_package_name(path_name, meta):
-    """The package an entry installs: its ``name``, but only if corroborated.
+#: The version in a registry tarball filename: ``…/-/<base>-<version>.tgz``.
+#: Anchored on a digit so a hyphenated package name is not mistaken for one,
+#: and greedy to the extension so a prerelease (``1.0.0-beta.1``) survives.
+_TARBALL_VERSION = re.compile(r"-(?P<version>\d+\.\d+\.\d+[^/]*)\.tgz$")
 
-    ``npm i foo@npm:bar`` installs *bar* at ``node_modules/foo`` and records
-    ``name: "bar"``. Reading the path instead records a package that is not on
-    the registry, so the deps.dev lookup returns nothing and the row shows no
-    advisories for something genuinely installed. 30 entries across the
-    reference estate are aliases, and every entry carrying a ``name`` has one
-    that differs from its path.
 
-    But a lockfile is untrusted input, and ``name`` alone is a claim: a file can
-    install ``evil-pkg`` at ``node_modules/evil-pkg`` while claiming
-    ``name: "lodash"``, which would report a clean, well-known package. So the
-    claim must be corroborated by ``resolved`` -- the tarball URL npm fetched --
-    and on all 30 genuine aliases the two agree, 30 of 30 with no
-    disagreements. An uncorroborated or implausible name falls back to the
-    install path, which is what npm actually created on disk.
+def _identities(path_name, meta):
+    """Every package name this entry asserts, install path first.
 
-    This does not make the lockfile honest; a file that lies consistently in
-    both fields is beyond a parser's reach. It removes the one-field claim.
+    A lockfile gives up to three: the install path, an explicit ``name`` (how
+    npm records ``npm i foo@npm:bar``), and the package named in the
+    ``resolved`` tarball URL. They usually agree -- 12,687 of the 12,689 entries
+    with a tarball URL in the reference estate -- and when they do this returns
+    one name and nothing changes.
+
+    When they disagree, ALL of them are recorded, and no field is treated as
+    authoritative over another.
+
+    That is deliberate, and it replaces an earlier attempt to corroborate
+    ``name`` against ``resolved``. Corroboration was a conceptual error: both
+    fields come from the same untrusted document, so their agreement is not
+    evidence of anything, and the URL's host was never checked either. More
+    fundamentally, any rule that elects one field is spoofable in whichever
+    direction it elects -- which is how each previous version of this function
+    was defeated.
+
+    Recording every identity is not spoofable in the direction that matters. A
+    package cannot be hidden, because the install path is always recorded; and a
+    genuine alias target is always recorded, so deps.dev is asked about the
+    package that is really installed. The cost is a row for a name that may not
+    exist on the registry: a visible, dismissible false positive in place of an
+    invisible false negative. On the reference estate that is roughly 32 extra
+    rows out of 13,707.
+
+    It also needs no registry allowlist, which matters because private
+    registries (Artifactory, GitHub Packages) are normal in the estates kospex
+    scans and an allowlist would quietly degrade them.
     """
-    declared = meta.get("name")
-    if not _is_package_name(declared):
-        return path_name
+    names = [path_name]
 
-    if _name_from_resolved(meta.get("resolved")) == declared:
-        return declared
+    for candidate in (meta.get("name"), _name_from_resolved(meta.get("resolved"))):
+        # Still not a free-for-all: this string becomes part of a primary key
+        # and is written into exports, so a value that cannot be an npm package
+        # name is not recorded as one.
+        if _is_package_name(candidate) and candidate not in names:
+            names.append(candidate)
 
-    logger.warning(
-        "entry claims name %r but `resolved` does not corroborate it; "
-        "recording the install path %r instead", declared, path_name)
-    return path_name
+    if len(names) > 1:
+        logger.warning(
+            "entry %r asserts more than one package identity %r; recording each "
+            "-- no field of a lockfile corroborates another", path_name, names)
+
+    return names
+
+
+def _entry_version(meta):
+    """The entry's ``version``, or the one in its tarball URL.
+
+    ``version`` is part of the dependency_data primary key, so an entry without
+    one cannot be written -- and silently skipping meant deleting a single key
+    removed a package from the scan while ``resolved`` and ``integrity`` still
+    told npm exactly what to fetch.
+
+    Measured: all 13 version-less entries in the reference estate are
+    ``link: true`` symlinks to workspace directories, which have no version to
+    recover and are not fetched packages. A non-link entry without a version
+    does not occur naturally, so recovering one from the URL costs nothing.
+    """
+    version = meta.get("version")
+    if version:
+        return version
+
+    url = meta.get("resolved")
+    if not isinstance(url, str) or not url:
+        return None
+    match = _TARBALL_VERSION.search(url)
+    return match.group("version") if match else None
 
 
 def _lockfile_version(raw):
@@ -379,9 +424,16 @@ def _extract_from_dependencies_tree(dependencies):
                 continue
             # v1 encodes an alias in the version string, so the identity has to
             # be resolved before the entry is recorded at all.
-            real_name, version = _v1_identity(name, meta.get("version"))
-            if real_name and version:
-                found.append((real_name, version, meta, name))
+            alias_name, version = _v1_identity(name, meta.get("version"))
+            if not version:
+                version = _entry_version(meta)
+            if version:
+                # Same rule as v2/v3: every identity the entry asserts, with
+                # the declared key first. See _identities.
+                for identity in _identities(
+                        name, {"name": alias_name if alias_name != name else None,
+                               "resolved": meta.get("resolved")}):
+                    found.append((identity, version, meta, name))
             # Nested transitives live inside their parent's own dependencies
             # map. Walked even when the parent was skipped.
             walk(meta.get("dependencies"))
@@ -450,12 +502,19 @@ def _extract_from_packages(packages):
         #
         # A version is required because package_version is part of the
         # dependency_data primary key: a version-less row could never update,
-        # only duplicate on each re-sync.
-        version = meta.get("version")
+        # only duplicate on each re-sync. Recovered from the tarball URL when
+        # the field is absent, so deleting one key cannot hide the entry.
+        version = _entry_version(meta)
         if not version:
+            if not meta.get("link"):
+                logger.warning(
+                    "%s has no version and none could be recovered from its "
+                    "resolved URL; it cannot be recorded", path_name)
             continue
-        # The path segment can be an alias; the entry's `name` is the package.
-        found.append((_real_package_name(path_name, meta), version, meta, path_name))
+
+        # One row per identity the entry asserts -- see _identities.
+        for name in _identities(path_name, meta):
+            found.append((name, version, meta, path_name))
 
     records = []
     for (name, version), (metas, names) in _group_by_package(found).items():

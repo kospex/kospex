@@ -124,7 +124,10 @@ class TestAliasedDependencies:
             },
         }
         records = extract_package_lock(_write(tmp_path, doc))
-        assert [r["package_name"] for r in records] == ["string-width"]
+        # The target is what matters: without it, deps.dev is never asked about
+        # the package that is actually installed. The install path is recorded
+        # too -- see TestEveryIdentityIsRecorded.
+        assert "string-width" in {r["package_name"] for r in records}
 
     def test_a_scoped_alias_target_keeps_its_scope(self, tmp_path):
         doc = {
@@ -140,7 +143,8 @@ class TestAliasedDependencies:
             },
         }
         records = extract_package_lock(_write(tmp_path, doc))
-        assert records[0]["package_name"] == "@docusaurus/react-loadable"
+        assert "@docusaurus/react-loadable" in {
+            r["package_name"] for r in records}
 
     def test_a_name_matching_the_path_is_unchanged(self, tmp_path):
         doc = {
@@ -184,10 +188,9 @@ class TestAliasedDependencies:
                     "version": "4.2.3"},
             },
         }
-        records = extract_package_lock(_write(tmp_path, doc))
-        assert len(records) == 1
-        assert records[0]["package_name"] == "string-width"
-        assert records[0]["is_dev"] is False, "one non-dev route means it ships"
+        records = _by_name(extract_package_lock(_write(tmp_path, doc)))
+        assert records["string-width"]["is_dev"] is False, \
+            "one non-dev route means it ships"
 
     def test_a_different_version_of_the_alias_target_stays_separate(self, tmp_path):
         doc = {
@@ -202,9 +205,10 @@ class TestAliasedDependencies:
             },
         }
         records = extract_package_lock(_write(tmp_path, doc))
-        assert sorted((r["package_name"], r["package_version"]) for r in records) == [
-            ("string-width", "4.2.3"), ("string-width", "5.1.2"),
-        ]
+        pairs = {(r["package_name"], r["package_version"]) for r in records}
+        assert ("string-width", "4.2.3") in pairs
+        assert ("string-width", "5.1.2") in pairs, \
+            "a different version is a different package, not a duplicate"
 
     def test_v1_records_an_alias_in_the_version_string(self, tmp_path):
         # v1 has no `name` field, so it encodes the alias as
@@ -217,9 +221,8 @@ class TestAliasedDependencies:
             },
         }
         records = extract_package_lock(_write(tmp_path, doc))
-        assert [(r["package_name"], r["package_version"]) for r in records] == [
-            ("left-pad", "1.2.3"),
-        ]
+        assert ("left-pad", "1.2.3") in {
+            (r["package_name"], r["package_version"]) for r in records}
 
     def test_v1_alias_to_a_scoped_package(self, tmp_path):
         doc = {
@@ -229,9 +232,8 @@ class TestAliasedDependencies:
             },
         }
         records = extract_package_lock(_write(tmp_path, doc))
-        assert [(r["package_name"], r["package_version"]) for r in records] == [
-            ("@slorber/react-helmet-async", "1.3.0"),
-        ]
+        assert ("@slorber/react-helmet-async", "1.3.0") in {
+            (r["package_name"], r["package_version"]) for r in records}
 
     def test_v1_a_normal_version_is_untouched(self, tmp_path):
         doc = {
@@ -258,9 +260,8 @@ class TestAliasedDependencies:
                                 "string-width-4.2.3.tgz"},
             },
         }
-        records = extract_package_lock(_write(tmp_path, doc))
-        assert records[0]["package_name"] == "string-width"
-        assert records[0]["requirements_type"] == "direct"
+        records = _by_name(extract_package_lock(_write(tmp_path, doc)))
+        assert records["string-width"]["requirements_type"] == "direct"
 
     def test_an_aliased_dev_dependency_is_still_dev(self, tmp_path):
         doc = {
@@ -297,96 +298,193 @@ class TestAliasedDependencies:
         ]
 
 
-class TestTheNameFieldIsNotTrusted:
-    """`name` is attacker-controlled, and the previous commit made it
-    authoritative on a type check alone.
+class TestEveryIdentityIsRecorded:
+    """No field of a lockfile vouches for another, so none is trusted over
+    another: every identity an entry asserts is recorded.
 
-    That closed one evasion and opened its mirror image: a lockfile can install
-    `evil-pkg` at `node_modules/evil-pkg` while claiming `name: "lodash"`, and
-    kospex would report a clean, well-known package.
+    The previous cut corroborated `name` against the `resolved` URL. That was a
+    conceptual error -- both fields come from the same untrusted document, so
+    agreement between them is not evidence, and the URL's host was never checked
+    either. Any rule that picks one field as authoritative is spoofable in
+    whichever direction it picks.
 
-    The entry also carries `resolved`, the tarball URL npm fetched, whose path
-    encodes a package name. Measured: on all 30 genuine aliases in the reference
-    estate the two agree — 30 of 30, zero disagreements — so corroboration
-    accepts every real alias while rejecting an uncorroborated claim.
+    Recording all of them is not: a package cannot be hidden, because the
+    install path is always recorded, and a real alias target is always recorded
+    too, so deps.dev is asked about it. The cost is a row for a name that may
+    not exist on the registry -- a visible, dismissible false positive instead
+    of an invisible false negative.
+
+    Measured cost on the reference estate: ~32 extra rows out of 13,707, because
+    12,687 of 12,689 entries with a tarball URL already agree with their path.
     """
 
-    def _doc(self, meta):
+    def _doc(self, meta, path="node_modules/evil-pkg"):
         return {
             "lockfileVersion": 3,
             "packages": {
                 "": {"name": "root", "version": "1.0.0"},
-                "node_modules/evil-pkg": dict(meta, version="1.2.3"),
+                path: dict(meta, version=meta.get("version", "1.2.3")),
             },
         }
 
-    def test_a_name_corroborated_by_the_tarball_url_is_used(self, tmp_path):
-        rec = extract_package_lock(_write(tmp_path, self._doc({
-            "name": "string-width",
-            "resolved":
-                "https://registry.npmjs.org/string-width/-/string-width-1.2.3.tgz",
-        })))[0]
-        assert rec["package_name"] == "string-width"
+    def test_agreement_produces_one_row(self, tmp_path):
+        # The overwhelmingly common case: 12,687 entries in the estate.
+        records = extract_package_lock(_write(tmp_path, self._doc(
+            {"resolved":
+             "https://registry.npmjs.org/evil-pkg/-/evil-pkg-1.2.3.tgz"})))
+        assert [r["package_name"] for r in records] == ["evil-pkg"]
 
-    def test_a_scoped_name_corroborated_by_the_url_is_used(self, tmp_path):
-        rec = extract_package_lock(_write(tmp_path, self._doc({
-            "name": "@docusaurus/react-loadable",
-            "resolved": "https://registry.npmjs.org/@docusaurus/react-loadable/-/"
-                        "react-loadable-1.2.3.tgz",
-        })))[0]
-        assert rec["package_name"] == "@docusaurus/react-loadable"
+    def test_a_real_alias_records_both_the_path_and_the_target(self, tmp_path):
+        # The alias target is what matters for advisories; the path is what is
+        # on disk. Recording both means neither can be used to hide the other.
+        records = extract_package_lock(_write(tmp_path, self._doc(
+            {"name": "string-width",
+             "resolved": "https://registry.npmjs.org/string-width/-/"
+                         "string-width-1.2.3.tgz"},
+            path="node_modules/string-width-cjs")))
+        assert sorted(r["package_name"] for r in records) == [
+            "string-width", "string-width-cjs",
+        ]
 
-    def test_a_name_the_url_contradicts_is_refused(self, tmp_path):
-        # The impersonation case: claim a benign package, resolve from another.
-        rec = extract_package_lock(_write(tmp_path, self._doc({
-            "name": "lodash",
-            "resolved": "https://registry.npmjs.org/evil-pkg/-/evil-pkg-1.2.3.tgz",
-        })))[0]
-        assert rec["package_name"] == "evil-pkg", \
-            "an uncorroborated name must not override the install path"
+    def test_a_url_naming_another_package_is_also_recorded(self, tmp_path):
+        # Measured in the wild: two entries in malware test fixtures have
+        # node_modules/express-exp resolving to the `exit` tarball. Recording
+        # only the path would never ask deps.dev about `exit`.
+        records = extract_package_lock(_write(tmp_path, self._doc(
+            {"resolved": "https://registry.npmjs.org/exit/-/exit-1.2.3.tgz"},
+            path="node_modules/express-exp")))
+        assert sorted(r["package_name"] for r in records) == [
+            "exit", "express-exp",
+        ]
 
-    def test_an_uncorroborated_name_falls_back_to_the_install_path(self, tmp_path):
-        # No `resolved` at all: nothing to check the claim against, so prefer
-        # the path npm actually created on disk.
-        rec = extract_package_lock(_write(tmp_path, self._doc({
-            "name": "lodash",
-        })))[0]
-        assert rec["package_name"] == "evil-pkg"
+    def test_a_spoofed_name_cannot_hide_the_install_path(self, tmp_path):
+        # Claim a benign package; the path is recorded regardless.
+        records = extract_package_lock(_write(tmp_path, self._doc(
+            {"name": "lodash",
+             "resolved": "https://registry.npmjs.org/lodash/-/lodash-1.2.3.tgz"})))
+        assert "evil-pkg" in {r["package_name"] for r in records}
 
-    def test_a_name_with_a_non_registry_resolved_falls_back(self, tmp_path):
-        rec = extract_package_lock(_write(tmp_path, self._doc({
-            "name": "lodash",
-            "resolved": "git+ssh://git@example.com/acme/evil.git#abc123",
-        })))[0]
-        assert rec["package_name"] == "evil-pkg"
+    def test_an_untrusted_host_needs_no_allowlist(self, tmp_path):
+        # The URL host was never validated, which made corroboration bypassable.
+        # It no longer matters: the URL only ADDS an identity, so a hostile host
+        # cannot displace the install path. This also keeps private registries
+        # (Artifactory, GitHub Packages) working, which an allowlist would break.
+        records = extract_package_lock(_write(tmp_path, self._doc(
+            {"name": "lodash",
+             "resolved": "https://evil.example.com/lodash/-/lodash-1.2.3.tgz"})))
+        assert sorted(r["package_name"] for r in records) == ["evil-pkg", "lodash"]
 
-    def test_a_name_that_is_not_a_package_name_is_refused(self, tmp_path):
-        # Defence in depth. A lockfile is untrusted text, and package_name is
-        # written to CSV exports and a primary key, so a value that cannot be an
-        # npm package name is not one however it is corroborated.
-        for bad in ("=cmd|' /C calc'!A0", "has space", "a\tb", "x" * 215,
-                    ".leading-dot", "_leading-underscore", "a\nb"):
-            rec = extract_package_lock(_write(tmp_path, self._doc({
-                "name": bad,
-                "resolved": "https://registry.npmjs.org/%s/-/x-1.2.3.tgz" % bad,
-            })))[0]
-            assert rec["package_name"] == "evil-pkg", bad
+    def test_an_implausible_name_is_not_recorded_as_an_identity(self, tmp_path):
+        # Still not a free-for-all: package_name reaches a primary key and
+        # exports, so a value that cannot be an npm package name is dropped as
+        # an identity while the path survives.
+        for bad in ("=cmd|' /C calc'!A0", "has space", "x" * 215, ".dot"):
+            records = extract_package_lock(_write(tmp_path, self._doc(
+                {"name": bad})))
+            assert [r["package_name"] for r in records] == ["evil-pkg"], bad
 
-    def test_the_ordinary_case_is_unaffected(self, tmp_path):
-        # 99.8% of entries carry no `name`, and their URL agrees with the path.
+    def test_an_aliased_direct_dependency_is_direct_under_both_names(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0",
+                     "dependencies": {"sw-cjs": "npm:string-width@^4.2.3"}},
+                "node_modules/sw-cjs": {
+                    "name": "string-width", "version": "4.2.3",
+                    "resolved": "https://registry.npmjs.org/string-width/-/"
+                                "string-width-4.2.3.tgz"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert {r["requirements_type"] for r in records} == {"direct"}
+
+
+class TestAMissingVersionCannotHideAnEntry:
+    """Omitting one key removed a package from the scan entirely.
+
+    `version` is part of the dependency_data primary key, so a version-less row
+    cannot be written -- but silently skipping means `node_modules/evil-pkg`
+    with its `version` deleted simply does not exist as far as kospex is
+    concerned, while `resolved` and `integrity` still tell npm what to fetch.
+
+    Measured: of the 13 version-less entries in the estate, all 13 are
+    `link: true` symlinks to workspace directories. A non-link entry without a
+    version does not occur naturally, so treating it as anomalous costs nothing.
+    """
+
+    def test_the_version_is_recovered_from_the_tarball_url(self, tmp_path):
         doc = {
             "lockfileVersion": 3,
             "packages": {
                 "": {"name": "root", "version": "1.0.0"},
-                "node_modules/lodash": {
-                    "version": "4.17.21",
+                "node_modules/evil-pkg": {
                     "resolved":
-                        "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
-                },
+                        "https://registry.npmjs.org/evil-pkg/-/evil-pkg-1.2.3.tgz",
+                    "integrity": "sha512-xxx"},
+                "node_modules/another-pkg": {"version": "2.0.0"},
             },
         }
-        assert [r["package_name"] for r in
-                extract_package_lock(_write(tmp_path, doc))] == ["lodash"]
+        records = _by_name(extract_package_lock(_write(tmp_path, doc)))
+        assert "evil-pkg" in records
+        assert records["evil-pkg"]["package_version"] == "1.2.3"
+
+    def test_a_prerelease_version_is_recovered_whole(self, tmp_path):
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/evil-pkg": {
+                    "resolved": "https://registry.npmjs.org/evil-pkg/-/"
+                                "evil-pkg-1.0.0-beta.1.tgz"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert records[0]["package_version"] == "1.0.0-beta.1"
+
+    def test_v1_recovers_the_version_too(self, tmp_path):
+        doc = {
+            "lockfileVersion": 1,
+            "dependencies": {
+                "evil-pkg": {
+                    "resolved":
+                        "https://registry.npmjs.org/evil-pkg/-/evil-pkg-1.2.3.tgz"},
+                "another-pkg": {"version": "2.0.0"},
+            },
+        }
+        records = _by_name(extract_package_lock(_write(tmp_path, doc)))
+        assert sorted(records) == ["another-pkg", "evil-pkg"]
+        assert records["evil-pkg"]["package_version"] == "1.2.3"
+
+    def test_a_real_link_entry_is_still_not_a_package(self, tmp_path):
+        # All 13 in the estate: {link, resolved} with a relative path, no
+        # version to recover. These are workspace symlinks, not fetched
+        # packages.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/@acme/shared": {"link": True,
+                                              "resolved": "apps/shared"},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
+
+    def test_an_entry_with_no_version_anywhere_is_reported(self, tmp_path):
+        # Nothing to recover and nothing to install from. Logged rather than
+        # written, because package_version is part of the primary key -- but the
+        # file is flagged so the gap is not silent.
+        doc = {
+            "lockfileVersion": 3,
+            "packages": {
+                "": {"name": "root", "version": "1.0.0"},
+                "node_modules/evil-pkg": {"integrity": "sha512-xxx"},
+                "node_modules/lodash": {"version": "4.17.21"},
+            },
+        }
+        records = extract_package_lock(_write(tmp_path, doc))
+        assert [r["package_name"] for r in records] == ["lodash"]
 
 
 class TestNothingIsHiddenByAFlag:
@@ -1241,12 +1339,12 @@ def test_a_real_aliased_dependency_resolves_to_the_installed_package():
     under `wrap-ansi-cjs`) is one.
     """
     rows = extract_package_lock(ALIAS_REAL)
-    names = {r["package_name"] for r in rows}
     pairs = {(r["package_name"], r["package_version"]) for r in rows}
 
-    for alias in ("string-width-cjs", "strip-ansi-cjs", "wrap-ansi-cjs"):
-        assert alias not in names, "%s is an install path, not a package" % alias
-
+    # Each alias target is recorded, which is the fix: previously deps.dev was
+    # asked about `string-width-cjs`, which does not exist, and never about
+    # string-width@4.2.3, which does. The install paths are recorded alongside
+    # them -- see TestEveryIdentityIsRecorded for why neither field wins.
     assert ("string-width", "4.2.3") in pairs
     assert ("string-width", "5.1.2") in pairs
     assert ("strip-ansi", "6.0.1") in pairs

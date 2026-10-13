@@ -328,11 +328,14 @@ was relying on the old, wrong success.
     aliased dependency by its alias. v1 encodes the same thing as
     `version: "npm:bar@1.2.3"`, which is parsed rather than stored verbatim.
 
-    The `name` field is believed only when the entry's `resolved` tarball URL
-    names the same package (CWE-807): on its own it is an attacker-controlled
-    claim, and a lockfile could otherwise install one package while naming a
-    well-known one. On every genuine alias measured the two agree, so this
-    accepts real aliases and refuses unsupported claims.
+    Because a lockfile is untrusted input and no field of it corroborates
+    another (CWE-807), **every identity an entry asserts is recorded** — the
+    install path, the `name`, and the package named in the `resolved` URL — with
+    none treated as authoritative. They almost always agree, so this is one row
+    per package in practice; across a reference estate it adds 32 rows out of
+    13,739. A row named for an install-path alias may not be a real registry
+    package and will carry no advisory data; the row under the real name is the
+    one that answers the security question.
   - **A package reached by several install paths is reconciled, not
     overwritten.** `packages:` keys are install paths and the primary key has
     no path column, so the same `name@version` at two depths collapses to one

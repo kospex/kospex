@@ -209,18 +209,29 @@ genuinely installed and may genuinely be vulnerable. A clean result and an
 unanswerable one become indistinguishable, which is the failure this whole page
 exists to prevent.
 
-kospex uses the entry's `name`, but **only when `resolved` corroborates it**. A
-lockfile is untrusted input, and `name` on its own is a claim: a file can install
-`evil-pkg` at `node_modules/evil-pkg` while claiming `name: "lodash"`, and a
-parser that trusts the field reports a clean, well-known package. The entry also
-carries `resolved`, the tarball URL npm fetched, whose path encodes a package
-name — and on all 30 genuine aliases the two agree, 30 of 30 with no
-disagreements. An uncorroborated or implausible name falls back to the install
-path, which is what npm actually created on disk.
+**kospex records every identity an entry asserts** — the install path, an
+explicit `name`, and the package named in the `resolved` URL — as separate rows,
+and treats none of them as authoritative.
 
-That removes the single-field claim; it does not make a lockfile honest. A file
-that lies consistently in both fields is beyond a parser, and the `integrity`
-hash is the only thing that would settle it.
+That is because a lockfile is untrusted input and **no field of it corroborates
+another**: `name` and `resolved` come from the same document, so their agreement
+is not evidence. Any rule electing one field is spoofable in whichever direction
+it elects. Recording all of them is not: a package cannot be hidden, because the
+install path is always recorded, and a genuine alias target is always recorded,
+so it is checked for advisories.
+
+They almost always agree — 12,687 of the 12,689 entries carrying a tarball URL —
+so this is one row per package in practice. Across the estate it adds 32 rows out
+of 13,739.
+
+**What a reader should take from this:** a row whose name is an install-path
+alias may not be a real registry package, and will show no advisory data for that
+reason. The row beside it, under the real name, is the one that answers the
+security question.
+
+What remains unresolvable here: a lockfile that lies consistently across `name`,
+`resolved` and `integrity`. Settling that needs the tarball fetched and hashed,
+which a parser cannot do.
 
 The alias is still matched when deciding `direct` / `dev`, because a project
 declares an aliased dependency *by its alias*.

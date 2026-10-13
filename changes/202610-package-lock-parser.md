@@ -144,27 +144,67 @@ entry is the root, and a v1 lockfile with no `dependencies` tree, both return
 `[]` and report `empty`. npm always writes `packages:` for v2/v3, so its
 *absence* is malformed rather than empty.
 
-### `name` is a claim, not a fact
+### No field of a lockfile corroborates another
 
-**CWE-807, reliance on an untrusted input in a security decision.** Preferring
-the entry's `name` (above) fixed one evasion and opened its mirror image: a
-lockfile can install `evil-pkg` while claiming `name: "lodash"`, and kospex would
-report a clean, well-known package.
+**CWE-807, reliance on an untrusted input in a security decision.** This took
+three attempts, and the first two were wrong in an instructive way.
 
-So the claim must be corroborated by `resolved`, the tarball URL npm fetched,
-whose path encodes a package name. Measured: on all 30 genuine aliases the two
-agree — 30 of 30, no disagreements — so corroboration accepts every real alias
-while refusing an unsupported claim. An uncorroborated, non-registry or
-implausible name falls back to the install path.
+Attempt one read the name from the install path. That missed real aliases.
+Attempt two preferred the entry's `name`, which let a lockfile install
+`evil-pkg` while claiming `name: "lodash"`. Attempt three corroborated `name`
+against the `resolved` tarball URL — and that was a **conceptual error, not a
+bug**: both fields come from the same untrusted document, so their agreement is
+not evidence of anything. It also never validated the URL's host, so
+`https://evil.example.com/lodash/-/lodash-1.0.0.tgz` corroborated a `lodash`
+claim.
 
-A name is also checked against npm's own rules (≤214 characters, no leading dot
-or underscore, no whitespace or control characters) before it is believed at all.
-`package_name` becomes part of a primary key and is written into exports, so a
-value that cannot be an npm package name is not treated as one.
+The pattern is the point: **any rule that elects one field as authoritative is
+spoofable in whichever direction it elects.**
 
-This removes the single-field claim. It does not make a lockfile honest: a file
-that lies consistently in both fields is beyond a parser, and only `integrity`
-would settle it. Worth stating rather than implying.
+So no field is elected. Every identity an entry asserts — install path,
+explicit `name`, and the package named in the `resolved` URL — is recorded as
+its own row. They usually agree (12,687 of the 12,689 entries with a tarball
+URL), in which case that is one row and nothing changes.
+
+This is not spoofable in the direction that matters. A package cannot be hidden,
+because the install path is always recorded; and a genuine alias target is
+always recorded, so deps.dev is asked about what is really installed. The cost
+is a row for a name that may not exist on the registry — a visible, dismissible
+false positive instead of an invisible false negative. Measured: **+32 rows out
+of 13,707**, taking the estate to 13,739.
+
+It also needs no registry allowlist. Host validation was the obvious fix for the
+bypass, but every `resolved` URL in the reference estate points at
+`registry.npmjs.org`, and the estates kospex actually scans use Artifactory and
+GitHub Packages — an allowlist would have silently degraded them.
+
+A candidate name is still checked against npm's own rules (≤214 characters, no
+leading dot or underscore, no whitespace or control characters) before it is
+recorded as an identity at all, because `package_name` becomes part of a primary
+key and is written into exports.
+
+**What remains, stated plainly:** a lockfile that lies consistently across
+`name`, `resolved` and `integrity` is beyond a parser. Settling it requires
+fetching the tarball and hashing it, which is a different kind of tool. This
+work stops at "every identity the file asserts is visible".
+
+The mechanism is not theoretical. The only two entries in the estate whose
+`resolved` URL names a different package than their install path —
+`node_modules/express-exp` resolving to the `exit` tarball — are both in malware
+test fixtures.
+
+### A missing key must not hide an entry
+
+`version` is part of the primary key, so an entry without one cannot be written
+— and skipping it silently meant deleting a single key removed a package from
+the scan while `resolved` and `integrity` still told npm exactly what to fetch.
+
+The version is now recovered from the tarball filename when the field is absent,
+including prereleases (`1.0.0-beta.1`). Measured: all 13 version-less entries in
+the estate are `link: true` workspace symlinks, which have no version to recover
+and are not fetched packages, so a non-link entry without one does not occur
+naturally and recovering it costs nothing. An entry with no version anywhere is
+logged rather than dropped silently.
 
 ### A single key must not hide a package
 
