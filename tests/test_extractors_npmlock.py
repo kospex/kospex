@@ -310,12 +310,14 @@ class TestEveryIdentityIsRecorded:
 
     Recording all of them is not: a package cannot be hidden, because the
     install path is always recorded, and a real alias target is always recorded
-    too, so deps.dev is asked about it. The cost is a row for a name that may
-    not exist on the registry -- a visible, dismissible false positive instead
-    of an invisible false negative.
+    too, so deps.dev is asked about it. The cost is a row for a name the
+    registry may not know -- a visible, dismissible false positive instead of an
+    invisible false negative.
 
-    Measured cost on the reference estate: ~32 extra rows out of 13,707, because
-    12,687 of 12,689 entries with a tarball URL already agree with their path.
+    Measured cost on the reference estate: 32 entries assert more than one
+    identity, and because rows are de-duplicated by name@version within a
+    repository, that is 10 extra rows out of 13,739 -- 12,687 of the 12,689
+    entries with a tarball URL already agree with their path.
     """
 
     def _doc(self, meta, path="node_modules/evil-pkg"):

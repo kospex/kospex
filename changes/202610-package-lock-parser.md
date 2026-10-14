@@ -169,9 +169,15 @@ URL), in which case that is one row and nothing changes.
 This is not spoofable in the direction that matters. A package cannot be hidden,
 because the install path is always recorded; and a genuine alias target is
 always recorded, so deps.dev is asked about what is really installed. The cost
-is a row for a name that may not exist on the registry — a visible, dismissible
-false positive instead of an invisible false negative. Measured: **+32 rows out
-of 13,707**, taking the estate to 13,739.
+is a row for a name the registry may not know — a visible, dismissible false
+positive instead of an invisible false negative.
+
+Measured: 32 entries assert more than one identity. Rows are de-duplicated by
+`name@version` within a repository, so 22 of those collapse onto a row the
+package's ordinary install path already produced, and the real cost is **10 rows
+out of 13,739** (13,729 if only the first identity were kept). All ten are the
+aliased packages themselves, since the second identity is the alias *target*;
+the install-path names a registry would not recognise are written either way.
 
 It also needs no registry allowlist. Host validation was the obvious fix for the
 bypass, but every `resolved` URL in the reference estate points at
@@ -335,7 +341,7 @@ rather than quietly worked around.
 
 ## What this adds to the database
 
-13,707 rows across the estate, from 7,383 distinct `name@version`, of which
+13,739 rows across the estate, from 7,390 distinct `name@version`, of which
 ~5,900 are not currently in `dependency_data` at all. A first sweep is therefore
 ~5,900 deps.dev lookups — roughly half an hour at the 0.33s per lookup measured
 in [#226](https://github.com/kospex/kospex/issues/226). That is the same bet

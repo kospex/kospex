@@ -163,10 +163,16 @@ def _identities(path_name, meta):
     Recording every identity is not spoofable in the direction that matters. A
     package cannot be hidden, because the install path is always recorded; and a
     genuine alias target is always recorded, so deps.dev is asked about the
-    package that is really installed. The cost is a row for a name that may not
-    exist on the registry: a visible, dismissible false positive in place of an
-    invisible false negative. On the reference estate that is roughly 32 extra
-    rows out of 13,707.
+    package that is really installed. The cost is a row for a name the registry
+    may not know: a visible, dismissible false positive in place of an invisible
+    false negative.
+
+    Measured on the reference estate: 32 entries assert more than one identity,
+    which after de-duplication within a repository is 10 extra rows out of
+    13,739. All ten are the real aliased packages -- the alias TARGET is what the
+    second identity names. The install-path names a registry would not recognise
+    (`string-width-cjs` and friends) are written either way, because the install
+    path is always the first identity.
 
     It also needs no registry allowlist, which matters because private
     registries (Artifactory, GitHub Packages) are normal in the estates kospex
