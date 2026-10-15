@@ -503,7 +503,23 @@ class KospexDependencies:
         print(f"Found {extractor.name} package file: {basefile}")
 
         parser = resolve_parser(extractor, {"KospexDependencies": self})
-        results = self._enrich_dependency_records(parser(filename), extractor)
+        try:
+            parsed = parser(filename)
+        except Exception as e:                      # noqa: BLE001 -- see below
+            # Deliberately broad, and deliberately not silent. A parser may
+            # raise rather than return [] when a file is unreadable, precisely
+            # so an unread file is not reported as one with nothing in it --
+            # see kospex.extractors.npmlock.UnreadableLockfile. The osi path
+            # already does this (osi_extract records a `parse_error` outcome);
+            # without it here, the same file crashes `kospex sca` instead.
+            #
+            # Every other parser returns [] today, so this is inert for them.
+            log.warning("Could not parse %s: %s: %s",
+                        filename, type(e).__name__, e)
+            print(f"Error: could not parse {basefile}: {e}")
+            return None
+
+        results = self._enrich_dependency_records(parsed, extractor)
 
         # dev_deps controls DISPLAY only. Extraction is always complete: a
         # partial result is what made `sca -dev` inert (#181), made the two scan
@@ -797,9 +813,15 @@ class KospexDependencies:
         p_template["advisories"] = ""
         p_template["published_at"] = ""
         # Install state (#227). None, not "", because NULL means the lockfile
-        # format could not answer -- `lockfileVersion: 1` package-lock.json
-        # records no flags at all. An empty string would land in an INTEGER
-        # column as a third thing meaning neither true, false, nor unknown.
+        # format could not answer -- a `lockfileVersion: 1` package-lock.json
+        # has no `hasInstallScript`, and pnpm v9 records no `dev` anywhere. An
+        # empty string would land in an INTEGER column as a third thing
+        # meaning neither true, false, nor unknown.
+        #
+        # Corrected 2026-10-13: this comment previously said v1 "records no
+        # flags at all". It records `dev` and `optional`, just not install
+        # scripts -- see docs/dependency-flags.md, which carries the measured
+        # per-version inventory.
         p_template["is_dev"] = None
         p_template["is_optional"] = None
         p_template["runs_install_script"] = None

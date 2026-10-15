@@ -24,11 +24,11 @@ CASES = [
     ("pyproject.toml", Kind.PACKAGE, True),
     ("package.json", Kind.PACKAGE, True),
     ("pnpm-lock.yaml", Kind.PACKAGE, True),
+    ("package-lock.json", Kind.PACKAGE, True),
     ("go.mod", Kind.PACKAGE, True),        # sca-only, but supported == any scanner
     ("Foo.csproj", Kind.PACKAGE, True),    # sca-only
     ("yarn.lock", Kind.PACKAGE, False),
     ("uv.lock", Kind.PACKAGE, False),
-    ("package-lock.json", Kind.PACKAGE, False),
     ("build.gradle", Kind.PACKAGE, False),
     ("pom.xml", Kind.PACKAGE, False),
     (".python-version", Kind.RUNTIME, False),
@@ -75,7 +75,8 @@ def test_requirements_matching_is_delegated_to_panopticas():
 
 def test_package_json_matcher_is_exact_not_lockfile():
     # The tightened package.json matcher must NOT swallow package-lock.json,
-    # which is a separate (unsupported) registry row.
+    # which is a separate registry row with its own parser — a different
+    # format answering different questions, not a variant of package.json.
     assert classify("package.json").extractor.name == "npm-packagejson"
     assert classify("package-lock.json").extractor.name == "npm-lock"
 
@@ -115,7 +116,7 @@ def test_coverage_matrix_is_shared_across_both_scan_paths():
     """
     scanners = {e.name: e.scanners for e in REGISTRY}
     for name in ("pypi-requirements", "pyproject", "npm-packagejson", "pnpm-lock",
-                 "go-mod", "nuget-csproj"):
+                 "npm-lock", "go-mod", "nuget-csproj"):
         assert scanners[name] == ("sca", "osi"), name
 
 

@@ -67,11 +67,57 @@ and `devOptional` is not simply shorthand for both.
 closure" for those 175 entries, which is wrong — they are dev-only. Two booleans
 cannot represent five states.
 
-### Attribution is free
+### Attribution is free in the file, but kospex does not store it
 
 Keys are paths — `node_modules/a/node_modules/b` — so nesting, and therefore which
 package pulled a dependency in, is readable directly. 259 of 1285 entries in one
-real file are nested.
+real file are nested; across all 31 files, 2331 entries sit at depth 2 and 47 at
+depth 3.
+
+kospex does not record it. `dependency_data`'s primary key is
+`(_repo_id, hash, file_path, package_type, package_name, package_version)` with no
+install-path column, so the parser reads the paths and then discards them. Storing
+the parent is tracked in [#227](https://github.com/kospex/kospex/issues/227), which
+owns attribution for every format.
+
+### One package, several paths
+
+Because the key is a path, the same `name@version` can appear many times. Across
+the 31 `package-lock.json` files on disk, 14,884 install-path entries hold 13,729
+distinct `name@version` — so 1,155 collapse onto a row that already exists, in 479
+groups of two or more.
+
+Those entries can disagree, because `dev` and `optional` describe how a package was
+*reached*, not what it is:
+
+| flag | duplicate groups that disagree |
+|---|---|
+| `dev` | 53 |
+| `optional` | 48 |
+| `inBundle` | 18 |
+| `devOptional` | 4 |
+| `peer` | 4 |
+| `hasInstallScript` | 0 |
+
+`chalk@5.6.2` is a clear case: four entries, three reached from production paths
+and one from `npm/`'s dev tree. It plainly ships.
+
+**kospex aggregates rather than letting the last write win**, which would otherwise
+pick a value by JSON key order:
+
+- `dev`, `optional`, `devOptional` — true only when **every** path agrees. One
+  production path means the package ships; one required path means it installs. The
+  same rule pnpm v9 needs for `snapshots:`.
+- `hasInstallScript`, `peer`, `inBundle` — true when **any** path says so. These
+  describe the package itself, which is consistent with `hasInstallScript` being the
+  one flag no duplicate group disagrees on.
+
+`declared_scope` is built from the aggregate, so it cannot contradict the booleans
+beside it: the `chalk` row above reads `is_dev=0` with an empty scope, not `dev`.
+
+The effect is not marginal. In one v1 file, 93 entries carry `optional` but only 55
+packages are optional by every path — reading the flag per entry would mark 38
+packages as "may not install" when a required path installs them.
 
 ### lockfileVersion 1 records two of the five flags
 
@@ -126,6 +172,73 @@ The flags above are a small part of the file. Measured across all 31
 | `deprecated` | 68 | npm's own deprecation text |
 | `hasInstallScript` | 46 | |
 | `link` | 13 | workspace link |
+
+**Corrected 2026-10-13.** The table above omitted four keys. Re-enumerated over
+the 14,222 *installed* entries (excluding the 29 root and 13 importer entries,
+which is the population a parser iterates):
+
+| key | entries | what it means |
+|---|---|---|
+| `peerDependenciesMeta` | 380 | per-peer `{"optional": true}` |
+| **`name`** | **30** | **the real package, when the install path is an alias** |
+| `workspaces` | 11 | workspace globs, on an importer |
+| `bundleDependencies` | 3 | names bundled into the tarball |
+
+`name` is the one that matters, and it was the omission that caused a bug. See
+the next section.
+
+### An install path is not a package name
+
+`npm i foo@npm:bar` installs **bar** at `node_modules/foo`, and npm records the
+real package in a `name` field on that entry. The path segment is the alias the
+project chose.
+
+Every one of the 30 entries carrying a `name` has one that differs from its path:
+
+```
+node_modules/string-width-cjs     ->  string-width@4.2.3
+node_modules/strip-ansi-cjs       ->  strip-ansi@6.0.1
+node_modules/react-helmet-async   ->  @slorber/react-helmet-async@1.3.0
+node_modules/react-loadable       ->  @docusaurus/react-loadable@6.0.0
+```
+
+**Consequence for a parser:** taking the name from the path records a package
+that does not exist on the registry, so the deps.dev lookup returns nothing and
+the row carries no advisories and no `versions_behind` — for a package that is
+genuinely installed and may genuinely be vulnerable. A clean result and an
+unanswerable one become indistinguishable, which is the failure this whole page
+exists to prevent.
+
+**kospex records every identity an entry asserts** — the install path, an
+explicit `name`, and the package named in the `resolved` URL — as separate rows,
+and treats none of them as authoritative.
+
+That is because a lockfile is untrusted input and **no field of it corroborates
+another**: `name` and `resolved` come from the same document, so their agreement
+is not evidence. Any rule electing one field is spoofable in whichever direction
+it elects. Recording all of them is not: a package cannot be hidden, because the
+install path is always recorded, and a genuine alias target is always recorded,
+so it is checked for advisories.
+
+They almost always agree — 12,687 of the 12,689 entries carrying a tarball URL —
+so this is one row per package in practice. Across the estate it adds 32 rows out
+of 13,739.
+
+**What a reader should take from this:** a row whose name is an install-path
+alias may not be a real registry package, and will show no advisory data for that
+reason. The row beside it, under the real name, is the one that answers the
+security question.
+
+What remains unresolvable here: a lockfile that lies consistently across `name`,
+`resolved` and `integrity`. Settling that needs the tarball fetched and hashed,
+which a parser cannot do.
+
+The alias is still matched when deciding `direct` / `dev`, because a project
+declares an aliased dependency *by its alias*.
+
+v1 has no `name` field and encodes the same thing in the version:
+`{"foo": {"version": "npm:left-pad@1.2.3"}}`. Stored verbatim that is a package
+called `foo` at a version that is not a version.
 
 Two of these are worth more than the install-state flags this page was written
 for. `license` is present on 81% of entries, and `deprecated` carries npm's own

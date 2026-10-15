@@ -289,6 +289,72 @@ was relying on the old, wrong success.
   is extracted from it yet — this only moves it into the parser backlog that
   `unsupported` is meant to count.
 
+### Added
+
+- **`package-lock.json` is now parsed** ([#229](https://github.com/kospex/kospex/issues/229)).
+  The extractor registry has classified npm lockfiles since July 2026 without
+  being able to read one, so a repository whose only manifest was a
+  `package-lock.json` produced no dependency rows at all. All three lockfile
+  versions are read: v3 and v2 from `packages:`, v1 from its nested
+  `dependencies:` tree. A v2 file's duplicate `dependencies:` tree is ignored,
+  since it describes the same closure.
+
+  The four install-state columns from migration `0009` are populated —
+  `is_dev`, `is_optional`, `runs_install_script` and `declared_scope` — so npm
+  rows now answer the same questions as pnpm rows. Three npm-specific points
+  are worth knowing before querying them:
+
+  - **`devOptional` records `is_dev=1` with `is_optional` NULL.** It is npm's
+    third state rather than the union of the other two: it never co-occurs with
+    `dev` or `optional`, and means "reachable only via a dev path *or* an
+    optional path" without saying which. The package does not reach production,
+    but whether it may fail to install is genuinely unstated, so NULL.
+  - **An npm lockfile kospex cannot read is reported as `parse_error`, not
+    `empty`** (CWE-703). `empty` means "examined, nothing to find", so a file
+    whose dependencies were never read must not claim it. An unsupported
+    `lockfileVersion`, a missing one or malformed JSON now raise, and
+    `lockfileVersion` itself is read liberally so `"3"` works as well as `3`.
+    `kospex sca` previously called parsers with no guard and would have crashed
+    on this; it now reports the file and continues, which is what the `krunner
+    osi` path has done since #148. Genuinely empty lockfiles still report
+    `empty`.
+  - **An aliased dependency is recorded as the package it actually is.**
+    `npm i foo@npm:bar` installs *bar* at `node_modules/foo`, and npm names the
+    real package in a `name` field on that entry. Reading the install path
+    instead would record a package that is not on the registry, so its deps.dev
+    lookup returns nothing and the row shows no advisories for something that is
+    genuinely installed. 30 entries on a reference estate are aliases. The alias
+    is still matched when deciding `direct` / `dev`, since a project declares an
+    aliased dependency by its alias. v1 encodes the same thing as
+    `version: "npm:bar@1.2.3"`, which is parsed rather than stored verbatim.
+
+    Because a lockfile is untrusted input and no field of it corroborates
+    another (CWE-807), **every identity an entry asserts is recorded** — the
+    install path, the `name`, and the package named in the `resolved` URL — with
+    none treated as authoritative. They almost always agree, so this is one row
+    per package in practice; across a reference estate it adds 32 rows out of
+    13,739. A row named for an install-path alias may not be a real registry
+    package and will carry no advisory data; the row under the real name is the
+    one that answers the security question.
+  - **A package reached by several install paths is reconciled, not
+    overwritten.** `packages:` keys are install paths and the primary key has
+    no path column, so the same `name@version` at two depths collapses to one
+    row. `dev` / `optional` / `devOptional` are true only when *every* path
+    agrees — one production path means the package ships — while
+    `hasInstallScript` / `peer` / `inBundle` are true if any path says so.
+  - **`lockfileVersion: 1` rows are all `transitive`.** v1's top level is the
+    hoisted install set rather than the declared set, so a direct dependency
+    cannot be told from a transitive lifted to the root. `is_dev` is still
+    populated; `runs_install_script` is NULL, because v1 has no
+    `hasInstallScript` field.
+
+  Expect a larger first scan. On a reference estate this adds ~13,700 rows from
+  ~7,400 distinct packages, around 5,900 of which have never been looked up, so
+  the first sweep does that many deps.dev calls.
+
+  `docs/dependency-flags.md` carries the measured per-key inventory and the
+  per-version detail behind all of this.
+
 ## 0.1.0 - 2026-09-11
 
 ### Upgrade notes
