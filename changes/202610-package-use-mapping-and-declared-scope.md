@@ -116,9 +116,40 @@ would be guesses. Recognition-based gating is the pattern this codebase has
 rejected elsewhere. The name is stored as evidence, so classifying it later is a
 query rather than a re-scan.
 
+### A fail-open introduced and removed during this change
+
+`parse_package_json` was restructured from four `if "X" in data:` blocks into
+one loop over `NPM_SECTION_TO_REQ_TYPE`. The first version of that loop carried
+an `isinstance(declared, dict): continue` guard — added as defensive hygiene,
+and a regression:
+
+| `package.json` | before | with the guard | now |
+|---|---|---|---|
+| `"dependencies": ["lodash"]` | raises | **0 records, silent** | raises |
+| `"dependencies": "lodash"` | raises | **0 records, silent** | raises |
+| `"dependencies": null` | raises | **0 records, silent** | raises |
+
+`parse_package_json` deliberately has no try/except: a malformed file raises,
+both scan paths convert that to a `parse_error` outcome, and the file is reported
+as unread. Skipping a malformed section instead reports the file as read with
+fewer dependencies than it declares — and a file whose every section is
+malformed as `empty`, "examined, nothing to find". The guard is gone, and
+`TestMalformedSectionStillFailsClosed` pins the property so the same
+plausible-looking refactor fails next time.
+
+### And one pre-existing fail-open fixed
+
+Found while checking the above. The top-level document was never validated, and
+failed open inconsistently: a `package.json` containing a JSON **array or
+string** returned zero records — `"dependencies" in ["x"]` is a legitimate
+membership test that answers `False` — while a **number** raised `TypeError`.
+All three are valid JSON, so `json.load` cannot catch them, and npm rejects such
+a file outright. Zero records meant "this repository declares no npm
+dependencies" for a file kospex could not read. It now raises `ValueError`.
+
 ## Verification
 
-Full suite: **1367 passed, 8 skipped, 1 xfailed** with a live `kweb`, so the 67
+Full suite: **1379 passed, 8 skipped, 1 xfailed** with a live `kweb`, so the 67
 web tests ran rather than skipping.
 
 Run against real manifests in a development estate:

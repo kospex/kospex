@@ -243,6 +243,15 @@ was relying on the old, wrong success.
   `package_use` is currently written by both scan paths and read by none, so
   this corrects stored data rather than anything displayed.
 
+- **A `package.json` whose top level was not a JSON object reported no
+  dependencies.** A file containing a JSON array or string returned zero records
+  rather than raising, because `"dependencies" in ["x"]` is a legitimate
+  membership test that answers `False`; a file containing a number raised
+  `TypeError`. All three are valid JSON, so the load could not catch them, and
+  npm rejects such a file outright — so zero records read as "this repository
+  declares no npm dependencies" for a file kospex could not parse. It now raises,
+  which both scan paths record as a `parse_error` outcome.
+
 - **`pyproject.toml` extras group names were read and discarded.**
   `for group, deps in optional.items()` never used `group`, so every entry under
   `[project.optional-dependencies]` produced an identical row -- 129 distinct

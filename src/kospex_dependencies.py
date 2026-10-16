@@ -969,16 +969,35 @@ class KospexDependencies:
         # raises, both scan paths turn that into a `parse_error` outcome, and the
         # file is reported as unread rather than as one with no dependencies.
 
+        # The document itself must be an object. This is valid JSON, so the load
+        # above cannot catch it, and it used to fail open inconsistently: a
+        # top-level array or string returned no records at all -- because
+        # `"dependencies" in ["x"]` is a legitimate membership test that answers
+        # False -- while a number raised TypeError. npm rejects such a file
+        # outright, so reporting it as a repository declaring no npm
+        # dependencies was wrong in the direction that looks like good news.
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"package.json must be a JSON object, got {type(data).__name__}"
+            )
+
         # npm section -> requirements_type. The section name is also kept
         # verbatim in declared_scope: "peer" and "optional" are kospex's words
         # for the fact, `peerDependencies` is npm's, and migration 0009 asks for
         # the raw one so a mapping that turns out wrong can be redone from the
         # database instead of a re-scan.
         for section, req_type in NPM_SECTION_TO_REQ_TYPE:
-            declared = data.get(section)
-            if not isinstance(declared, dict):
+            if section not in data:
                 continue
-            for package_name, version_spec in declared.items():
+            # No isinstance guard, deliberately. A section that is not an object
+            # is a malformed package.json, and `.items()` raising is what gets
+            # the file reported as `parse_error` rather than as one declaring
+            # fewer dependencies than it does. Skipping it instead -- which
+            # looks like defensive hygiene -- turns this parser fail-open: every
+            # section malformed would report `empty`, "examined, nothing to
+            # find". Pinned by
+            # tests/test_declared_scope_manifests.py::TestMalformedSectionStillFailsClosed.
+            for package_name, version_spec in data[section].items():
                 p = self.get_package_template()
                 p["package_name"] = package_name
                 p["package_version"] = version_spec

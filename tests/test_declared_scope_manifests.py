@@ -32,11 +32,15 @@ def kdeps():
 
 
 def _write(tmp_path, name, payload):
+    """Write `payload` as JSON, or verbatim when it is already source text.
+
+    A str payload is treated as the file's literal contents (so TOML fixtures
+    can be written inline), everything else is JSON-encoded -- including bare
+    scalars, which is how the non-object-document cases are built.
+    """
     path = tmp_path / name
-    if isinstance(payload, (dict, list)):
-        path.write_text(json.dumps(payload), encoding="utf-8")
-    else:
-        path.write_text(payload, encoding="utf-8")
+    text = payload if isinstance(payload, str) else json.dumps(payload)
+    path.write_text(text, encoding="utf-8")
     return str(path)
 
 
@@ -123,6 +127,83 @@ socks = ["pysocks"]
             records["pytest"]["declared_scope"]
             != records["pysocks"]["declared_scope"]
         )
+
+
+class TestMalformedSectionStillFailsClosed:
+    """A section that is not an object must raise, not be skipped.
+
+    `parse_package_json` has no try/except by design: a malformed file raises,
+    both scan paths turn that into a `parse_error` outcome, and the file is
+    reported as unread rather than as one with nothing in it.
+
+    These pin that property against a plausible "defensive" refactor. An
+    `isinstance(declared, dict)` guard with `continue` looks like hygiene and is
+    a fail-open: `{"dependencies": ["lodash"]}` would report zero dependencies
+    for a file that declares one, and a file whose every section is malformed
+    would report as `empty` -- "examined, nothing to find". That regression was
+    introduced and caught here.
+    """
+
+    @pytest.mark.parametrize("payload", [
+        {"dependencies": ["lodash"]},            # array instead of object
+        {"dependencies": "lodash"},              # string instead of object
+        {"dependencies": None},                  # explicit null
+        {"devDependencies": ["jest"]},
+        {"peerDependencies": 42},
+        {"optionalDependencies": [{"a": 1}]},
+    ], ids=["deps-array", "deps-string", "deps-null",
+            "devdeps-array", "peerdeps-int", "optdeps-array"])
+    def test_non_object_section_raises(self, kdeps, tmp_path, payload):
+        path = _write(tmp_path, "package.json", payload)
+        with pytest.raises(Exception):
+            kdeps.parse_package_json(path)
+
+    def test_a_valid_section_is_not_lost_to_a_malformed_sibling(self, kdeps, tmp_path):
+        """Raising is right even when some sections are readable.
+
+        A partial result is the thing to avoid: 1 of 2 sections silently
+        dropped is a scan that looks successful.
+        """
+        path = _write(tmp_path, "package.json", {
+            "dependencies": {"lodash": "1.0.0"},
+            "devDependencies": ["jest"],
+        })
+        with pytest.raises(Exception):
+            kdeps.parse_package_json(path)
+
+    @pytest.mark.parametrize("payload", [
+        ["lodash"],          # top level is an array
+        '"lodash"',          # top level is a JSON string
+        "42",                # top level is a JSON number
+    ], ids=["doc-array", "doc-string", "doc-number"])
+    def test_non_object_document_raises(self, kdeps, tmp_path, payload):
+        """A package.json whose top level is not an object is malformed.
+
+        This was a pre-existing fail-open, and an inconsistent one: an array or
+        a string returned 0 records silently (`"dependencies" in ["x"]` is a
+        valid membership test that answers False), while a number raised
+        TypeError. Valid JSON, so `json.load` cannot catch it, and npm would
+        reject the file outright -- so 0 records meant "this repo declares no
+        npm dependencies" for a file kospex could not read.
+        """
+        path = _write(tmp_path, "package.json", payload)
+        with pytest.raises(Exception):
+            kdeps.parse_package_json(path)
+
+    def test_absent_section_is_fine(self, kdeps, tmp_path):
+        """Absent is not malformed -- a package.json need not declare them all."""
+        path = _write(tmp_path, "package.json", {"dependencies": {"lodash": "1.0.0"}})
+        records = _by_name(kdeps.parse_package_json(path))
+        assert set(records) == {"lodash"}
+
+    def test_empty_section_is_fine(self, kdeps, tmp_path):
+        """An empty object genuinely declares nothing, and is well-formed."""
+        path = _write(tmp_path, "package.json", {
+            "dependencies": {"lodash": "1.0.0"},
+            "devDependencies": {},
+        })
+        records = _by_name(kdeps.parse_package_json(path))
+        assert set(records) == {"lodash"}
 
 
 class TestNoExtras:
