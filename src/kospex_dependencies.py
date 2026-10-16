@@ -31,6 +31,45 @@ from kospex_git import KospexGit
 log = KospexUtils.get_kospex_logger("kospex_dependencies")
 
 
+def _require_array(value, field, file_path):
+    """PEP 621 declares these fields as arrays. Anything else must not be read.
+
+    A string is iterable, so iterating one yields its *characters*:
+    `dependencies = "requests"` produced eight rows named r, e, q, u, e, s, t, s,
+    which were written to dependency_data and looked up on deps.dev. That is
+    fabrication rather than a silent miss -- e, q, u, s, t and p are all real
+    PyPI packages, so a malformed manifest made kospex report a repository as
+    depending on packages it has nothing to do with, with their real advisories
+    attached, and package_name is part of the primary key so the rows persisted.
+
+    A TOML table is rejected too. Iterating one yields its keys, which happened
+    to give the right answer for `[project.dependencies]` written as a table --
+    a coincidence, not correctness, and one that hid the shape of the file.
+
+    Raising, not skipping: both scan paths turn an exception into a `parse_error`
+    outcome, so the file is reported as unread rather than as one declaring
+    nothing.
+    """
+    if not isinstance(value, list):
+        raise ValueError(
+            f"{file_path}: {field} must be an array (PEP 621), "
+            f"got {type(value).__name__}"
+        )
+
+
+# package.json dependency sections -> requirements_type, in the order npm
+# documents them. Module level so tests/test_requirements_type_mapping.py can
+# assert every req_type here has an entry in KospexSchema.REQ_TO_PACKAGE_USE --
+# checking the table the code actually iterates, rather than scanning the source
+# for string literals, which a loop like this one makes invisible.
+NPM_SECTION_TO_REQ_TYPE = (
+    ("dependencies", "direct"),
+    ("devDependencies", "dev"),
+    ("peerDependencies", "peer"),
+    ("optionalDependencies", "optional"),
+)
+
+
 class KospexDependencies:
     """kospex database query functionality"""
 
@@ -327,12 +366,9 @@ class KospexDependencies:
 
     # def assess(self, filename, results_file=None, repo_info=None, print_table=False):
     # requirements_type as the parsers report it -> the DB package_use value.
-    _REQ_TO_USE = {
-        "direct": KospexSchema.PACKAGE_USE_DIRECT,
-        "dev": KospexSchema.PACKAGE_USE_DEV,
-        "resolved": KospexSchema.PACKAGE_USE_TRANSITIVE,
-        "indirect": KospexSchema.PACKAGE_USE_TRANSITIVE,
-    }
+    # The one mapping, shared with krunner's osi path. See
+    # KospexSchema.REQ_TO_PACKAGE_USE for why it is not defined here.
+    _REQ_TO_USE = KospexSchema.REQ_TO_PACKAGE_USE
 
     def _enrich_dependency_records(self, records, extractor):
         """Add deps.dev data and canonical DB fields to parsed records.
@@ -388,7 +424,11 @@ class KospexDependencies:
             out["package_version"] = declared_version
 
             out["package_type"] = package_type
-            out["package_use"] = self._REQ_TO_USE.get(req_type, KospexSchema.PACKAGE_USE_DIRECT)
+            # NULL, not `direct`, when the type is unmapped: guessing `direct`
+            # asserted that a peerDependency was used directly by the package
+            # that declared it as supplied by its consumer.
+            out["package_use"] = self._REQ_TO_USE.get(
+                req_type, KospexSchema.PACKAGE_USE_UNKNOWN)
 
             # What the manifest declared, recorded so "are we pinned?" can be
             # asked of the database rather than re-derived from the string.
@@ -951,53 +991,45 @@ class KospexDependencies:
         else:
             raise ValueError("Either file_path or content must be provided")
 
-        # Parse regular dependencies (runtime/production)
-        if "dependencies" in data:
-            for package_name, version_spec in data["dependencies"].items():
+        # No try/except around the load, deliberately. A malformed package.json
+        # raises, both scan paths turn that into a `parse_error` outcome, and the
+        # file is reported as unread rather than as one with no dependencies.
+
+        # The document itself must be an object. This is valid JSON, so the load
+        # above cannot catch it, and it used to fail open inconsistently: a
+        # top-level array or string returned no records at all -- because
+        # `"dependencies" in ["x"]` is a legitimate membership test that answers
+        # False -- while a number raised TypeError. npm rejects such a file
+        # outright, so reporting it as a repository declaring no npm
+        # dependencies was wrong in the direction that looks like good news.
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"package.json must be a JSON object, got {type(data).__name__}"
+            )
+
+        # npm section -> requirements_type. The section name is also kept
+        # verbatim in declared_scope: "peer" and "optional" are kospex's words
+        # for the fact, `peerDependencies` is npm's, and migration 0009 asks for
+        # the raw one so a mapping that turns out wrong can be redone from the
+        # database instead of a re-scan.
+        for section, req_type in NPM_SECTION_TO_REQ_TYPE:
+            if section not in data:
+                continue
+            # No isinstance guard, deliberately. A section that is not an object
+            # is a malformed package.json, and `.items()` raising is what gets
+            # the file reported as `parse_error` rather than as one declaring
+            # fewer dependencies than it does. Skipping it instead -- which
+            # looks like defensive hygiene -- turns this parser fail-open: every
+            # section malformed would report `empty`, "examined, nothing to
+            # find". Pinned by
+            # tests/test_declared_scope_manifests.py::TestMalformedSectionStillFailsClosed.
+            for package_name, version_spec in data[section].items():
                 p = self.get_package_template()
                 p["package_name"] = package_name
                 p["package_version"] = version_spec
                 p["ecosystem"] = "npm"
-                p["requirements_type"] = "direct"
-
-                # dependencies.append(
-                #     {
-                #         "package_name": package_name,
-                #         "package_version": version_spec,
-                #         "ecosystem": "npm",
-                #         "requirements_type": "direct",
-                #     }
-                # )
-                dependencies.append(p)
-
-        # Parse dev dependencies (build/development only)
-        if "devDependencies" in data:
-            for package_name, version_spec in data["devDependencies"].items():
-                p = self.get_package_template()
-                p["package_name"] = package_name
-                p["package_version"] = version_spec
-                p["ecosystem"] = "npm"
-                p["requirements_type"] = "dev"
-                dependencies.append(p)
-
-        # Parse peer dependencies (expected to be provided by consumer)
-        if "peerDependencies" in data:
-            for package_name, version_spec in data["peerDependencies"].items():
-                p = self.get_package_template()
-                p["package_name"] = package_name
-                p["package_version"] = version_spec
-                p["ecosystem"] = "npm"
-                p["requirements_type"] = "peer"
-                dependencies.append(p)
-
-        # Parse optional dependencies
-        if "optionalDependencies" in data:
-            for package_name, version_spec in data["optionalDependencies"].items():
-                p = self.get_package_template()
-                p["package_name"] = package_name
-                p["package_version"] = version_spec
-                p["ecosystem"] = "npm"
-                p["requirements_type"] = "optional"
+                p["requirements_type"] = req_type
+                p["declared_scope"] = section
                 dependencies.append(p)
 
         return dependencies
@@ -1034,6 +1066,7 @@ class KospexDependencies:
         results = []
 
         deps = pyproject.get("project", {}).get("dependencies", [])
+        _require_array(deps, "project.dependencies", file_path)
         for dep in deps:
             try:
                 req = Requirement(dep)
@@ -1047,10 +1080,12 @@ class KospexDependencies:
             p["package_version"] = str(req.specifier)
             p["ecosystem"] = "PyPi"
             p["requirements_type"] = "direct"
+            p["declared_scope"] = "dependencies"
             results.append(p)
 
         optional = pyproject.get("project", {}).get("optional-dependencies", {})
         for group, deps in optional.items():
+            _require_array(deps, f"project.optional-dependencies.{group}", file_path)
             for dep in deps:
                 try:
                     req = Requirement(dep)
@@ -1064,6 +1099,15 @@ class KospexDependencies:
                 p["package_version"] = str(req.specifier)
                 p["ecosystem"] = "PyPi"
                 p["requirements_type"] = "optional"
+                # The extras group name, verbatim. This was read and discarded:
+                # `dev` and `socks` produced identical rows, so 129 distinct
+                # group names across a real estate collapsed to one value. NOT
+                # promoted to requirements_type="dev" when the group is called
+                # `dev` -- PEP 621 extras mean "installed only if requested",
+                # which is not npm's devDependencies, and `check` / `cover` /
+                # `type` would be guesses. The name is evidence; classifying it
+                # is a query someone can run later.
+                p["declared_scope"] = group
                 results.append(p)
 
         return results
@@ -1287,10 +1331,15 @@ class KospexDependencies:
 
         if start.startswith(codecs.BOM_UTF8):
             return "utf-8-sig"
-        elif start.startswith(codecs.BOM_UTF16_LE):
-            return "utf-16-le"
-        elif start.startswith(codecs.BOM_UTF16_BE):
-            return "utf-16-be"
+        elif start.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+            # "utf-16", not "utf-16-le"/"utf-16-be". The suffixed codecs do not
+            # consume the BOM, so it survived as a leading U+FEFF and the first
+            # declaration in the file became "﻿requests==2.31.0" -- not a
+            # valid PEP 508 requirement, so it was dropped. This function exists
+            # to handle BOMs and got two of its three cases wrong; bare
+            # "utf-16" reads the mark, picks the byte order from it, and
+            # consumes it. Pinned by tests/test_requirements_encoding.py.
+            return "utf-16"
         else:
             return "utf-8"
 

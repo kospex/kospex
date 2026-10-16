@@ -7,8 +7,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Upgrade notes
 
 **No data changes in this release — unlike 0.1.0, nothing needs re-syncing or
-normalising — but there are two schema changes.** An existing database needs
-`kospex upgrade-db -apply`; newly created ones pick both up automatically.
+normalising — but there are three schema changes.** An existing database needs
+`kospex upgrade-db -apply`; newly created ones pick all three up automatically.
 
 - **`0007`** adds an index to `file_metadata`. Index only: no rows are read,
   rewritten or deleted, and a database left un-upgraded keeps working, just
@@ -18,6 +18,13 @@ normalising — but there are two schema changes.** An existing database needs
   database left un-upgraded keeps working — `-next` logs that it could not record
   diagnostics and carries on scanning, because the scan is the product and the
   diagnostics are not.
+- **`0009`** adds `is_dev`, `is_optional` and `runs_install_script` to
+  `dependency_data`, for the lockfile install state described under *Added*
+  below. Columns only, defaulting to NULL, which means *unknown* rather than
+  false: nothing existing is rewritten, and a database left un-upgraded keeps
+  working — the scanners record name and version as before and simply store no
+  install state. Re-running `krunner osi` after the upgrade is what populates
+  them for lockfiles already scanned.
 
 Otherwise what changes is how kospex *responds* when it cannot answer a
 question. In four places it previously returned something that looked like an
@@ -207,6 +214,81 @@ was relying on the old, wrong success.
   this index.
 
 ### Fixed
+
+- **`peerDependencies` were recorded as `direct`, and extras as nothing at all.**
+  Two scan paths write `package_use`, and each kept its own copy of the
+  `requirements_type -> package_use` mapping. The copies agreed on every value
+  they both mapped and diverged on the one neither did: `parse_package_json`
+  emits `peer` and `optional` and `parse_pyproject_file` emits `optional`, none
+  of which had an entry, so the **fallback** decided what was stored --
+  `direct` on the `sca` side, `""` on the `osi` side, for the same file. On a
+  populated database **497 rows** carried `package_use = ''` (185 from
+  `package.json`, 312 from `pyproject.toml`), and `kospex sca` recorded peer
+  dependencies as `direct`, which asserts the opposite of what a
+  `peerDependency` declares -- that the consumer supplies it, not this package.
+  `PACKAGE_USE_PEER` and `PACKAGE_USE_OPTIONAL` existed in `PACKAGE_USE_VALUES`
+  and were unreachable.
+
+  There is now **one** mapping, `KospexSchema.REQ_TO_PACKAGE_USE`, imported by
+  both paths as the same object rather than copied -- the old comment asking the
+  two tables to "mirror" each other was a request, not a mechanism. An unmapped
+  value now stores **NULL**, following migration `0009`'s rule that NULL means
+  *unknown*: `direct` claimed the manifest said something it did not, and `""`
+  is indistinguishable from a parser that produced no value, which is how this
+  stayed invisible. A contract test reads the parser sources and fails if any
+  parser emits a `requirements_type` with no mapping, because the original
+  defect was a *missing* mapping and nothing failed while it was missing.
+
+  **Existing rows keep their old values until the estate is re-scanned.**
+  `package_use` is currently written by both scan paths and read by none, so
+  this corrects stored data rather than anything displayed.
+
+- **A UTF-16 `requirements.txt` lost its first dependency.**
+  `detect_encoding` inspects the leading bytes for a byte-order mark and returns
+  an encoding. For UTF-8 it returned `utf-8-sig`, which consumes the BOM; for
+  UTF-16 it returned `utf-16-le` / `utf-16-be`, which do **not**, so the mark
+  survived decoding and the first declaration became
+  `"\ufeffrequests==2.31.0"` — not a valid PEP 508 requirement, and dropped.
+  The function existed to handle BOMs and got two of its three cases wrong. Now
+  returns bare `utf-16`, which reads the mark, picks the byte order from it, and
+  consumes it. Only the first line was affected, which is why it was quiet.
+
+- **A malformed `pyproject.toml` invented dependencies that do not exist.**
+  PEP 621 declares `dependencies` and each `optional-dependencies` group as
+  arrays. A string is also iterable, so `dependencies = "requests"` was iterated
+  *character by character* and produced eight rows named `r`, `e`, `q`, `u`,
+  `e`, `s`, `t`, `s` — written to `dependency_data` and looked up on deps.dev.
+
+  Not a silent miss but fabrication: `e`, `q`, `u`, `s`, `t` and `p` are all
+  real PyPI packages, so a malformed manifest made kospex report a repository as
+  depending on packages it has nothing to do with, with those packages' real
+  advisories attached. `package_name` is part of the primary key, so the rows
+  persisted. A TOML table is now rejected as well — iterating one yields its
+  keys, which happened to give the right answer and hid the shape of the file.
+  Both now raise, which the scan paths record as a `parse_error`.
+
+- **A `package.json` whose top level was not a JSON object reported no
+  dependencies.** A file containing a JSON array or string returned zero records
+  rather than raising, because `"dependencies" in ["x"]` is a legitimate
+  membership test that answers `False`; a file containing a number raised
+  `TypeError`. All three are valid JSON, so the load could not catch them, and
+  npm rejects such a file outright — so zero records read as "this repository
+  declares no npm dependencies" for a file kospex could not parse. It now raises,
+  which both scan paths record as a `parse_error` outcome.
+
+- **`pyproject.toml` extras group names were read and discarded.**
+  `for group, deps in optional.items()` never used `group`, so every entry under
+  `[project.optional-dependencies]` produced an identical row -- 129 distinct
+  group names across 432 declared dependencies in one estate collapsed to one
+  value. Both manifest parsers now populate `declared_scope` (migration `0009`)
+  with the raw section name in the file format's own vocabulary:
+  `dependencies` / `devDependencies` / `peerDependencies` /
+  `optionalDependencies` for npm, and the extras group name for Python.
+
+  A `dev` extras group is still recorded as `optional`, deliberately. PEP 621
+  extras mean "installed only when requested", which is not npm's
+  `devDependencies`, and `check` / `cover` / `type` would be guesses. The name
+  is stored as evidence so the classification is a later query, not a re-scan.
 
 - **`kospex sca` recorded no advisory data for pnpm transitive dependencies.** One
   condition in `_enrich_dependency_records` skipped deps.dev entirely when a

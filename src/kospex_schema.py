@@ -43,6 +43,41 @@ PACKAGE_USE_VALUES = frozenset({
     PACKAGE_USE_TRANSITIVE,
 })
 
+# What to store when no mapping applies. NULL means *unknown*, the same rule
+# migration 0009 set for the install-state columns. The alternatives are both
+# assertions the manifest did not make: `direct` claims a dependency is used
+# directly, and "" is indistinguishable from a parser that produced no value.
+PACKAGE_USE_UNKNOWN = None
+
+# requirements_type, as the parsers report it -> the package_use value stored.
+#
+# ONE table, imported by both scan paths (`KospexDependencies`, for `sca`, and
+# `krunner`, for `osi`). It lives here because each path previously kept its own
+# copy "mirroring" the other, and the copies disagreed on the case that mattered:
+# a requirements_type neither of them had a key for. `parse_package_json` emits
+# "peer" and "optional" and `parse_pyproject_file` emits "optional", none of
+# which were mapped, so the fallback decided the stored value -- `direct` on one
+# path, "" on the other, for the same file. Two copies cannot be kept in step by
+# a comment asking for it.
+#
+# tests/test_requirements_type_mapping.py reads the parser sources and fails if
+# any of them emits a value missing from this table, so a new parser cannot land
+# on the fallback unnoticed.
+REQ_TO_PACKAGE_USE = {
+    "direct": PACKAGE_USE_DIRECT,
+    "dev": PACKAGE_USE_DEV,
+    "resolved": PACKAGE_USE_TRANSITIVE,
+    # go.mod marks transitive modules `// indirect`.
+    "indirect": PACKAGE_USE_TRANSITIVE,
+    # npm peerDependencies: declared as supplied by the consumer, so explicitly
+    # NOT installed by this package. Recording it as `direct` was wrong.
+    "peer": PACKAGE_USE_PEER,
+    # npm optionalDependencies (install failure tolerated) and PEP 621 extras
+    # (installed only when requested). Both are "not unconditionally installed",
+    # which is what this value means; `declared_scope` keeps which one it was.
+    "optional": PACKAGE_USE_OPTIONAL,
+}
+
 # Mapping of table name to create statement is below the create statement definitions in:
 # DB_CREATE_STATEMENTS
 
