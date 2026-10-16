@@ -206,6 +206,82 @@ class TestMalformedSectionStillFailsClosed:
         assert set(records) == {"lodash"}
 
 
+class TestPyprojectDoesNotFabricatePackages:
+    """A string where PEP 621 requires an array must raise, not be iterated.
+
+    `dependencies` and each `optional-dependencies` group are arrays. A string
+    is also iterable, so iterating one yields its *characters*:
+
+        dependencies = "requests"   ->  rows named r, e, q, u, e, s, t, s
+
+    which were written to `dependency_data` and looked up on deps.dev. This is
+    not a silent miss, it is fabrication: `e`, `q`, `u`, `s`, `t` and `p` are
+    real PyPI packages, so a malformed manifest made kospex report a repository
+    as depending on packages it has nothing to do with, with their real
+    advisories attached. `package_name` is part of the primary key, so the rows
+    persist.
+    """
+
+    @pytest.mark.parametrize("body", [
+        '[project]\nname="acme"\ndependencies="requests"\n',
+        '[project]\nname="acme"\ndependencies="flask>=2.0"\n',
+    ], ids=["bare-name", "with-specifier"])
+    def test_string_dependencies_raises(self, kdeps, tmp_path, body):
+        path = _write(tmp_path, "pyproject.toml", body)
+        with pytest.raises(Exception):
+            kdeps.parse_pyproject_file(path)
+
+    def test_string_extras_group_raises(self, kdeps, tmp_path):
+        path = _write(tmp_path, "pyproject.toml",
+                      '[project]\nname="acme"\n'
+                      '[project.optional-dependencies]\ndev="pytest"\n')
+        with pytest.raises(Exception):
+            kdeps.parse_pyproject_file(path)
+
+    def test_no_single_character_packages_are_ever_produced(self, kdeps, tmp_path):
+        """The property, stated directly: character-wise iteration is the bug."""
+        path = _write(tmp_path, "pyproject.toml",
+                      '[project]\nname="acme"\ndependencies="requests"\n')
+        try:
+            records = kdeps.parse_pyproject_file(path)
+        except Exception:
+            return  # raising is the fix
+        assert not [r for r in records if len(r["package_name"]) == 1], (
+            "single-character package names indicate a string was iterated "
+            "as a sequence of characters"
+        )
+
+    def test_table_instead_of_array_raises(self, kdeps, tmp_path):
+        """`[project.dependencies]` as a table is not PEP 621 either.
+
+        It happened to produce the right answer -- iterating a dict yields its
+        keys -- which is a coincidence, not correctness, and masked the shape of
+        the file from anyone reading the output.
+        """
+        path = _write(tmp_path, "pyproject.toml",
+                      '[project]\nname="acme"\n'
+                      '[project.dependencies]\nrequests="*"\n')
+        with pytest.raises(Exception):
+            kdeps.parse_pyproject_file(path)
+
+    def test_well_formed_arrays_still_parse(self, kdeps, tmp_path):
+        path = _write(tmp_path, "pyproject.toml", """
+[project]
+name = "acme"
+dependencies = ["requests>=2.0", "flask"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+""")
+        records = _by_name(kdeps.parse_pyproject_file(path))
+        assert set(records) == {"requests", "flask", "pytest"}
+
+    def test_empty_arrays_are_well_formed(self, kdeps, tmp_path):
+        path = _write(tmp_path, "pyproject.toml",
+                      '[project]\nname="acme"\ndependencies=[]\n')
+        assert kdeps.parse_pyproject_file(path) == []
+
+
 class TestNoExtras:
     def test_pyproject_without_extras_still_records_scope(self, kdeps, tmp_path):
         path = _write(tmp_path, "pyproject.toml", """

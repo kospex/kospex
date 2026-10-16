@@ -243,6 +243,20 @@ was relying on the old, wrong success.
   `package_use` is currently written by both scan paths and read by none, so
   this corrects stored data rather than anything displayed.
 
+- **A malformed `pyproject.toml` invented dependencies that do not exist.**
+  PEP 621 declares `dependencies` and each `optional-dependencies` group as
+  arrays. A string is also iterable, so `dependencies = "requests"` was iterated
+  *character by character* and produced eight rows named `r`, `e`, `q`, `u`,
+  `e`, `s`, `t`, `s` — written to `dependency_data` and looked up on deps.dev.
+
+  Not a silent miss but fabrication: `e`, `q`, `u`, `s`, `t` and `p` are all
+  real PyPI packages, so a malformed manifest made kospex report a repository as
+  depending on packages it has nothing to do with, with those packages' real
+  advisories attached. `package_name` is part of the primary key, so the rows
+  persisted. A TOML table is now rejected as well — iterating one yields its
+  keys, which happened to give the right answer and hid the shape of the file.
+  Both now raise, which the scan paths record as a `parse_error`.
+
 - **A `package.json` whose top level was not a JSON object reported no
   dependencies.** A file containing a JSON array or string returned zero records
   rather than raising, because `"dependencies" in ["x"]` is a legitimate

@@ -31,6 +31,32 @@ from kospex_git import KospexGit
 log = KospexUtils.get_kospex_logger("kospex_dependencies")
 
 
+def _require_array(value, field, file_path):
+    """PEP 621 declares these fields as arrays. Anything else must not be read.
+
+    A string is iterable, so iterating one yields its *characters*:
+    `dependencies = "requests"` produced eight rows named r, e, q, u, e, s, t, s,
+    which were written to dependency_data and looked up on deps.dev. That is
+    fabrication rather than a silent miss -- e, q, u, s, t and p are all real
+    PyPI packages, so a malformed manifest made kospex report a repository as
+    depending on packages it has nothing to do with, with their real advisories
+    attached, and package_name is part of the primary key so the rows persisted.
+
+    A TOML table is rejected too. Iterating one yields its keys, which happened
+    to give the right answer for `[project.dependencies]` written as a table --
+    a coincidence, not correctness, and one that hid the shape of the file.
+
+    Raising, not skipping: both scan paths turn an exception into a `parse_error`
+    outcome, so the file is reported as unread rather than as one declaring
+    nothing.
+    """
+    if not isinstance(value, list):
+        raise ValueError(
+            f"{file_path}: {field} must be an array (PEP 621), "
+            f"got {type(value).__name__}"
+        )
+
+
 # package.json dependency sections -> requirements_type, in the order npm
 # documents them. Module level so tests/test_requirements_type_mapping.py can
 # assert every req_type here has an entry in KospexSchema.REQ_TO_PACKAGE_USE --
@@ -1040,6 +1066,7 @@ class KospexDependencies:
         results = []
 
         deps = pyproject.get("project", {}).get("dependencies", [])
+        _require_array(deps, "project.dependencies", file_path)
         for dep in deps:
             try:
                 req = Requirement(dep)
@@ -1058,6 +1085,7 @@ class KospexDependencies:
 
         optional = pyproject.get("project", {}).get("optional-dependencies", {})
         for group, deps in optional.items():
+            _require_array(deps, f"project.optional-dependencies.{group}", file_path)
             for dep in deps:
                 try:
                     req = Requirement(dep)

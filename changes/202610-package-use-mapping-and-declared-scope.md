@@ -147,9 +147,34 @@ All three are valid JSON, so `json.load` cannot catch them, and npm rejects such
 a file outright. Zero records meant "this repository declares no npm
 dependencies" for a file kospex could not read. It now raises `ValueError`.
 
+### A malformed pyproject.toml fabricated dependencies
+
+The worst of the three, found by probing the same edge cases on the other
+parser. PEP 621 declares `dependencies` and each `optional-dependencies` group
+as **arrays**. A string is iterable, so iterating one yields its characters:
+
+```
+dependencies = "requests"   ->  8 rows: r, e, q, u, e, s, t, s
+[project.optional-dependencies]
+dev = "pytest"              ->  6 rows: p, y, t, e, s, t
+```
+
+Those rows were written to `dependency_data` and looked up on deps.dev. This is
+fabrication, not a silent miss — checked against PyPI, **`e`, `q`, `u`, `s`,
+`t` and `p` all exist as real packages**. So a malformed manifest made kospex
+report a repository as depending on six packages it has nothing to do with, and
+attach those packages' genuine advisories to it. A false positive carrying real
+package identities, in a tool whose output is used to decide what to patch. And
+`package_name` is part of the primary key, so the rows persist until deleted.
+
+`_require_array()` now rejects anything that is not a list, including a TOML
+table — iterating a table yields its keys, which happened to produce the right
+answer for `[project.dependencies]` written as a table, a coincidence that hid
+the shape of the file from anyone reading the output.
+
 ## Verification
 
-Full suite: **1379 passed, 8 skipped, 1 xfailed** with a live `kweb`, so the 67
+Full suite: **1386 passed, 8 skipped, 1 xfailed** with a live `kweb`, so the 67
 web tests ran rather than skipping.
 
 Run against real manifests in a development estate:
