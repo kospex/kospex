@@ -107,15 +107,12 @@ def extract_dependency_file(extractor, full_path, repo_id, provider, file_hash, 
 
 
 # requirements_type as the parsers report it -> the DB package_use value.
-# Mirrors KospexDependencies._REQ_TO_USE so osi rows reconcile with the rows
-# `kospex sca` writes for the same file.
-_REQ_TO_USE = {
-    "direct": KospexSchema.PACKAGE_USE_DIRECT,
-    "dev": KospexSchema.PACKAGE_USE_DEV,
-    "resolved": KospexSchema.PACKAGE_USE_TRANSITIVE,
-    # go.mod marks transitive modules `// indirect`.
-    "indirect": KospexSchema.PACKAGE_USE_TRANSITIVE,
-}
+#
+# The same object `kospex sca` uses, not a copy of it, so osi rows reconcile
+# with the rows sca writes for the same file. This was two tables with a comment
+# asking them to mirror each other; they diverged on the fallback, which is the
+# one case a comment cannot keep in step. See KospexSchema.REQ_TO_PACKAGE_USE.
+_REQ_TO_USE = KospexSchema.REQ_TO_PACKAGE_USE
 
 
 # How often enrichment reports progress, in packages. Low enough that a slow
@@ -183,7 +180,11 @@ def enrich_dependency_records(results, kdeps, echo=None, progress=None):
             d["published_at"] = published.split("T")[0]
         else:
             d["published_at"] = "Unknown"
-        d["package_use"] = _REQ_TO_USE.get(d.get("requirements_type", ""), "")
+        # NULL, not "", when the type is unmapped: "" is indistinguishable from
+        # a parser that reported no requirements_type at all, which is how
+        # `peer` and `optional` went unnoticed in 497 rows.
+        d["package_use"] = _REQ_TO_USE.get(
+            d.get("requirements_type", ""), KospexSchema.PACKAGE_USE_UNKNOWN)
 
         # Not on the final package: the caller's own per-repo line reports the
         # total immediately afterwards, so a "312 of 312" here would just repeat it.

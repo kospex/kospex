@@ -215,6 +215,48 @@ was relying on the old, wrong success.
 
 ### Fixed
 
+- **`peerDependencies` were recorded as `direct`, and extras as nothing at all.**
+  Two scan paths write `package_use`, and each kept its own copy of the
+  `requirements_type -> package_use` mapping. The copies agreed on every value
+  they both mapped and diverged on the one neither did: `parse_package_json`
+  emits `peer` and `optional` and `parse_pyproject_file` emits `optional`, none
+  of which had an entry, so the **fallback** decided what was stored --
+  `direct` on the `sca` side, `""` on the `osi` side, for the same file. On a
+  populated database **497 rows** carried `package_use = ''` (185 from
+  `package.json`, 312 from `pyproject.toml`), and `kospex sca` recorded peer
+  dependencies as `direct`, which asserts the opposite of what a
+  `peerDependency` declares -- that the consumer supplies it, not this package.
+  `PACKAGE_USE_PEER` and `PACKAGE_USE_OPTIONAL` existed in `PACKAGE_USE_VALUES`
+  and were unreachable.
+
+  There is now **one** mapping, `KospexSchema.REQ_TO_PACKAGE_USE`, imported by
+  both paths as the same object rather than copied -- the old comment asking the
+  two tables to "mirror" each other was a request, not a mechanism. An unmapped
+  value now stores **NULL**, following migration `0009`'s rule that NULL means
+  *unknown*: `direct` claimed the manifest said something it did not, and `""`
+  is indistinguishable from a parser that produced no value, which is how this
+  stayed invisible. A contract test reads the parser sources and fails if any
+  parser emits a `requirements_type` with no mapping, because the original
+  defect was a *missing* mapping and nothing failed while it was missing.
+
+  **Existing rows keep their old values until the estate is re-scanned.**
+  `package_use` is currently written by both scan paths and read by none, so
+  this corrects stored data rather than anything displayed.
+
+- **`pyproject.toml` extras group names were read and discarded.**
+  `for group, deps in optional.items()` never used `group`, so every entry under
+  `[project.optional-dependencies]` produced an identical row -- 129 distinct
+  group names across 432 declared dependencies in one estate collapsed to one
+  value. Both manifest parsers now populate `declared_scope` (migration `0009`)
+  with the raw section name in the file format's own vocabulary:
+  `dependencies` / `devDependencies` / `peerDependencies` /
+  `optionalDependencies` for npm, and the extras group name for Python.
+
+  A `dev` extras group is still recorded as `optional`, deliberately. PEP 621
+  extras mean "installed only when requested", which is not npm's
+  `devDependencies`, and `check` / `cover` / `type` would be guesses. The name
+  is stored as evidence so the classification is a later query, not a re-scan.
+
 - **`kospex sca` recorded no advisory data for pnpm transitive dependencies.** One
   condition in `_enrich_dependency_records` skipped deps.dev entirely when a
   `pnpm-lock.yaml` entry was neither `direct` nor `dev`. On a real repository that

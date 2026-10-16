@@ -31,6 +31,19 @@ from kospex_git import KospexGit
 log = KospexUtils.get_kospex_logger("kospex_dependencies")
 
 
+# package.json dependency sections -> requirements_type, in the order npm
+# documents them. Module level so tests/test_requirements_type_mapping.py can
+# assert every req_type here has an entry in KospexSchema.REQ_TO_PACKAGE_USE --
+# checking the table the code actually iterates, rather than scanning the source
+# for string literals, which a loop like this one makes invisible.
+NPM_SECTION_TO_REQ_TYPE = (
+    ("dependencies", "direct"),
+    ("devDependencies", "dev"),
+    ("peerDependencies", "peer"),
+    ("optionalDependencies", "optional"),
+)
+
+
 class KospexDependencies:
     """kospex database query functionality"""
 
@@ -327,12 +340,9 @@ class KospexDependencies:
 
     # def assess(self, filename, results_file=None, repo_info=None, print_table=False):
     # requirements_type as the parsers report it -> the DB package_use value.
-    _REQ_TO_USE = {
-        "direct": KospexSchema.PACKAGE_USE_DIRECT,
-        "dev": KospexSchema.PACKAGE_USE_DEV,
-        "resolved": KospexSchema.PACKAGE_USE_TRANSITIVE,
-        "indirect": KospexSchema.PACKAGE_USE_TRANSITIVE,
-    }
+    # The one mapping, shared with krunner's osi path. See
+    # KospexSchema.REQ_TO_PACKAGE_USE for why it is not defined here.
+    _REQ_TO_USE = KospexSchema.REQ_TO_PACKAGE_USE
 
     def _enrich_dependency_records(self, records, extractor):
         """Add deps.dev data and canonical DB fields to parsed records.
@@ -388,7 +398,11 @@ class KospexDependencies:
             out["package_version"] = declared_version
 
             out["package_type"] = package_type
-            out["package_use"] = self._REQ_TO_USE.get(req_type, KospexSchema.PACKAGE_USE_DIRECT)
+            # NULL, not `direct`, when the type is unmapped: guessing `direct`
+            # asserted that a peerDependency was used directly by the package
+            # that declared it as supplied by its consumer.
+            out["package_use"] = self._REQ_TO_USE.get(
+                req_type, KospexSchema.PACKAGE_USE_UNKNOWN)
 
             # What the manifest declared, recorded so "are we pinned?" can be
             # asked of the database rather than re-derived from the string.
@@ -951,53 +965,26 @@ class KospexDependencies:
         else:
             raise ValueError("Either file_path or content must be provided")
 
-        # Parse regular dependencies (runtime/production)
-        if "dependencies" in data:
-            for package_name, version_spec in data["dependencies"].items():
+        # No try/except around the load, deliberately. A malformed package.json
+        # raises, both scan paths turn that into a `parse_error` outcome, and the
+        # file is reported as unread rather than as one with no dependencies.
+
+        # npm section -> requirements_type. The section name is also kept
+        # verbatim in declared_scope: "peer" and "optional" are kospex's words
+        # for the fact, `peerDependencies` is npm's, and migration 0009 asks for
+        # the raw one so a mapping that turns out wrong can be redone from the
+        # database instead of a re-scan.
+        for section, req_type in NPM_SECTION_TO_REQ_TYPE:
+            declared = data.get(section)
+            if not isinstance(declared, dict):
+                continue
+            for package_name, version_spec in declared.items():
                 p = self.get_package_template()
                 p["package_name"] = package_name
                 p["package_version"] = version_spec
                 p["ecosystem"] = "npm"
-                p["requirements_type"] = "direct"
-
-                # dependencies.append(
-                #     {
-                #         "package_name": package_name,
-                #         "package_version": version_spec,
-                #         "ecosystem": "npm",
-                #         "requirements_type": "direct",
-                #     }
-                # )
-                dependencies.append(p)
-
-        # Parse dev dependencies (build/development only)
-        if "devDependencies" in data:
-            for package_name, version_spec in data["devDependencies"].items():
-                p = self.get_package_template()
-                p["package_name"] = package_name
-                p["package_version"] = version_spec
-                p["ecosystem"] = "npm"
-                p["requirements_type"] = "dev"
-                dependencies.append(p)
-
-        # Parse peer dependencies (expected to be provided by consumer)
-        if "peerDependencies" in data:
-            for package_name, version_spec in data["peerDependencies"].items():
-                p = self.get_package_template()
-                p["package_name"] = package_name
-                p["package_version"] = version_spec
-                p["ecosystem"] = "npm"
-                p["requirements_type"] = "peer"
-                dependencies.append(p)
-
-        # Parse optional dependencies
-        if "optionalDependencies" in data:
-            for package_name, version_spec in data["optionalDependencies"].items():
-                p = self.get_package_template()
-                p["package_name"] = package_name
-                p["package_version"] = version_spec
-                p["ecosystem"] = "npm"
-                p["requirements_type"] = "optional"
+                p["requirements_type"] = req_type
+                p["declared_scope"] = section
                 dependencies.append(p)
 
         return dependencies
@@ -1047,6 +1034,7 @@ class KospexDependencies:
             p["package_version"] = str(req.specifier)
             p["ecosystem"] = "PyPi"
             p["requirements_type"] = "direct"
+            p["declared_scope"] = "dependencies"
             results.append(p)
 
         optional = pyproject.get("project", {}).get("optional-dependencies", {})
@@ -1064,6 +1052,15 @@ class KospexDependencies:
                 p["package_version"] = str(req.specifier)
                 p["ecosystem"] = "PyPi"
                 p["requirements_type"] = "optional"
+                # The extras group name, verbatim. This was read and discarded:
+                # `dev` and `socks` produced identical rows, so 129 distinct
+                # group names across a real estate collapsed to one value. NOT
+                # promoted to requirements_type="dev" when the group is called
+                # `dev` -- PEP 621 extras mean "installed only if requested",
+                # which is not npm's devDependencies, and `check` / `cover` /
+                # `type` would be guesses. The name is evidence; classifying it
+                # is a query someone can run later.
+                p["declared_scope"] = group
                 results.append(p)
 
         return results
