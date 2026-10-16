@@ -1331,10 +1331,15 @@ class KospexDependencies:
 
         if start.startswith(codecs.BOM_UTF8):
             return "utf-8-sig"
-        elif start.startswith(codecs.BOM_UTF16_LE):
-            return "utf-16-le"
-        elif start.startswith(codecs.BOM_UTF16_BE):
-            return "utf-16-be"
+        elif start.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+            # "utf-16", not "utf-16-le"/"utf-16-be". The suffixed codecs do not
+            # consume the BOM, so it survived as a leading U+FEFF and the first
+            # declaration in the file became "﻿requests==2.31.0" -- not a
+            # valid PEP 508 requirement, so it was dropped. This function exists
+            # to handle BOMs and got two of its three cases wrong; bare
+            # "utf-16" reads the mark, picks the byte order from it, and
+            # consumes it. Pinned by tests/test_requirements_encoding.py.
+            return "utf-16"
         else:
             return "utf-8"
 

@@ -243,6 +243,16 @@ was relying on the old, wrong success.
   `package_use` is currently written by both scan paths and read by none, so
   this corrects stored data rather than anything displayed.
 
+- **A UTF-16 `requirements.txt` lost its first dependency.**
+  `detect_encoding` inspects the leading bytes for a byte-order mark and returns
+  an encoding. For UTF-8 it returned `utf-8-sig`, which consumes the BOM; for
+  UTF-16 it returned `utf-16-le` / `utf-16-be`, which do **not**, so the mark
+  survived decoding and the first declaration became
+  `"\ufeffrequests==2.31.0"` — not a valid PEP 508 requirement, and dropped.
+  The function existed to handle BOMs and got two of its three cases wrong. Now
+  returns bare `utf-16`, which reads the mark, picks the byte order from it, and
+  consumes it. Only the first line was affected, which is why it was quiet.
+
 - **A malformed `pyproject.toml` invented dependencies that do not exist.**
   PEP 621 declares `dependencies` and each `optional-dependencies` group as
   arrays. A string is also iterable, so `dependencies = "requests"` was iterated
