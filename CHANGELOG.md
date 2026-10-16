@@ -7,8 +7,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Upgrade notes
 
 **No data changes in this release — unlike 0.1.0, nothing needs re-syncing or
-normalising — but there are two schema changes.** An existing database needs
-`kospex upgrade-db -apply`; newly created ones pick both up automatically.
+normalising — but there are three schema changes.** An existing database needs
+`kospex upgrade-db -apply`; newly created ones pick all three up automatically.
 
 - **`0007`** adds an index to `file_metadata`. Index only: no rows are read,
   rewritten or deleted, and a database left un-upgraded keeps working, just
@@ -18,6 +18,13 @@ normalising — but there are two schema changes.** An existing database needs
   database left un-upgraded keeps working — `-next` logs that it could not record
   diagnostics and carries on scanning, because the scan is the product and the
   diagnostics are not.
+- **`0009`** adds `is_dev`, `is_optional` and `runs_install_script` to
+  `dependency_data`, for the lockfile install state described under *Added*
+  below. Columns only, defaulting to NULL, which means *unknown* rather than
+  false: nothing existing is rewritten, and a database left un-upgraded keeps
+  working — the scanners record name and version as before and simply store no
+  install state. Re-running `krunner osi` after the upgrade is what populates
+  them for lockfiles already scanned.
 
 Otherwise what changes is how kospex *responds* when it cannot answer a
 question. In four places it previously returned something that looked like an
