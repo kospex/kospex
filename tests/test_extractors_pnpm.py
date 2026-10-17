@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from kospex.extractors.errors import UnreadableManifest
 from kospex.extractors.pnpm import (
     extract_pnpm_lock,
     _split_at_key,
@@ -160,32 +161,36 @@ class TestExtractV5:
 
 
 class TestErrorHandling:
-    def test_missing_file_returns_empty(self, tmp_path):
-        assert extract_pnpm_lock(str(tmp_path / "nope.yaml")) == []
+    """An unreadable lockfile raises; one that resolves nothing returns [].
 
-    def test_invalid_yaml_returns_empty(self):
-        assert extract_pnpm_lock(str(FIXTURES / "malformed.yaml")) == []
+    These assertions used to read `== []` for every case below, which recorded
+    an unreadable file as `empty` -- "read, and declaring nothing". The full
+    rule, its three categories and the multi-document stream case live in
+    tests/test_extractor_unreadable_manifests.py, which owns the contract
+    across all the extractors; what is kept here is one case per branch of
+    this parser.
+    """
 
-    def test_unknown_lockfile_version_returns_empty(self):
-        assert extract_pnpm_lock(str(FIXTURES / "unknown-version.yaml")) == []
+    def test_missing_file_raises(self, tmp_path):
+        with pytest.raises(UnreadableManifest):
+            extract_pnpm_lock(str(tmp_path / "nope.yaml"))
 
-    def test_no_packages_section_returns_empty(self):
-        assert extract_pnpm_lock(str(FIXTURES / "no-packages.yaml")) == []
+    def test_invalid_yaml_raises(self):
+        with pytest.raises(UnreadableManifest):
+            extract_pnpm_lock(str(FIXTURES / "malformed.yaml"))
 
-    def test_empty_file_returns_empty(self, tmp_path):
-        p = _write(tmp_path, "empty.yaml", "")
-        assert extract_pnpm_lock(p) == []
+    def test_unknown_lockfile_version_raises(self):
+        """The fixture wraps a real package, so [] would hide a dependency."""
+        with pytest.raises(UnreadableManifest):
+            extract_pnpm_lock(str(FIXTURES / "unknown-version.yaml"))
 
-    def test_non_dict_root_returns_empty(self, tmp_path):
-        p = _write(tmp_path, "list.yaml", "- a\n- b\n")
-        assert extract_pnpm_lock(p) == []
-
-    def test_directory_path_returns_empty(self, tmp_path):
-        # opening a directory raises IsADirectoryError (an OSError subclass)
-        assert extract_pnpm_lock(str(tmp_path)) == []
-
-    def test_binary_content_returns_empty(self, tmp_path):
-        # non-UTF-8 bytes under a .yaml name raise UnicodeDecodeError on read
+    def test_unreadable_bytes_raise(self, tmp_path):
         p = tmp_path / "binary.yaml"
         p.write_bytes(b"\xff\xfe\x00\x01\x02\x03")
-        assert extract_pnpm_lock(str(p)) == []
+
+        with pytest.raises(UnreadableManifest):
+            extract_pnpm_lock(str(p))
+
+    def test_no_packages_section_returns_empty(self):
+        """Still []: pnpm omits `packages:` for a project resolving nothing."""
+        assert extract_pnpm_lock(str(FIXTURES / "no-packages.yaml")) == []

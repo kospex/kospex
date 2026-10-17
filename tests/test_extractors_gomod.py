@@ -2,12 +2,17 @@
 
 Mirrors the pnpm extractor's contract: pure (no DB, no CLI, no enrichment),
 returns records shaped to KospexDependencies.get_package_template(), and
-returns [] rather than raising on a missing or unreadable file.
+raises UnreadableManifest -- rather than returning [] -- for a file it could
+not read. The shared contract and its three categories live in
+tests/test_extractor_unreadable_manifests.py.
 
 Parsing rules themselves are covered by tests/test_gomod_parsing.py — these
 cover the extractor shape and the direct/indirect classification that
 krunner osi consumes.
 """
+import pytest
+
+from kospex.extractors.errors import UnreadableManifest
 from kospex.extractors.gomod import _template, extract_gomod
 
 
@@ -59,8 +64,12 @@ require (
 
         assert set(records[0].keys()) == set(_template().keys())
 
-    def test_missing_file_returns_empty(self, tmp_path):
-        assert extract_gomod(str(tmp_path / "nope.mod")) == []
+    def test_missing_file_raises(self, tmp_path):
+        """[] would record the file as read and dependency-free."""
+        with pytest.raises(UnreadableManifest):
+            extract_gomod(str(tmp_path / "nope.mod"))
 
     def test_gomod_with_no_requires_returns_empty(self, tmp_path):
+        """Still []: a Go library with no third-party requirements is normal,
+        and 42 of 188 go.mod files on a development estate look like this."""
         assert extract_gomod(_write(tmp_path, "module x\ngo 1.21\n")) == []
