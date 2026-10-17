@@ -84,6 +84,23 @@ def parse_gomod(path):
     except (OSError, UnicodeDecodeError) as exc:
         raise UnreadableManifest(f"{path}: could not read: {exc}") from exc
 
+    # A BOM is checked BEFORE the `module` gate below, and is not stripped.
+    #
+    # Go refuses a BOM-prefixed go.mod too: `golang.org/x/mod/modfile` has no
+    # BOM handling anywhere, and its `ModulePath` tests
+    # `bytes.HasPrefix(line, moduleStr)` — defeated by a leading BOM in exactly
+    # the way the gate below was. So the file genuinely does not build and
+    # `parse_error` is right. Unlike package.json, where npm reads a BOM and so
+    # must we.
+    #
+    # The check exists to say WHY. Without it the gate below reports "no
+    # `module` directive" about a file whose first directive is `module`, which
+    # sends the reader looking for a defect that is not there.
+    if lines and lines[0].startswith("﻿"):
+        raise UnreadableManifest(
+            f"{path}: starts with a UTF-8 BOM, which go.mod does not permit — "
+            f"the `go` tool cannot read this file either")
+
     # `module` is required by the go.mod grammar, so a file lacking it is not a
     # go.mod. Without this check go.mod is the only format here with no
     # structural gate at all — every other line it does not understand is

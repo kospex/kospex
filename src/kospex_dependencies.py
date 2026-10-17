@@ -985,7 +985,18 @@ class KospexDependencies:
 
         # Load the package.json content
         if file_path:
-            with open(file_path, "r") as f:
+            # "utf-8-sig", not "utf-8": it consumes a UTF-8 BOM if one is there
+            # and is identical to utf-8 when it is not. npm READS a BOM-prefixed
+            # package.json -- verified against npm 11: `npm pkg get name`
+            # returns the name and `npm ls` resolves the tree -- so refusing one
+            # reported a working repository as having an unreadable manifest.
+            # One real file on a development estate did this, in a project that
+            # commits a BOM fixture deliberately. A BOM is never content.
+            #
+            # UTF-16 is still refused, and should be: npm fails a UTF-16
+            # package.json with EJSONPARSE, so reading one would report
+            # dependencies npm itself cannot see.
+            with open(file_path, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
         elif content:
             data = json.loads(content)
@@ -1068,11 +1079,30 @@ class KospexDependencies:
 
         try:
             with open(file_path, "rb") as f:
-                pyproject = tomllib.load(f)
-        except tomllib.TOMLDecodeError as e:
-            raise UnreadableManifest(f"{file_path}: invalid TOML: {e}") from e
+                raw = f.read()
         except OSError as e:
             raise UnreadableManifest(f"{file_path}: could not read: {e}") from e
+
+        # A BOM is NOT stripped here, deliberately -- unlike package.json, where
+        # npm reads one. pip cannot read a BOM-prefixed pyproject.toml either:
+        # `pip install .` fails in pip/_internal/pyproject.py at
+        # `tomllib.loads(f.read())`, so the project genuinely cannot be built
+        # and `parse_error` is the honest outcome. The check exists only to say
+        # SO -- tomllib's own message is "Invalid statement (at line 1,
+        # column 1)", which sends the reader looking for a syntax error in a
+        # line that is correct.
+        if raw.startswith(codecs.BOM_UTF8):
+            raise UnreadableManifest(
+                f"{file_path}: starts with a UTF-8 BOM, which TOML does not "
+                f"permit -- pip cannot read this file either")
+
+        try:
+            pyproject = tomllib.loads(raw.decode("utf-8"))
+        except tomllib.TOMLDecodeError as e:
+            raise UnreadableManifest(f"{file_path}: invalid TOML: {e}") from e
+        except UnicodeDecodeError as e:
+            raise UnreadableManifest(
+                f"{file_path}: not valid UTF-8, which TOML requires: {e}") from e
 
         results = []
 
