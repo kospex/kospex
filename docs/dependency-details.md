@@ -236,6 +236,10 @@ common for a pyproject that only configures tools.
   collapse to one value.
 - An individual malformed requirement string inside a valid array is logged and
   skipped, not raised — the file was readable and the rest of it is good data.
+- **A leading UTF-8 BOM raises, and the message names it.** pip cannot read such a
+  file either, so refusing it is honest — but `tomllib`'s own message is "Invalid
+  statement (at line 1, column 1)", which points at a line that is correct. See
+  [Byte order marks](#byte-order-marks).
 
 **Upstream docs:** [pyproject.toml specification](https://packaging.python.org/en/latest/specifications/pyproject-toml/)
 · [PEP 621](https://peps.python.org/pep-0621/)
@@ -274,6 +278,8 @@ somewhere else entirely.
 - The npm section name is kept verbatim in `declared_scope` alongside the mapped
   `requirements_type`, so a mapping that turns out wrong can be redone from the
   database instead of a re-scan.
+- **Read with `utf-8-sig`, because npm reads a BOM'd `package.json`** and refusing one
+  reported a working repository as broken. See [Byte order marks](#byte-order-marks).
 
 **Upstream docs:** [package.json](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/)
 
@@ -340,6 +346,8 @@ Three structurally distinct formats:
   allowlist degrades them silently.
 - Integrity/checksum hashes are dropped — SCA does not consume them. Producing
   checksum-bearing SBOMs is the out-of-scope "generator" category.
+- **Read with `utf-8-sig`**, as for `package.json`: npm resolves from a BOM'd lockfile.
+  See [Byte order marks](#byte-order-marks).
 
 **Upstream docs:** [package-lock.json](https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json/)
 
@@ -496,6 +504,9 @@ them 27 bytes.
 - The raise lives in `parse_gomod`, not only in `extract_gomod`, because
   `KospexDependencies.parse_go_mod_from_file()` is public and delegates there. Two
   parsers agreeing today is not the same as two parsers staying in agreement.
+- **A leading UTF-8 BOM raises, checked *before* the `module` gate** so the message
+  names the BOM rather than claiming the file has no `module` directive. Go refuses
+  the file too. See [Byte order marks](#byte-order-marks).
 
 **Upstream docs:** [Go modules reference](https://go.dev/ref/mod) ·
 [go.mod file reference](https://go.dev/doc/modules/gomod-ref)
@@ -764,6 +775,48 @@ Commit subjects in this area are written to be the summary, so that log is more
 informative than a list of numbers. What belongs *on this page* is the decision and
 its reasoning; the PR reference belongs next to the decision it explains, which is how
 the sections above cite them.
+
+# Byte order marks
+
+A UTF-8 BOM is what a Windows editor writes, and it is never content. Whether kospex
+may refuse a file carrying one is therefore decided by **the ecosystem that owns the
+format**, not by what our reader finds convenient — a raise on a file the real tool
+installs happily is a false positive, and a dependency inventory that reports a working
+repository as broken is worse than one that is quiet.
+
+Each row below was checked against the actual tool, not inferred:
+
+| format | BOM'd file | the ecosystem | kospex |
+|---|---|---|---|
+| `package.json` | npm **reads** it — `npm pkg get name` returns the name, `npm ls` resolves the tree | tolerant | **reads it** (`utf-8-sig`) |
+| `package-lock.json` | npm **reads** it — `npm ls --package-lock-only` resolves the locked version | tolerant | **reads it** (`utf-8-sig`) |
+| `pnpm-lock.yaml` | the YAML spec permits a BOM | tolerant | reads it (PyYAML consumes it) |
+| `*.csproj` | the XML spec permits a BOM | tolerant | reads it (ElementTree consumes it) |
+| `requirements.txt` | — | tolerant | reads it, via `detect_encoding` |
+| `pyproject.toml` | **pip refuses it** — `pip install .` dies in `pip/_internal/pyproject.py` at `tomllib.loads` | refuses | **raises, naming the BOM** |
+| `go.mod` | **Go refuses it** — `golang.org/x/mod/modfile` has no BOM handling, and `ModulePath` tests `bytes.HasPrefix(line, moduleStr)` | refuses | **raises, naming the BOM** |
+
+So the rule is neither "strip every BOM" nor "refuse every BOM".
+
+**Where the format's tooling refuses the file, say *why*.** The `go.mod` case is the
+cautionary one: the `module` gate reported *"no `module` directive, so not a go.mod"*
+about a file whose first directive is `module`, sending the reader after a defect that
+was not there. Both refusals now name the BOM, and the `go.mod` check sits **before**
+the `module` gate for that reason — while still letting a file genuinely missing
+`module` produce the original message.
+
+**UTF-16 is refused everywhere**, which matches npm: a UTF-16 `package.json` fails with
+`EJSONPARSE`. Reading one would report dependencies npm itself cannot see. The single
+exception is `requirements.txt`, where `detect_encoding` handles UTF-16 because a real
+file on a development estate was UTF-16 and lost its first dependency to it.
+
+**How this was found**, because the method transfers: after the error contract landed,
+a sweep of all 374 repositories through the production path listed every file now
+reporting `parse_error`. Nine files across six repositories — eight were deliberately
+malformed test fixtures committed by the upstream projects, and the ninth was a BOM. The
+contract did not cause that bug; it made it visible, because the file used to fail open
+as `empty`. **After changing how parsers report failure, read the new failures
+one by one** — the list is short and it is where the false positives are.
 
 # Cross-cutting decisions
 

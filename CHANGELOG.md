@@ -215,6 +215,32 @@ was relying on the old, wrong success.
 
 ### Fixed
 
+- **A `package.json` or `package-lock.json` beginning with a UTF-8 byte order
+  mark was reported as unreadable, though npm reads it.** A BOM is what a
+  Windows editor writes and is never content: verified against npm 11,
+  `npm pkg get name` returns the name from a BOM-prefixed `package.json` and
+  `npm ls --package-lock-only` resolves the locked version from a BOM-prefixed
+  lockfile. Both are now read with `utf-8-sig`, which consumes a BOM when
+  present and is identical to `utf-8` when it is not.
+
+  Found by listing every file that reported `parse_error` after the fail-open
+  fix below and reading them one at a time — eight of the nine were test
+  fixtures the upstream projects deliberately committed as malformed, and the
+  ninth was this. The contract did not cause the bug; it made it visible,
+  because the file previously failed open as `empty`.
+
+  Two formats keep refusing a BOM, because their own tooling does and the file
+  genuinely cannot be built: `pyproject.toml`, where `pip install .` dies at
+  `tomllib.loads`, and `go.mod`, whose parser has no BOM handling and whose
+  `ModulePath` tests a `module` prefix that a BOM defeats. Both now **name the
+  BOM** in the error. The `go.mod` check runs before the `module` gate, which
+  had been reporting "no `module` directive, so not a go.mod" about a file
+  whose first directive is `module` — the right outcome with a message that
+  sent the reader after the wrong defect. `pnpm-lock.yaml` and `*.csproj`
+  already tolerated a BOM, as the YAML and XML specs permit one, and
+  `requirements.txt` has since the UTF-16 fix; all three now have regression
+  tests. UTF-16 stays refused, as npm refuses it too.
+
 - **A multi-document `pnpm-lock.yaml` read as zero dependencies.** When a
   project pins pnpm itself through `packageManagerDependencies`, pnpm writes
   the closure of the pnpm binary as one YAML document and the project's own

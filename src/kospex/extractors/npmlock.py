@@ -659,7 +659,12 @@ def extract_package_lock(path):
         unknown-lockfileVersion files.
     """
     try:
-        with open(path) as f:
+        # "utf-8-sig" consumes a UTF-8 BOM if present and behaves as utf-8 when
+        # it is not. npm reads a BOM-prefixed lockfile -- verified against npm
+        # 11, where `npm ls --package-lock-only` resolves the locked version
+        # from one -- so refusing it reported a working repository as having an
+        # unreadable lockfile. UTF-16 is still refused, as npm refuses it.
+        with open(path, encoding="utf-8-sig") as f:
             doc = json.load(f)
     except json.JSONDecodeError as e:
         raise UnreadableLockfile(f"{path}: invalid JSON: {e}") from e
