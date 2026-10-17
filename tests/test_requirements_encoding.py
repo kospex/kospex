@@ -4,7 +4,7 @@ The function inspects the first four bytes for a byte-order mark and returns an
 encoding name. For UTF-8 it returns `utf-8-sig`, which strips the BOM. For the
 two UTF-16 cases it returned `utf-16-le` / `utf-16-be`, which **do not** -- the
 BOM survives decoding as a leading U+FEFF, so the first declaration in the file
-became `"﻿requests==2.31.0"`, which is not a valid PEP 508 requirement and
+became `"\ufeffrequests==2.31.0"`, which is not a valid PEP 508 requirement and
 was dropped.
 
 A UTF-16 `requirements.txt` therefore lost its first dependency silently, and a
@@ -56,7 +56,7 @@ class TestDetectEncoding:
         detected = kdeps.detect_encoding(path)
 
         text = raw.decode(detected)
-        assert not text.startswith("﻿"), (
+        assert not text.startswith("\ufeff"), (
             f"detect_encoding returned {detected!r}, which leaves the BOM in "
             "the decoded text"
         )

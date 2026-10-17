@@ -96,7 +96,7 @@ def parse_gomod(path):
     # The check exists to say WHY. Without it the gate below reports "no
     # `module` directive" about a file whose first directive is `module`, which
     # sends the reader looking for a defect that is not there.
-    if lines and lines[0].startswith("﻿"):
+    if lines and lines[0].startswith("\ufeff"):
         raise UnreadableManifest(
             f"{path}: starts with a UTF-8 BOM, which go.mod does not permit — "
             f"the `go` tool cannot read this file either")

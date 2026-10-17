@@ -215,3 +215,44 @@ class TestUtf16IsRefused:
         path.write_bytes(PACKAGE_LOCK.encode("utf-16"))
         with pytest.raises(UnreadableManifest):
             extract_package_lock(str(path))
+
+
+class TestNoSourceFileCarriesAnInvisibleBom:
+    """A BOM in SOURCE must be written as an escape, never as the character.
+
+    `startswith("\ufeff")` and `startswith("<the character>")` behave
+    identically, so this is a readability rule rather than a correctness one --
+    but it is the readability of a security check. The character is invisible in
+    GitHub's diff view, in `git show` and in most editors, so the second form
+    renders as `startswith("")`: a test for the empty string, which would be
+    always true and therefore an obvious bug. A reviewer cannot tell the
+    difference between right and catastrophically wrong.
+
+    It reached `gomod.py` because writing the escape produced the character,
+    which is the mistake this guards -- it is not a hypothetical. It is also
+    fragile: anything that normalises the file can drop the character and
+    silently change what the check compares against.
+
+    Scoped to `.py` sources. Test *fixtures* that carry a real BOM are data and
+    are exactly what the rest of this module needs.
+    """
+
+    def test_no_py_file_has_an_inline_bom(self):
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parent.parent
+        bom = b"\xef\xbb\xbf"
+        offenders = []
+        for directory in ("src", "tests"):
+            for path in (root / directory).rglob("*.py"):
+                raw = path.read_bytes()
+                # A BOM at offset 0 is the file's own encoding mark, not an
+                # inline literal, and is a different question.
+                body = raw[3:] if raw.startswith(bom) else raw
+                if bom in body:
+                    offenders.append(str(path.relative_to(root)))
+
+        assert not offenders, (
+            "a U+FEFF character is written literally in these sources; it is "
+            "invisible in review and renders as an empty string. Write the "
+            'escape instead:\n  ' + "\n  ".join(offenders))
