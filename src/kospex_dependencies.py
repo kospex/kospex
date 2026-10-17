@@ -24,6 +24,7 @@ from prettytable import PrettyTable
 
 import kospex_schema as KospexSchema
 from kospex.extractors.constraints import classify_constraint
+from kospex.extractors.errors import UnreadableManifest
 from kospex.extractors.registry import classify, resolve_parser
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -1051,17 +1052,27 @@ class KospexDependencies:
         """
         Parse a pyproject.toml file and return a list of packages.
 
-        Returns an empty list and logs a warning if the file is malformed
-        or unreadable, so batch callers (e.g. ``krunner osi``) can continue
-        processing other files.
+        Raises:
+            UnreadableManifest: the file is missing, unreadable or not valid
+                TOML.
+
+        This used to log a warning and return [] "so batch callers (e.g.
+        ``krunner osi``) can continue processing other files". Both scan paths
+        now wrap the parser in a broad `except` that marks the one file and
+        continues, so the batch no longer needs the parser to swallow anything
+        -- and swallowing recorded the file's outcome as `empty`, which asserts
+        it was read and declares nothing. One real pyproject.toml of 131 on a
+        development estate does not parse (an unclosed array) and was being
+        reported that way.
         """
 
         try:
             with open(file_path, "rb") as f:
                 pyproject = tomllib.load(f)
-        except (tomllib.TOMLDecodeError, OSError) as e:
-            log.warning("Skipping malformed pyproject.toml %s: %s", file_path, e)
-            return []
+        except tomllib.TOMLDecodeError as e:
+            raise UnreadableManifest(f"{file_path}: invalid TOML: {e}") from e
+        except OSError as e:
+            raise UnreadableManifest(f"{file_path}: could not read: {e}") from e
 
         results = []
 

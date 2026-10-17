@@ -18,12 +18,15 @@ pnpm publishes a per-lockfileVersion spec at github.com/pnpm/spec
 
 Integrity/checksum hashes are intentionally dropped — SCA does not
 consume them (producing checksum-bearing SBOMs is the out-of-scope
-"generator" category). On missing / invalid / unknown-lockfileVersion
-files we log a warning and return [] (extractors package convention).
+"generator" category). A missing, unreadable or uninterpretable file
+raises UnreadableManifest rather than returning [] — see that class. []
+is reserved for a lockfile that was read and resolves nothing, which pnpm
+writes as ``importers: {.: {}}`` with no ``packages`` section at all.
 """
 
 import yaml
 
+from kospex.extractors.errors import UnreadableManifest
 from kospex_utils import get_kospex_logger
 
 logger = get_kospex_logger("extractors.pnpm")
@@ -231,24 +234,32 @@ def extract_pnpm_lock(path):
         list[dict]: one record per distinct resolved ``name@version``
         (no dedup — diamond deps yield one record per version), with
         ``package_name``, ``package_version``, ``ecosystem="npm"`` and
-        ``requirements_type`` ("direct" / "dev" / "resolved"). Empty
-        list on missing / invalid / unknown-lockfileVersion files.
+        ``requirements_type`` ("direct" / "dev" / "resolved").
+
+    Raises:
+        UnreadableManifest: the file is missing, unreadable, not a YAML
+            mapping, or declares a lockfileVersion this parser cannot
+            read. Returning [] in those cases recorded the file as
+            `empty` — read, and declaring nothing.
     """
     try:
         with open(path) as f:
             doc = yaml.safe_load(f)
     except yaml.YAMLError as e:
-        logger.warning("Error parsing pnpm-lock.yaml %s: %s", path, e)
-        return []
-    except FileNotFoundError:
-        logger.warning("File not found: %s", path)
-        return []
+        raise UnreadableManifest(f"{path}: invalid YAML: {e}") from e
+    except FileNotFoundError as e:
+        raise UnreadableManifest(f"{path}: file not found") from e
     except (OSError, UnicodeDecodeError) as e:
-        logger.warning("Could not read pnpm-lock.yaml %s: %s", path, e)
-        return []
+        raise UnreadableManifest(f"{path}: could not read: {e}") from e
 
-    if not doc or not isinstance(doc, dict):
-        return []
+    if doc is None:
+        # pnpm always writes lockfileVersion, so an empty file is not a
+        # lockfile. There is a real 0-byte pnpm-lock.yaml on the estate.
+        raise UnreadableManifest(f"{path}: empty file, so not a lockfile")
+
+    if not isinstance(doc, dict):
+        raise UnreadableManifest(
+            f"{path}: document is {type(doc).__name__}, not a mapping")
 
     lv = str(doc.get("lockfileVersion", "")).strip()
     # v5.x: "5", "5.0", "5.1", "5.2", "5.3", "5.4" etc.
@@ -261,15 +272,28 @@ def extract_pnpm_lock(path):
     elif lv_major in ("6", "9"):
         splitter = _split_at_key
     else:
-        logger.warning("Unknown pnpm lockfileVersion %r in %s", lv, path)
-        return []
+        # Loud on purpose. pnpm v10 is released and this parser reads 5, 6
+        # and 9, so staying quiet here reports every v10 lockfile as
+        # `empty` — a whole closure hidden behind an outcome that claims
+        # the file was read and declares nothing.
+        raise UnreadableManifest(
+            f"{path}: unsupported pnpm lockfileVersion {lv!r} -- refusing to "
+            f"report this file as empty, because its packages are unread")
 
-    # Where install state lives is a per-version fact, not a pnpm fact.
-    from_snapshots = lv_major == "9"
+    if "packages" not in doc:
+        # pnpm omits the section entirely for a project that resolves
+        # nothing (`importers: {.: {}}`), so its ABSENCE is a fact about
+        # the project and [] is true of it. A key that is present and
+        # unusable is a different thing, handled below.
+        return []
 
     packages = doc.get("packages")
     if not isinstance(packages, dict):
-        return []
+        raise UnreadableManifest(
+            f"{path}: `packages` is {type(packages).__name__}, not a mapping")
+
+    # Where install state lives is a per-version fact, not a pnpm fact.
+    from_snapshots = lv_major == "9"
 
     direct, dev = _collect_direct_dev(doc)
     snapshot_optionals = _snapshot_optionals(doc, splitter) if from_snapshots else {}

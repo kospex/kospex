@@ -215,6 +215,52 @@ was relying on the old, wrong success.
 
 ### Fixed
 
+- **A manifest kospex could not read was recorded as one declaring nothing
+  (CWE-392).** `classify_outcome` ends `return EXTRACTED if row_count else
+  EMPTY`, and `parse_error` is reachable only when the parser **raises** —
+  so raising is the only error channel an extractor has. Four parsers caught
+  their own exceptions and returned `[]`, which arrives as `row_count == 0`
+  with no error and is stored as the outcome `empty`, whose documented meaning
+  is "parser ran, produced nothing, genuinely declares none". An unreadable
+  `pnpm-lock.yaml`, `go.mod`, `.csproj` or `pyproject.toml` therefore made its
+  repository look clean. Manifests come from cloned third-party repositories,
+  so the input is attacker-influenced.
+
+  Sharpest case: the `.csproj` DOCTYPE guard (CWE-776, uncontrolled entity
+  expansion) refused a hostile file correctly and then returned `[]`, so **the
+  security control's own outcome was indistinguishable from a clean scan**.
+
+  All four now raise `UnreadableManifest`, and both scan paths already turn
+  that into a `parse_error` against the one file. `[]` is kept only for a file
+  that was read and genuinely declares nothing — a valid `go.mod` with no
+  `require` (42 of 188 on a real estate), an empty `<Project></Project>` (4 of
+  9), a pnpm lockfile whose only importer is empty. An unrecognised pnpm
+  `lockfileVersion` now raises rather than reporting `empty`, which matters
+  because v10 is released and the parser reads 5, 6 and 9.
+
+  Two gates were added where a format had none, each verified against every
+  such file on a real estate before being added: a `go.mod` must declare
+  `module` (188 of 188 do), and a `.csproj` must have a `<Project>` root (9 of
+  9 do). `.csproj` `PackageReference` lookup is now namespace-agnostic, so the
+  root gate does not open a fresh silent-empty path for a legal
+  namespace-qualified project file.
+
+  The contract is now **driven from the extractor registry** — a test resolves
+  every registered parser and asserts none returns a value for a path it
+  cannot read. That test is what found the `pyproject.toml` case, which no
+  one had looked for. Of 357 real manifests parsed before and after,
+  **349 are byte-identical**; no schema change and no stored data rewritten.
+
+  The `pyproject.toml` change **reverses
+  [#97](https://github.com/kospex/kospex/issues/97)**, where the swallow was
+  added because a malformed TOML fixture aborted an entire `krunner osi` run.
+  Both scan paths have since gained broad per-file guards, so the parser no
+  longer has to swallow anything for the batch to survive; the extraction loop
+  was re-run over that same repository to confirm it completes, with the
+  malformed file as the one `parse_error`. #97's other half — skipping a
+  single invalid requirement *string* inside a file that was read — is
+  unchanged.
+
 - **`peerDependencies` were recorded as `direct`, and extras as nothing at all.**
   Two scan paths write `package_use`, and each kept its own copy of the
   `requirements_type -> package_use` mapping. The copies agreed on every value

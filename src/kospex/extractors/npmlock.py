@@ -24,16 +24,18 @@ themselves are then discarded; storing the parent is #227.
 Integrity/checksum hashes are intentionally dropped -- SCA does not consume
 them.
 
-Unlike the other extractors, a missing / invalid / unknown-lockfileVersion
-file raises UnreadableLockfile rather than returning []. See that class: an
-empty list is reported as `empty`, which asserts the file was read and
-declared nothing, and that difference is exploitable.
+A missing / invalid / unknown-lockfileVersion file raises UnreadableLockfile
+rather than returning []. See that class: an empty list is reported as
+`empty`, which asserts the file was read and declared nothing, and that
+difference is exploitable. This module was the first to do it; every extractor
+now does, through the shared `UnreadableManifest` base.
 """
 
 import json
 import re
 from urllib.parse import unquote, urlparse
 
+from kospex.extractors.errors import UnreadableManifest
 from kospex_utils import get_kospex_logger
 
 logger = get_kospex_logger("extractors.npmlock")
@@ -41,14 +43,18 @@ logger = get_kospex_logger("extractors.npmlock")
 _NODE_MODULES = "node_modules/"
 
 
-class UnreadableLockfile(Exception):
+class UnreadableLockfile(UnreadableManifest):
     """This file could not be read, so nothing is known about its contents.
 
-    Raised instead of returning [], which is what the other extractors do. The
-    distinction is not stylistic: `osi_extract` turns an exception into a
-    `parse_error` outcome, while an empty list becomes `empty` -- whose
-    documented meaning is "examined, nothing to find", and which is the result
-    that stops a repository being re-queued.
+    A package-lock.json-specific name for the shared contract in
+    `kospex.extractors.errors`; kept because it is the name this module
+    already raises and that its tests import. Catch `UnreadableManifest` to
+    cover every extractor at once.
+
+    The distinction from returning [] is not stylistic: `osi_extract` turns an
+    exception into a `parse_error` outcome, while an empty list becomes
+    `empty` -- whose documented meaning is "examined, nothing to find", and
+    which is the result that stops a repository being re-queued.
 
     Reporting an unreadable lockfile as empty is an evasion. Changing
     `lockfileVersion: 3` to `"3"` in a real lockfile read zero of its packages

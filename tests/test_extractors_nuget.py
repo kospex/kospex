@@ -3,7 +3,14 @@
 The parsing previously lived inside nuget_assess(), which had no return
 statement — so the records were built, printed as a table and discarded (#107).
 Extracted here as a pure function so both scan paths can share it.
+
+A file this extractor could not read raises UnreadableManifest rather than
+returning []; the shared contract and its three categories live in
+tests/test_extractor_unreadable_manifests.py.
 """
+import pytest
+
+from kospex.extractors.errors import UnreadableManifest
 from kospex.extractors.nuget import _template, extract_csproj
 
 
@@ -63,13 +70,17 @@ class TestExtract:
         assert records[0]["package_name"] == "Serilog"
         assert records[0]["package_version"] == ""
 
-    def test_malformed_xml_returns_empty(self, tmp_path):
-        assert extract_csproj(_write(tmp_path, "<Project><ItemGroup>")) == []
+    def test_malformed_xml_raises(self, tmp_path):
+        with pytest.raises(UnreadableManifest):
+            extract_csproj(_write(tmp_path, "<Project><ItemGroup>"))
 
-    def test_missing_file_returns_empty(self, tmp_path):
-        assert extract_csproj(str(tmp_path / "nope.csproj")) == []
+    def test_missing_file_raises(self, tmp_path):
+        with pytest.raises(UnreadableManifest):
+            extract_csproj(str(tmp_path / "nope.csproj"))
 
     def test_project_with_no_references_returns_empty(self, tmp_path):
+        """Still []: 4 of 9 .csproj files on a development estate declare
+        no PackageReference, and `empty` is true of them."""
         assert extract_csproj(_write(tmp_path, "<Project></Project>")) == []
 
 
@@ -119,6 +130,10 @@ class TestEntityExpansion:
 
     Internal entities must be declared in a DTD, and no legitimate MSBuild
     project file carries a DOCTYPE, so rejecting it removes the class outright.
+
+    The refusal RAISES. It returned [] until the fail-open fix, which recorded
+    the guard's own outcome as a project with no NuGet packages — so a hostile
+    file was refused correctly and then reported as a clean scan.
     """
 
     def test_doctype_is_rejected(self, tmp_path):
@@ -130,21 +145,30 @@ class TestEntityExpansion:
 ]>
 <Project><PackageReference Include="&c;" Version="1.0" /></Project>""")
 
-        assert extract_csproj(path) == []
+        with pytest.raises(UnreadableManifest):
+            extract_csproj(path)
 
     def test_doctype_rejected_before_any_expansion(self, tmp_path):
         """The guard must run before the parser, not filter results after it —
-        otherwise the expansion has already allocated the memory."""
+        otherwise the expansion has already allocated the memory.
+
+        Asserting that the DOCTYPE refusal is the branch that fired is what
+        makes this non-vacuous. The previous version asserted `not any("AAAA"
+        in str(r) for r in records)` against a list it had already asserted was
+        empty, so it passed for any implementation; if the guard moved after
+        `ET.fromstring` the expansion would already have run and the failure
+        would arrive as a parse error instead.
+        """
         path = _write(tmp_path, """<!DOCTYPE root [
  <!ENTITY a "AAAAAAAAAA">
  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">
 ]>
 <Project><PackageReference Include="&b;" Version="1.0" /></Project>""")
 
-        records = extract_csproj(path)
+        with pytest.raises(UnreadableManifest, match="DOCTYPE") as caught:
+            extract_csproj(path)
 
-        assert records == []
-        assert not any("AAAA" in str(r) for r in records)
+        assert "AAAA" not in str(caught.value)
 
     def test_ordinary_xml_declaration_is_still_accepted(self, tmp_path):
         """Rejecting DOCTYPE must not reject a normal prolog."""

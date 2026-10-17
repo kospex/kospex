@@ -16,10 +16,15 @@ PACKAGE_USE_TRANSITIVE; dropping them meant transitive Go dependencies never
 reached the database at all.
 
 ``exclude`` / ``replace`` / ``retract`` directives are deliberately not read —
-they do not declare a dependency. On a missing or unreadable file we log a
-warning and return [] (extractors package convention).
+they do not declare a dependency. A missing, unreadable file, or one with no
+``module`` directive, raises UnreadableManifest rather than returning [] — see
+that class. [] is reserved for a valid go.mod that requires nothing, which is
+the normal shape of a small Go library: 42 of 188 go.mod files on a
+development estate declare no ``require`` at all, the smallest of them 27
+bytes.
 """
 
+from kospex.extractors.errors import UnreadableManifest
 from kospex_utils import get_kospex_logger
 
 logger = get_kospex_logger("extractors.gomod")
@@ -62,19 +67,32 @@ def parse_gomod(path):
     The single implementation of go.mod parsing.
     ``KospexDependencies.parse_go_mod_from_file()`` delegates here rather than
     keeping its own copy — two parsers agreeing today is not the same as two
-    parsers staying in agreement.
+    parsers staying in agreement. That method is public, so the raising
+    contract has to hold here rather than only in ``extract_gomod``.
+
+    Raises:
+        UnreadableManifest: the file is missing, unreadable, or declares no
+            ``module``.
     """
     results = []
 
     try:
         with open(path, "r") as handle:
             lines = handle.readlines()
-    except FileNotFoundError:
-        logger.warning("go.mod not found: %s", path)
-        return []
-    except Exception as exc:  # unreadable, encoding, permissions
-        logger.warning("Could not read go.mod %s: %s", path, exc)
-        return []
+    except FileNotFoundError as exc:
+        raise UnreadableManifest(f"{path}: file not found") from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        raise UnreadableManifest(f"{path}: could not read: {exc}") from exc
+
+    # `module` is required by the go.mod grammar, so a file lacking it is not a
+    # go.mod. Without this check go.mod is the only format here with no
+    # structural gate at all — every other line it does not understand is
+    # skipped — so arbitrary text under the name would read as a module that
+    # requires nothing. All 188 go.mod files on a development estate declare
+    # it, so nothing real is reclassified by requiring it. The block form
+    # `module (` satisfies the same prefix.
+    if not any(line.strip().startswith("module ") for line in lines):
+        raise UnreadableManifest(f"{path}: no `module` directive, so not a go.mod")
 
     in_require_block = False
 
@@ -120,8 +138,12 @@ def extract_gomod(path):
     """Parse a go.mod file into dependency records.
 
     Returns a list of template-shaped dicts with package_name, package_version
-    and requirements_type ("direct" or "indirect") populated. Empty list on a
-    missing, unreadable or dependency-free file.
+    and requirements_type ("direct" or "indirect") populated. Empty list for a
+    valid go.mod that requires nothing.
+
+    Raises:
+        UnreadableManifest: propagated from ``parse_gomod`` — the file is
+            missing, unreadable, or is not a go.mod.
     """
     records = []
 
