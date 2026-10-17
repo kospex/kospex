@@ -162,6 +162,38 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - Include: overview, files changed, usage, and implementation notes
 - These docs serve as context for future development and release planning
 
+### Dependency parsers — read `docs/dependency-details.md` first
+
+Before changing, adding or debugging an extractor, read
+[`docs/dependency-details.md`](docs/dependency-details.md). It has one section per
+dependency file type in the registry — the seven with parsers, the four it classifies
+but cannot read, the six that declare no packages, and the three with no entry — and
+each one records **what raises, what legitimately returns `[]`, the quirks and
+decisions, upstream documentation links, and a "drift watch"** naming what to check
+when that format changes.
+
+It exists because this behaviour is otherwise only recoverable by reading the parser
+and its tests, and because most of it is a *decision* rather than an implementation
+detail: the `module` and `<Project>` gates were each measured against every real file
+of that format first, the DOCTYPE refusal must stay outside the read's `try`, and the
+one remaining silent skip in the pnpm parser is deliberate and explained there.
+
+- **Add to it in the same PR as a parser change.** Notes that live only in a commit
+  message are not found by the next person to touch the file.
+- **The error contract is the load-bearing part**: an unreadable manifest must raise
+  `UnreadableManifest`, never return `[]`, because `classify_outcome` reaches
+  `PARSE_ERROR` solely from its `error is not None` branch — so `[]` is recorded as
+  `empty`, meaning "read, and genuinely declares nothing". That page states the three
+  categories.
+- Two sibling pages: [`docs/dependency-flags.md`](docs/dependency-flags.md) for what
+  each format *states* (dev / optional / install-script / attribution, quoted from
+  upstream), and [`docs/data-schemas.md`](docs/data-schemas.md) for the columns those
+  values land in. Check all three before concluding a fact is unrecorded.
+
+**It is intentionally not linked from any other page and not in `sitemap.xml`.** Do
+not add it to either — it is tracked as internal notes for now and may be published
+deliberately later. Linking it from here is fine; this file is not part of the site.
+
 ### Adding a Database Migration
 
 The kospex DB schema is evolved via numbered migration files under `src/kospex/db/migrations/`. The runner is `src/kospex/db/migrator.py`. See `src/kospex/db/migrations/README.md` for the full conventions and limitations; quick reference:
