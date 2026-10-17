@@ -26,7 +26,9 @@ that to `empty`, which is not.
 tests cover the extractors that still returned [] -- pnpm, gomod, nuget, and
 pyproject.toml, which the registry-wide contract test below turned up -- and
 pin the rule as a contract driven from the registry, so the next parser
-inherits it.
+inherits it. TestPnpmMultiDocument covers the defect that the fix exposed:
+a lockfile pinning pnpm itself is a two-document YAML stream, which
+`yaml.safe_load` refuses outright.
 
 The rule has three categories, and the third is why this is not a blanket
 "replace every return [] with a raise":
@@ -221,6 +223,200 @@ class TestPnpmGenuinelyEmpty:
                       "lockfileVersion: '6.0'\npackages: {}\n")
 
         assert extract_pnpm_lock(path) == []
+
+
+class TestPnpmMultiDocument:
+    """pnpm writes a multi-document lockfile, and safe_load refuses the stream.
+
+    Found by this fix rather than by the issue it closes. `yaml.safe_load`
+    raises ComposerError ("expected a single document in the stream") on a
+    lockfile that self-manages pnpm: the first YAML document is the closure of
+    the pnpm binary named by `packageManagerDependencies`, the second is the
+    project's own. Six real lockfiles on a development estate are shaped this
+    way, holding 7,337 package entries between them, and every one of those
+    entries was being reported as `empty`.
+
+    So the fail-open rule alone would turn these six files from a silent
+    `empty` into an honest `parse_error` and still read nothing. Reading every
+    document in the stream is what actually recovers them.
+    """
+
+    TWO_DOCUMENTS = """\
+---
+lockfileVersion: '9.0'
+importers:
+  .:
+    dependencies:
+      pnpm:
+        specifier: 12.8.2
+        version: 12.8.2
+packages:
+  '@pnpm/exe.darwin-arm64@12.8.2':
+    resolution: {integrity: sha512-aaa}
+---
+lockfileVersion: '9.0'
+importers:
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.21
+        version: 4.17.21
+packages:
+  lodash@4.17.21:
+    resolution: {integrity: sha512-bbb}
+  '@babel/parser@7.29.9':
+    resolution: {integrity: sha512-ccc}
+"""
+
+    def test_every_document_is_read(self, tmp_path):
+        path = _write(tmp_path, "pnpm-lock.yaml", self.TWO_DOCUMENTS)
+
+        names = sorted(r["package_name"] for r in extract_pnpm_lock(path))
+
+        assert names == ["@babel/parser", "@pnpm/exe.darwin-arm64", "lodash"]
+
+    def test_the_second_document_is_not_the_one_that_wins(self, tmp_path):
+        """Both documents contribute; neither replaces the other.
+
+        Reading only the last document would be an easy near-miss -- it holds
+        the project's own dependencies and looks like "the real one". The
+        package manager's own closure is a supply-chain fact too.
+        """
+        path = _write(tmp_path, "pnpm-lock.yaml", self.TWO_DOCUMENTS)
+
+        names = {r["package_name"] for r in extract_pnpm_lock(path)}
+
+        assert "@pnpm/exe.darwin-arm64" in names, "first document was dropped"
+        assert "lodash" in names, "second document was dropped"
+
+    def test_a_documents_packages_are_classified_against_its_own_importers(
+            self, tmp_path):
+        """A document's importers describe that document, not the stream.
+
+        The discriminating case is one package resolved in one document and
+        direct in the other. Here lodash@4.17.21 appears in both `packages`
+        sections but is declared only by document 2's importers, so it is
+        `resolved` for document 1 and `direct` for document 2.
+
+        Pooling the importers across the stream before classifying -- the
+        obvious shortcut -- would report both as direct. Nothing else in this
+        class catches that: every other assertion is satisfied by pooling.
+        """
+        path = _write(tmp_path, "pnpm-lock.yaml", """\
+---
+lockfileVersion: '6.0'
+importers:
+  .:
+    dependencies:
+      left-pad:
+        specifier: ^1.3.0
+        version: 1.3.0
+packages:
+  /left-pad@1.3.0:
+    resolution: {integrity: sha512-aaa}
+  /lodash@4.17.21:
+    resolution: {integrity: sha512-bbb}
+---
+lockfileVersion: '6.0'
+importers:
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.21
+        version: 4.17.21
+packages:
+  /lodash@4.17.21:
+    resolution: {integrity: sha512-bbb}
+""")
+
+        records = extract_pnpm_lock(path)
+        lodash = sorted(
+            r["requirements_type"] for r in records
+            if r["package_name"] == "lodash"
+        )
+
+        assert lodash == ["direct", "resolved"], (
+            "lodash is declared only by document 2's importers, so pooling "
+            "the stream's importers has classified document 1's copy as direct"
+        )
+        assert [r["requirements_type"] for r in records
+                if r["package_name"] == "left-pad"] == ["direct"]
+
+    def test_a_trailing_separator_is_not_a_document(self, tmp_path):
+        """`---` with nothing after it yields a None document, not a failure."""
+        path = _write(tmp_path, "pnpm-lock.yaml",
+                      "lockfileVersion: '6.0'\n"
+                      "packages:\n  /lodash@4.17.21:\n    resolution: {}\n"
+                      "---\n")
+
+        assert [r["package_name"] for r in extract_pnpm_lock(path)] == ["lodash"]
+
+    def test_one_unreadable_document_fails_the_whole_file(self, tmp_path):
+        """A partial read is the thing to avoid.
+
+        Returning document 1's packages and skipping document 2 would report
+        the file as successfully extracted while silently dropping half of it --
+        the same defect one level up.
+        """
+        path = _write(tmp_path, "pnpm-lock.yaml",
+                      "lockfileVersion: '6.0'\n"
+                      "packages:\n  /lodash@4.17.21:\n    resolution: {}\n"
+                      "---\n"
+                      "lockfileVersion: '99.0'\n"
+                      "packages:\n  /left-pad@1.3.0:\n    resolution: {}\n")
+
+        with pytest.raises(UnreadableManifest):
+            extract_pnpm_lock(path)
+
+    def test_single_document_files_are_unaffected(self, tmp_path):
+        """The common case must not change shape."""
+        path = _write(tmp_path, "pnpm-lock.yaml",
+                      "lockfileVersion: '6.0'\n"
+                      "packages:\n  /lodash@4.17.21:\n    resolution: {}\n")
+
+        assert [r["package_name"] for r in extract_pnpm_lock(path)] == ["lodash"]
+
+
+class TestPnpmUnreadableKeyLeavesATrace:
+    """The one remaining path producing no record and no error.
+
+    `if not name or not version: continue` is correct for a local workspace
+    dependency, which has no registry identity. It is not correct for a key
+    the parser simply could not read -- but raising there would hit git and
+    tarball dependency keys, which also fail to split and of which the estate
+    measured has no example. So it logs, and the decision is pinned here
+    rather than left to be rediscovered.
+    """
+
+    def test_a_local_workspace_dependency_is_skipped_quietly(self, tmp_path, caplog):
+        path = _write(tmp_path, "pnpm-lock.yaml",
+                      "lockfileVersion: '6.0'\n"
+                      "packages:\n"
+                      "  'file:../shared':\n    resolution: {directory: ../shared}\n"
+                      "  /lodash@4.17.21:\n    resolution: {}\n")
+
+        with caplog.at_level("WARNING"):
+            records = extract_pnpm_lock(path)
+
+        assert [r["package_name"] for r in records] == ["lodash"]
+        assert "file:../shared" not in caplog.text, (
+            "a workspace path is not a registry package; warning about it "
+            "would train the operator to ignore the warning that matters"
+        )
+
+    def test_an_unreadable_key_is_logged(self, tmp_path, caplog):
+        """Not raised -- but not silent either."""
+        path = _write(tmp_path, "pnpm-lock.yaml",
+                      "lockfileVersion: '6.0'\n"
+                      "packages:\n"
+                      "  'github.com/acme/widget/abc123':\n    resolution: {}\n"
+                      "  /lodash@4.17.21:\n    resolution: {}\n")
+
+        with caplog.at_level("WARNING"):
+            records = extract_pnpm_lock(path)
+
+        assert [r["package_name"] for r in records] == ["lodash"]
+        assert "github.com/acme/widget/abc123" in caplog.text
 
 
 class TestGomodUnreadable:

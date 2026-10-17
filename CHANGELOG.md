@@ -215,6 +215,28 @@ was relying on the old, wrong success.
 
 ### Fixed
 
+- **A multi-document `pnpm-lock.yaml` read as zero dependencies.** When a
+  project pins pnpm itself through `packageManagerDependencies`, pnpm writes
+  the closure of the pnpm binary as one YAML document and the project's own
+  closure as a second. `yaml.safe_load` accepts exactly one document and
+  raises `ComposerError` on the stream, so the whole file produced nothing —
+  and, before the fail-open fix below, was reported as `empty`. On a
+  development estate **six lockfiles across three repositories held 7,337
+  package entries between them**, all invisible; one was a 3,652-entry closure
+  for a single repository.
+
+  Read with `safe_load_all` and extracted **per document**, because
+  classification is a per-document fact: pooling the stream's importers would
+  resolve a direct dependency of the second document against the first
+  document's importers, which do not mention it. Every document is validated
+  before any is extracted, so an unusable second document cannot return the
+  first one's packages as if the file had been read in full. Verified through
+  the production extraction loop: one affected repository went from 27 rows to
+  700, another from 6,466 to 11,022.
+
+  **Re-run `krunner osi` to pick these up** — the rows do not exist until a
+  scan writes them.
+
 - **A manifest kospex could not read was recorded as one declaring nothing
   (CWE-392).** `classify_outcome` ends `return EXTRACTED if row_count else
   EMPTY`, and `parse_error` is reachable only when the parser **raises** —

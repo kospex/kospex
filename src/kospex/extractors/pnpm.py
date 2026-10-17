@@ -16,6 +16,17 @@ pnpm publishes a per-lockfileVersion spec at github.com/pnpm/spec
           unquoted); resolved graph split into a separate
           ``snapshots:`` section we ignore; peer suffix ``(peer@x)``.
 
+A lockfile can be a multi-document YAML stream. When a project pins pnpm
+itself through ``packageManagerDependencies``, pnpm writes the closure of
+the pnpm binary as a first document and the project's own closure as a
+second, each with its own ``lockfileVersion``, ``importers`` and
+``packages``. ``yaml.safe_load`` refuses such a stream outright
+(ComposerError: "expected a single document in the stream"), so every
+document is read via ``safe_load_all`` and classified against its OWN
+importers — merging them first would resolve a direct dependency of the
+second document against the first document's importers, which do not
+mention it.
+
 Integrity/checksum hashes are intentionally dropped — SCA does not
 consume them (producing checksum-bearing SBOMs is the out-of-scope
 "generator" category). A missing, unreadable or uninterpretable file
@@ -223,44 +234,21 @@ def _collect_direct_dev(doc):
     return direct, dev
 
 
-def extract_pnpm_lock(path):
-    """Parse a pnpm-lock.yaml; return get_package_template-shaped
-    records for the full resolved package closure.
+#: ``packages:`` key prefixes that name no registry package at all. A local
+#: workspace directory has no name@version for deps.dev to answer about, so
+#: producing no record for one is correct rather than lossy. Measured: 3 of
+#: 23,769 real entries on a development estate, every one of them ``file:``.
+_NON_REGISTRY_PREFIXES = ("file:", "link:", "workspace:")
 
-    Args:
-        path: Path to a pnpm-lock.yaml on disk.
 
-    Returns:
-        list[dict]: one record per distinct resolved ``name@version``
-        (no dedup — diamond deps yield one record per version), with
-        ``package_name``, ``package_version``, ``ecosystem="npm"`` and
-        ``requirements_type`` ("direct" / "dev" / "resolved").
+def _records_from_document(path, doc):
+    """Extract one YAML document of a pnpm lockfile.
 
-    Raises:
-        UnreadableManifest: the file is missing, unreadable, not a YAML
-            mapping, or declares a lockfileVersion this parser cannot
-            read. Returning [] in those cases recorded the file as
-            `empty` — read, and declaring nothing.
+    A document is the unit of extraction because every structural fact a
+    lockfile carries — its version, its importers, its packages — belongs
+    to one document, and a stream may hold several. `path` is passed for
+    error messages only.
     """
-    try:
-        with open(path) as f:
-            doc = yaml.safe_load(f)
-    except yaml.YAMLError as e:
-        raise UnreadableManifest(f"{path}: invalid YAML: {e}") from e
-    except FileNotFoundError as e:
-        raise UnreadableManifest(f"{path}: file not found") from e
-    except (OSError, UnicodeDecodeError) as e:
-        raise UnreadableManifest(f"{path}: could not read: {e}") from e
-
-    if doc is None:
-        # pnpm always writes lockfileVersion, so an empty file is not a
-        # lockfile. There is a real 0-byte pnpm-lock.yaml on the estate.
-        raise UnreadableManifest(f"{path}: empty file, so not a lockfile")
-
-    if not isinstance(doc, dict):
-        raise UnreadableManifest(
-            f"{path}: document is {type(doc).__name__}, not a mapping")
-
     lv = str(doc.get("lockfileVersion", "")).strip()
     # v5.x: "5", "5.0", "5.1", "5.2", "5.3", "5.4" etc.
     # v6.x: "6.0" etc.
@@ -302,6 +290,23 @@ def extract_pnpm_lock(path):
     for key, meta in packages.items():
         name, version = splitter(key)
         if not name or not version:
+            # The last path in this parser that produces no record and no
+            # error. For a local workspace dependency that is right: there is
+            # no registry identity to record.
+            #
+            # Anything else here is a key this parser could not read, and it
+            # is logged rather than raised. A git or tarball dependency key
+            # (`github.com/owner/repo/<sha>`) also fails to split, and no
+            # lockfile on the estate measured carries one — so raising would
+            # convert working scans into parse_errors across a population
+            # that has not been measured, which is the one thing the gates
+            # added elsewhere in this parser were each checked against first.
+            # The unknown-lockfileVersion gate above is what catches a
+            # wholesale format change. Worth narrowing once a lockfile with a
+            # git dependency can be measured.
+            if not key.startswith(_NON_REGISTRY_PREFIXES):
+                logger.warning(
+                    "Could not read `packages` key %r in %s", key, path)
             continue
         if name in direct:
             req_type = "direct"
@@ -320,5 +325,66 @@ def extract_pnpm_lock(path):
         else:
             rec.update(_install_state_from_packages(meta))
         records.append(rec)
+
+    return records
+
+
+def extract_pnpm_lock(path):
+    """Parse a pnpm-lock.yaml; return get_package_template-shaped
+    records for the full resolved package closure.
+
+    Args:
+        path: Path to a pnpm-lock.yaml on disk.
+
+    Returns:
+        list[dict]: one record per distinct resolved ``name@version``
+        (no dedup — diamond deps yield one record per version, and a
+        package appearing in two documents of the same stream yields one
+        record per document; the DB primary key collapses those), with
+        ``package_name``, ``package_version``, ``ecosystem="npm"`` and
+        ``requirements_type`` ("direct" / "dev" / "resolved").
+
+    Raises:
+        UnreadableManifest: the file is missing, unreadable, not a YAML
+            mapping, or declares a lockfileVersion this parser cannot
+            read. Returning [] in those cases recorded the file as
+            `empty` — read, and declaring nothing.
+    """
+    try:
+        with open(path) as f:
+            # safe_load_all, not safe_load: a lockfile that pins pnpm itself
+            # is a two-document stream, and safe_load raises ComposerError on
+            # the whole file. Six such lockfiles on a development estate held
+            # 7,337 package entries between them, every one reported `empty`.
+            # list() inside the `with` forces the lazy parse while the handle
+            # is open.
+            documents = list(yaml.safe_load_all(f))
+    except yaml.YAMLError as e:
+        raise UnreadableManifest(f"{path}: invalid YAML: {e}") from e
+    except FileNotFoundError as e:
+        raise UnreadableManifest(f"{path}: file not found") from e
+    except (OSError, UnicodeDecodeError) as e:
+        raise UnreadableManifest(f"{path}: could not read: {e}") from e
+
+    # A trailing `---` yields a None document. It declares nothing and is
+    # not a defect, so it is dropped rather than rejected.
+    documents = [doc for doc in documents if doc is not None]
+
+    if not documents:
+        # pnpm always writes lockfileVersion, so an empty file is not a
+        # lockfile. There is a real 0-byte pnpm-lock.yaml on the estate.
+        raise UnreadableManifest(f"{path}: no YAML document, so not a lockfile")
+
+    # Every document is checked before any is extracted, so a stream whose
+    # second document is unusable cannot return the first one's packages as
+    # though the file had been read in full.
+    for doc in documents:
+        if not isinstance(doc, dict):
+            raise UnreadableManifest(
+                f"{path}: document is {type(doc).__name__}, not a mapping")
+
+    records = []
+    for doc in documents:
+        records.extend(_records_from_document(path, doc))
 
     return records

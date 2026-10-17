@@ -167,8 +167,66 @@ file's sorted `name@version` list: **357 files, 349 byte-identical**.
 
 The changes are the two files that genuinely cannot be read — a 0-byte
 `pnpm-lock.yaml` and the malformed `pyproject.toml` — which now report
-`parse_error` instead of `empty`, and six lockfiles covered by the companion
-change below.
+`parse_error` instead of `empty`, and six lockfiles covered by the next
+section.
 
 No schema change, no migration, no stored data rewritten. What changes is the
 outcome recorded for a file kospex cannot read, and that only on the next scan.
+
+## The defect the fix exposed: a lockfile can be two YAML documents
+
+Not part of the above, and not found by looking for it. Verifying the fix
+against every real lockfile turned up six that `yaml.safe_load` refuses
+outright:
+
+```
+yaml.composer.ComposerError: expected a single document in the stream
+  ... but found another document, line 158, column 1
+```
+
+**When a project pins pnpm itself** through `packageManagerDependencies`, pnpm
+writes a **multi-document** lockfile: the closure of the pnpm binary as one
+YAML document, the project's own closure as a second, each with its own
+`lockfileVersion`, `importers`, `packages` and `snapshots`. `safe_load` accepts
+exactly one document and raises on the stream.
+
+Six lockfiles across three repositories on a development estate are shaped this
+way, holding **7,337 package entries between them** — and every one of those
+entries was being reported as `empty`. One of the six is a 3,652-entry closure
+for a single repository.
+
+So the fail-open fix alone would have turned these six from a silent `empty`
+into an honest `parse_error` and still read nothing. Reading the stream is what
+recovers them, which is why it belongs with the fix rather than after it.
+
+`extract_pnpm_lock` now reads via `safe_load_all` and extracts **per document**,
+because classification is a per-document fact: pooling the stream's importers
+first would resolve a direct dependency of document 2 against document 1's
+importers, which do not mention it. Every document is checked before any is
+extracted, so a stream whose second document is unusable cannot return the
+first one's packages as though the file had been read in full. A trailing `---`
+yields a `None` document, which declares nothing and is dropped rather than
+rejected.
+
+Verified through the production extraction loop — the one both `krunner osi
+-all` and `-next` use — on two affected repositories: one went from 27 rows to
+700 with its lockfile flipping `empty` → `extracted`, the other from 6,466 rows
+to 11,022 with four lockfiles flipping.
+
+### One silent skip kept, deliberately
+
+`if not name or not version: continue` in the packages loop is the last path in
+this parser that produces no record and no error. Measured: **3 of 23,769**
+real `packages` entries, all three `file:../<dir>` — local workspace
+directories, which have no registry `name@version` for deps.dev to answer
+about, so producing no record is right.
+
+It is **not** raised, because a git or tarball dependency key
+(`github.com/owner/repo/<sha>`) also fails to split and no lockfile on the
+estate measured carries one. Raising would convert working scans into
+`parse_error` across a population that has not been measured — the opposite of
+how the `module` and `<Project>` gates above were added, each checked against
+every such file first. Instead the two cases are now distinguished: a known
+non-registry prefix is skipped quietly, anything else is **logged**, so the
+case leaves a trace without a guess. Worth narrowing once a lockfile with a git
+dependency can be measured.
