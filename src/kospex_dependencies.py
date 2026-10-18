@@ -1282,7 +1282,35 @@ class KospexDependencies:
         url = f"{base_url}/{package_manager}/packages/{encoded_name}"
         # package_url = f"https://deps.dev/_/s/{package_manager}/p/{encoded_name}/v/{version}"
 
-        data = self.get_url_json(url)
+        content, status = self.kospex_query.url_request_with_status(url) \
+            if self.kospex_query else (None, None)
+        data = json.loads(content) if content else None
+
+        if not data:
+            # deps.dev answered nothing for the PACKAGE-level endpoint. This is a
+            # second request, separate from the exact-version lookup in
+            # depsdev_record() -- which has already succeeded by the time this
+            # runs -- so a failure here is usually transient: a 429 under the
+            # sustained traffic of a whole-estate sweep, or a 5xx, or a timeout.
+            #
+            # Returning no detail rather than raising, because the caller is a
+            # loop over every package in every repository: `data.get()` on None
+            # raised AttributeError out through enrich_dependency_records() and
+            # _process_repo() and ended `krunner osi -next` outright, 21
+            # repositories into 374, with the repository in flight unsaved. One
+            # package deps.dev cannot answer must not end the batch.
+            #
+            # Nothing is invented. versions_behind is int-or-None throughout and
+            # NULL means unknown -- depsdev_record() keeps it only
+            # `if isinstance(versions_behind, int)` -- so the row is still
+            # written with the advisory and publication data the version lookup
+            # returned, and this one field is left unknown. Zero would assert
+            # "up to date", which is a different claim and a false one.
+            log.info("deps.dev returned no package record (status %s) for %s %s "
+                     "-- versions_behind unknown", status, package_manager,
+                     package_name)
+            return {}
+
         versions = data.get("versions", [])
         # We will need to sort the list, since the API returns the versions in a weird order
         # print(json.dumps(versions, indent=2))
