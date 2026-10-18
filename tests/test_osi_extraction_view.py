@@ -12,7 +12,7 @@ def test_marks_extracted_and_buckets_the_rest():
         _f("s~o~r", "requirements.txt"),                  # extracted (supported)
         _f("s~o~r", "package.json"),                      # NOT extracted, supported -> not_scanned
         _f("s~o~r", "yarn.lock"),                         # NOT extracted, no parser (package)
-        _f("s~o~r", "sub/uv.lock", "uv.lock"),            # NOT extracted, no parser (package)
+        _f("s~o~r", "sub/pom.xml", "pom.xml"),            # NOT extracted, no parser (package)
         _f("s~o~r", ".github/Dockerfile", "Dockerfile"),  # NOT extracted, no parser (container)
     ]
     extracted = {("s~o~r", "requirements.txt")}
@@ -25,7 +25,7 @@ def test_marks_extracted_and_buckets_the_rest():
     assert by_provider["yarn.lock"] is False
 
     # friendly labels, parser-planned kinds under no_parser
-    assert commentary["no_parser"]["Package manifests"] == {"yarn.lock": 1, "uv.lock": 1}
+    assert commentary["no_parser"]["Package manifests"] == {"yarn.lock": 1, "pom.xml": 1}
     assert commentary["no_parser"]["Container images"] == {"Dockerfile": 1}
     assert commentary["not_a_source"] == {}
     assert commentary["not_scanned"] == 1  # the package.json

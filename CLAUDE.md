@@ -166,7 +166,7 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 
 Before changing, adding or debugging an extractor, read
 [`docs/dependency-details.md`](docs/dependency-details.md). It has one section per
-dependency file type in the registry — the seven with parsers, the four it classifies
+dependency file type in the registry — the eight with parsers, the three it classifies
 but cannot read, the six that declare no packages, and the three with no entry — and
 each one records **what raises, what legitimately returns `[]`, the quirks and
 decisions, upstream documentation links, and a "drift watch"** naming what to check
