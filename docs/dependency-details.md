@@ -866,6 +866,7 @@ the parser layer was built by a small, finite set of PRs and that set is worth n
 | 2026-10-15 | #243 | The `package-lock.json` parser, all three lockfile versions: install paths, flag aggregation across depths, "record every identity, elect none", and "was this fetched at all" rather than registry recognition. |
 | 2026-10-16 | #248 | The three hand-written parsers in `kospex_dependencies.py`: the UTF-16 BOM, the PEP 621 array that fabricated packages, and the `package.json` section that must raise rather than be skipped. |
 | 2026-10-17 | #252 | The error contract — `UnreadableManifest`, the three categories, the `module` and `<Project>` gates — and the multi-document pnpm lockfile. |
+| 2026-10-18 | #261 | The `uv.lock` parser: gates taken from what uv itself refuses, so an unknown `revision` is read, not raised (the deliberate departure from `package-lock.json`); first-party `editable`/`virtual` entries as walk roots rather than rows; install state from a graph walk, validated exactly against `uv export`; and `declared_scope` documented as marker-blind. |
 
 **There is deliberately no running list of future PRs here.** A hand-maintained list
 goes stale silently, and a stale table in a reference doc is worse than no table: it
