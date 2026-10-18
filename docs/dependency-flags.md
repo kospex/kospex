@@ -453,7 +453,10 @@ dependency groups it declares in `pyproject.toml` land, resolved. So "dev?" and
 "optional?" are answered by walking from the project, not by reading a key.
 
 kospex walks it and keeps the extra or group name in `declared_scope`
-(`optional-dependencies:socks`, `dev-dependencies:docs`). Nothing in the format speaks
+(`optional-dependencies:socks`, `dev-dependencies:docs`). Edges also carry environment
+markers, which kospex does not evaluate, so `declared_scope` can name a group uv would
+never install the package for (a path whose markers contradict); the dev / optional
+flags were unaffected on every real file. Nothing in the format speaks
 to install or build scripts, so `runs_install_script` is always NULL.
 
 ---

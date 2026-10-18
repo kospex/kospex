@@ -647,6 +647,16 @@ project and its workspace members, locking nothing else. uv reads both.
   `optional-dependencies:socks`, comma-joined when several reach the package, and
   NULL for anything installed at runtime. The group name is the useful part:
   `[postgres]` and `[dev]` mean different things (see the flags page).
+  **It is an over-approximation**: every extra or group whose tree *names* the
+  package, ignoring markers. uv drops a path whose markers cannot all hold at once,
+  and the walk does not. Flask's `gha-update = ["gha-update ; python_full_version >=
+  '3.12'"]` reaches `{ name = "exceptiongroup", marker = "python_full_version <
+  '3.11'" }`; no interpreter satisfies both, so uv never installs `exceptiongroup`
+  for that group, but the walk lists `dev-dependencies:gha-update` anyway. 15 of
+  2,406 rows on the estate over-list like this; none under-lists, and none has a
+  flag changed by it. Making the walk marker-aware means enumerating Python
+  versions and platforms, and an incomplete enumeration would under-list instead —
+  not worth it for one column.
 - `requirements_type` is `direct` / `optional` / `dev` from the first-party edge that
   names a package, in that precedence, else `resolved`. An extra outranks a group
   because it is published metadata that reaches the project's own users.
@@ -655,12 +665,15 @@ project and its workspace members, locking nothing else. uv reads both.
   then carries `version` and `source` to say which. All 5,140 edges on the estate
   resolve to exactly one entry. Markers themselves are not evaluated: a
   platform-specific package is still locked, so it is still reported.
-- **Validated against uv's own closures.** For all 24 files the parser's runtime set
-  equals `uv export --no-default-groups`, every `is_optional` package is in the
-  `--all-extras` closure, every `is_dev` one is in the `--all-groups` closure, and
-  the union is exactly uv's. (Run a nested lock from its own directory, or uv reads
-  the enclosing workspace's lockfile instead — `pydantic-core/uv.lock` inside
-  `pydantic` does exactly that.)
+- **Validated against uv's own closures, exactly.** For all 24 files, with
+  R = `uv export --no-default-groups`, E = `… --all-extras` and G = `--all-groups`,
+  every row keyed by `(name, version)` gets the flags those sets imply: in R →
+  (0, 0); E only → (0, 1); G only → (1, 0); E and G → (1, NULL). All 2,406 rows match
+  (388 / 430 / 1,446 / 142), and no package uv installs lacks a row. `declared_scope`
+  was checked against one `--extra X` / `--group G` export each: 2,391 match, and the
+  15 that differ are the marker over-listing described above. (Run a nested lock
+  from its own directory, or uv reads the enclosing workspace's lockfile instead —
+  `pydantic-core/uv.lock` inside `pydantic` does exactly that.)
 - Integrity hashes (`sdist`, `wheels`) dropped, as everywhere.
 - **`advisories` and `versions_behind` default to NULL**, not the `""` the older
   templates use (#258).
@@ -676,7 +689,13 @@ project, `manifest.requirements` and `manifest.dependency-groups` hold the root'
 requirements, and they are **not read as roots** — packages reached only that way
 would report NULL install state rather than a wrong one. The estate has `members`
 only. Edges carrying `group = [...]` (a dependency on a member's group) are likewise
-not followed; none on the estate.
+not followed; none on the estate. The top-level `conflicts` key (groups or extras
+that cannot be installed together; urllib3 declares two pairs) makes uv write edges
+conditional on the active group — `marker = "extra == 'group-7-urllib3-dev-min-pyopenssl'"`
+— and the walk, not evaluating markers, follows them under every label. Today that
+only over-lists `declared_scope` (2 of the 15 rows above); a lockfile where a
+package is reachable *only* through a conflict-excluded path would get a flag uv
+would not give it.
 
 ---
 

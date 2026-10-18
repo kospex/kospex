@@ -58,9 +58,15 @@ In short:
   version, not source: the unpublished one is `package_not_found`, but a git fork of
   `hypercorn` resolved against PyPI's release of the same version, so its advisories
   are upstream's. The source is not stored — a possible follow-up.
-- **Install state is validated against uv's own closures**: for all 24 files the runtime
-  set equals `uv export --no-default-groups`, `is_optional` ⊆ the `--all-extras`
-  closure, `is_dev` ⊆ the `--all-groups` closure, and the union is exactly uv's.
+- **Install state is validated against uv's own closures, exactly**: keyed by
+  `(name, version)`, all 2,406 rows carry the `is_dev` / `is_optional` that uv's
+  runtime, `--all-extras` and `--all-groups` exports imply (388 runtime, 430 optional,
+  1,446 dev, 142 both).
+- **`declared_scope` over-lists on 15 rows** (2,391 match uv's per-extra and per-group
+  exports). The walk ignores markers, so it lists a group whose path uv prunes as
+  impossible — a Python-version contradiction (13) or a uv `conflicts` declaration
+  (2, urllib3). It never under-lists and never changes a flag. Documented rather than
+  fixed: marker-aware walking needs an environment enumeration that could under-list.
 - The template uses `None`, not `""`, for `advisories` and `versions_behind`, so these
   rows do not join #258.
 
