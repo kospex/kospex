@@ -20,7 +20,6 @@ import dateutil.parser
 import requests
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.version import Version, InvalidVersion
-from prettytable import PrettyTable
 
 import kospex_schema as KospexSchema
 from kospex.extractors.constraints import classify_constraint
@@ -270,7 +269,16 @@ class KospexDependencies:
         return re.match(pattern, s) is not None
 
     def get_table_field_names(self):
-        """Return the field names for the CSV table"""
+        """Return the columns of the dependency table.
+
+        One list drives the CLI table, the `-out` CSV header and the `-json`
+        keys, so the three cannot drift apart.
+
+        `authors` is not a column: it counted authors of the package's source
+        repo only when that repo happened to be synced locally, so it read 0 or
+        `-` for almost every package. `malware` is not a column: the lookup
+        behind it is a deprecated service.
+        """
         return [
             "package_name",
             "package_version",
@@ -279,28 +287,137 @@ class KospexDependencies:
             "published_at",
             "default",
             "advisories",
-            "malware",
             "source_repo",
-            "authors",
         ]
 
-    def get_cli_pretty_table(self):
-        """Return a pretty table for the CLI"""
-        table = PrettyTable()
+    # Columns rendered right-aligned; everything else is left-aligned.
+    _NUMERIC_TABLE_FIELDS = frozenset({
+        "package_version", "versions_behind", "days_ago", "default", "advisories",
+    })
 
-        table.field_names = self.get_table_field_names()
-        table.align["package_name"] = "l"
-        table.align["package_version"] = "r"
-        table.align["days_ago"] = "r"
-        table.align["published_at"] = "l"
-        table.align["source_repo"] = "l"
-        table.align["advisories"] = "r"
-        table.align["malware"] = "r"
-        table.align["default"] = "r"
-        table.align["versions_behind"] = "r"
-        table.align["authors"] = "r"
+    def get_cli_table(self):
+        """Return an empty rich Table with the dependency columns."""
+        from rich.table import Table
 
+        table = Table()
+        for name in self.get_table_field_names():
+            justify = "right" if name in self._NUMERIC_TABLE_FIELDS else "left"
+            # fold, not the default ellipsis: a narrow terminal (or a pipe,
+            # which rich renders at 80 columns) must wrap a value, not lose it.
+            table.add_column(name, justify=justify, overflow="fold")
         return table
+
+    @staticmethod
+    def _display_value(value):
+        """A table cell. Missing is `-`, never `None` or an empty string."""
+        if value is None or value == "":
+            return "-"
+        return str(value)
+
+    def print_table_rows(self, records, console=None):
+        """Print records as a rich table, one row per record."""
+        from rich.console import Console
+        from rich.text import Text
+
+        table = self.get_cli_table()
+        fields = self.get_table_field_names()
+        for rec in records:
+            # Text, not str: a str cell is parsed as rich markup, which would
+            # swallow the `[python]` of a package declared with extras.
+            table.add_row(*(Text(self._display_value(rec.get(f))) for f in fields))
+        (console or Console()).print(table)
+
+    def table_rows(self, records):
+        """records reduced to the table columns, None for a missing value.
+
+        What `-json` emits: the table's contents, not the full enriched record.
+        "" counts as missing: get_package_template() seeds versions_behind,
+        advisories and published_at with it, and an unresolved package keeps
+        the seed -- it must not reach JSON as a string in a numeric field.
+        """
+        fields = self.get_table_field_names()
+        return [{f: None if rec.get(f) == "" else rec.get(f) for f in fields}
+                for rec in records]
+
+    @staticmethod
+    def summary_line(record):
+        """Tab-separated name, declared version and release date of one package."""
+        return "\t".join(
+            KospexDependencies._display_value(record.get(f))
+            for f in ("package_name", "package_version", "published_at")
+        )
+
+    # -scope vocabulary: every package_use value, `unknown` for a NULL
+    # package_use (a scope the parser could not determine), and `all`.
+    SCOPE_UNKNOWN = "unknown"
+    SCOPE_ALL = "all"
+
+    @classmethod
+    def scope_names(cls):
+        """Every selectable scope, in a stable display order."""
+        order = [
+            KospexSchema.PACKAGE_USE_DIRECT, KospexSchema.PACKAGE_USE_DEV,
+            KospexSchema.PACKAGE_USE_PEER, KospexSchema.PACKAGE_USE_OPTIONAL,
+            KospexSchema.PACKAGE_USE_TRANSITIVE,
+        ]
+        # A new package_use value must not be silently unselectable.
+        order += sorted(KospexSchema.PACKAGE_USE_VALUES - set(order))
+        return order + [cls.SCOPE_UNKNOWN]
+
+    @classmethod
+    def parse_scope(cls, scope):
+        """Parse a -scope value ("direct", "dev,transitive", "all") to a set.
+
+        Raises ValueError naming the valid values for anything unrecognised.
+        """
+        valid = cls.scope_names()
+        requested = [s.strip().lower() for s in (scope or "").split(",") if s.strip()]
+        if not requested:
+            raise ValueError(f"-scope needs a value: {', '.join(valid + [cls.SCOPE_ALL])}")
+        if cls.SCOPE_ALL in requested:
+            return set(valid)
+        unknown = [s for s in requested if s not in valid]
+        if unknown:
+            raise ValueError(
+                f"Unknown scope: {', '.join(unknown)}. "
+                f"Valid: {', '.join(valid + [cls.SCOPE_ALL])}"
+            )
+        return set(requested)
+
+    @classmethod
+    def record_scope(cls, record):
+        """The scope a record belongs to, `unknown` for a NULL package_use."""
+        return record.get("package_use") or cls.SCOPE_UNKNOWN
+
+    @classmethod
+    def filter_by_scope(cls, records, scopes):
+        """The records whose scope is in `scopes`."""
+        return [r for r in records if cls.record_scope(r) in scopes]
+
+    @classmethod
+    def scope_footer(cls, records, scopes):
+        """One line saying what -scope showed and what else the file holds.
+
+        Only scopes actually present are offered, with their counts: listing
+        a scope with nothing in it would send the reader to an empty table.
+        """
+        shown = cls.filter_by_scope(records, scopes)
+        selected = ",".join(s for s in cls.scope_names() if s in scopes)
+        line = (f"sca run with scope [{selected}]: "
+                f"{len(shown)} of {len(records)} packages shown.")
+
+        counts = {}
+        for r in records:
+            s = cls.record_scope(r)
+            if s not in scopes:
+                counts[s] = counts.get(s, 0) + 1
+        if not counts:
+            return line
+
+        others = [s for s in cls.scope_names() if s in counts]
+        listed = ", ".join(f"{s} ({counts[s]})" for s in others)
+        return (f"{line} Other scopes in this file: {listed}. "
+                f"Use -scope {','.join(others)} or -scope all.")
 
     def is_npm_package(self, filename):
         """
@@ -478,14 +595,11 @@ class KospexDependencies:
         Extraction and the DB write are always complete; only this view is
         filtered, so `-dev` cannot silently change what is recorded.
         """
-        table = self.get_cli_pretty_table()
         shown = [
             r for r in records
             if dev_deps or r.get("package_use") != KospexSchema.PACKAGE_USE_DEV
         ]
-        for rec in shown:
-            table.add_row(self.get_values_array(rec, self.get_table_field_names(), "-"))
-        print(table)
+        self.print_table_rows(shown)
         hidden = len(records) - len(shown)
         if hidden:
             print(f"({hidden} dev dependency/ies recorded but not shown - use -dev)")
@@ -495,12 +609,22 @@ class KospexDependencies:
         Args:
         filename (str): The filename to assess.
         dev_deps : If we want to include dev dependencies
+        quiet : informational lines are suppressed and errors go to stderr, so
+            a caller can own stdout (`kospex sca -json`)
+        source : the [source] stamp for saved rows
         """
-        results_file = kwargs.get("results_file", None)
-        repo_info = kwargs.get("repo_info", None)
         print_table = kwargs.get("print_table", False)
         dev_deps = kwargs.get("dev_deps", False)
         save = kwargs.get("save", False)
+        quiet = kwargs.get("quiet", False)
+        source = kwargs.get("source", None)
+
+        def info(msg):
+            if not quiet:
+                print(msg)
+
+        def error(msg):
+            print(msg, file=sys.stderr if quiet else sys.stdout)
 
         git_details = {}
         package_type = "Unknown"
@@ -520,7 +644,7 @@ class KospexDependencies:
             file_path = filename
 
         basefile = os.path.basename(filename)
-        print(basefile)
+        info(basefile)
         # print(f"base: {basefile}")
         # print(f"a: {abs_file_path}\nbd: {base_dir}\ngit_base: {git_base}\n")
         # print(f"rel_path: {file_path}")
@@ -537,11 +661,11 @@ class KospexDependencies:
         extractor = classification.extractor
 
         if extractor is None or not classification.supported:
-            print(f"Unknown or unsupported package manager file found {basefile}")
+            error(f"Unknown or unsupported package manager file found {basefile}")
             return None
 
         package_type = extractor.package_type
-        print(f"Found {extractor.name} package file: {basefile}")
+        info(f"Found {extractor.name} package file: {basefile}")
 
         parser = resolve_parser(extractor, {"KospexDependencies": self})
         try:
@@ -557,7 +681,7 @@ class KospexDependencies:
             # Every other parser returns [] today, so this is inert for them.
             log.warning("Could not parse %s: %s: %s",
                         filename, type(e).__name__, e)
-            print(f"Error: could not parse {basefile}: {e}")
+            error(f"Error: could not parse {basefile}: {e}")
             return None
 
         results = self._enrich_dependency_records(parsed, extractor)
@@ -569,41 +693,19 @@ class KospexDependencies:
         if print_table:
             self._print_dependency_table(results, dev_deps=dev_deps)
 
-        if results:
-            for dep in results:
-                if publishedAt := dep.get("published_at", None):
-                    dep["days_ago"] = KospexUtils.days_ago(publishedAt)
+        # days_ago is set once, in depsdev_record(). This used to overwrite it
+        # with KospexUtils.days_ago(), a float that also reads 0.0 for "" and
+        # None on a parse failure.
 
         if save and git_details:
-            import pprint
-
-            pprint.PrettyPrinter(indent=4).pprint(results)
-            # TODO - see if there is better way of excluding this key
-            for r in results:
-                r.pop("days_ago", None)
-                r.pop("authors", None)
-                r.pop("ecosystem", None)  # This was added in krunner osi for CSV output
-                r.pop("semantic", None)  # Usd by npm to show what semantic types
-                r.pop("extras", None)           # extractor template field, not a DB column
-                r.pop("requirements_type", None) # extractor template field, not a DB column
-                r.pop("version_type", None)      # extractor template field, not a DB column
-                r.update(git_details)
-                r["package_type"] = package_type
-                r["latest"] = 1
-
-            self.kospex_db.table(KospexSchema.TBL_DEPENDENCY_DATA).upsert_all(
-                results,
-                pk=[
-                    "_repo_id",
-                    "hash",
-                    "file_path",
-                    "package_type",
-                    "package_name",
-                    "package_version",
-                ],
+            # The same writer krunner osi uses (#151). The direct upsert this
+            # replaced never demoted, so a package removed from the manifest
+            # stayed at latest=1. A whole-file demote is safe here because
+            # extraction is always complete -- -dev / -scope filter display only.
+            self.save_dependencies(
+                [{**r, **git_details, "package_type": package_type} for r in results],
+                source=source,
             )
-
-            # print("Stored results to DB (should have)")
 
         self.dependencies = results
 
@@ -615,6 +717,74 @@ class KospexDependencies:
         "days_ago", "authors", "ecosystem", "semantic",
         "extras", "requirements_type", "version_type",
     )
+
+    def save_preconditions(self, filename):
+        """Reasons `kospex sca -save` must refuse to write `filename`, or [].
+
+        sca is an analyst's look at a repository, not a way to record work in
+        progress. A saved row is keyed on the HEAD hash, so it has to describe
+        a commit kospex already knows, read from a worktree that matches it:
+
+        * the file is inside a git repository
+        * the repository is synced (in `repos`)
+        * HEAD is synced (in `commits`) -- otherwise the rows hang off a hash
+          nothing else in the DB refers to
+        * no tracked file is modified or staged, and the file itself is
+          tracked -- otherwise the rows describe content no commit holds
+
+        Untracked files elsewhere in the worktree do not count: nearly every
+        working checkout has some, and they cannot change what HEAD contains.
+        All failing conditions are reported, not just the first.
+        """
+        import subprocess
+
+        abs_file_path = os.path.abspath(filename)
+        git_base = KospexUtils.find_git_base(os.path.dirname(abs_file_path))
+        if not git_base:
+            return [f"{filename} is not inside a git repository"]
+
+        git = KospexGit()
+        git.set_repo(git_base)
+        repo_id = git.get_repo_id()
+        head = git.get_current_hash()
+        problems = []
+
+        def git_out(*args):
+            return subprocess.run(
+                ["git", "-C", git_base, *args],
+                capture_output=True, text=True, check=False,
+            )
+
+        in_repos = self.kospex_db.execute(
+            f"SELECT 1 FROM {KospexSchema.TBL_REPOS} WHERE _repo_id = ? LIMIT 1",
+            [repo_id],
+        ).fetchone()
+        if not in_repos:
+            problems.append(
+                f"repository {repo_id} is not in the kospex DB "
+                f"(sync it first: kospex sync-directory {git_base})"
+            )
+        else:
+            in_commits = self.kospex_db.execute(
+                f"SELECT 1 FROM {KospexSchema.TBL_COMMITS} "
+                "WHERE _repo_id = ? AND hash = ? LIMIT 1",
+                [repo_id, head],
+            ).fetchone()
+            if not in_commits:
+                problems.append(
+                    f"HEAD {head[:12]} is not in the kospex DB "
+                    f"(sync it first: kospex sync-directory {git_base})"
+                )
+
+        status = git_out("status", "--porcelain", "--untracked-files=no")
+        if status.returncode != 0 or status.stdout.strip():
+            problems.append("the worktree has modified or staged files (commit or stash them)")
+
+        rel_path = os.path.relpath(abs_file_path, git_base)
+        if git_out("ls-files", "--error-unmatch", "--", rel_path).returncode != 0:
+            problems.append(f"{rel_path} is not tracked by git (commit it first)")
+
+        return problems
 
     def save_dependencies(self, records, source=None):
         """
@@ -1152,16 +1322,6 @@ class KospexDependencies:
                 results.append(p)
 
         return results
-
-    def print_dependencies_table(self, records, malware=None):
-        table = self.get_cli_pretty_table()
-        table_rows = []
-
-        for dep in records:
-            table_rows.append(self.get_values_array(dep, self.get_table_field_names(), "-"))
-
-        table.add_rows(table_rows)
-        print(table)
 
     def get_repo_authors(self, repo_url):
         """Return the number of unique authors for a given repo that's been sync'ed"""

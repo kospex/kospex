@@ -61,6 +61,16 @@ was relying on the old, wrong success.
    reported as kospex failing was a malformed request. `/file-collab/` without a
    `file_path` is the clearest example: it returned 500 and now returns 400.
 
+5. **`kospex sca` no longer saves by default, and its output and flags changed**
+   ([#237](https://github.com/kospex/kospex/issues/237)). **A script calling
+   `kospex sca FILE` that relied on it writing `dependency_data` must now pass
+   `-save`** — and `-save` refuses (exit 1) unless the repository and its HEAD
+   commit are synced and no tracked file is modified. `-dev` is gone, replaced
+   by `-scope` (default `direct`, so dev dependencies are no longer shown by
+   default). The `-out` CSV, which previously wrote nothing, now writes the
+   table's columns: **no `authors` or `malware` column, and `days_ago` is a
+   whole number**. `-malware` is accepted but ignored. Details under *Changed*.
+
 ### Added
 
 - **Lockfile install state is recorded: `is_dev`, `is_optional`,
@@ -158,6 +168,39 @@ was relying on the old, wrong success.
 
 ### Changed
 
+- **`kospex sca` output, scope and saving reworked**
+  ([#237](https://github.com/kospex/kospex/issues/237)). sca is an analyst's look
+  at a dependency file, not a way to record work in progress, so it now behaves
+  like one:
+  - **Output.** The file path, one tab-separated line per package (name, declared
+    version, release date), then a rich table, then one line naming the scope
+    shown and the other scopes the file holds with their counts. The Python
+    dict dump of every enriched record — printed twice for a file inside a git
+    repository — is gone. Missing values show as `-`, not `None`.
+  - **`-scope`** replaces `-dev`, which could not be turned off. A comma-separated
+    list of `direct`, `dev`, `peer`, `optional`, `transitive`, `unknown` (no scope
+    recorded) or `all`; default `direct`. It filters what is shown — the table,
+    `-json` and `-out` — and never what is extracted or saved.
+  - **`-json`** prints the table rows as JSON on stdout and nothing else;
+    informational lines go to stderr, so `kospex sca -json FILE > sca.json` works.
+  - **`-save` is opt-in, and guarded.** It was declared as an option with a value
+    defaulting to on, so it could not be switched off. It is now a flag, and it
+    refuses before any deps.dev lookup when the file is not in a git repository,
+    the repository or its HEAD commit is not in the kospex DB, the worktree has
+    modified or staged files, or the file itself is untracked. A saved row is
+    keyed on the HEAD hash, so it must describe a commit kospex knows, read from a
+    worktree that matches it. Untracked files elsewhere do not count.
+  - **Columns.** `authors` is dropped: it counted authors of the package's source
+    repo only when that repo happened to be synced locally, so it read 0 or `-`
+    for nearly everything. The `kospex deps -file` table shares these columns and
+    loses it too; `deps` still computes the value for its author ratio.
+    `malware` is dropped: the lookup behind it is a deprecated service, and
+    `-malware` now prints a notice and is ignored. `days_ago` is the whole
+    number of days since the release of the version looked up — the floor of a
+    range — and blank when there is none; it was a two-decimal float.
+  - **`-out`** writes a CSV of the table. It was read into a variable that nothing
+    used, so it never wrote a file.
+
 - **The external response cache TTL is a day, not an hour, and is now
   configurable.** Every deps.dev and PyPI lookup goes through
   `url_request_with_status()`, whose TTL defaulted to 3600s; seven call sites rely
@@ -214,6 +257,21 @@ was relying on the old, wrong success.
   this index.
 
 ### Fixed
+
+- **A package removed from a manifest stayed current after `kospex sca -save`**
+  ([#151](https://github.com/kospex/kospex/issues/151)). `assess()` upserted
+  rows at `latest=1` without demoting the ones they superseded, so a removed or
+  renamed package was still reported as a current dependency. It now writes
+  through `save_dependencies()`, the writer `krunner osi` uses, which demotes the
+  whole file in the same transaction and stamps `source` (`kospex sca`). A
+  whole-file demote is safe because extraction is always complete — `-scope`
+  filters only what is displayed.
+
+- **A file inside a linked git worktree or a submodule was attributed to the
+  enclosing repository.** `find_git_base()` recognised only a `.git`
+  *directory*; in a worktree or submodule `.git` is a file, so the walk carried
+  on up to the outer checkout and `assess()` stamped rows with that checkout's
+  repo id and HEAD. It now accepts either.
 
 - **A `package.json` or `package-lock.json` beginning with a UTF-8 byte order
   mark was reported as unreadable, though npm reads it.** A BOM is what a
