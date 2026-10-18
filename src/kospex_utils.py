@@ -580,8 +580,11 @@ def find_git_base(filename):
         directory = filename
 
     while os.path.isdir(directory):
-        if os.path.isdir(os.path.join(directory, '.git')):
-            # Found the .git directory, return the current directory
+        # exists, not isdir: in a linked worktree or a submodule `.git` is a
+        # FILE pointing at the real git dir. isdir walked past it to the
+        # enclosing checkout, so a file in a worktree was attributed to the
+        # main checkout's HEAD.
+        if os.path.exists(os.path.join(directory, '.git')):
             return directory
 
         # Move up one directory

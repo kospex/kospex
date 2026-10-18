@@ -798,65 +798,93 @@ def deps(repo, file, directory, out, dev):
 @cli.command("sca")
 @click.option("-repo", type=GitRepo(), help="NOT IMPLEMENTED - File path to git repo.")
 @click.option(
-    "-dev", is_flag=True, default=True, help="Include dev/test dependencies. EXPERIMENTAL."
+    "-scope",
+    default=KospexSchema.PACKAGE_USE_DIRECT,
+    show_default=True,
+    help="Comma-separated dependency scopes to show: "
+    + ", ".join(KospexDependencies.scope_names() + [KospexDependencies.SCOPE_ALL])
+    + ". Filters the output only; everything is still extracted and saved.",
 )
-@click.option("-save", is_flag=False, default=True, help="Save results to kospex DB.")
-@click.option("-malware", is_flag=True, default=False, help="Check for malware in dependencies.")
+@click.option(
+    "-save",
+    is_flag=True,
+    default=False,
+    help="Save results to the kospex DB. Refused unless the repo and its HEAD commit "
+    "are synced and the worktree is clean.",
+)
+@click.option("-malware", is_flag=True, default=False, help="DEPRECATED, ignored.")
+@click.option("-json", "as_json", is_flag=True, default=False,
+              help="Print the results as JSON on stdout, and nothing else.")
 @click.option("-out", type=click.STRING, help="filename to write CSV results to.")
 @click.argument("file_path", required=False, type=click.Path(exists=True))
-def sca(repo, dev, save, malware, out, file_path):
+def sca(repo, scope, save, malware, as_json, out, file_path):
     """
-    Run a lightweight software composition analysis (SCA) task
-    optionally run the maliciouspackages.com analysis of the dependencies
-    -malware to enable malware analysis using the maliciouspackages.com API
-    Your API_MAT needs to be set in the environment variable API_MAT
+    Run a lightweight software composition analysis (SCA) of a dependency file
+    (e.g. requirements.txt, package.json), using deps.dev.
+
+    Shows direct dependencies by default; use -scope to choose others.
     """
-    params = locals()
-    api_mat = os.environ.get("API_MAT")
+    err = Console(stderr=True, soft_wrap=True)
 
     if repo:
-        print("NOT implemented")
+        err.print("-repo is NOT implemented")
         exit(1)
 
-    if file_path:
-        # Handle a dependency file (e.g. package.json, requirements.txt) and check dependencies
-        results = kospex.dependencies.assess(file_path, **params)
+    if not file_path:
+        err.print("Either -repo REPO or file_path is required.\n")
+        exit(1)
 
-        if results is None:
-            console.print(f"\n{file_path} is not a supported pacakge manager\n", style="red")
+    try:
+        scopes = KospexDependencies.parse_scope(scope)
+    except ValueError as e:
+        err.print(str(e), style="red")
+        exit(1)
+
+    if malware:
+        err.print("-malware is deprecated: the lookup service it used is no longer "
+                  "available. The flag is ignored.", style="yellow")
+
+    kdeps = kospex.dependencies
+
+    # Checked before assess(), which calls deps.dev once per package: a run
+    # that is going to be refused should not spend those lookups first.
+    if save:
+        problems = kdeps.save_preconditions(file_path)
+        if problems:
+            err.print("Not saving -- sca -save records committed, synced state only:",
+                      style="red")
+            for problem in problems:
+                err.print(f"  - {problem}", markup=False)
             exit(1)
 
-        import pprint
+    results = kdeps.assess(file_path, save=save, source="kospex sca", quiet=True)
 
-        pprint.PrettyPrinter(indent=4).pprint(results)
+    if results is None:
+        err.print(f"\n{file_path} is not a supported package manager\n", style="red")
+        exit(1)
 
-        if malware:
-            print("Checking packages for malware on maliciouspackages.com")
-            if not api_mat:
-                print(
-                    "API_MAT environment variable not set. Please set it to your maliciouspackages.com API key."
-                )
-                exit(1)
+    shown = KospexDependencies.filter_by_scope(results, scopes)
 
-            for result in results:
-                package_type = result.get("package_type")
-                package_name = result.get("package_name")
+    if out:
+        with open(out, "w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=kdeps.get_table_field_names())
+            writer.writeheader()
+            writer.writerows(kdeps.table_rows(shown))
 
-                if package_type and package_name:
-                    print(f"Checking {package_type} package: {package_name}")
-                    is_malware = kospex.dependencies.check_malware(
-                        package_type, package_name, api_mat
-                    )
-                    result["malware"] = is_malware
-                else:
-                    print(
-                        f"Skipping package with missing type '{package_type}' or name '{package_name}'"
-                    )
+    footer = KospexDependencies.scope_footer(results, scopes)
 
-        kospex.dependencies.print_dependencies_table(results, malware=True)
+    if as_json:
+        click.echo(json.dumps(kdeps.table_rows(shown), indent=2))
+        err.print(footer, markup=False)
+        return
 
-    else:
-        print("Either -repo REPO or file_path is required.\n")
+    print(file_path)
+    for record in shown:
+        print(KospexDependencies.summary_line(record))
+    kdeps.print_table_rows(shown, console=console)
+    console.print(footer, markup=False, soft_wrap=True)
+    if save:
+        console.print(f"Saved {len(results)} packages to the kospex DB.")
 
 
 @cli.command("author-tech")

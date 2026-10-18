@@ -100,8 +100,8 @@ krunner osi -all              # every repo — regenerates OSI-all.csv
 krunner osi <repo_id>         # one repo, org or server
 kospex deps -repo PATH        # find/assess dependency files in one repo
 kospex deps -file FILE        # assess a single manifest
-kospex sca FILE               # one manifest, with advisory enrichment
-kospex sca -malware FILE      # ...and maliciouspackages.com lookup (needs API_MAT)
+kospex sca FILE               # one manifest, with advisory enrichment (display only)
+kospex sca -save FILE         # ...and write it, from a clean, synced checkout
 ```
 
 `krunner osi` walks the dependency files recorded in `file_metadata`, parses each
@@ -114,7 +114,9 @@ metadata refresh — will not appear. If a manifest you expect is missing from
 
 > `kospex sca` takes a **file path argument**, not a repo. Its `-repo` option is
 > declared but unimplemented — passing it prints `NOT implemented` and exits 1.
-> `-save` defaults to on, so `sca` writes to the database unless told otherwise.
+> `sca` writes to the database only with `-save`, and refuses unless the
+> repository and its HEAD commit are synced and the worktree has no modified or
+> staged files — run `kospex sync-directory` on the repository first.
 
 ## Order of operations
 
