@@ -48,7 +48,7 @@ section for that format.
 | `pyproject.toml` | PEP 621 `project.dependencies` / `optional-dependencies` | 131 files |
 | `package.json` | the five dependency sections | 11,486 files (mostly vendored copies) |
 | `yarn.lock` | **not parsed** — #229 | v1 ×116, Berry `__metadata.version` 10 ×39, 8 ×4, 6 ×1 |
-| `uv.lock` | **not parsed** — #229 | `version=1` ×24 (`revision` 1–3) |
+| `uv.lock` | `version` 1, any `revision` (1–3 measured) | `version=1` ×24 — `revision` 3 ×19, 2 ×4, 1 ×1 |
 | `build.gradle(.kts)` | **not parsed** — #229 | 68 files |
 | `pom.xml` | **not parsed** — #229 | 12 files |
 
@@ -145,7 +145,7 @@ project pass the gate and then match no packages.
 
 # Supported formats
 
-Seven file types have a parser, and all seven are claimed by both scan paths
+Eight file types have a parser, and all eight are claimed by both scan paths
 (`scanners=("sca", "osi")`).
 
 ## `requirements.txt` — pip
@@ -570,11 +570,119 @@ estate are legitimately in that state.
 `.vbproj` / `.fsproj`, which use the same `PackageReference` element and are **not
 matched** by the registry's `.*\.csproj` pattern.
 
+## `uv.lock` — uv
+
+| | |
+|---|---|
+| registry entry | `uv-lock`, `Kind.PACKAGE`, `package_type="pypi"` |
+| parser | `kospex.extractors.uvlock:extract_uv_lock` |
+| estate | 24 files across 23 repositories, 2,434 `[[package]]` entries → 2,406 rows |
+
+TOML: a `version` / `revision` header, then a `[[package]]` array. Every package names
+its `source` and lists its edges in three places — `dependencies` (always installed),
+`optional-dependencies.<extra>` and `dev-dependencies.<group>`. The project itself and
+each workspace member are `[[package]]` entries too.
+
+**Every gate below was checked against uv itself** (0.11.11, `uv export --frozen`), not
+inferred from the docs — that is how the `revision` decision came out the opposite way
+from `package-lock.json`'s `lockfileVersion`.
+
+### Raises
+
+- missing file, unreadable file, a directory
+- not UTF-8 (including UTF-16 — uv: "stream did not contain valid UTF-8")
+- invalid TOML, including a truncated file
+- **no `version`** — including a 0-byte file, which uv also refuses
+- **`version` other than the integer 1.** uv: *"unsupported schema version (v2, but
+  only v1 is supported)"*. A string `"1"` or `true` is refused too, because uv's own
+  TOML typing refuses them — so unlike `package-lock.json` this is not coerced, and
+  refusing is the fail-closed direction.
+- `revision` present but not a non-negative integer (uv refuses `revision = "x"`)
+- `package` that is not an array of tables; an entry with no `name` or no `source`;
+  a `version` that is not a string; a dependency list that is not a list, an extras or
+  groups section that is not a table, or an edge with no `name`
+
+### Returns `[]`
+
+A lockfile with no `[[package]]` at all, or whose only entries are first-party — the
+project and its workspace members, locking nothing else. uv reads both.
+
+### Decisions and quirks
+
+- **The project and its workspace members are not dependencies**, so they produce no
+  record. They are the entries with `source = { editable = ... }` or
+  `{ virtual = ... }` — 28 of 2,434 on the estate. This is the same class of problem
+  as the pnpm `.` importer (#253, #254): reporting them would attribute a
+  repository's own packages to it as supply chain. Agreeing with pnpm, which produces
+  no record for a local workspace directory.
+- That also disposes of the version question: **all 13 entries without a `version`
+  are first-party** (12 editable, 1 virtual). A third-party entry without one is
+  logged and skipped, as `package-lock.json` does, because `package_version` is in the
+  primary key and a version-less row could never update. None exists on the estate.
+- **`revision` is not a gate.** It is uv's compatible bump within `version`, and uv
+  reads `revision = 99` normally, as well as a file with no `revision` at all.
+  Refusing an unknown revision — the `package-lock.json` precedent — would turn every
+  lockfile from the next uv release into a `parse_error` that uv itself does not
+  have. A revision above 3 is logged so the drift is visible.
+- **A git source is recorded.** Two entries on the estate come from git. They are
+  third-party and assert a name and version, and dropping them would hide a
+  dependency. What deps.dev then says depends on the name, **not on the source**:
+  `pydantic-docs` is unpublished and lands as `package_not_found`, but a git *fork* of
+  `hypercorn` pinned at `0.15.0` resolves against **PyPI's** `hypercorn 0.15.0` — so
+  its advisory data describes the upstream release, not the fork's code. Nothing
+  records the source today; read advisories on a git-sourced row with that in mind.
+  Local `directory` / `path` / URL sources are treated the same way — none exists on
+  the estate.
+- **Install state comes from walking the graph**, not from per-entry flags — uv.lock
+  has none. Every first-party entry is a root. A package reached through any
+  `dependencies` chain is runtime (`is_dev = 0`, `is_optional = 0`); one reached only
+  through an extra is `is_optional = 1`; only through a dependency group,
+  `is_dev = 1`; through both but never at runtime, npm's `devOptional` state —
+  `is_dev = 1`, `is_optional` NULL. A package on no path at all is NULL throughout
+  (none on the estate: every locked package is reachable).
+- **An edge requesting extras is followed.** `{ name = "requests", extra = ["socks"] }`
+  installs `requests`' `socks` extra too, under the same label — an extra that a
+  runtime dependency asks for installs at runtime.
+- **`declared_scope` names the extra or group**, e.g. `dev-dependencies:docs` or
+  `optional-dependencies:socks`, comma-joined when several reach the package, and
+  NULL for anything installed at runtime. The group name is the useful part:
+  `[postgres]` and `[dev]` mean different things (see the flags page).
+- `requirements_type` is `direct` / `optional` / `dev` from the first-party edge that
+  names a package, in that precedence, else `resolved`. An extra outranks a group
+  because it is published metadata that reaches the project's own users.
+- **`runs_install_script` is NULL** — uv.lock records nothing about build hooks.
+- A name can lock at **several versions** (uv forks resolution by marker); the edge
+  then carries `version` and `source` to say which. All 5,140 edges on the estate
+  resolve to exactly one entry. Markers themselves are not evaluated: a
+  platform-specific package is still locked, so it is still reported.
+- **Validated against uv's own closures.** For all 24 files the parser's runtime set
+  equals `uv export --no-default-groups`, every `is_optional` package is in the
+  `--all-extras` closure, every `is_dev` one is in the `--all-groups` closure, and
+  the union is exactly uv's. (Run a nested lock from its own directory, or uv reads
+  the enclosing workspace's lockfile instead — `pydantic-core/uv.lock` inside
+  `pydantic` does exactly that.)
+- Integrity hashes (`sdist`, `wheels`) dropped, as everywhere.
+- **`advisories` and `versions_behind` default to NULL**, not the `""` the older
+  templates use (#258).
+
+**Upstream docs:** [uv project layout and the lockfile](https://docs.astral.sh/uv/concepts/projects/layout/)
+· [uv resolver internals](https://docs.astral.sh/uv/reference/resolver-internals/)
+· [dependency groups and extras](https://docs.astral.sh/uv/concepts/projects/dependencies/)
+
+**Drift watch:** a `version = 2` (the parser raises, as uv does — the signal to write
+the branch). A new `source` kind that is first-party, which would otherwise be reported
+as a dependency. The top-level `[manifest]` table: for a workspace whose root is not a
+project, `manifest.requirements` and `manifest.dependency-groups` hold the root's
+requirements, and they are **not read as roots** — packages reached only that way
+would report NULL install state rather than a wrong one. The estate has `members`
+only. Edges carrying `group = [...]` (a dependency on a member's group) are likewise
+not followed; none on the estate.
+
 ---
 
 # Classified, no parser yet
 
-Four types the registry recognises and nothing reads. They report `unsupported` —
+Three types the registry recognises and nothing reads. They report `unsupported` —
 honest, and distinguishable from `empty`. Tracked as sub-project D, #229.
 
 Two rules from the parsers above are worth applying from the start rather than
@@ -595,30 +703,12 @@ Berry (v2+) is YAML with a `__metadata.version` field — the estate carries
 `__metadata` versions 6, 8 and 10. A parser must detect which it is holding, and
 `__metadata` is the discriminator.
 
-By repository *reach* yarn.lock is last of the four despite being first by file count:
+By repository *reach* yarn.lock is last of the three despite being first by file count:
 its 154 files cluster in 20 repositories (7.7 per repo), so a parser mostly yields more
 rows about repositories already covered.
 
 **Upstream docs:** [yarn.lock (v1, classic)](https://classic.yarnpkg.com/lang/en/docs/yarn-lock/)
 · [Yarn configuration](https://yarnpkg.com/configuration/yarnrc)
-
-## `uv.lock`
-
-| | |
-|---|---|
-| registry entry | `uv-lock`, `Kind.PACKAGE`, `package_type="pypi"`, `parse_ref=None` |
-| estate | 24 files across 23 repositories — all `version = 1`, `revision` 1–3 |
-
-**The recommended next pick.** 1.0 files per repository, so it reaches more
-repositories than any other unread format and the reach is real rather than
-concentrated in monorepos.
-
-Note the two-field versioning: `version` is the format version and `revision` is a
-finer-grained bump within it. A parser should gate on `version` and tolerate unknown
-`revision` values, or it will raise on a file it could actually read.
-
-**Upstream docs:** [uv project layout and the lockfile](https://docs.astral.sh/uv/concepts/projects/layout/)
-· [uv resolver internals](https://docs.astral.sh/uv/reference/resolver-internals/)
 
 ## `build.gradle` / `build.gradle.kts`
 
@@ -791,6 +881,7 @@ Each row below was checked against the actual tool, not inferred:
 | `package.json` | npm **reads** it — `npm pkg get name` returns the name, `npm ls` resolves the tree | tolerant | **reads it** (`utf-8-sig`) |
 | `package-lock.json` | npm **reads** it — `npm ls --package-lock-only` resolves the locked version | tolerant | **reads it** (`utf-8-sig`) |
 | `pnpm-lock.yaml` | the YAML spec permits a BOM | tolerant | reads it (PyYAML consumes it) |
+| `uv.lock` | uv **reads** it — `uv export --frozen` (uv 0.11.11) exports the locked closure | tolerant | **reads it** (`utf-8-sig`) |
 | `*.csproj` | the XML spec permits a BOM | tolerant | reads it (ElementTree consumes it) |
 | `requirements.txt` | — | tolerant | reads it, via `detect_encoding` |
 | `pyproject.toml` | **pip refuses it** — `pip install .` dies in `pip/_internal/pyproject.py` at `tomllib.loads` | refuses | **raises, naming the BOM** |

@@ -444,6 +444,18 @@ and `[dev]` have very different significance. Plain `requirements.txt` has no gr
 concept at all; the `-r dev-requirements.txt` convention is a filename, not
 metadata.
 
+### `uv.lock`
+
+A uv.lock carries **no per-package flags at all**. It records the graph: each
+`[[package]]` lists `dependencies`, `optional-dependencies.<extra>` and
+`dev-dependencies.<group>`, and the project's own entry is where the extras and
+dependency groups it declares in `pyproject.toml` land, resolved. So "dev?" and
+"optional?" are answered by walking from the project, not by reading a key.
+
+kospex walks it and keeps the extra or group name in `declared_scope`
+(`optional-dependencies:socks`, `dev-dependencies:docs`). Nothing in the format speaks
+to install or build scripts, so `runs_install_script` is always NULL.
+
 ---
 
 ## Go — `go.mod` / `go.sum`

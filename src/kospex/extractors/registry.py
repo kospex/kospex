@@ -134,9 +134,10 @@ REGISTRY: tuple[Extractor, ...] = (
               "kospex.extractors.gomod:extract_gomod"),
     Extractor("nuget-csproj", Kind.PACKAGE, _matcher(r".*\.csproj"), ("sca", "osi"), "nuget",
               "kospex.extractors.nuget:extract_csproj"),
+    Extractor("uv-lock", Kind.PACKAGE, _matcher(r"uv\.lock"), ("sca", "osi"), "pypi",
+              "kospex.extractors.uvlock:extract_uv_lock"),
     # --- package: recognised but no parser yet (-> sub-project D) ---
     Extractor("yarn-lock", Kind.PACKAGE, _matcher(r"yarn\.lock"), (), "npm", None),
-    Extractor("uv-lock", Kind.PACKAGE, _matcher(r"uv\.lock"), (), "pypi", None),
     Extractor("gradle-build", Kind.PACKAGE, _matcher(r"build\.gradle(\.kts)?"), (), "maven", None),
     Extractor("maven-pom", Kind.PACKAGE, _matcher(r"pom\.xml"), (), "maven", None),
     # --- runtime ---

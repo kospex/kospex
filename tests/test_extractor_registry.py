@@ -28,7 +28,7 @@ CASES = [
     ("go.mod", Kind.PACKAGE, True),        # sca-only, but supported == any scanner
     ("Foo.csproj", Kind.PACKAGE, True),    # sca-only
     ("yarn.lock", Kind.PACKAGE, False),
-    ("uv.lock", Kind.PACKAGE, False),
+    ("uv.lock", Kind.PACKAGE, True),
     ("build.gradle", Kind.PACKAGE, False),
     ("pom.xml", Kind.PACKAGE, False),
     (".python-version", Kind.RUNTIME, False),
@@ -116,7 +116,7 @@ def test_coverage_matrix_is_shared_across_both_scan_paths():
     """
     scanners = {e.name: e.scanners for e in REGISTRY}
     for name in ("pypi-requirements", "pyproject", "npm-packagejson", "pnpm-lock",
-                 "npm-lock", "go-mod", "nuget-csproj"):
+                 "npm-lock", "go-mod", "nuget-csproj", "uv-lock"):
         assert scanners[name] == ("sca", "osi"), name
 
 
