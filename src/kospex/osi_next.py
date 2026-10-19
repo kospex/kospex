@@ -27,7 +27,7 @@ from kospex.osi_extract import extract_repo
 from kospex.osi_lock import LockBusy, OsiLock
 from kospex.osi_outcomes import repo_outcome
 from kospex.osi_queue import next_repos, record_outcome
-from kospex.osi_run_log import record_repo_run
+from kospex.osi_run_log import _utc_now_iso, record_repo_run
 
 log = KospexUtils.get_kospex_logger("krunner")
 
@@ -183,6 +183,12 @@ def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo, run_id=None
     from krunner import enrich_dependency_records
 
     started = time.monotonic()
+    # Two clocks, deliberately. monotonic() measures cost and is immune to the
+    # wall clock being adjusted, but it does not advance while the machine is
+    # asleep. The wall-clock stamp is what places this repository in time, so a
+    # slow one can be correlated with whatever else was happening (#259). Neither
+    # is derivable from the other, which is why both are recorded.
+    started_at = _utc_now_iso()
     fetches_before = getattr(kospex_query, "url_fetches", 0)
     rows, outcomes = extract_repo(repo_id, kospex_query, kdeps, echo=echo)
 
@@ -232,7 +238,7 @@ def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo, run_id=None
     # has already been done.
     if run_id:
         try:
-            record_repo_run(db, run_id, repo_result)
+            record_repo_run(db, run_id, repo_result, started_at=started_at)
         except Exception as e:                   # noqa: BLE001
             log.warning("osi -next: could not record diagnostics for %s: %s",
                         repo_id, e)
