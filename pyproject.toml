@@ -6,28 +6,33 @@ build-backend = "setuptools.build_meta"
 name = "kospex"
 version = "0.1.1"
 description = "kospex - Code and Developer Analytics."
-authors = [{ name = "Peter Freiberg", email = "peter.freiberg@gmail.com" }]
-license = { file = "LICENSE" }
+authors = [{ name = "Peter Freiberg", email = "peter@kospex.io" }]
+license = "MIT"
+license-files = ["LICENSE"]
 
 dependencies = [
     "click==8.3.3",
-    "duckdb==1.4.3",
+    "duckdb>=1.5.6,<2",
     "prettytable==3.17.0",
-    "dateutils",
-    "packaging",
-    "panopticas>=0.0.19",
-    "python-dotenv",
+    "python-dateutil>=2.9",
+    "packaging>=24",
+    "panopticas>=0.0.21",
+    "python-dotenv>=1.0",
     # >=4.1.1 for Database.atomic(): save_dependencies() needs an explicit
     # BEGIN to roll a failed upsert back. sqlite3's `with conn:` does not
     # work here. Matches the pin already in requirements.txt.
-    "sqlite-utils>=4.1.1",
+    # != 4.2: that release crashes on import (missing typing_extensions),
+    # fixed in 4.2.1.
+    "sqlite-utils>=4.1.1,!=4.2,<5",
     "requests==2.33.0",
     "rich>=14.0.0",
-    "python-multipart>=0.0.20",
+    # >=0.0.31 clears the GHSAs fixed in 0.0.22-0.0.31 (multipart parsing
+    # DoS, parameter smuggling); reachable via /package-check/upload.
+    "python-multipart>=0.0.31,<0.1",
     "PyYAML==6.0.3",
-    "mkdocs",
     "jinja2>=3.1.6",
-    "fastapi==0.135.3",
+    # Capped at the next minor: FastAPI 0.x ships breaking changes in minors.
+    "fastapi>=0.135.3,<0.147",
     "uvicorn==0.43.0",
 ]
 
@@ -89,8 +94,10 @@ namespaces = true
 
 [project.optional-dependencies]
 test = [
-    "pytest",
-    "httpx",
+    # >=9.1: caplog captures non-propagating loggers from 9.1 (pytest#3697).
+    # get_kospex_logger() sets propagate=False, so caplog tests need it.
+    "pytest>=9.1,<10",
+    "httpx>=0.28.1,<1",
 ]
 
 [project.scripts]
