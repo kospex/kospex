@@ -852,7 +852,7 @@ the parser layer was built by a small, finite set of PRs and that set is worth n
 
 | merged | PR | what it established |
 |---|---|---|
-| 2026-05-05 | #98 | Swallowed a malformed `pyproject.toml` so a batch run could continue (#97). Right at the time, and **reversed by #252** once both scan paths had per-file guards — the one decision on this page that has been undone. |
+| 2026-05-17 | #98 | Swallowed a malformed `pyproject.toml` so a batch run could continue (#97). Right at the time, and **reversed by #252** once both scan paths had per-file guards — the one decision on this page that has been undone. |
 | 2026-05-22 | #101 | The first standalone extractor, `extractors/pnpm.py`: a pure file-in, records-out module with no DB access, the shape every later parser follows. It warned and returned `[]` on an unreadable file, which #252 replaced with a raise. |
 | 2026-07-20 | #114 | The extractor registry and classifier — one source of truth for what kospex recognises, what kind each file is, and which scanner handles it (sub-project A). |
 | 2026-08-10 | #139 | `requirements.txt` parsed with `packaging` (PEP 508) instead of substring-matching operators, and unpinned declarations stopped being dropped. |
