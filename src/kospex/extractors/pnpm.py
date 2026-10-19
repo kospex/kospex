@@ -49,6 +49,9 @@ def _template():
     Duplicated (not imported) to keep this extractor pure — it must not
     depend on the KospexDependencies / DB stack. A contract test
     (test_template_matches_get_package_template) fails if the two drift.
+
+    ``versions_behind`` and ``advisories`` are None, not "": both columns are
+    INTEGER, SQLite sorts TEXT above every INTEGER, and '' > 0 is true (#258).
     """
     return {
         "package_name": "",
@@ -59,8 +62,8 @@ def _template():
         "requirements_type": "",
         "extras": "",
         "ecosystem": "",
-        "versions_behind": "",
-        "advisories": "",
+        "versions_behind": None,
+        "advisories": None,
         "published_at": "",
         # Install state (#227). None means the format could not say -- which
         # for pnpm depends on the lockfile version, not on pnpm. See

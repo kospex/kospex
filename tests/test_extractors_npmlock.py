@@ -66,6 +66,17 @@ class TestTemplateContract:
             KospexDependencies().get_package_template().keys()
         )
 
+    def test_advisory_columns_default_to_null_not_empty_string(self):
+        """`advisories` and `versions_behind` are INTEGER columns.
+
+        SQLite sorts TEXT above every INTEGER, so '' > 0 is true and a row
+        carrying '' counts as vulnerable (#258). NULL is the honest value --
+        "we did not ask" is not "we asked and found none".
+        """
+        t = _template()
+        assert t["advisories"] is None
+        assert t["versions_behind"] is None
+
 
 class TestPackageNameFromKey:
     """packages: keys are install paths, not names."""

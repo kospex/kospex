@@ -381,6 +381,123 @@ sync.
 > Requires migration `0003`. If the columns are absent, run
 > `kospex upgrade-db -apply`.
 
+## Clearing unknown advisory counts
+
+`dependency_data.advisories` and `versions_behind` are `INTEGER` columns, and
+every record template used to seed them with `''`. SQLite sorts TEXT above
+every INTEGER regardless of content, so `'' > 0` is **true**: a package that
+was parsed from a manifest but never enriched matched `WHERE advisories > 0` —
+the predicate meaning "has a security advisory" — while being in none of
+`> 0`, `= 0` or `IS NULL`.
+
+The web UI disagreed with SQL about the same row, because
+`item.get("advisories") or 0` coalesces the falsy `''` to 0 and renders it as
+clean. Neither answer was right; the honest one is unknown, which is NULL.
+
+The writer is fixed, so nothing new accumulates. Existing rows do **not**
+self-heal — `''` stays until you clear it or re-enrich the row.
+
+There is **no migration for this**. It is a data-only change with no schema
+component, and a `.py` migration requires a matching non-empty `.sql`, so one
+would mean fabricating SQL to wrap the backfill. Run it by hand.
+
+### Do you have any?
+
+```sql
+SELECT 'advisories' AS column_name, count(*) AS rows
+FROM dependency_data WHERE typeof(advisories) = 'text'
+UNION ALL
+SELECT 'versions_behind', count(*)
+FROM dependency_data WHERE typeof(versions_behind) = 'text';
+```
+
+Empty, or two zeroes, means there is nothing to do.
+
+### What it is costing you
+
+**Check `latest` separately — it changes the answer by three orders of
+magnitude.** A re-save supersedes a row rather than deleting it, so an
+un-enriched row that was later re-enriched keeps its `''` at `latest = 0`,
+where no reporting query looks:
+
+```sql
+SELECT latest, count(*) AS unknown_rows
+FROM dependency_data WHERE typeof(advisories) = 'text'
+GROUP BY latest;
+```
+
+Then measure only what readers actually see:
+
+```sql
+SELECT count(*) AS reported_vulnerable,
+       sum(typeof(advisories) = 'text') AS of_which_unknown
+FROM dependency_data WHERE advisories > 0 AND latest = 1;
+```
+
+On a several-hundred-repository estate, 1,968 rows carried `''` but **1,962 of
+them sat at `latest = 0`** — leaving 6 of 3,537 reported-vulnerable current
+rows wrong, not 35%. Drop the `latest = 1` and the same estate reports 5,574
+with 1,968 unknown, which is where a 35% figure comes from: it is counting
+superseded history. Both numbers are real; only the first describes what anyone
+is being shown.
+
+The rows at `latest = 0` are still worth clearing — they are what `latest` is
+not filtered on in an ad-hoc query, and the next person to write one has no
+reason to expect a text value in an INTEGER column.
+
+A currency banding query written as `CASE WHEN versions_behind <= 5 … ELSE
+'100+'` has the same problem in reverse: `'' <= 5` is false, so every unknown
+row lands in the worst band.
+
+### Check for a non-empty value first
+
+```sql
+SELECT DISTINCT quote(advisories) FROM dependency_data
+WHERE typeof(advisories) = 'text' AND advisories <> '';
+```
+
+Usually empty. On one estate it returned a single `'unknown'`, on a row with
+`latest = 0` and no `source`, written by a path that no longer exists — NULL is
+the right answer for that too, which is why the update below keys on `typeof()`
+rather than on `= ''`.
+
+**If it returns something that looks like a number stored as text, stop.** That
+is a different defect — find the writer before nulling the evidence.
+
+### Clear them
+
+Back up first; there is no undo.
+
+```bash
+cp ~/kospex/kospex.db ~/kospex/kospex.db.bak
+```
+
+```sql
+BEGIN;
+
+UPDATE dependency_data SET advisories = NULL
+ WHERE typeof(advisories) = 'text';
+
+UPDATE dependency_data SET versions_behind = NULL
+ WHERE typeof(versions_behind) = 'text';
+
+COMMIT;
+```
+
+This replaces a wrong answer with an honest absence; it does not recover the
+real counts. To get those, re-enrich the affected repositories — identify them
+first:
+
+```sql
+SELECT DISTINCT _repo_id FROM dependency_data
+WHERE advisories IS NULL AND latest = 1;
+```
+
+then run `krunner osi -repo_id <id>` for each, or let the scheduled
+`krunner osi -next` reach them on its own. Re-enrichment calls deps.dev, so it
+is bounded by rate limits and the response cache TTL
+(`KOSPEX_URL_CACHE_SECONDS`) rather than by local work.
+
 ## See also
 
 - [Commands](commands) — the full command list
