@@ -7,8 +7,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Upgrade notes
 
 **No data changes in this release — unlike 0.1.0, nothing needs re-syncing or
-normalising — but there are three schema changes.** An existing database needs
-`kospex upgrade-db -apply`; newly created ones pick all three up automatically.
+normalising — but there are four schema changes.** An existing database needs
+`kospex upgrade-db -apply`; newly created ones pick all four up automatically.
 
 - **`0007`** adds an index to `file_metadata`. Index only: no rows are read,
   rewritten or deleted, and a database left un-upgraded keeps working, just
@@ -25,6 +25,14 @@ normalising — but there are three schema changes.** An existing database needs
   working — the scanners record name and version as before and simply store no
   install state. Re-running `krunner osi` after the upgrade is what populates
   them for lockfiles already scanned.
+- **`0010`** adds `finished_at` to `osi_runs`, because `started_at` was recording
+  the finish (see *Fixed*). A column only, defaulting to NULL: nothing existing is
+  touched, and a database left un-upgraded keeps working — `-next` logs that it
+  could not record diagnostics and carries on scanning. Rows written before the
+  upgrade keep a `started_at` that is really a finish time and are deliberately
+  not backfilled, because `duration_ms` excludes time the machine spent asleep, so
+  the true start cannot be recovered by subtraction. `DELETE FROM osi_runs` is the
+  clean option if you would rather start the diagnostics over.
 
 Otherwise what changes is how kospex *responds* when it cannot answer a
 question. In four places it previously returned something that looked like an
@@ -371,6 +379,30 @@ was relying on the old, wrong success.
   this index.
 
 ### Fixed
+
+- **`osi_runs.started_at` recorded when a repository finished, not when it
+  started** ([#259](https://github.com/kospex/kospex/issues/259)). The column was
+  declared "UTC, when this repository began" and held the opposite:
+  `record_repo_run()` defaulted it to now, and its only caller runs after
+  extraction, enrichment, save and the outcome record are all done. On a
+  whole-estate run the earliest `started_at` was 14m34s after the run's own
+  "starting" log line, and that row's `duration_ms` was 874,159ms — exactly
+  14m34s. Every row's start was its finish.
+
+  `_process_repo` now stamps a wall-clock start alongside the existing monotonic
+  one and passes it through, and **`started_at` no longer defaults to now** — a
+  caller that does not know the start writes NULL, meaning unknown, rather than a
+  confident wrong value. That default was the whole defect.
+
+  Migration `0010` adds `finished_at`, because neither end of the window can be
+  derived from the other: `duration_ms` comes from `time.monotonic()`, which does
+  not advance while the machine is asleep, so `finished_at - duration_ms` is not
+  the start and `started_at + duration_ms` is not the finish. On the run above,
+  1h51m of a 5h34m wall clock was system sleep. One end plus a duration measures
+  cost; two ends measure occupancy, and their difference is time the process was
+  not running — otherwise recoverable only from operating-system power logs that
+  rotate away. `ORDER BY started_at` also returned completion order, which is
+  identical for a serial run and wrong as soon as anything is concurrent.
 
 - **`kospex deps -file` crashed on any manifest with an unresolved package**
   ([#264](https://github.com/kospex/kospex/issues/264)). Since #106 an unresolved

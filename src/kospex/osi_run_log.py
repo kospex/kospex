@@ -29,11 +29,12 @@ def _utc_now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _row_for(run_id, repo, started_at):
+def _row_for(run_id, repo, started_at, finished_at):
     row = {
         "run_id": run_id,
         "_repo_id": repo.repo_id,
         "started_at": started_at,
+        "finished_at": finished_at,
         "duration_ms": repo.duration_ms,
         "files": repo.files,
         "packages": repo.packages,
@@ -50,7 +51,7 @@ def _row_for(run_id, repo, started_at):
     return row
 
 
-def record_repo_run(db, run_id, repo, started_at=None):
+def record_repo_run(db, run_id, repo, started_at=None, finished_at=None):
     """Write one repository's diagnostics, as soon as it finishes.
 
     Per repository rather than per batch, so an interrupted run keeps the
@@ -62,15 +63,21 @@ def record_repo_run(db, run_id, repo, started_at=None):
     The asymmetry mattered in the direction that hurts: the runs most likely to be
     interrupted are the long ones, and those are exactly the ones whose cost the
     sizing question depends on.
+
+    `finished_at` defaults to now because this is called at the finish, so now
+    genuinely is it. **`started_at` does not default** (#259): this function is
+    called after the work, so "now" is the wrong answer, and a caller that does
+    not know the start must record that it does not know rather than be handed a
+    confident wrong value. NULL means unknown.
     """
     db[TBL_OSI_RUNS].upsert(
-        _row_for(run_id, repo, started_at or _utc_now_iso()),
+        _row_for(run_id, repo, started_at, finished_at or _utc_now_iso()),
         pk=["run_id", "_repo_id"],
     )
     return 1
 
 
-def record_run(db, result, started_at=None):
+def record_run(db, result, started_at=None, finished_at=None):
     """Write a whole batch's diagnostics at once.
 
     Retained for callers holding a complete BatchResult. `-next` uses
@@ -80,13 +87,18 @@ def record_run(db, result, started_at=None):
     neither writes anything -- a row implying a repository was processed when it
     was not would corrupt exactly the measurements this table exists for.
 
+    A BatchResult carries no per-repository start, so `started_at` is written to
+    every row as given -- NULL unless the caller supplies one, which is honest for
+    a batch-level timestamp rather than a per-repository one (#259).
+
     Returns the number of rows written.
     """
     if result.skipped or not result.repos:
         return 0
 
-    started_at = started_at or _utc_now_iso()
-    rows = [_row_for(result.run_id, repo, started_at) for repo in result.repos]
+    finished_at = finished_at or _utc_now_iso()
+    rows = [_row_for(result.run_id, repo, started_at, finished_at)
+            for repo in result.repos]
 
     db[TBL_OSI_RUNS].upsert_all(rows, pk=["run_id", "_repo_id"])
     return len(rows)

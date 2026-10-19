@@ -1,0 +1,23 @@
+-- 0010_osi_runs_finished_at.sql
+--
+-- Record when a repository finished, as well as when it started.
+--
+-- `started_at` was declared "UTC, when this repository began" in 0008 and held
+-- the moment the repository finished: record_repo_run() defaulted it to now, and
+-- the only production caller runs after extraction, enrichment, save and outcome
+-- are all done. Fixing that leaves the finish unrecorded, so this adds it.
+--
+-- Both ends are stored because neither can be derived from the other.
+-- duration_ms is measured with time.monotonic(), which does not advance while
+-- the machine is asleep, so finished_at minus duration_ms is not the start and
+-- started_at plus duration_ms is not the finish. One end plus a duration
+-- measures cost. Two ends measure occupancy, and the difference between them is
+-- the time the process was not running -- which is otherwise only recoverable
+-- from operating-system power logs that rotate away.
+--
+-- Rows written before this migration carry a started_at that is really a finish
+-- time, and they are left alone. 0008 has not shipped in a release, so the only
+-- such rows are in development databases, and backfilling them would mean
+-- rewriting history to look like it was always right.
+
+ALTER TABLE [osi_runs] ADD COLUMN [finished_at] TEXT;
