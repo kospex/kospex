@@ -320,13 +320,13 @@ class KospexGit:
 
         _normalise_remote_url() can't be used for this: it returns None for
         exactly the URLs that fail to parse, which are the ones we report.
+        Nor is urlparse() trusted here: it ends the netloc at an unencoded
+        '/', '?' or '#' in a password, hiding the '@', and raises ValueError
+        on some malformed input. So strip everything after the scheme up to
+        the LAST '@'. An '@' later in the path over-redacts, which is the
+        safe direction for a display string.
         """
-        if "://" not in url:
-            return url
-        parts = urlparse(url)
-        if "@" not in parts.netloc:
-            return url
-        return parts._replace(netloc=parts.netloc.rsplit("@", 1)[1]).geturl()
+        return re.sub(r"^([A-Za-z][\w+.-]*://)?[^@]*@", r"\1", url)
 
     @staticmethod
     def _normalise_remote_url(url):

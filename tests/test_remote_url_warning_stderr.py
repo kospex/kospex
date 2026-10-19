@@ -9,6 +9,7 @@ discards stderr.
 import json
 import subprocess
 
+import pytest
 from click.testing import CliRunner
 
 from kospex_dependencies import KospexDependencies
@@ -66,6 +67,43 @@ def test_the_warning_does_not_print_embedded_credentials(capsys):
     assert "s3cret" not in err
     assert "user:" not in err
     assert "ftp://host.example/acme/demo" in err
+
+
+@pytest.mark.parametrize("url, secret", [
+    # urlparse ends the netloc at the first '/', '?' or '#', so a password
+    # containing one unencoded hides the '@' from a netloc-based redactor.
+    ("ftp://user:s3/cret@host.example/acme/demo", "cret"),
+    ("ftp://user:s3?cret@host.example/acme/demo", "cret"),
+    ("ftp://user:s3#cret@host.example/acme/demo", "cret"),
+])
+def test_redaction_does_not_trust_the_url_parser(url, secret, capsys):
+    assert KospexGit().parse_git_remote(url) is None
+
+    KospexGit().set_remote_url(url)
+
+    _, err = capsys.readouterr()
+    assert secret not in err
+    assert "host.example" in err
+
+
+def test_redaction_without_a_scheme():
+    # Checked on the helper: through set_remote_url() this URL reaches the
+    # split("/") fallback after the warning, which IndexErrors on it. That
+    # fallback is pre-existing and tracked separately.
+    shown = KospexGit._without_userinfo("user:s3cret@host.example:acme/demo")
+    assert shown == "host.example:acme/demo"
+
+
+def test_a_url_urlparse_rejects_still_only_warns(capsys):
+    # urlparse raises ValueError ("Invalid IPv6 URL") on this; redacting must
+    # not turn a warning into a crash.
+    url = "ftp://user:s3cret@[bad/acme/demo"
+    assert KospexGit().parse_git_remote(url) is None
+
+    KospexGit().set_remote_url(url)
+
+    _, err = capsys.readouterr()
+    assert "s3cret" not in err
 
 
 def test_sca_json_stdout_stays_valid_json_with_an_unparseable_remote(
