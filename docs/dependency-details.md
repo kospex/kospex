@@ -852,21 +852,25 @@ the parser layer was built by a small, finite set of PRs and that set is worth n
 
 | merged | PR | what it established |
 |---|---|---|
-| 2026-05-05 | #98 | Swallowed a malformed `pyproject.toml` so a batch run could continue (#97). Right at the time, and **reversed by #252** once both scan paths had per-file guards — the one decision on this page that has been undone. |
+| 2026-05-17 | #98 | Swallowed a malformed `pyproject.toml` so a batch run could continue (#97). Right at the time, and **reversed by #252** once both scan paths had per-file guards — the one decision on this page that has been undone. |
+| 2026-05-22 | #101 | The first standalone extractor, `extractors/pnpm.py`: a pure file-in, records-out module with no DB access, the shape every later parser follows. It warned and returned `[]` on an unreadable file, which #252 replaced with a raise. |
 | 2026-07-20 | #114 | The extractor registry and classifier — one source of truth for what kospex recognises, what kind each file is, and which scanner handles it (sub-project A). |
 | 2026-08-10 | #139 | `requirements.txt` parsed with `packaging` (PEP 508) instead of substring-matching operators, and unpinned declarations stopped being dropped. |
 | 2026-08-30 | #179 | `go.mod`: read the single-line `require` form, and record `// indirect` so transitive Go dependencies reach the database at all. |
 | 2026-08-30 | #185 | `krunner osi` dispatches through the registry (C1), closing the gap where `go.mod` and `.csproj` were handled by one scan path only. |
 | 2026-08-30 | #188 | `KospexDependencies.assess` dispatches through the registry too (C2a) — the change that makes a parser contract hold for *both* callers. |
 | 2026-09-07 | #191 | The declared operator is kept in `package_version` and `version_operator`, so `flask>=2.0` is no longer indistinguishable from a pin. |
+| 2026-10-07 | #222 | The per-file extraction outcome — `extracted`, `empty`, `unsupported`, `parse_error` and the rest — and `OUTCOME_PRIORITY` (#148). The error contract rests on it: `[]` is recorded as `empty`. |
 | 2026-10-09 | #228 | pnpm transitive dependencies are looked up by `kospex sca` (#225). |
+| 2026-10-09 | #233 | `docs/dependency-flags.md`: what each format records about install state, quoted from its own documentation rather than recalled. |
 | 2026-10-10 | #231 | Install state — `is_dev`, `is_optional`, `runs_install_script`, `declared_scope` — and migration `0009` (#227). Also established NULL-means-unknown. |
 | 2026-10-12 | #240 | A docs correction: an earlier claim about what `lockfileVersion` 1 records was wrong. Worth noting as precedent — the flags page is a source of truth and gets corrected when it is wrong. |
 | 2026-10-13 | #241 | `pom.xml` gains a registry entry (#221), moving it from `unclassified` to `unsupported`. |
 | 2026-10-15 | #243 | The `package-lock.json` parser, all three lockfile versions: install paths, flag aggregation across depths, "record every identity, elect none", and "was this fetched at all" rather than registry recognition. |
 | 2026-10-16 | #248 | The three hand-written parsers in `kospex_dependencies.py`: the UTF-16 BOM, the PEP 621 array that fabricated packages, and the `package.json` section that must raise rather than be skipped. |
 | 2026-10-17 | #252 | The error contract — `UnreadableManifest`, the three categories, the `module` and `<Project>` gates — and the multi-document pnpm lockfile. |
-| 2026-10-18 | #261 | The `uv.lock` parser: gates taken from what uv itself refuses, so an unknown `revision` is read, not raised (the deliberate departure from `package-lock.json`); first-party `editable`/`virtual` entries as walk roots rather than rows; install state from a graph walk, validated exactly against `uv export`; and `declared_scope` documented as marker-blind. |
+| 2026-10-18 | #257 | Whether a file with a byte-order mark may be refused is decided by the tool that owns the format, checked against that tool — so `package.json` and `package-lock.json` are read with `utf-8-sig`, because npm reads them. |
+| 2026-10-19 | #261 | The `uv.lock` parser: gates taken from what uv itself refuses, so an unknown `revision` is read, not raised (the deliberate departure from `package-lock.json`); first-party `editable`/`virtual` entries as walk roots rather than rows; install state from a graph walk, validated exactly against `uv export`; and `declared_scope` documented as marker-blind. |
 
 **There is deliberately no running list of future PRs here.** A hand-maintained list
 goes stale silently, and a stale table in a reference doc is worse than no table: it
