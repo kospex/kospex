@@ -121,7 +121,6 @@ Kospex employs multiple layers of automated security testing:
 
 - **Dependabot Alerts**: Dependabot monitors dependencies and raises alerts for known vulnerabilities
 - **Vulnerability Scanning**: Regular dependency vulnerability assessments
-- **Pin Versions**: Critical dependencies pinned or ranged to specific versions in `pyproject.toml`
 
 ### Web Application Security
 
