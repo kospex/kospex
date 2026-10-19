@@ -213,7 +213,7 @@ Kospex employs multiple layers of automated security testing:
 
 ## Contact Information
 
-- **Security Issues**: [PLACEHOLDER - Add security contact]
+- **Security Issues**: peter@kospex.io, or [report a vulnerability privately](https://github.com/kospex/kospex/security/advisories/new)
 - **General Support**: [GitHub Issues](https://github.com/kospex/kospex/issues)
 - **Project Website**: [https://kospex.io](https://kospex.io)
 
