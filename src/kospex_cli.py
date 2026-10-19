@@ -763,23 +763,37 @@ def deps(repo, file, directory, out, dev):
         # records = kdeps.assess(file_path, results_file=out, repo_info=repo_info,
         #                       print_table=True)
         records = kdeps.assess(file_path, **params)
+        if records is None:
+            # assess() has already said why (unsupported or unparseable file).
+            exit(1)
+
         # TODO - refactor this into a function
         total = len(records)
+        resolved = 0
         count = 0
         author_count = 0
         repos_observerd = []
         for record in records:
-            if "versions_behind" in record and record["versions_behind"] > 2:
-                count += 1
+            # None means deps.dev could not resolve the lookup (#106): neither
+            # outdated nor current, so it is left out of the percentages
+            # rather than counted as compliant. What compliance should mean is
+            # an open question (#265).
+            versions_behind = record.get("versions_behind")
+            if isinstance(versions_behind, int):
+                resolved += 1
+                if versions_behind > 2:
+                    count += 1
             if "authors" in record and record["authors"]:
                 if not record.get("source_repo") in repos_observerd:
                     repos_observerd.append(record.get("source_repo"))
                     author_count += record["authors"]
 
         if total:
-            print(f"Total dependencies: {total} | Outdated(>2): {count}")
-            print(f"Non Compliant: {count / total * 100:.2f}%")
-            print(f"Compliant: {(total - count) / total * 100:.2f}%")
+            print(f"Total dependencies: {total} | Resolved: {resolved} | "
+                  f"Unresolved: {total - resolved} | Outdated(>2): {count}")
+            if resolved:
+                print(f"Non Compliant: {count / resolved * 100:.2f}% (of resolved)")
+                print(f"Compliant: {(resolved - count) / resolved * 100:.2f}% (of resolved)")
             print()
             print(f"# Dependency Authors: {author_count}")
             if repo_authors:

@@ -258,6 +258,19 @@ was relying on the old, wrong success.
 
 ### Fixed
 
+- **`kospex deps -file` crashed on any manifest with an unresolved package**
+  ([#264](https://github.com/kospex/kospex/issues/264)). Since #106 an unresolved
+  deps.dev lookup — an unpinned requirement, a range, an unknown package — has
+  `versions_behind = None`, meaning "could not tell", and the summary compared it
+  with `> 2`. Most real `requirements.txt` files hit it. The summary now reports
+  `Resolved` and `Unresolved` counts, and takes the `Compliant` / `Non Compliant`
+  percentages **over resolved packages only**, labelled `(of resolved)`, omitting
+  them when nothing resolved. Previously an unresolved package could not be
+  counted at all; counting it as compliant would have reported a file full of
+  unpinned packages as nearly 100% compliant. What compliance should mean is
+  left to #265. An unsupported or unparseable file also crashed the summary
+  (`len(None)`); it now exits 1 after `assess()` has said why.
+
 - **A package removed from a manifest stayed current after `kospex sca -save`**
   ([#151](https://github.com/kospex/kospex/issues/151)). `assess()` upserted
   rows at `latest=1` without demoting the ones they superseded, so a removed or
