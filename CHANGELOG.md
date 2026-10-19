@@ -148,13 +148,19 @@ was relying on the old, wrong success.
   defect). Six outcomes now distinguish them: `extracted`, `empty`, `unsupported`,
   `unclassified`, `not_a_manifest`, `parse_error`, modelled on
   `dependency_data.resolution`, which already does this one layer later. Stored
-  per repository in `observations`, no schema change. Classifying the 1081
-  dependency-tagged files on a 167-repo estate gives 70% `extracted`, 16%
-  `unsupported` (`build.gradle`, `yarn.lock`, `package-lock.json`, `uv.lock`), 12%
-  `not_a_manifest` (`dependabot.yml`, `Dockerfile`, runtime pins) and 3%
-  `unclassified` (`setup.py`, `pom.xml`, `setup.cfg`). Separating
-  `not_a_manifest` out makes the `unsupported` figure an honest parser backlog
-  rather than an inflated one.
+  per repository in `observations`, no schema change. Classifying the 12,666
+  dependency-tagged files on a few-hundred-repo estate gives 85.6% `extracted`,
+  9.1% `empty`, 3.0% `not_a_manifest` (`go.sum`, `dependabot.yml`, `Dockerfile`,
+  runtime pins), 2.0% `unsupported`, 0.2% `unclassified` (`setup.py`, `setup.cfg`
+  — [#137](https://github.com/kospex/kospex/issues/137)) and 0.06%
+  `parse_error`, all eight of which are deliberately malformed test fixtures.
+  Three formats remain `unsupported` after the parsers added in this release:
+  `yarn.lock`, `build.gradle` and `pom.xml`. Separating `not_a_manifest` out
+  makes the `unsupported` figure an honest parser backlog rather than an inflated
+  one.
+
+  The distribution was measured before the `uv.lock` parser below landed, so the
+  24 `uv.lock` files it counts under `unsupported` now extract.
 
 - **Per-run diagnostics in a new `osi_runs` table (migration `0008`).** One row
   per `(run_id, repository)` with duration, files, packages, deps.dev requests
@@ -165,6 +171,114 @@ was relying on the old, wrong success.
   one current row per key. `lookups` counts cache misses separately from
   `packages` written, which makes cache effectiveness measurable: a first real run
   shows 76% of babel's 1101 package lookups served from cache.
+
+- **`package-lock.json` is now parsed** ([#229](https://github.com/kospex/kospex/issues/229)).
+  The extractor registry has classified npm lockfiles since July 2026 without
+  being able to read one, so a repository whose only manifest was a
+  `package-lock.json` produced no dependency rows at all. All three lockfile
+  versions are read: v3 and v2 from `packages:`, v1 from its nested
+  `dependencies:` tree. A v2 file's duplicate `dependencies:` tree is ignored,
+  since it describes the same closure.
+
+  The four install-state columns from migration `0009` are populated —
+  `is_dev`, `is_optional`, `runs_install_script` and `declared_scope` — so npm
+  rows now answer the same questions as pnpm rows. Three npm-specific points
+  are worth knowing before querying them:
+
+  - **`devOptional` records `is_dev=1` with `is_optional` NULL.** It is npm's
+    third state rather than the union of the other two: it never co-occurs with
+    `dev` or `optional`, and means "reachable only via a dev path *or* an
+    optional path" without saying which. The package does not reach production,
+    but whether it may fail to install is genuinely unstated, so NULL.
+  - **An npm lockfile kospex cannot read is reported as `parse_error`, not
+    `empty`** (CWE-703). `empty` means "examined, nothing to find", so a file
+    whose dependencies were never read must not claim it. An unsupported
+    `lockfileVersion`, a missing one or malformed JSON now raise, and
+    `lockfileVersion` itself is read liberally so `"3"` works as well as `3`.
+    `kospex sca` previously called parsers with no guard and would have crashed
+    on this; it now reports the file and continues, which is what the `krunner
+    osi` path has done since #148. Genuinely empty lockfiles still report
+    `empty`.
+  - **An aliased dependency is recorded as the package it actually is.**
+    `npm i foo@npm:bar` installs *bar* at `node_modules/foo`, and npm names the
+    real package in a `name` field on that entry. Reading the install path
+    instead would record a package that is not on the registry, so its deps.dev
+    lookup returns nothing and the row shows no advisories for something that is
+    genuinely installed. 30 entries on a reference estate are aliases. The alias
+    is still matched when deciding `direct` / `dev`, since a project declares an
+    aliased dependency by its alias. v1 encodes the same thing as
+    `version: "npm:bar@1.2.3"`, which is parsed rather than stored verbatim.
+
+    Because a lockfile is untrusted input and no field of it corroborates
+    another (CWE-807), **every identity an entry asserts is recorded** — the
+    install path, the `name`, and the package named in the `resolved` URL — with
+    none treated as authoritative. They almost always agree, so this is one row
+    per package in practice; across a reference estate it adds 32 rows out of
+    13,739. A row named for an install-path alias may not be a real registry
+    package and will carry no advisory data; the row under the real name is the
+    one that answers the security question.
+  - **A package reached by several install paths is reconciled, not
+    overwritten.** `packages:` keys are install paths and the primary key has
+    no path column, so the same `name@version` at two depths collapses to one
+    row. `dev` / `optional` / `devOptional` are true only when *every* path
+    agrees — one production path means the package ships — while
+    `hasInstallScript` / `peer` / `inBundle` are true if any path says so.
+  - **`lockfileVersion: 1` rows are all `transitive`.** v1's top level is the
+    hoisted install set rather than the declared set, so a direct dependency
+    cannot be told from a transitive lifted to the root. `is_dev` is still
+    populated; `runs_install_script` is NULL, because v1 has no
+    `hasInstallScript` field.
+
+  Expect a larger first scan. On a reference estate this adds ~13,700 rows from
+  ~7,400 distinct packages, around 5,900 of which have never been looked up, so
+  the first sweep does that many deps.dev calls.
+
+  `docs/dependency-flags.md` carries the measured per-key inventory and the
+  per-version detail behind all of this.
+
+- **`uv.lock` is now parsed** ([#229](https://github.com/kospex/kospex/issues/229)).
+  Registered since July 2026 but unreadable, so every `uv.lock` reported
+  `unsupported` — and it reaches more repositories than any other unread format,
+  at one file per project. The full locked closure is read: **2,406 rows from 24
+  files**, being 2,434 `[[package]]` entries less the 28 that are the project
+  itself and its workspace members.
+
+  `is_dev`, `is_optional`, `declared_scope` and `requirements_type` are populated
+  by walking the dependency graph from the project, because `uv.lock` states
+  install state nowhere per package — it is a graph, not a flag list. The flags
+  were validated against uv's own output, keyed by `(name, version)`: all 2,406
+  rows agree with what uv's runtime, `--all-extras` and `--all-groups` exports
+  imply (388 runtime, 430 optional, 1,446 dev, 142 both).
+
+  - **The format gates were measured against uv 0.11.11**, by running
+    `uv export --frozen` over perturbed copies of a real lockfile rather than by
+    reading a spec. uv refuses `version` ≠ 1, a non-integer `revision`, an empty
+    file and UTF-16, and so does the parser. uv *reads* `revision = 99`, a
+    missing `revision` and a UTF-8 BOM, and so does the parser. **This
+    deliberately departs from the `package-lock.json` precedent** of refusing an
+    unknown version field: here, refusing would be a false positive against the
+    tool that owns the format.
+  - **An unreadable `uv.lock` raises rather than returning `[]`** (CWE-703), so
+    it reports `parse_error` and not `empty`. `[]` is reserved for a lockfile
+    that genuinely locks nothing but the project itself.
+  - **First-party entries produce no record.** `source = { editable }` and
+    `{ virtual }` are the project and its workspace members, matching how pnpm
+    treats local workspace directories. All 13 version-less entries on the
+    estate are first-party, so no version fallback is needed.
+  - **`declared_scope` over-lists on 15 of 2,406 rows.** The walk ignores
+    environment markers, so it lists a group whose path uv prunes as impossible —
+    a Python-version contradiction (13 rows) or a `conflicts` declaration (2). It
+    never under-lists and never changes a flag. Documented rather than fixed:
+    marker-aware walking needs an environment enumeration that could *under*-list,
+    which is the worse failure.
+
+  Git-sourced entries are recorded, since deps.dev answers by name and version
+  rather than by source — a git fork resolves against the registry's release of
+  the same version, so its advisories are upstream's. The source itself is not
+  stored.
+
+  `docs/dependency-details.md` carries the per-decision detail and the drift watch
+  for what is deliberately not read.
 
 ### Changed
 
@@ -535,72 +649,6 @@ was relying on the old, wrong success.
   a `maven` package manifest with no parser, alongside `build.gradle`. Nothing
   is extracted from it yet — this only moves it into the parser backlog that
   `unsupported` is meant to count.
-
-### Added
-
-- **`package-lock.json` is now parsed** ([#229](https://github.com/kospex/kospex/issues/229)).
-  The extractor registry has classified npm lockfiles since July 2026 without
-  being able to read one, so a repository whose only manifest was a
-  `package-lock.json` produced no dependency rows at all. All three lockfile
-  versions are read: v3 and v2 from `packages:`, v1 from its nested
-  `dependencies:` tree. A v2 file's duplicate `dependencies:` tree is ignored,
-  since it describes the same closure.
-
-  The four install-state columns from migration `0009` are populated —
-  `is_dev`, `is_optional`, `runs_install_script` and `declared_scope` — so npm
-  rows now answer the same questions as pnpm rows. Three npm-specific points
-  are worth knowing before querying them:
-
-  - **`devOptional` records `is_dev=1` with `is_optional` NULL.** It is npm's
-    third state rather than the union of the other two: it never co-occurs with
-    `dev` or `optional`, and means "reachable only via a dev path *or* an
-    optional path" without saying which. The package does not reach production,
-    but whether it may fail to install is genuinely unstated, so NULL.
-  - **An npm lockfile kospex cannot read is reported as `parse_error`, not
-    `empty`** (CWE-703). `empty` means "examined, nothing to find", so a file
-    whose dependencies were never read must not claim it. An unsupported
-    `lockfileVersion`, a missing one or malformed JSON now raise, and
-    `lockfileVersion` itself is read liberally so `"3"` works as well as `3`.
-    `kospex sca` previously called parsers with no guard and would have crashed
-    on this; it now reports the file and continues, which is what the `krunner
-    osi` path has done since #148. Genuinely empty lockfiles still report
-    `empty`.
-  - **An aliased dependency is recorded as the package it actually is.**
-    `npm i foo@npm:bar` installs *bar* at `node_modules/foo`, and npm names the
-    real package in a `name` field on that entry. Reading the install path
-    instead would record a package that is not on the registry, so its deps.dev
-    lookup returns nothing and the row shows no advisories for something that is
-    genuinely installed. 30 entries on a reference estate are aliases. The alias
-    is still matched when deciding `direct` / `dev`, since a project declares an
-    aliased dependency by its alias. v1 encodes the same thing as
-    `version: "npm:bar@1.2.3"`, which is parsed rather than stored verbatim.
-
-    Because a lockfile is untrusted input and no field of it corroborates
-    another (CWE-807), **every identity an entry asserts is recorded** — the
-    install path, the `name`, and the package named in the `resolved` URL — with
-    none treated as authoritative. They almost always agree, so this is one row
-    per package in practice; across a reference estate it adds 32 rows out of
-    13,739. A row named for an install-path alias may not be a real registry
-    package and will carry no advisory data; the row under the real name is the
-    one that answers the security question.
-  - **A package reached by several install paths is reconciled, not
-    overwritten.** `packages:` keys are install paths and the primary key has
-    no path column, so the same `name@version` at two depths collapses to one
-    row. `dev` / `optional` / `devOptional` are true only when *every* path
-    agrees — one production path means the package ships — while
-    `hasInstallScript` / `peer` / `inBundle` are true if any path says so.
-  - **`lockfileVersion: 1` rows are all `transitive`.** v1's top level is the
-    hoisted install set rather than the declared set, so a direct dependency
-    cannot be told from a transitive lifted to the root. `is_dev` is still
-    populated; `runs_install_script` is NULL, because v1 has no
-    `hasInstallScript` field.
-
-  Expect a larger first scan. On a reference estate this adds ~13,700 rows from
-  ~7,400 distinct packages, around 5,900 of which have never been looked up, so
-  the first sweep does that many deps.dev calls.
-
-  `docs/dependency-flags.md` carries the measured per-key inventory and the
-  per-version detail behind all of this.
 
 ## 0.1.0 - 2026-09-11
 
