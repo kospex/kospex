@@ -125,7 +125,9 @@ Kospex employs multiple layers of automated security testing:
 
 ### Web Application Security
 
-- **Input Validation**: [PLACEHOLDER - Document input validation practices]
+- **Input Validation**: Development practice is to validate data before it is used —
+  request parameters, repository identifiers and data read from analysed repositories
+  are checked or constrained before they reach queries, file paths or templates
 - **SQL Injection**: Uses parameterized queries and SQLite-utils for database operations
 - **Cross-Site Scripting (XSS)**: Jinja2 templates with automatic escaping enabled
 - **Authentication**: Kospex Beta does not have authentication, the web UI runs on loopback. 
@@ -202,15 +204,6 @@ Kospex employs multiple layers of automated security testing:
 3. **Local Storage**: Understand that analyzed data is stored locally in SQLite databases
 4. **Cleanup**: Remove analysis data when no longer needed
 
-## Incident Response
-
-In the event of a security incident:
-
-1. **Immediate Response**: [PLACEHOLDER - Add incident response procedures]
-2. **Communication**: [PLACEHOLDER - Add communication plan]
-3. **Remediation**: [PLACEHOLDER - Add remediation steps]
-4. **Post-Incident**: [PLACEHOLDER - Add post-incident review process]
-
 ## Security Resources
 
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
@@ -220,7 +213,7 @@ In the event of a security incident:
 
 ## Contact Information
 
-- **Security Issues**: [PLACEHOLDER - Add security contact]
+- **Security Issues**: peter@kospex.io, or [report a vulnerability privately](https://github.com/kospex/kospex/security/advisories/new)
 - **General Support**: [GitHub Issues](https://github.com/kospex/kospex/issues)
 - **Project Website**: [https://kospex.io](https://kospex.io)
 
