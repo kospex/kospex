@@ -6,9 +6,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Upgrade notes
 
-**No data changes in this release — unlike 0.1.0, nothing needs re-syncing or
-normalising — but there are four schema changes.** An existing database needs
-`kospex upgrade-db -apply`; newly created ones pick all four up automatically.
+**No data changes are required in this release — unlike 0.1.0, nothing needs
+re-syncing or normalising — but there are four schema changes, and one optional
+clean-up.** An existing database needs `kospex upgrade-db -apply`; newly created
+ones pick all four up automatically. The optional clean-up clears the stored
+`''` described under *Fixed* for [#258](https://github.com/kospex/kospex/issues/258);
+it is not needed for kospex to work, and
+[`docs/refreshing-data.md`](docs/refreshing-data.md) has the SQL and the reason
+the figures depend on `latest`.
 
 - **`0007`** adds an index to `file_metadata`. Index only: no rows are read,
   rewritten or deleted, and a database left un-upgraded keeps working, just
@@ -379,6 +384,35 @@ was relying on the old, wrong success.
   this index.
 
 ### Fixed
+
+- **An un-enriched dependency row counted as vulnerable**
+  ([#258](https://github.com/kospex/kospex/issues/258)).
+  `dependency_data.advisories` and `versions_behind` are `INTEGER` columns, and
+  every record template seeded them with `''`. SQLite's type ordering sorts TEXT
+  above every INTEGER regardless of content, so `'' > 0` is **true**: a package
+  parsed from a manifest but never enriched matched `WHERE advisories > 0` — the
+  predicate meaning "has a security advisory" — while being in none of `> 0`,
+  `= 0` or `IS NULL`, the three buckets a reader would treat as exhaustive.
+
+  The two layers then disagreed about the same row. SQL called it vulnerable,
+  while the web UI's `item.get("advisories") or 0` coalesced the falsy `''` to 0
+  and rendered it clean. Neither was right; the honest answer is unknown.
+
+  `save_dependencies()` already carried a guard whose comment stated the intent
+  exactly — *"None, not 0 — 'we did not ask' is not 'we asked and found none'"* —
+  and it could never fire, because `setdefault` only fills a **missing** key and
+  the templates always supplied one. All six copies of the record template now
+  use `None`, and the save path coerces `''` away for any future caller that
+  reintroduces it. A measured `0` still means "we asked and found none" and is
+  left alone.
+
+  **Existing rows do not self-heal.** A re-save supersedes rather than deletes,
+  so most affected rows are at `latest = 0`, where no reporting query looks: on a
+  several-hundred-repository estate 1,968 rows carried `''` and 1,962 of them
+  were superseded, leaving 6 of 3,537 current reported-vulnerable rows wrong. The
+  same estate reports 35% inflation if you drop the `latest = 1` filter, because
+  that counts superseded history. Clearing them is a hand-run data change — see
+  *Clearing unknown advisory counts* in `docs/refreshing-data.md`.
 
 - **`osi_runs.started_at` recorded when a repository finished, not when it
   started** ([#259](https://github.com/kospex/kospex/issues/259)). The column was

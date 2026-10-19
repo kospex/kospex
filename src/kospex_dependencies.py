@@ -870,8 +870,17 @@ class KospexDependencies:
             # is not "we asked and found none". Reachable as soon as extraction
             # and enrichment are decoupled, e.g. a batched run that parses
             # manifests estate-wide but enriches only the current batch.
-            rec.setdefault("advisories", None)
-            rec.setdefault("versions_behind", None)
+            #
+            # Coerced, not setdefault (#258): setdefault only fills a *missing*
+            # key, and every record template supplies these two already set --
+            # so the guard above never fired and "" reached the column, where
+            # SQLite sorts TEXT above every INTEGER and '' > 0 is true. The
+            # templates no longer produce "", and this is the second line of
+            # defence for any caller that reintroduces it. Only "" is coerced:
+            # a measured 0 means "we asked and found none" and must survive.
+            for column in ("advisories", "versions_behind"):
+                if rec.get(column, "") == "":
+                    rec[column] = None
             rec["last_checked"] = self._utc_now_iso()
             if source is not None:
                 rec["source"] = source
@@ -1020,8 +1029,14 @@ class KospexDependencies:
         p_template["requirements_type"] = ""
         p_template["extras"] = ""
         p_template["ecosystem"] = ""
-        p_template["versions_behind"] = ""
-        p_template["advisories"] = ""
+        # None, not "": both columns are INTEGER, SQLite sorts TEXT above every
+        # INTEGER, and '' > 0 is true (#258). An un-enriched row seeded with ""
+        # therefore matched `WHERE advisories > 0` -- the "vulnerable"
+        # predicate -- while being in none of `> 0`, `= 0` or `IS NULL`.
+        p_template["versions_behind"] = None
+        p_template["advisories"] = None
+        # published_at stays "": it is a TEXT column, so "" is merely empty
+        # rather than a value that outranks every number in it.
         p_template["published_at"] = ""
         # Install state (#227). None, not "", because NULL means the lockfile
         # format could not answer -- a `lockfileVersion: 1` package-lock.json
