@@ -326,7 +326,9 @@ class KospexGit:
         the LAST '@'. An '@' later in the path over-redacts, which is the
         safe direction for a display string.
         """
-        return re.sub(r"^([A-Za-z][\w+.-]*://)?[^@]*@", r"\1", url)
+        # Greedy '.*' so the cut is at the last '@' even when the password
+        # holds an unencoded one; re.S so a newline can't end the match early.
+        return re.sub(r"^([A-Za-z][\w+.-]*://)?.*@", r"\1", url, flags=re.S)
 
     @staticmethod
     def _normalise_remote_url(url):

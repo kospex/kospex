@@ -75,6 +75,8 @@ def test_the_warning_does_not_print_embedded_credentials(capsys):
     ("ftp://user:s3/cret@host.example/acme/demo", "cret"),
     ("ftp://user:s3?cret@host.example/acme/demo", "cret"),
     ("ftp://user:s3#cret@host.example/acme/demo", "cret"),
+    # An unencoded '@' in the password: the redactor must cut at the LAST '@'.
+    ("ftp://user:s3@cret@host.example/acme/demo", "cret"),
 ])
 def test_redaction_does_not_trust_the_url_parser(url, secret, capsys):
     assert KospexGit().parse_git_remote(url) is None
