@@ -4,9 +4,9 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.0.x   | :white_check_mark: |
+| 0.1.x   | :white_check_mark: |
 
-**Note**: Kospex is currently in early development. Security updates are provided for the latest release only.
+**Note**: Kospex is currently in beta, and active development. Security updates are provided for the latest release only.
 
 ## Reporting Security Vulnerabilities
 
@@ -14,9 +14,31 @@ If you discover a security vulnerability in Kospex, please help us maintain a se
 
 ### How to Report
 
-- **Email**: [PLACEHOLDER - Add security contact email]
-- **GitHub Security Advisories**: Use the "Security" tab in the GitHub repository to report privately
-- **Response Time**: We aim to acknowledge reports within [PLACEHOLDER - Add timeframe, e.g., 48 hours]
+- **Email**: peter@kospex.io
+- **GitHub Security Advisories**: Use [Report a vulnerability](https://github.com/kospex/kospex/security/advisories/new) on the repository's "Security" tab to report privately
+- **Response Time**: We aim to acknowledge reports within 5 business days
+
+### Scope
+
+Kospex reads and parses the content of the repositories it analyses — dependency
+manifests and lock files (JSON, YAML, TOML, XML and others), git metadata, and source
+files passed to `scc`. **Treat repository content as potentially untrusted input.** You
+may trust your own repositories, but anything cloned from a public source — or from a
+contributor you don't control — can contain deliberately crafted files.
+
+In scope:
+
+- Vulnerabilities triggered by analysing a crafted repository or manifest (e.g. code
+  execution, path traversal, XML entity expansion, resource exhaustion)
+- Vulnerabilities in the CLI tools (`kospex`, `kgit`, `krunner`, `kreaper`, `kospex-agent`)
+- Vulnerabilities in the web interface (`kweb`) when bound to loopback, e.g. XSS or
+  injection reachable from repository data
+
+Out of scope:
+
+- The absence of authentication or TLS on the web interface — these are documented
+  limitations (see [Known Limitations](#known-limitations))
+- Issues that require the web interface to be exposed on a routable network interface
 
 ### What to Include
 
@@ -40,19 +62,36 @@ Kospex employs multiple layers of automated security testing:
 
 - **GitHub Secrets Detection**: Automatically scans for exposed secrets and API keys
 - **CodeQL (SAST)**: Static Application Security Testing for code vulnerability detection
-- **Dependabot (SCA)**: Software Composition Analysis for dependency vulnerability management
+- **Dependabot alerts (SCA)**: Software Composition Analysis alerts for vulnerable dependencies
 
 ### Web Interface Security
 
 - **Network Binding**: Web interface runs on loopback interface (127.0.0.1) by default
-- **No External Access**: By design, does not listen on routable network interfaces
-- **No SSL/TLS**: MVP does not implement SSL/TLS (justified by loopback-only operation)
+- **No SSL/TLS**: Kospex Beta does not implement SSL/TLS (justified by loopback-only operation)
+
+> ⚠️ **Warning: the web interface can listen on routable interfaces.** The `--host`
+> option binds to any address you give it, and when kweb detects it is running inside a
+> Docker container it binds to all interfaces (`0.0.0.0`) automatically. The web
+> interface has **no authentication**, so anyone who can reach that port can read
+> everything in your kospex database. Never expose it to a network without a reverse
+> proxy that adds TLS and authentication in front of it, and when running in Docker,
+> publish the port to loopback only (e.g. `-p 127.0.0.1:8000:8000`).
 
 ### Data Security
 
 - **Local Storage**: All repository data and analysis results stored locally in user's filesystem
 - **Database Security**: SQLite database files stored in user-controlled directory (`~/kospex/`)
-- **No Cloud Storage**: No data transmitted to external services by default
+- **No Cloud Storage**: No data is stored on external services by default
+- **Outbound Lookups**: Some commands contact external services. Repository content
+  and commit history are never uploaded, but the following are sent:
+  - **deps.dev** (`api.deps.dev`) — dependency package names and versions, for
+    version, licence and advisory lookups
+  - **PyPI** (`pypi.org`) — Python package names, for package metadata
+  - **GitHub API** (`api.github.com`) — organisation, user and repository names, with
+    your `GITHUB_TOKEN` if set, when listing or cloning repositories
+  - **Bitbucket API** (`api.bitbucket.org`) — workspace and repository names, with
+    your Bitbucket credentials, when using `kgit bitbucket`
+  - **Git remotes** — the hosts you clone from or pull from via `kgit`
 
 ## Security Considerations
 
@@ -68,18 +107,28 @@ Kospex employs multiple layers of automated security testing:
 - **Token Scope**: Recommend minimal required scopes for GitHub API access
 - **Rate Limiting**: Respects GitHub API rate limits to avoid service disruption
 
+### Bitbucket Integration
+
+- **API Tokens**: `kgit bitbucket` uses `BITBUCKET_API_TOKEN` together with
+  `BITBUCKET_EMAIL` (or `BITBUCKET_USERNAME`), read from environment variables
+- **Token Scope**: Atlassian account API tokens work without scopes; for
+  Bitbucket-scoped tokens grant only `read:project:bitbucket`,
+  `read:repository:bitbucket` and `read:workspace:bitbucket`
+- **App Passwords**: `BITBUCKET_APP_PASSWORD` is legacy — Atlassian disabled app
+  passwords on 2026-06-09 — and support for it will be removed
+
 ### Dependency Management
 
-- **Automated Updates**: Dependabot monitors and creates pull requests for security updates
+- **Dependabot Alerts**: Dependabot monitors dependencies and raises alerts for known vulnerabilities
 - **Vulnerability Scanning**: Regular dependency vulnerability assessments
-- **Pin Versions**: Critical dependencies pinned to specific versions in `pyproject.toml`
+- **Pin Versions**: Critical dependencies pinned or ranged to specific versions in `pyproject.toml`
 
 ### Web Application Security
 
 - **Input Validation**: [PLACEHOLDER - Document input validation practices]
 - **SQL Injection**: Uses parameterized queries and SQLite-utils for database operations
 - **Cross-Site Scripting (XSS)**: Jinja2 templates with automatic escaping enabled
-- **Authentication**: [PLACEHOLDER - Document authentication mechanisms if any]
+- **Authentication**: Kospex Beta does not have authentication, the web UI runs on loopback. 
 
 ## Deployment Security Recommendations
 
@@ -100,7 +149,7 @@ Kospex employs multiple layers of automated security testing:
 
 ### Production Considerations
 
-⚠️ **Important**: Kospex MVP is designed for local development and analysis. Production deployment requires additional security measures:
+⚠️ **Important**: Kospex Beta is designed for local development and analysis. Production deployment requires additional security measures:
 
 - **Reverse Proxy**: Use nginx/Apache with SSL/TLS termination
 - **Authentication**: Implement proper authentication and authorization
@@ -127,15 +176,14 @@ Kospex employs multiple layers of automated security testing:
 
 ### Security Monitoring
 
-- **Dependabot**: Automated dependency vulnerability monitoring
+- **Dependabot Alerts**: Automated dependency vulnerability monitoring
 - **GitHub Security Advisories**: Receive notifications for dependency vulnerabilities
-- **Regular Updates**: Dependencies updated regularly through pull requests
+- **Regular Updates**: Dependencies reviewed and updated as alerts are raised
 
 ### Key Security-Relevant Dependencies
 
-- **Flask/FastAPI**: Web framework security features
+- **FastAPI**: Web framework security features
 - **SQLite**: Local database with file-system level security
-- **PyGitHub**: GitHub API client with token-based authentication
 - **Jinja2**: Template engine with XSS protection
 
 ## Security Best Practices for Users
@@ -168,7 +216,7 @@ In the event of a security incident:
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
 - [GitHub Security Advisories](https://github.com/advisories)
 - [Python Security Guidelines](https://python.org/dev/security/)
-- [Flask Security Considerations](https://flask.palletsprojects.com/en/latest/security/)
+- [FastAPI Security](https://fastapi.tiangolo.com/tutorial/security/)
 
 ## Contact Information
 
@@ -178,4 +226,4 @@ In the event of a security incident:
 
 ---
 
-*This security policy is updated regularly. Last updated: 2025-08-14*
+*This security policy is updated regularly. Last updated: 2026-10-19*
