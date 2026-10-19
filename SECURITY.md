@@ -60,7 +60,7 @@ Out of scope:
 
 Kospex employs multiple layers of automated security testing:
 
-- **GitHub Secrets Detection**: Automatically scans for exposed secrets and API keys
+- **GitHub Secrets Detection**: Automatically scans for exposed secrets and API keys, and blocks pushes containing secrets (push protection)
 - **CodeQL (SAST)**: Static Application Security Testing for code vulnerability detection
 - **Dependabot alerts (SCA)**: Software Composition Analysis alerts for vulnerable dependencies
 
