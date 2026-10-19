@@ -385,6 +385,16 @@ was relying on the old, wrong success.
 
 ### Fixed
 
+- **`kospex sca -json` printed invalid JSON for a repo with an unparseable
+  remote** ([#277](https://github.com/kospex/kospex/issues/277)). When
+  `origin` was something the remote-URL parser can't read, such as a clone of a
+  local path, `KospexGit.set_remote_url()` printed
+  `WARNING: Failed specific parsing of remote URL` to **stdout**, ahead of the
+  JSON array, so `json.load` / `jq` failed even with stderr discarded. The
+  warning now goes to stderr and the `kospex_git` log, and names the URL with
+  any embedded `user:password@` removed, so a token in a remote is not written
+  to either (CWE-532).
+
 - **An un-enriched dependency row counted as vulnerable**
   ([#258](https://github.com/kospex/kospex/issues/258)).
   `dependency_data.advisories` and `versions_behind` are `INTEGER` columns, and
