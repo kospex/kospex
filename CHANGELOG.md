@@ -84,6 +84,11 @@ was relying on the old, wrong success.
    table's columns: **no `authors` or `malware` column, and `days_ago` is a
    whole number**. `-malware` is accepted but ignored. Details under *Changed*.
 
+6. **`kweb` exits with code 3 when it can't start**, for example when its port
+   is already in use. uvicorn 0.50 made 3 its exit code for every startup
+   failure, and kospex now requires uvicorn 0.52 or later. A service manager or
+   script that checks for a particular non-zero code should accept 3.
+
 ### Added
 
 - **Lockfile install state is recorded: `is_dev`, `is_optional`,
@@ -305,6 +310,12 @@ was relying on the old, wrong success.
   are kept, so existing invocations get the notice rather than a usage error.
   The redesigned command — a window of recent versions ordered by publish date,
   a table, and `-json` — is planned for Q4 2026.
+- **Dependency minimums raised.** Each minimum is now one of the three newest
+  releases, or a release from the last three months: click 8.4.1, packaging
+  26.1, python-dotenv 1.2.2 (clears GHSA-mf9w-mj56-hr94), requests 2.34.0,
+  rich 14.3.3, fastapi 0.140.0 and uvicorn 0.52.0. click, requests, uvicorn,
+  prettytable and PyYAML were exact pins and are now ranges. Tested at both
+  the minimum and the newest version allowed.
 - **`kospex sca` output, scope and saving reworked**
   ([#237](https://github.com/kospex/kospex/issues/237)). sca is an analyst's look
   at a dependency file, not a way to record work in progress, so it now behaves
