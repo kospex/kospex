@@ -31,6 +31,11 @@ dependencies = [
     # >=2.34.0: no_proxy no longer matches greedily, which matters behind
     # corporate proxies. 2.34's other changes are type hints only.
     "requests>=2.34.0,<3",
+    # Transitive via requests, listed so upgrading kospex also upgrades an
+    # older certifi already installed. >=2026.10.19 drops the emSign roots
+    # whose intermediate CA keys were compromised (GHSA-6q48-6c7w-9gw2).
+    # Uncapped: calendar-versioned, and a cap would freeze the trust store.
+    "certifi>=2026.10.19",
     "rich>=14.3.3,<16",
     # >=0.0.31 clears the GHSAs fixed in 0.0.22-0.0.31 (multipart parsing
     # DoS, parameter smuggling); reachable via /package-check/upload.
