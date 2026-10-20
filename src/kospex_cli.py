@@ -1369,7 +1369,7 @@ def upgrade_db(apply):
 
 ADVISORY_HISTORY_NOTICE = (
     "advisory-history is being redesigned; a fixed implementation is planned "
-    "for the next release. See https://github.com/kospex/kospex/issues/282"
+    "for Q4 2026. See https://github.com/kospex/kospex/issues/282"
 )
 
 
