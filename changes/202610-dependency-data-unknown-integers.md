@@ -112,11 +112,26 @@ merely empty rather than a value outranking every number in the column. The
 `table_rows()` coercion at `kospex_dependencies.py:334` still maps it to None
 for JSON output and is unaffected.
 
-**`kweb2.py:1588` is left as `item.get("advisories") or 0`.** With the column
-now NULL, an unknown row renders as *not vulnerable* — still wrong, but
-inverted. Rendering it honestly needs a distinct "unknown" state in the badge
-and its templates, which is a UI change rather than a data one; #258 is about
-what is stored. Tracked separately.
+**`kweb2.py:1588` is left as `item.get("advisories") or 0`, and needs no
+follow-up.** This was first written up here as a UI gap worth tracking — an
+unknown row rendering as *not vulnerable* once the column holds NULL. That was
+wrong, and the correction is worth recording because the same mistake is easy to
+repeat: **the line is in `_classify_upload_status()`, which only ever sees items
+from `POST /package-check/upload`** — a live deps.dev lookup over an uploaded
+manifest. It does not read `dependency_data`, so no stored NULL reaches it, and
+its `or 0` is deliberate and already documented in the function's own docstring:
+*"`versions_behind` and `advisories` are coalesced to 0 so an explicit None
+(used for unresolved dependencies) never reaches a numeric comparison."*
+
+`GET /supply-chain/` is the same shape — `package_dependencies()`
+(`kospex_dependencies.py`) calls deps.dev for one hand-typed
+`ecosystem:name:version`, so the `advisories` values in `supply_chain.html` also
+come from the API rather than from our tables.
+
+The general point: **a grep for `advisories` in the web layer finds live-lookup
+paths as well as stored-row readers, and they want opposite defaults.** Check
+which one a call site is on before concluding the stored column's type is
+visible there.
 
 ### Why there is no migration
 
