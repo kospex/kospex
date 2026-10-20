@@ -316,6 +316,10 @@ was relying on the old, wrong success.
   rich 14.3.3, fastapi 0.140.0 and uvicorn 0.52.0. click, requests, uvicorn,
   prettytable and PyYAML were exact pins and are now ranges. Tested at both
   the minimum and the newest version allowed.
+- **certifi is now a direct dependency, at 2026.10.19 or later.** It came in
+  through requests before. Listing it means upgrading kospex also upgrades an
+  older certifi that is already installed. 2026.10.19 removes emSign root CAs
+  whose intermediate CA keys were compromised (GHSA-6q48-6c7w-9gw2).
 - **`kospex sca` output, scope and saving reworked**
   ([#237](https://github.com/kospex/kospex/issues/237)). sca is an analyst's look
   at a dependency file, not a way to record work in progress, so it now behaves
