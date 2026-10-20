@@ -11,29 +11,37 @@ license = "MIT"
 license-files = ["LICENSE"]
 
 dependencies = [
-    "click==8.3.3",
+    "click>=8.4.1,<9",
     "duckdb>=1.5.6,<2",
-    "prettytable==3.17.0",
+    "prettytable>=3.17.0,<4",
     "python-dateutil>=2.9",
-    "packaging>=24",
+    # Uncapped: nearly every environment shares packaging, so a cap causes
+    # resolver conflicts. kospex only uses Requirement and Version.
+    "packaging>=26.1",
     "panopticas>=0.0.21",
-    "python-dotenv>=1.0",
+    # >=1.2.2 clears GHSA-mf9w-mj56-hr94 (set_key follows symlinks). kospex
+    # only calls load_dotenv, but shouldn't allow a version its own sca flags.
+    "python-dotenv>=1.2.2,<2",
     # >=4.1.1 for Database.atomic(): save_dependencies() needs an explicit
     # BEGIN to roll a failed upsert back. sqlite3's `with conn:` does not
     # work here. Matches the pin already in requirements.txt.
     # != 4.2: that release crashes on import (missing typing_extensions),
     # fixed in 4.2.1.
     "sqlite-utils>=4.1.1,!=4.2,<5",
-    "requests==2.33.0",
-    "rich>=14.0.0",
+    # >=2.34.0: no_proxy no longer matches greedily, which matters behind
+    # corporate proxies. 2.34's other changes are type hints only.
+    "requests>=2.34.0,<3",
+    "rich>=14.3.3,<16",
     # >=0.0.31 clears the GHSAs fixed in 0.0.22-0.0.31 (multipart parsing
     # DoS, parameter smuggling); reachable via /package-check/upload.
     "python-multipart>=0.0.31,<0.1",
-    "PyYAML==6.0.3",
+    "PyYAML>=6.0.3,<7",
     "jinja2>=3.1.6",
-    # Capped at the next minor: FastAPI 0.x ships breaking changes in minors.
-    "fastapi>=0.135.3,<0.147",
-    "uvicorn==0.43.0",
+    # Capped: FastAPI 0.x ships breaking changes in minors. 0.147-0.149 all
+    # landed on 2026-10-19 and change form and parameter-default handling.
+    "fastapi>=0.140.0,<0.147",
+    # 0.50 changed the exit code for startup failures (e.g. port in use) to 3.
+    "uvicorn>=0.52.0,<0.55",
 ]
 
 requires-python = ">=3.12"
