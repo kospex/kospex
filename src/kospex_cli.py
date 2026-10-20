@@ -1367,33 +1367,25 @@ def upgrade_db(apply):
         migrator.print_status()
 
 
+ADVISORY_HISTORY_NOTICE = (
+    "advisory-history is being redesigned; a fixed implementation is planned "
+    "for Q4 2026. See https://github.com/kospex/kospex/issues/282"
+)
+
+
 @cli.command("advisory-history")
 @click.option("-ecosystem", type=click.STRING, help="E.g. npm, pypi")
 @click.option("-package", type=click.STRING, help="Name of package")
 def advisory_history(ecosystem, package):
     """
-    Show the advisories for the previous X (default 10) versions of the package
+    (Being redesigned) Advisory history for a package's recent versions.
     """
-    if ecosystem and package:
-        print(f"Fetching advisories for {package} in {ecosystem}...")
-        # Fetch advisories logic here
-        data = kospex.dependencies.deps_dev_package(ecosystem, package)
-        kd = kospex.dependencies
-
-        import pprint
-
-        # pprint.PrettyPrinter(indent=4).pprint(data)
-        for p in data.get("versions"):
-            print(p.get("purl"))
-            parts = kd.extract_purl(p.get("purl"))
-            package_info = kd.deps_dev(
-                parts["ecosystem"], parts["package_name"], parts["package_version"]
-            )
-            pprint.PrettyPrinter(indent=4).pprint(package_info)
-            print("\n")
-            # pprint.PrettyPrinter(indent=4).pprint(kd.extract_purl(p.get("purl")))
-    else:
-        print("Please provide both ecosystem and package names.")
+    # Disabled rather than left running: it crashed on scoped npm and Maven
+    # packages and fetched every version in deps.dev's lexical order. The
+    # options stay so existing invocations reach this notice instead of a
+    # usage error. Redesign: #282.
+    click.echo(ADVISORY_HISTORY_NOTICE, err=True)
+    raise SystemExit(1)
 
 
 @cli.command("system-status")

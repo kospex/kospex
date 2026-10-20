@@ -295,6 +295,16 @@ was relying on the old, wrong success.
 
 ### Changed
 
+- **`kospex advisory-history` is disabled until its redesign**
+  ([#282](https://github.com/kospex/kospex/issues/282)). It now exits 1 with a
+  notice on stderr instead of running. It crashed with `IndexError` on the
+  first scoped npm or Maven version (`@babel/core`,
+  `org.apache.logging.log4j:log4j-core`), fetched every version rather than the
+  "previous 10" its help promised, in deps.dev's alphabetical order rather than
+  release order, and printed each version's raw deps.dev response. Its options
+  are kept, so existing invocations get the notice rather than a usage error.
+  The redesigned command — a window of recent versions ordered by publish date,
+  a table, and `-json` — is planned for Q4 2026.
 - **`kospex sca` output, scope and saving reworked**
   ([#237](https://github.com/kospex/kospex/issues/237)). sca is an analyst's look
   at a dependency file, not a way to record work in progress, so it now behaves
