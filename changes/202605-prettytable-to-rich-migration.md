@@ -2,8 +2,163 @@
 
 ## Status
 
-**Skeleton / planning** — not yet implemented. Inventory complete, design
-work pending.
+**In progress.** Some tables are migrated (see *Update — 2026-10-20*,
+below). The May inventory and suggested order further down are kept for
+history; their line numbers are out of date, and the update's lists replace
+them.
+
+## Update — 2026-10-20
+
+### Why Rich rather than PrettyTable
+
+Both are maintained. Choosing Rich is about having one dependency instead of
+two, not about PrettyTable being abandoned. Rich stays regardless, because
+the progress bars, consoles and most tables already use it. Figures are from
+GitHub and PyPI on 2026-10-20, for the previous 12 months:
+
+| | prettytable | rich |
+|---|---|---|
+| GitHub stars | 1.8k | 57.6k |
+| Commits | 94, 19 of them from bots | 165, none from bots |
+| Who commits | One lead maintainer (41) plus two regular contributors (17, 10) | One person wrote 147 of the 165 (89%) |
+| Pattern | Some every month | Bursts: 81 in January, 44 in April, 2 in June, none since |
+| Last push | 2026-10-06 | 2026-06-23 |
+| Releases | 2 (3.18.0 is the latest, 2026-06-22) | 6 (15.0.0 is the latest, 2026-04-12) |
+| Open issues and PRs | 55 | 385 |
+
+PrettyTable is the steadier project, with more maintainers and a regular
+rhythm, but it's small. Rich is far more widely used, and pip vendors it, so
+it's unlikely to be left unmaintained. Day to day it depends on one person,
+and it has been quiet for four months. For kospex's needs both are mature
+enough that this doesn't change the decision. Worth checking again at each
+release.
+
+### Done since May
+
+- `kospex summary`: `Kospex.summary()` builds a Rich table and keeps
+  PrettyTable's `sortby="last_commit"` by sorting the rows itself
+  (`kospex_core.py:901`).
+- The `kospex sca` package table: `get_cli_pretty_table()` became
+  `get_cli_table()`, which returns a Rich table
+  (`kospex_dependencies.py:298`). `KospexDependencies` no longer imports
+  prettytable.
+- The status legend and status table: `get_status_legend()` and
+  `get_status_table()` (`kospex_utils.py:1362`, `:1377`).
+
+### What's left
+
+Eighteen tables in six modules, all CLI output. kweb doesn't use
+prettytable: its `tech_landscape` calls go to `KospexQuery`, which returns
+data rather than printing a table.
+
+| Command | Where the table is built | Notes |
+|---|---|---|
+| `kospex developers`, `kospex orphans` | `Kospex.active_developers()`, `kospex_core.py:987` | Shared by two commands |
+| `kospex orphans` | `orphan_prettytable()`, `kospex_utils.py:1404` | Used once: inline it. The `-csv` output is unaffected |
+| `kospex key-person` | `key_person_prettytable()`, `kospex_utils.py:1290` | Used once: inline it |
+| `kospex author-tech` | `Kospex.author_tech_pretty_table()`, `kospex_core.py:760` | Rename it when migrating |
+| `kospex list-repos`, `krunner find-repos` | `Kospex.list_repos()`, `kospex_core.py:1059` | `repo_id` column; see *Piped output* |
+| `kospex tech-landscape` | `Kospex.tech_landscape()`, `kospex_core.py:1169` | Uses `from_db_cursor`; see *One helper, or each table inline* |
+| `kospex metadata` | `file_metadata_prettytable()`, `kospex_utils.py:1313` | Used once, by `cli_file_metadata()` (`kospex_core.py:1239`) |
+| `kospex system-status` | `Kospex.get_kospex_table_summary()`, `kospex_core.py:1626` | |
+| `kospex deps`, `krunner find-docker` | `get_dependency_files_table()` `:947`, `get_repo_stats_table()` `:929` | Used by several commands: keep as functions that return a Rich table |
+| `kospex health-check`, `krunner find-docker`, config output | `get_keyvalue_table()`, `kospex_utils.py:1334` | Used by several commands: keep as a function |
+| `kgit status`, `kgit pull`, `kgit bitbucket` | Inline in `kgit.py`, `:169`, `:442`, `:666` | `kgit pull` is new since May |
+| `kgit github` | `KospexGit.get_repos_pretty_table()`, `kospex_git.py:71` | |
+| `krunner secrets-hotspots` | `get_secrets_heatmap_table()`, `krunner_utils.py:203` | |
+
+Clean-up to do while migrating: the commented-out PrettyTable block at
+`kospex_core.py:1200`, and the `get_kospex_config_table()` docstring
+(`:1654`), which still says it returns a PrettyTable.
+
+prettytable is imported in `kgit.py:10`, `kospex_git.py:11`,
+`kospex_core.py:17` (which also imports `from_db_cursor`), `kospex_utils.py:14`
+and `krunner_utils.py:9`. When none of those imports remain, the dependency
+can go.
+
+### Piped output
+
+*Truncation behavior*, below, covers a narrow **terminal**. There is a second
+case: when stdout is a pipe or a file, Rich can't measure a terminal, so it
+assumes **80 columns** and cuts long values with `…`. PrettyTable never
+truncates. Checked with Rich 15.0:
+
+```
+$ python table.py | cat
+┃ repo_id                                ┃ last_commit               ┃ commits ┃
+│ github.com~example-organisation~a-fai… │ 2026-10-20T08:15:42+10:00 │   12345 │
+│ gitlab.com~group~~subgroup~another-lo… │ 2026-09-01T01:02:03+10:00 │       7 │
+```
+
+So after a naive migration, `kospex list-repos | grep acme` or
+`kgit status > repos.txt` would quietly lose the end of long `repo_id`s.
+Nothing would fail; the output would just be wrong. Setting `COLUMNS=200`
+widens it, but nobody will know they need to.
+
+Options:
+
+1. **Don't truncate identifier columns when the output isn't a terminal.** A
+   small helper prints with `Console(width=...)` sized to the table, or sets
+   `overflow="fold"` on identifier columns, whenever `console.is_terminal` is
+   false. This keeps today's guarantee that what you pipe is complete.
+2. **Point scripts at `-json` / `-csv`**, and treat the table as display
+   only. That's the right long-term answer, and it's the direction
+   `sca -json` took. But most of the commands above don't have a
+   machine-readable option yet.
+3. **Accept truncation**, as `orgs` did. Fine for count-heavy summaries; not
+   fine for any table whose first column is a `repo_id`.
+
+Recommendation: option 1 now, through a single helper so the rule lives in
+one place, with option 2 added per command as each one is touched. That
+makes the migration safe without blocking it on `-json` work.
+
+### One helper, or each table inline
+
+*Reference pattern*, below, says to inline any table built in only one
+place, and that still applies. About 20 Rich tables are already written
+inline. Two places do warrant a shared helper:
+
+- **Printing**: the piped-output rule above, so it isn't re-implemented 18
+  times.
+- **`tech-landscape`**: `from_db_cursor` takes its columns from the SQL
+  result, and Rich has no equivalent. A short function that builds a table
+  from `cursor.description` and the rows covers it.
+
+Nothing else needs a framework.
+
+### Tests
+
+No test checks the format of any of these tables. The only table-related
+assertions are on kospex's own column names (`get_table_field_names()` in
+`tests/test_sca_output_and_save.py`), and they are unaffected. That's why
+each table can be migrated without breaking a test, and also why a
+regression would go unnoticed. For each table migrated, add one test that
+runs the command through `CliRunner` with a `repo_id` longer than 80
+characters and asserts the complete id appears in the output. This tests the
+piped-output case directly, because `CliRunner` output is never a terminal.
+
+### Order of work
+
+This replaces *Suggested order*, below.
+
+1. **The printing helper and its test**, migrating nothing. It's the piece
+   every later step relies on.
+2. **Tables whose first column is an identifier**: `list-repos`,
+   `developers` / `orphans`, `kgit status`, `kgit pull`, `kgit github`.
+   These are the ones where piped output matters most.
+3. **Tables built in one place**: `key-person`, `author-tech`, `metadata`,
+   `secrets-hotspots`, `kgit bitbucket`. Inline them and delete the helpers.
+4. **Helpers used by several commands**: `get_repo_stats_table`,
+   `get_dependency_files_table`, `get_keyvalue_table`, migrated as functions
+   that return a Rich table, one PR per helper, covering all its callers.
+5. **`tech-landscape`**, together with the cursor helper, and then
+   `system-status`.
+6. **Drop the dependency**: remove the last imports and the `prettytable`
+   line in `pyproject.toml`. `requirements.txt` follows when it's
+   regenerated at release.
+
+Each step can ship on its own. The checks under *Per-migration guidance* and
+*Testing*, below, still apply to each table.
 
 ## Overview
 
@@ -131,7 +286,10 @@ revisiting:
 
 Tracked here rather than as a separate change.
 
-## Inventory
+## Inventory (May 2026)
+
+**Out of date: see *What's left* in the 2026-10-20 update for the current
+list and line numbers.** Kept as the original record.
 
 All `PrettyTable` sites in `src/`. ✅ = already migrated.
 
@@ -204,7 +362,10 @@ whether to (a) inline at the call site (preferred when single-use, like
 - [ ] Once no source imports remain: drop `prettytable` from
   `pyproject.toml` dependencies.
 
-## Suggested order
+## Suggested order (May 2026)
+
+Replaced by *Order of work* in the 2026-10-20 update, which puts a
+piped-output helper first.
 
 1. Inline-only, single-caller helpers — `key-person`, `orphans` (mirrors
    the `orgs` change exactly). Lowest risk, lets us delete two helpers.
