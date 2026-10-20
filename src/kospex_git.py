@@ -3,6 +3,7 @@
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -314,6 +315,22 @@ class KospexGit:
         return None
 
     @staticmethod
+    def _without_userinfo(url):
+        """Return url with any 'user:password@' removed, for display only.
+
+        _normalise_remote_url() can't be used for this: it returns None for
+        exactly the URLs that fail to parse, which are the ones we report.
+        Nor is urlparse() trusted here: it ends the netloc at an unencoded
+        '/', '?' or '#' in a password, hiding the '@', and raises ValueError
+        on some malformed input. So strip everything after the scheme up to
+        the LAST '@'. An '@' later in the path over-redacts, which is the
+        safe direction for a display string.
+        """
+        # Greedy '.*' so the cut is at the last '@' even when the password
+        # holds an unencoded one; re.S so a newline can't end the match early.
+        return re.sub(r"^([A-Za-z][\w+.-]*://)?.*@", r"\1", url, flags=re.S)
+
+    @staticmethod
     def _normalise_remote_url(url):
         """Return the URL with credentials and port stripped, or None if it is
         not a git remote at all.
@@ -586,7 +603,13 @@ class KospexGit:
             self.repo = parts["repo"]
             self.remote_type = parts["remote_type"]
         else:
-            print("WARNING: Failed specific parsing of remote URL")
+            # stderr, not stdout: this runs inside commands whose stdout is
+            # machine-readable (`kospex sca -json`), and a stray line there
+            # breaks every consumer (#277).
+            shown = self._without_userinfo(remote_url)
+            log.warning("Failed specific parsing of remote URL: %s", shown)
+            print(f"WARNING: Failed specific parsing of remote URL: {shown}",
+                  file=sys.stderr)
             # Assuming it's a HTTP/S remote
             # TODO - better data validation checking
             # TODO - we have the better function above, this code may be redundant
