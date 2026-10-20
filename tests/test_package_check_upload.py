@@ -173,7 +173,9 @@ def test_upload_filename_with_traversal_stays_inside_temp_dir(client, monkeypatc
 
     resp = client.post(
         "/package-check/upload",
-        files={"file": ("../pwned.json", b"{}", "application/json")},
+        # A supported basename, so the upload gets past the filename check
+        # and reaches the write this test is about.
+        files={"file": ("../package.json", b"{}", "application/json")},
     )
 
     assert resp.status_code == 200
@@ -182,7 +184,7 @@ def test_upload_filename_with_traversal_stays_inside_temp_dir(client, monkeypatc
     tempdir = Path(created["dir"]).resolve()
     assert written.is_relative_to(tempdir), (
         f"upload escaped temp dir: {written} is not under {tempdir}")
-    assert written.name == "pwned.json", "the basename must be preserved for parser dispatch"
+    assert written.name == "package.json", "the basename must be preserved for parser dispatch"
 
 
 def test_upload_rejects_dot_dot_filename(client, monkeypatch):
@@ -200,3 +202,53 @@ def test_upload_rejects_dot_dot_filename(client, monkeypatch):
     assert resp.status_code == 400
     # Pin the rejection to the filename sanitiser, not any incidental 400.
     assert resp.json()["detail"] == "Invalid filename"
+
+
+# ---------------------------------------------------------------------------
+# Error responses. assess() returns None for a filename it doesn't support and
+# for a file its parser can't read; the endpoint then iterated over None and
+# returned a 500 ("'NoneType' object is not iterable"). An upload named
+# req.txt or dev-requirements.txt was enough to trigger it.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", ["req.txt", "dev-requirements.txt", "notes.json"])
+def test_upload_unsupported_filename_is_a_400(client, monkeypatch, name):
+    def exploding_assess(self, filename, **kwargs):
+        raise AssertionError("assess must not be reached for an unsupported filename")
+
+    monkeypatch.setattr("kospex_dependencies.KospexDependencies.assess", exploding_assess)
+
+    resp = client.post(
+        "/package-check/upload",
+        files={"file": (name, b"requests==2.0.0\n", "text/plain")},
+    )
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"].startswith(f"Unsupported file: {name}.")
+
+
+def test_upload_unreadable_file_is_a_422(client):
+    # The real assess(): the parser raises on invalid JSON before any
+    # deps.dev lookup, so this needs no network.
+    resp = client.post(
+        "/package-check/upload",
+        files={"file": ("package.json", b'{"name": broken', "application/json")},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"].startswith("Could not read package.json.")
+
+
+def test_upload_unexpected_error_does_not_leak_exception_text(client, monkeypatch):
+    def failing_assess(self, filename, **kwargs):
+        raise RuntimeError(f"boom at {filename}")
+
+    monkeypatch.setattr("kospex_dependencies.KospexDependencies.assess", failing_assess)
+
+    resp = client.post(
+        "/package-check/upload",
+        files={"file": ("requirements.txt", b"requests==2.0.0\n", "text/plain")},
+    )
+
+    assert resp.status_code == 500
+    assert resp.json()["detail"] == "Error analyzing file"

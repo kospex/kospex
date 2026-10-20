@@ -329,11 +329,14 @@
                 })
                     .then((response) => {
                         if (!response.ok) {
-                            return response.json().then(errorData => {
-                                throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
-                            }).catch(() => {
-                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                            });
+                            // The fallback is the rejection handler of then(), not a
+                            // .catch() after it: a .catch() would also catch the throw
+                            // below and replace the server's detail with the status.
+                            const fallback = `HTTP ${response.status}: ${response.statusText}`;
+                            return response.json().then(
+                                (errorData) => { throw new Error(errorData.detail || fallback); },
+                                () => { throw new Error(fallback); },
+                            );
                         }
                         return response.json();
                     })

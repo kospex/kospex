@@ -410,6 +410,16 @@ was relying on the old, wrong success.
 
 ### Fixed
 
+- **The package check page returned a 500 for a file it can't read.**
+  Uploading a file whose name kospex doesn't recognise (`req.txt`,
+  `dev-requirements.txt`, `Pipfile`), or one its parser can't read (invalid
+  JSON), failed with `'NoneType' object is not iterable`. An unrecognised name
+  is now a 400 and an unreadable file a 422, each with a message saying which.
+  The page also showed every failure as `HTTP 500: Internal Server Error`
+  because its error handler discarded the server's message; it now shows it.
+  An unexpected error no longer sends its exception text to the browser
+  (CWE-209).
+
 - **`kospex sca -json` printed invalid JSON for a repo with an unparseable
   remote** ([#277](https://github.com/kospex/kospex/issues/277)). When
   `origin` was something the remote-URL parser can't read, such as a clone of a

@@ -1624,8 +1624,9 @@ async def package_check_upload(file: UploadFile = File(...)):
     """Handle file upload and analyze dependencies"""
     try:
         import os
-        import pprint
         import tempfile
+
+        from kospex.extractors.registry import classify
 
         logger.info(f"Package upload requested for file: {file.filename}")
 
@@ -1640,6 +1641,17 @@ async def package_check_upload(file: UploadFile = File(...)):
         safe_name = os.path.basename(file.filename)
         if not safe_name or safe_name in (".", ".."):
             raise HTTPException(status_code=400, detail="Invalid filename")
+
+        # assess() picks the parser from the filename and returns None for one
+        # it doesn't support, which used to surface as a 500 ("'NoneType'
+        # object is not iterable"). Check up front, the same way assess() does.
+        classification = classify(safe_name)
+        if classification.extractor is None or not classification.supported:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file: {safe_name}. Upload a dependency file "
+                       "kospex can read, such as requirements.txt or package.json.",
+            )
 
         # Save the uploaded file temporarily
         temp_dir = tempfile.mkdtemp()
@@ -1658,15 +1670,20 @@ async def package_check_upload(file: UploadFile = File(...)):
         try:
             # Analyze the file using KospexDependencies
             kospex = Kospex()
-            results = kospex.dependencies.assess(temp_path)
-            print(results)
-
-            # Sort results by status
-            pprint.PrettyPrinter(indent=4).pprint(results)
+            results = kospex.dependencies.assess(temp_path, quiet=True)
 
             # Clean up the temporary file
             os.remove(temp_path)
             os.rmdir(temp_dir)
+
+            # The name is supported, so None means the parser couldn't read
+            # the file. assess() has already logged why.
+            if results is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Could not read {safe_name}. Check the file is "
+                           "complete and in the expected format.",
+                )
 
             # Add status based on advisories, resolution and versions behind
             for item in results:
@@ -1685,8 +1702,10 @@ async def package_check_upload(file: UploadFile = File(...)):
                 os.remove(temp_path)
             if os.path.exists(temp_dir):
                 os.rmdir(temp_dir)
+            # Log the exception, but don't send its text to the client: it can
+            # carry internal paths and implementation detail (CWE-209).
             logger.error(f"Error processing file: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail="Error analyzing file")
 
     except HTTPException:
         raise
