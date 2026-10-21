@@ -1205,6 +1205,7 @@ async def tenure(request: Request, id: Optional[str] = None):
                 "developers": developers,
                 "active_distribution": active_d,
                 "leavers": leavers,
+                **KospexWeb.scope_context(params, "Tenure"),
             },
         )
     except HTTPException:
@@ -1526,7 +1527,10 @@ async def dependencies(request: Request, id: Optional[str] = None):
             # Refusing beats widening to every row. (#158)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        return templates.TemplateResponse(request, "dependencies.html", {"data": data})
+        return templates.TemplateResponse(
+            request, "dependencies.html",
+            {"data": data, **KospexWeb.scope_context(params, "Dependencies")},
+        )
     except HTTPException:
         # A deliberate 4xx must not be swallowed by the handler below and
         # re-raised as a 500 -- the request was bad, not the server.

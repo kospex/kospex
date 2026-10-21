@@ -57,6 +57,28 @@ def get_id_params(request_id,request_params=None):
 
     return params
 
+def scope_context(params, page):
+    """
+    Build the _breadcrumb.html + _scope_label.html context for a sub-page
+    (e.g. "Tenure") from get_id_params output. Always sets scope_type and
+    scope_name; git_server (which turns the breadcrumb on) is only set for
+    server, org and repo scopes.
+    """
+    if repo_id := params.get("repo_id"):
+        if parsed := KospexUtils.parse_repo_id(repo_id):
+            return {**parsed, "page": page, "scope_type": "Repository",
+                    "scope_name": f"{parsed['org']}/{parsed['repo']}"}
+    elif org_key := params.get("org_key"):
+        if parsed := KospexUtils.parse_org_key(org_key):
+            return {**parsed, "page": page, "scope_type": "Organisation",
+                    "scope_name": parsed["org"]}
+    elif server := params.get("server"):
+        return {"git_server": server, "page": page, "scope_type": "Server",
+                "scope_name": server}
+    elif author_email := params.get("author_email"):
+        return {"scope_type": "Developer", "scope_name": author_email}
+    return {"scope_type": "All repositories", "scope_name": ""}
+
 
 def osi_extraction_view(files, extracted_keys):
     """Annotate /osi/ dependency files with realized extraction status and build

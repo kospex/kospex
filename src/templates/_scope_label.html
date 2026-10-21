@@ -1,0 +1,5 @@
+{# Scope cue under a sub-page heading. Context: scope_type, scope_name. #}
+<div class="mt-1 mb-4 text-xs">
+    <span class="font-semibold uppercase tracking-wider text-gray-500">{{ scope_type }}</span>
+    {% if scope_name %}<span class="ml-1 font-mono text-gray-700">{{ scope_name }}</span>{% endif %}
+</div>
