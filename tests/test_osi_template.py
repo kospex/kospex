@@ -57,3 +57,14 @@ def test_coverage_lives_in_dependency_files_card_behind_toggle():
     assert ">show details<" in html
     # Count line comes before the collapsed details
     assert html.index("3 dependency files found") < html.index('id="coverage_details"')
+
+
+def test_coverage_toggle_is_wired_before_the_file_table():
+    # On the all-repos page the Individual Files table is ~33 MB, and jQuery
+    # loads after it, so a handler bound in $(document).ready left the link
+    # dead for seconds after it was on screen. The binding must sit right
+    # after the toggle, in plain JS, ahead of the table.
+    html = _render({"file_number": 3})
+    bind = html.index('getElementById("coverage_toggle")')
+    assert html.index('id="coverage_toggle"') < bind < html.index('id="myTable"')
+    assert '$("#coverage_toggle")' not in html
