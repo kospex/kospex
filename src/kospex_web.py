@@ -58,13 +58,26 @@ def get_id_params(request_id,request_params=None):
 
     return params
 
-def dependency_freshness(rows, max_age_days=2, now=None):
+def _humanise_seconds(seconds):
+    """A whole-unit duration for display: "1 day", "90 minutes", "45 seconds"."""
+    for unit, size in (("day", 86400), ("hour", 3600), ("minute", 60)):
+        if seconds % size == 0:
+            n = seconds // size
+            return f"{n} {unit}{'s' if n != 1 else ''}"
+    return f"{seconds} second{'s' if seconds != 1 else ''}"
+
+def dependency_freshness(rows, max_age_days=2, now=None, cache_seconds=None):
     """
     Summarise dependency_data.last_checked over the rows a page shows.
     Reports the OLDEST check, so one stale file can't hide behind fresh ones.
     A NULL last_checked means "never checked" (pre-0006 rows awaiting a
     re-sync), not "checked long ago" - it is counted separately and also
     marks the page stale. Returns None when there are no rows.
+
+    cache_seconds is the deps.dev response cache TTL (url_cache_seconds()).
+    A cache hit does not contact deps.dev, so the data can be up to that much
+    older than last_checked; cache_window is that span for display, or None
+    when nothing is cached.
     """
     if not rows:
         return None
@@ -83,6 +96,7 @@ def dependency_freshness(rows, max_age_days=2, now=None):
         "never_checked": never_checked,
         "stale": stale,
         "max_age_days": max_age_days,
+        "cache_window": _humanise_seconds(cache_seconds) if cache_seconds else None,
     }
 
 # Why a file's rows were never checked, keyed by its outcome in the latest

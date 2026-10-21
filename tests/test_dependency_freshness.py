@@ -44,6 +44,19 @@ def test_null_means_never_checked_and_is_stale():
     assert f["oldest"] is None and f["stale"] is True
 
 
+def test_cache_window_reads_naturally():
+    window = lambda s: KospexWeb.dependency_freshness(  # noqa: E731
+        _rows("2026-10-20 09:00:00"), now=NOW, cache_seconds=s)["cache_window"]
+    assert window(86400) == "1 day"
+    assert window(7 * 86400) == "7 days"
+    assert window(3600) == "1 hour"
+    assert window(5400) == "90 minutes"
+    assert window(45) == "45 seconds"
+    # No caching means the date is when deps.dev answered: no caveat to show
+    assert window(0) is None
+    assert window(None) is None
+
+
 def _dep(file_path, last_checked=None, created_at="2026-07-15 23:59:08", repo_id="s~o~r"):
     return {"_repo_id": repo_id, "file_path": file_path,
             "last_checked": last_checked, "created_at": created_at}

@@ -32,7 +32,7 @@ from kospex.db.migrator import warn_if_behind
 from kospex.osi_queue import get_outcome as get_osi_outcome
 from kospex_core import Kospex
 from kospex_git import KospexGit
-from kospex_query import KospexQuery
+from kospex_query import KospexQuery, url_cache_seconds
 from kospex_request_cache import RequestCache
 from kospex_utils import KospexTimer
 from kweb_graph_service import GraphService
@@ -1531,7 +1531,7 @@ async def dependencies(
             # Refusing beats widening to every row. (#158)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        freshness = KospexWeb.dependency_freshness(data)
+        freshness = KospexWeb.dependency_freshness(data, cache_seconds=url_cache_seconds())
         never_checked = []
         if freshness and freshness["never_checked"]:
             # Only repos with never-checked rows need their extraction outcome

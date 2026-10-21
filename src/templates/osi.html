@@ -133,6 +133,23 @@
                             >show details</a
                         >
                     </p>
+                    <script>
+                        // Bound here, not in $(document).ready: on the
+                        // all-repos page the file table below is tens of MB
+                        // and jQuery loads after it, so a ready handler left
+                        // this link dead for seconds after it was shown.
+                        (function () {
+                            const toggle = document.getElementById("coverage_toggle");
+                            toggle.addEventListener("click", function (e) {
+                                e.preventDefault();
+                                const details = document.getElementById("coverage_details");
+                                const expanded = toggle.getAttribute("aria-expanded") === "true";
+                                details.classList.toggle("hidden", expanded);
+                                toggle.setAttribute("aria-expanded", String(!expanded));
+                                toggle.textContent = expanded ? "show details" : "hide details";
+                            });
+                        })();
+                    </script>
                     <div id="coverage_details" class="mt-4 hidden">
                     {% if commentary and (commentary['no_parser'] or commentary['not_a_source'] or commentary['not_scanned']) %}
                         {% if commentary['no_parser'] %}
@@ -340,14 +357,6 @@
 
         <script>
             $(document).ready(function () {
-                $("#coverage_toggle").on("click", function (e) {
-                    e.preventDefault();
-                    const expanded = $(this).attr("aria-expanded") === "true";
-                    $("#coverage_details").toggleClass("hidden", expanded);
-                    $(this)
-                        .attr("aria-expanded", String(!expanded))
-                        .text(expanded ? "show details" : "hide details");
-                });
                 $("#myTable").DataTable({
                     order: [[4, "asc"]],
                     responsive: true,

@@ -52,6 +52,11 @@
                             {% if freshness.oldest and freshness.never_checked %}<span class="ml-1 text-orange-700">({{ freshness.never_checked }} with no check date)</span>{% endif %}
                         </span>
                     </p>
+                    {% if freshness.cache_window %}
+                    <p id="cache_note" class="mt-1 text-xs text-gray-500">
+                        Version and advisory data from deps.dev is cached, so it may be up to {{ freshness.cache_window }} older than this date.
+                    </p>
+                    {% endif %}
                     {% endif %}
                     {% if never_checked %}
                     <div id="never_checked" class="mt-2 p-3 bg-orange-50 border border-orange-200 rounded text-sm text-gray-700">

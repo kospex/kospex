@@ -72,6 +72,18 @@ def test_advisories_column_null_is_unknown_zero_is_zero():
     assert "bg-red-100 text-red-800\">7</span>" in html
 
 
+def test_cache_note_shown_only_when_responses_are_cached():
+    tmpl = kweb2.templates.get_template("dependencies.html")
+    base = {"oldest": "2026-10-20 09:00:00", "newest": "2026-10-20 09:00:00",
+            "never_checked": 0, "stale": False, "max_age_days": 2}
+    cached = tmpl.render({"data": [_FILE_ROW], "request": None,
+                          "freshness": dict(base, cache_window="1 day")})
+    assert 'id="cache_note"' in cached and "up to 1 day older than this date" in cached
+    uncached = tmpl.render({"data": [_FILE_ROW], "request": None,
+                            "freshness": dict(base, cache_window=None)})
+    assert 'id="cache_note"' not in uncached
+
+
 def test_no_self_link_when_already_narrowed_to_a_file():
     tmpl = kweb2.templates.get_template("dependencies.html")
     html = tmpl.render({"data": [_FILE_ROW], "request": None, "file_path": "docs/requirements.txt"})
