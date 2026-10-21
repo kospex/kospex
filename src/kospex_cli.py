@@ -1500,43 +1500,46 @@ def commit_stats(commits, request_id, dev):
     console.print()
 
 
-@cli.command("init-duckdb")
-@click.option("-verbose", is_flag=True, default=False, help="Show detailed output")
-@click.option("-force", is_flag=True, default=False, help="Force recreate if database exists")
-def init_duckdb(verbose, force):
-    """
-    Initialize the DuckDB database for git sync operations.
-
-    This creates the DuckDB database file at ~/kospex/kospex-git.duckdb
-    with the required schema for storing git commit and file data.
-
-    Example:
-        kospex init-duckdb
-        kospex init-duckdb -verbose
-        kospex init-duckdb -force  (recreate existing database)
-    """
-    from kospex import GitDuckDB
-
-    log.info("Initializing DuckDB database")
-
-    db = GitDuckDB()
-
-    # Check if database already exists
-    if os.path.exists(db.db_path) and not force:
-        console.print(f"[bold yellow]DuckDB database already exists![/bold yellow]")
-        console.print(f"  Location: {db.db_path}")
-        console.print("\nUse [cyan]-force[/cyan] to recreate the database (will drop existing tables).")
-        return
-
-    db.connect(create_new=True, force=force, verbose=verbose)
-    db.create_schema(verbose=verbose)
-    db.create_indexes(verbose=verbose)
-
-    console.print(f"[bold green]DuckDB database initialized![/bold green]")
-    console.print(f"  Location: {db.db_path}")
-
-    db.close()
-    log.info("DuckDB database initialization complete")
+# Parked: DuckDB proof of concept, being researched further for feasibility and
+# usefulness. Commented out rather than deleted so it can be reviewed and restored.
+# The duckdb dependency is commented out in pyproject.toml alongside it.
+# @cli.command("init-duckdb")
+# @click.option("-verbose", is_flag=True, default=False, help="Show detailed output")
+# @click.option("-force", is_flag=True, default=False, help="Force recreate if database exists")
+# def init_duckdb(verbose, force):
+#     """
+#     Initialize the DuckDB database for git sync operations.
+#
+#     This creates the DuckDB database file at ~/kospex/kospex-git.duckdb
+#     with the required schema for storing git commit and file data.
+#
+#     Example:
+#         kospex init-duckdb
+#         kospex init-duckdb -verbose
+#         kospex init-duckdb -force  (recreate existing database)
+#     """
+#     from kospex import GitDuckDB
+#
+#     log.info("Initializing DuckDB database")
+#
+#     db = GitDuckDB()
+#
+#     # Check if database already exists
+#     if os.path.exists(db.db_path) and not force:
+#         console.print(f"[bold yellow]DuckDB database already exists![/bold yellow]")
+#         console.print(f"  Location: {db.db_path}")
+#         console.print("\nUse [cyan]-force[/cyan] to recreate the database (will drop existing tables).")
+#         return
+#
+#     db.connect(create_new=True, force=force, verbose=verbose)
+#     db.create_schema(verbose=verbose)
+#     db.create_indexes(verbose=verbose)
+#
+#     console.print(f"[bold green]DuckDB database initialized![/bold green]")
+#     console.print(f"  Location: {db.db_path}")
+#
+#     db.close()
+#     log.info("DuckDB database initialization complete")
 
 
 @cli.command("connectivity")

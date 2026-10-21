@@ -12,7 +12,8 @@ license-files = ["LICENSE"]
 
 dependencies = [
     "click>=8.4.1,<9",
-    "duckdb>=1.5.6,<2",
+    # This was for a PoC, being further researched for feasibility and usefulness.
+    # "duckdb>=1.5.6,<2",
     "prettytable>=3.17.0,<4",
     "python-dateutil>=2.9",
     # Uncapped: nearly every environment shares packaging, so a cap causes
