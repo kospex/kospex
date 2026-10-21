@@ -74,7 +74,8 @@ Resolve the in-scope repos from the DB (reuse the existing
 
 From the DB only, no network, no auth prompts. For each in-scope repo, show:
 `last_fetch`, `last_sync`, last commit date (the repos `last_seen`, = newest
-`committer_when`), and an age (e.g. "63d"). Sorted stalest-first so overdue
+`committer_when`), and `fetch_age`, the days since `last_fetch` (e.g. "63d";
+"never" when kgit has never cloned or pulled the repo). Sorted stalest-first so overdue
 refreshes are obvious. This is the cheap "what needs pulling" view.
 
 ## Authentication handling
