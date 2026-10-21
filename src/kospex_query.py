@@ -2482,12 +2482,18 @@ class KospexData:
         """
         Add a where clause to the query for tag, also called tech type
         """
-        # We have to check this is a strict format of only allowing
-        # letters and a dash, otherwise raise a ValueError
-        if not re.match(r"^[a-zA-Z-]+$", tag):
-            raise ValueError(f"Tag '{tag}' is not a valid format")
-
-        self.where_clause.append(f"tech_type LIKE '%|{tag}|%'")
+        # Tags come from file_metadata.tech_type, and real-world tags contain
+        # ".", "#", "+" and spaces ("C#", "ASP.NET", "Claude Code", "llms.txt"),
+        # so a fixed character whitelist can only reject tags that are actually
+        # in the data. Instead, require a non-empty string and pass the value as
+        # a bind parameter, escaping the LIKE wildcards (%, _) and the escape
+        # character so a tag matches itself and nothing else. The |tag|
+        # delimiters keep the match exact rather than a substring.
+        if not tag or not str(tag).strip():
+            raise ValueError("Tag must be a non-empty string")
+        pattern = str(tag).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        self.where_clause.append("tech_type LIKE ? ESCAPE '\\'")
+        self.params.append(f"%|{pattern}|%")
 
     def where_org_key(self, org_key):
         """Use parse the org_key and set the required where fields
