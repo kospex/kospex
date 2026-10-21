@@ -31,46 +31,6 @@
 
         <!-- Main content area -->
         <div class="container mx-auto px-4 mt-12">
-            <!-- Dependency Extraction Coverage -->
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
-                <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">
-                        Dependency extraction coverage
-                    </h2>
-                    {% if commentary and (commentary['no_parser'] or commentary['not_a_source'] or commentary['not_scanned']) %}
-                        {% if commentary['no_parser'] %}
-                        <p class="text-gray-700 mb-2">Not extracted — no parser yet:</p>
-                        <ul class="list-disc list-inside text-gray-700 mb-3">
-                            {% for label, types in commentary['no_parser'].items() %}
-                            <li>
-                                <span class="font-semibold">{{ label }}</span>:
-                                {% for name, count in types.items() %}{{ name }} ({{ count }}){% if not loop.last %}, {% endif %}{% endfor %}
-                            </li>
-                            {% endfor %}
-                        </ul>
-                        {% endif %}
-                        {% if commentary['not_a_source'] %}
-                        <p class="text-gray-700 mb-2">Recognised, but not scanned for packages:</p>
-                        <ul class="list-disc list-inside text-gray-700 mb-3">
-                            {% for label, types in commentary['not_a_source'].items() %}
-                            <li>
-                                <span class="font-semibold">{{ label }}</span>:
-                                {% for name, count in types.items() %}{{ name }} ({{ count }}){% if not loop.last %}, {% endif %}{% endfor %}
-                            </li>
-                            {% endfor %}
-                        </ul>
-                        {% endif %}
-                        {% if commentary['not_scanned'] %}
-                        <p class="text-gray-700">
-                            {{ commentary['not_scanned'] }} supported file{{ 's' if commentary['not_scanned'] != 1 else '' }} not yet scanned — run <code>kospex sca</code> / <code>krunner osi</code> to extract them.
-                        </p>
-                        {% endif %}
-                    {% else %}
-                        <p class="text-gray-700">All discovered dependency files have extracted details.</p>
-                    {% endif %}
-                </div>
-            </div>
-
             <!-- Page Header -->
             <div
                 class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
@@ -153,17 +113,59 @@
                 </div>
             </div>
 
-            <!-- Dependency Files Overview -->
+            <!-- Dependency Files Overview + extraction coverage -->
             <div
                 class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
             >
                 <div class="p-6">
                     <h2 class="text-2xl font-bold text-gray-900 mb-4">
-                        Dependency Files
+                        Dependency Files and Coverage
                     </h2>
                     <p class="text-gray-700 text-lg">
                         {{ file_number }} dependency files found.
+                        <a
+                            href="#coverage_details"
+                            id="coverage_toggle"
+                            role="button"
+                            aria-expanded="false"
+                            aria-controls="coverage_details"
+                            class="ml-2 text-sm text-blue-600 hover:text-blue-800 underline"
+                            >show details</a
+                        >
                     </p>
+                    <div id="coverage_details" class="mt-4 hidden">
+                    {% if commentary and (commentary['no_parser'] or commentary['not_a_source'] or commentary['not_scanned']) %}
+                        {% if commentary['no_parser'] %}
+                        <p class="text-gray-700 mb-2">Not extracted — no parser yet:</p>
+                        <ul class="list-disc list-inside text-gray-700 mb-3">
+                            {% for label, types in commentary['no_parser'].items() %}
+                            <li>
+                                <span class="font-semibold">{{ label }}</span>:
+                                {% for name, count in types.items() %}{{ name }} ({{ count }}){% if not loop.last %}, {% endif %}{% endfor %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% if commentary['not_a_source'] %}
+                        <p class="text-gray-700 mb-2">Recognised, but not scanned for packages:</p>
+                        <ul class="list-disc list-inside text-gray-700 mb-3">
+                            {% for label, types in commentary['not_a_source'].items() %}
+                            <li>
+                                <span class="font-semibold">{{ label }}</span>:
+                                {% for name, count in types.items() %}{{ name }} ({{ count }}){% if not loop.last %}, {% endif %}{% endfor %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                        {% if commentary['not_scanned'] %}
+                        <p class="text-gray-700">
+                            {{ commentary['not_scanned'] }} supported file{{ 's' if commentary['not_scanned'] != 1 else '' }} not yet scanned — run <code>kospex sca</code> / <code>krunner osi</code> to extract them.
+                        </p>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-gray-700">All discovered dependency files have extracted details.</p>
+                    {% endif %}
+                    </div>
                 </div>
             </div>
 
@@ -287,7 +289,15 @@
                                     <td
                                         class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
                                     >
+                                        {% if row.get('extracted') %}
+                                        <a
+                                            href="/dependencies/{{ row['_repo_id'] }}?file_path={{ row['Provider'] | urlencode }}"
+                                            class="text-blue-600 hover:text-blue-800 underline"
+                                            >{{ row['Provider'] }}</a
+                                        >
+                                        {% else %}
                                         {{ row['Provider'] }}
+                                        {% endif %}
                                     </td>
                                     <td
                                         class="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
@@ -330,6 +340,14 @@
 
         <script>
             $(document).ready(function () {
+                $("#coverage_toggle").on("click", function (e) {
+                    e.preventDefault();
+                    const expanded = $(this).attr("aria-expanded") === "true";
+                    $("#coverage_details").toggleClass("hidden", expanded);
+                    $(this)
+                        .attr("aria-expanded", String(!expanded))
+                        .text(expanded ? "show details" : "hide details");
+                });
                 $("#myTable").DataTable({
                     order: [[4, "asc"]],
                     responsive: true,

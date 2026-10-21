@@ -29,6 +29,31 @@ def test_extracted_badges_and_commentary():
     assert "not yet scanned" in html.lower()
 
 
+def test_extracted_file_links_to_its_dependencies():
+    rows = [
+        {"_repo_id": "s~o~r", "_git_repo": "r", "Provider": "docs/requirements.txt",
+         "committer_when": "2025-01-01", "extracted": True},
+        {"_repo_id": "s~o~r", "_git_repo": "r", "Provider": "yarn.lock",
+         "committer_when": "2025-01-01", "extracted": False},
+    ]
+    html = _render({"data": rows, "file_number": 2})
+    assert 'href="/dependencies/s~o~r?file_path=docs/requirements.txt"' in html
+    # Nothing extracted => no dependencies to show, so no link
+    assert "file_path=yarn.lock" not in html
+
+
 def test_all_extracted_message():
     html = _render({"commentary": {"no_parser": {}, "not_a_source": {}, "not_scanned": 0}})
     assert "all discovered dependency files have extracted details" in html.lower()
+
+
+def test_coverage_lives_in_dependency_files_card_behind_toggle():
+    html = _render({"file_number": 3})
+    assert "Dependency Files and Coverage" in html
+    assert "Dependency extraction coverage" not in html
+    # Coverage detail is collapsed by default, revealed by the show/hide link
+    assert 'id="coverage_details" class="mt-4 hidden"' in html
+    assert 'id="coverage_toggle"' in html and 'aria-expanded="false"' in html
+    assert ">show details<" in html
+    # Count line comes before the collapsed details
+    assert html.index("3 dependency files found") < html.index('id="coverage_details"')
