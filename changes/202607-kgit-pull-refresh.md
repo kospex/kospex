@@ -78,6 +78,12 @@ From the DB only, no network, no auth prompts. For each in-scope repo, show:
 "never" when kgit has never cloned or pulled the repo). Sorted stalest-first so overdue
 refreshes are obvious. This is the cheap "what needs pulling" view.
 
+`never` is shown as is: there is deliberately no fallback to the `last_sync` age
+(decided 2026-10-22). `last_fetch` is only stamped by `kgit clone` / `kgit pull`,
+so repos synced before migration `0004`, or updated outside kgit, show `never`.
+kospex has few users, and their data gets cleaner as they clone and pull, so it
+isn't worth the extra logic.
+
 ## Authentication handling
 
 git shells out and uses the configured credential helper. When credentials are
