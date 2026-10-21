@@ -59,3 +59,21 @@ def test_get_dependencies_returns_only_latest_rows():
 
     versions = sorted(d["package_version"] for d in deps)
     assert versions == ["2.31.0"]   # superseded 2.30.0 (latest=0) excluded
+
+
+def test_get_dependencies_file_path_narrows_to_one_file():
+    db = _seed_db()
+    db[KospexSchema.TBL_DEPENDENCY_DATA].insert(
+        {"_repo_id": "github.com~kospex~kospex", "hash": "doc",
+         "file_path": "docs/requirements.txt", "package_type": "pypi",
+         "package_name": "mkdocs", "package_version": "1.6.0", "latest": 1},
+        pk=_PK,
+    )
+    kq = KospexQuery(kospex_db=db)
+    scope = {"repo_id": "github.com~kospex~kospex"}
+
+    # Unfiltered sees both files, so the filter below is actually doing work
+    assert {d["file_path"] for d in kq.get_dependencies(request_id=scope)} == {
+        "requirements.txt", "docs/requirements.txt"}
+    deps = kq.get_dependencies(request_id=scope, file_path="docs/requirements.txt")
+    assert [d["package_name"] for d in deps] == ["mkdocs"]

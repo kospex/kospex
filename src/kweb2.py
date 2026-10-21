@@ -29,6 +29,7 @@ import kospex_utils as KospexUtils
 import kospex_web as KospexWeb
 from api_routes import router as api_router
 from kospex.db.migrator import warn_if_behind
+from kospex.osi_queue import get_outcome as get_osi_outcome
 from kospex_core import Kospex
 from kospex_git import KospexGit
 from kospex_query import KospexQuery
@@ -1205,6 +1206,7 @@ async def tenure(request: Request, id: Optional[str] = None):
                 "developers": developers,
                 "active_distribution": active_d,
                 "leavers": leavers,
+                **KospexWeb.scope_context(params, "Tenure"),
             },
         )
     except HTTPException:
@@ -1513,20 +1515,44 @@ async def commit_history(request: Request, repo_id: str):
 
 @app.get("/dependencies/", response_class=HTMLResponse)
 @app.get("/dependencies/{id}", response_class=HTMLResponse)
-async def dependencies(request: Request, id: Optional[str] = None):
-    """Display SCA (Software Composition Analysis) information"""
+async def dependencies(
+    request: Request, id: Optional[str] = None, file_path: Optional[str] = None
+):
+    """Display SCA (Software Composition Analysis) information.
+    file_path (query param) narrows to one dependency file, as linked from /osi/."""
     try:
         logger.info(f"Dependencies page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
         try:
-            data = KospexQuery().get_dependencies(request_id=params)
+            data = KospexQuery().get_dependencies(request_id=params, file_path=file_path)
         except ValueError as exc:
             # A scope this query cannot honour -- e.g. an author email.
             # Refusing beats widening to every row. (#158)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        return templates.TemplateResponse(request, "dependencies.html", {"data": data})
+        freshness = KospexWeb.dependency_freshness(data)
+        never_checked = []
+        if freshness and freshness["never_checked"]:
+            # Only repos with never-checked rows need their extraction outcome
+            db = KospexQuery().kospex_db
+            repo_ids = {r["_repo_id"] for r in data if not r.get("last_checked")}
+            outcomes = {repo_id: get_osi_outcome(db, repo_id) for repo_id in repo_ids}
+            never_checked = KospexWeb.never_checked_files(data, outcomes)
+
+        context = {
+            "data": data,
+            "freshness": freshness,
+            "never_checked": never_checked,
+            **KospexWeb.scope_context(params, "Dependencies"),
+        }
+        if file_path:
+            # Breadcrumb: ... / Dependencies (link to the unfiltered view) / file
+            context["file_path"] = file_path
+            context["page_url"] = f"/dependencies/{id}" if id else "/dependencies/"
+            context["sub_page"] = file_path
+
+        return templates.TemplateResponse(request, "dependencies.html", context)
     except HTTPException:
         # A deliberate 4xx must not be swallowed by the handler below and
         # re-raised as a 500 -- the request was bad, not the server.

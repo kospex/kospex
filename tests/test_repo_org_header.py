@@ -48,6 +48,62 @@ def test_entity_header_org_mode_org_is_current_segment():
     assert 'href="/org/github.com~apache"' not in html
 
 
+def render_breadcrumb(**ctx):
+    env = Environment(
+        loader=FileSystemLoader(str(TEMPLATES_DIR)),
+        autoescape=select_autoescape(["html"]),
+    )
+    return env.get_template("_breadcrumb.html").render(**ctx)
+
+
+def test_scope_context_repo_sub_page_links_back_to_repo():
+    import kospex_web as KospexWeb
+
+    ctx = KospexWeb.scope_context({"repo_id": "github.com~apache~kafka"}, "Tenure")
+    assert (ctx["scope_type"], ctx["scope_name"]) == ("Repository", "apache/kafka")
+    html = render_breadcrumb(**ctx)
+    assert 'href="/orgs/github.com"' in html
+    assert 'href="/org/github.com~apache"' in html
+    # On a sub-page the repo is a link back to its own view, not the current segment
+    assert 'href="/repo/github.com~apache~kafka"' in html
+    assert 'aria-current="page">Tenure<' in html
+
+
+def test_scope_context_org_sub_page_links_back_to_org():
+    import kospex_web as KospexWeb
+
+    ctx = KospexWeb.scope_context({"org_key": "github.com~apache"}, "Dependencies")
+    assert (ctx["scope_type"], ctx["scope_name"]) == ("Organisation", "apache")
+    html = render_breadcrumb(**ctx)
+    assert 'href="/org/github.com~apache"' in html
+    assert 'href="/repo/' not in html
+    assert 'aria-current="page">Dependencies<' in html
+
+
+def test_scope_context_server_sub_page_links_back_to_server():
+    import kospex_web as KospexWeb
+
+    ctx = KospexWeb.scope_context({"server": "github.com"}, "Tenure")
+    assert (ctx["scope_type"], ctx["scope_name"]) == ("Server", "github.com")
+    html = render_breadcrumb(**ctx)
+    assert 'href="/orgs/github.com"' in html
+    assert 'href="/org/' not in html
+    assert 'aria-current="page">Tenure<' in html
+
+
+@pytest.mark.parametrize("params, scope_type", [
+    ({}, "All repositories"),
+    ({"author_email": "a@example.com"}, "Developer"),
+])
+def test_scope_context_no_breadcrumb_without_server(params, scope_type):
+    import kospex_web as KospexWeb
+
+    ctx = KospexWeb.scope_context(params, "Tenure")
+    # No git_server => the templates skip the breadcrumb, but still label the scope
+    assert "git_server" not in ctx
+    assert ctx["scope_type"] == scope_type
+
+
 @pytest.fixture(scope="module")
 def client():
     pytest.importorskip("httpx", reason="httpx required for FastAPI TestClient")

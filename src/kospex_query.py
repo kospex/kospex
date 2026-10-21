@@ -359,9 +359,10 @@ class KospexQuery:
 
         return results
 
-    def get_dependencies(self, request_id=None):
+    def get_dependencies(self, request_id=None, file_path=None):
         """
-        Get the individual dependencies for the given scope.
+        Get the individual dependencies for the given scope,
+        optionally narrowed to a single dependency file.
         """
 
         kd = KospexData(self.kospex_db)
@@ -371,6 +372,9 @@ class KospexQuery:
         kd.where("latest", "=", 1)
 
         self._apply_request_scope(kd, request_id)
+
+        if file_path:
+            kd.where("file_path", "=", file_path)
 
         results = kd.execute()
 
