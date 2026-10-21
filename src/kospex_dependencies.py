@@ -1231,17 +1231,67 @@ class KospexDependencies:
 
         return dependencies
 
+    @staticmethod
+    def _join_requirement_continuations(lines):
+        """Join physical lines ending in a backslash, as pip does (#247).
+
+        pip-compile --generate-hashes pins one entry per logical line: the
+        requirement, then one ``--hash=`` row per hash, each continued with a
+        trailing backslash. Reading the file line by line dropped every such
+        entry: the backslash alone makes the first line invalid PEP 508 and
+        the continuation rows are options, never requirements.
+        """
+        logical_lines = []
+        pending = ""
+        for raw in lines:
+            line = pending + raw.rstrip("\r\n")
+            pending = ""
+            if line.endswith("\\"):
+                pending = line[:-1]
+                continue
+            logical_lines.append(line)
+        if pending:
+            logical_lines.append(pending)
+        return logical_lines
+
+    @staticmethod
+    def _strip_requirement_options_and_comment(line):
+        """Strip a trailing pip comment and per-requirement options (#247).
+
+        A ``#`` starts a comment only at the start of the line or after
+        whitespace, so the ``#egg=`` fragment of a direct URL survives. Any
+        whitespace-separated token beginning with ``-`` after the requirement
+        (``--hash=sha256:...`` and friends) is a pip option and is dropped
+        before PEP 508 parsing, matching the issue's fix shape.
+        """
+        for i, ch in enumerate(line):
+            if ch == "#" and (i == 0 or line[i - 1].isspace()):
+                line = line[:i]
+                break
+        tokens = line.split()
+        if tokens and tokens[0].startswith("-"):
+            # A directive or option line (-r, -e, --index-url, ...) is never
+            # a requirement; dropping only the -token would leave its value
+            # behind as a phantom package.
+            return ""
+        return " ".join(
+            token for token in tokens if not token.startswith("-")
+        ).strip()
+
     def parse_pip_requirements_file(self, filename):
         """Parse a pip requirements.txt file and return a list of packages"""
         packages = []
         encoding = self.detect_encoding(filename)
         with open(filename, "r", encoding=encoding) as f:
-            for line in f.readlines():
-                if line.startswith("#"):
-                    continue
-                package = self.parse_pypi_package_declaration(line.strip())
-                if package:
-                    packages.append(package)
+            logical_lines = self._join_requirement_continuations(f.readlines())
+        for line in logical_lines:
+            if line.strip().startswith("#"):
+                continue
+            package = self.parse_pypi_package_declaration(
+                self._strip_requirement_options_and_comment(line)
+            )
+            if package:
+                packages.append(package)
         return packages
 
     def parse_pyproject_file(self, file_path):
