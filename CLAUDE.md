@@ -104,7 +104,10 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - `kgit pull REPO_ID|--all|--org ORG_KEY|--server SERVER` - git pull (ff-only) + re-sync known local clones
 - `kgit pull --check [scope]` - offline staleness report (last_fetch / last_sync / age); no network
 - `kgit pull --no-prompt [scope]` - non-interactive auth (fail fast) for unattended runs
-- `kgit sync-repo REPO` - Sync repo to DuckDB (experimental, not used in reporting or web UI)
+- **`kgit sync-repo` and `kospex init-duckdb` are commented out**, along with the `duckdb`
+  dependency in `pyproject.toml`. They were a DuckDB proof of concept, parked while its
+  feasibility and usefulness are researched. `src/kospex/git_duckdb.py` and `git_ingest.py`
+  remain but nothing in kospex calls them. Don't delete the commented blocks.
 - `kospex developers -repo PATH/TO/REPO` - Show active developers
 - `kospex tech-landscape -metadata` - Show technology stack overview
 - `kospex summary` - Overview of all synced repositories

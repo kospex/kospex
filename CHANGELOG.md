@@ -300,6 +300,14 @@ was relying on the old, wrong success.
 
 ### Changed
 
+- **The DuckDB proof of concept is parked: `kgit sync-repo` and
+  `kospex init-duckdb` are commented out, and `duckdb` is no longer a
+  dependency.** Both commands were labelled experimental, and nothing in
+  reporting or the web UI read what they wrote; kospex stores git history in
+  SQLite (`kospex.db`). Installing kospex no longer pulls in the duckdb native
+  library. The `GitDuckDB` and `GitIngest` modules remain while DuckDB is
+  researched further for feasibility and usefulness; to use them, install
+  `duckdb` yourself. An existing `~/kospex/kospex-git.duckdb` is left in place.
 - **`kospex advisory-history` is disabled until its redesign**
   ([#282](https://github.com/kospex/kospex/issues/282)). It now exits 1 with a
   notice on stderr instead of running. It crashed with `IndexError` on the
