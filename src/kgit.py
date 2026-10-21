@@ -107,7 +107,7 @@ def _staleness_rows(repos, now=None):
             "last_fetch": r.get("last_fetch") or "never",
             "last_sync": r.get("last_sync") or "-",
             "last_commit": r.get("last_seen") or "-",
-            "age": "never" if days is None else f"{int(days)}d",
+            "fetch_age": "never" if days is None else f"{int(days)}d",
             "_sort": float("inf") if days is None else days,
         })
     # stalest first: never-fetched (inf) first, then largest age
@@ -166,19 +166,22 @@ def status(repo):
 
     st = time.time()
     stats = KospexUtils.get_git_stats(repo, 90)
-    table = PrettyTable()
-    table.field_names = ["Subject", "Value"]
-    table.align["Subject"] = "l"
-    table.align["Value"] = "r"
+    table = Table(title="Repo Status")
+    table.add_column("Subject", style="cyan", no_wrap=True)
+    table.add_column("Value", justify="right")
+    # get_git_stats() reports directory sizes in KB (du -k); show them in MB
+    size_keys = ("total_size", "git_dir_size", "repo_size_without_git")
     for subject, details in stats.items():
-        table.add_row([subject, details])
-    print(table)
+        if subject in size_keys:
+            details = f"{details / 1024:.3f}"
+        table.add_row(subject, str(details))
+    KospexUtils.print_table(table, console)
     print("Notes:")
-    print("\tdirectory sizes are in KB.")
+    print("\tdirectory sizes are in MB.")
     print("\tunique authors are the number of unique authors in the last 90 days.")
     et = time.time()
     elapsed_time = et - st
-    print('\nExecution time:', elapsed_time, 'seconds', "\n")
+    print(f"\nExecution time: {elapsed_time:.4f} seconds\n")
 
 #@cli.command("mailmap")
 @click.option('-sync', is_flag=True, default=False, help="Sync .mailmap to the database (Default)")
@@ -439,13 +442,16 @@ def pull(all_flag, org, server, check, no_prompt, repo_id):
         return
 
     if check:
-        table = PrettyTable()
-        table.field_names = ["repo_id", "last_fetch", "last_sync", "last_commit", "age"]
-        table.align = "l"
+        table = Table(title="Repo Staleness")
+        table.add_column("repo_id", style="cyan", no_wrap=True)
+        table.add_column("last_fetch")
+        table.add_column("last_sync")
+        table.add_column("last_commit")
+        table.add_column("fetch_age", justify="right", style="magenta")
         for row in _staleness_rows(repos):
-            table.add_row([row["repo_id"], row["last_fetch"], row["last_sync"],
-                           row["last_commit"], row["age"]])
-        print(table)
+            table.add_row(row["repo_id"], row["last_fetch"], row["last_sync"],
+                          row["last_commit"], row["fetch_age"])
+        KospexUtils.print_table(table, console)
         return
 
     updated = current = skipped = failed = 0

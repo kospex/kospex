@@ -2,10 +2,68 @@
 
 ## Status
 
-**In progress.** Some tables are migrated (see *Update — 2026-10-20*,
-below). The May inventory and suggested order further down are kept for
-history; their line numbers are out of date, and the update's lists replace
-them.
+**In progress.** Some tables are migrated (see *Update — 2026-10-22* and
+*Update — 2026-10-20*, below). The May inventory and suggested order further
+down are kept for history; their line numbers are out of date, and the
+updates' lists replace them.
+
+## Update — 2026-10-22
+
+### Done
+
+- **The printing helper (step 1 of *Order of work*).**
+  `KospexUtils.print_table(table, console)` (`kospex_utils.py:1379`). On a
+  terminal it is `console.print(table)`. Otherwise it measures the table's
+  natural width and prints it at that width (or the console's, if that is
+  wider), through a `Console` on the same file. That is option 1 under
+  *Piped output*. It keeps PrettyTable's guarantee that piped output is
+  complete, and leaves terminal output as rich's fit-to-width.
+- **`kgit status`** (`kgit.py:169`): "Repo Status", with Subject (cyan,
+  `no_wrap`) and Value (right-aligned, as before). Values go through `str()`
+  because the stats dict holds ints.
+- **`kgit pull --check`** (`kgit.py:441`): "Repo Staleness". `repo_id` is
+  cyan and `no_wrap`. The `age` column was renamed `fetch_age`, because it
+  is days since `last_fetch` and not since the last sync or commit. That is
+  a user-visible change, recorded in the CHANGELOG.
+
+Both print through `print_table`. Each has a `CliRunner` test, as *Tests*
+asks: `tests/test_kgit_pull.py::test_pull_check_prints_complete_repo_id_when_piped`
+uses a `repo_id` longer than 80 characters, and
+`tests/test_kgit_status.py` does the same with a long `remote_url`.
+
+### Why the helper had to come first
+
+`kgit pull --check` was migrated before the helper existed, with a bare
+`console.print` and `no_wrap=True` on `repo_id`. Piped, an 80-character
+`repo_id` then took the whole width, and the other four columns collapsed to
+zero:
+
+```
+┃ repo_id                                                                  ┃┃┃┃┃
+│ gitlab.com~example-organisation~~platform-subgroup~a-fairly-long-reposi… │││││
+```
+
+So `no_wrap` alone doesn't protect an identifier column: it only decides
+which column loses. It still matters on a terminal, where it stops the
+`repo_id` being wrapped mid-id. Every remaining table with an identifier
+column should print through `print_table`.
+
+### Learned along the way
+
+- `console.print(table, width=N)` doesn't widen past the console's own
+  width. The helper builds a second `Console(file=console.file, width=N)`
+  for that reason.
+- Measure with `console.options.update(width=...)` set very large. With the
+  default options the measurement is capped at 80, the width being avoided.
+- A `Console()` made at import time with no `file` writes to whatever
+  `sys.stdout` is when it prints, so `CliRunner` captures module-level
+  consoles without patching.
+
+### Still to do in kgit
+
+- `kgit bitbucket` (`kgit.py:669`) is the last PrettyTable in `kgit.py`, and
+  then the `from prettytable import PrettyTable` at `kgit.py:10` can go. Its
+  `clone_url` column is an identifier: print it through `print_table`.
 
 ## Update — 2026-10-20
 
@@ -47,7 +105,8 @@ release.
 
 ### What's left
 
-Eighteen tables in six modules, all CLI output. kweb doesn't use
+Eighteen tables in six modules as of 2026-10-20, all CLI output; sixteen
+after the 2026-10-22 update. kweb doesn't use
 prettytable: its `tech_landscape` calls go to `KospexQuery`, which returns
 data rather than printing a table.
 
@@ -63,7 +122,8 @@ data rather than printing a table.
 | `kospex system-status` | `Kospex.get_kospex_table_summary()`, `kospex_core.py:1626` | |
 | `kospex deps`, `krunner find-docker` | `get_dependency_files_table()` `:947`, `get_repo_stats_table()` `:929` | Used by several commands: keep as functions that return a Rich table |
 | `kospex health-check`, `krunner find-docker`, config output | `get_keyvalue_table()`, `kospex_utils.py:1334` | Used by several commands: keep as a function |
-| `kgit status`, `kgit pull`, `kgit bitbucket` | Inline in `kgit.py`, `:169`, `:442`, `:666` | `kgit pull` is new since May |
+| ~~`kgit status`, `kgit pull`~~ | Done 2026-10-22 | See *Update — 2026-10-22* |
+| `kgit bitbucket` | Inline in `kgit.py:669` | Last PrettyTable in `kgit.py` |
 | `kgit github` | `KospexGit.get_repos_pretty_table()`, `kospex_git.py:71` | |
 | `krunner secrets-hotspots` | `get_secrets_heatmap_table()`, `krunner_utils.py:203` | |
 
@@ -142,9 +202,11 @@ piped-output case directly, because `CliRunner` output is never a terminal.
 This replaces *Suggested order*, below.
 
 1. **The printing helper and its test**, migrating nothing. It's the piece
-   every later step relies on.
+   every later step relies on. *Done 2026-10-22, with the two `kgit` tables
+   below.*
 2. **Tables whose first column is an identifier**: `list-repos`,
-   `developers` / `orphans`, `kgit status`, `kgit pull`, `kgit github`.
+   `developers` / `orphans`, ~~`kgit status`~~, ~~`kgit pull`~~,
+   `kgit github`.
    These are the ones where piped output matters most.
 3. **Tables built in one place**: `key-person`, `author-tech`, `metadata`,
    `secrets-hotspots`, `kgit bitbucket`. Inline them and delete the helpers.

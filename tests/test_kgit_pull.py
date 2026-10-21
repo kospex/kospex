@@ -95,8 +95,8 @@ def test_staleness_rows_formats_age_and_handles_null():
 
     # stalest first: never (no fetch) sorts first, then stale, then fresh
     assert [r["repo_id"] for r in rows] == ["s~o~never", "s~o~stale", "s~o~fresh"]
-    assert rows[0]["age"] == "never"
-    assert rows[2]["age"] == "1d"
+    assert rows[0]["fetch_age"] == "never"
+    assert rows[2]["fetch_age"] == "1d"
 
 
 from kgit import _pull_command
@@ -122,3 +122,32 @@ def test_git_pull_none_path_is_skipped_not_crash():
     ok, detail, commits = _git_pull(None)
     assert ok is False and commits == 0
     assert "path" in detail.lower()
+
+
+
+# Longer than 80 characters, so piped output would truncate it if print_table
+# fell back to rich's default width.
+LONG_REPO_ID = ("gitlab.com~example-organisation~~platform-engineering-subgroup"
+                "~a-fairly-long-repository-name")
+
+
+def test_pull_check_prints_complete_repo_id_when_piped(monkeypatch):
+    import kgit
+    from click.testing import CliRunner
+
+    assert len(LONG_REPO_ID) > 80
+    repos = [
+        {"_repo_id": LONG_REPO_ID, "last_fetch": None,
+         "last_sync": "2026-05-10T00:00:00+00:00", "last_seen": None},
+    ]
+    monkeypatch.setattr(kgit, "_resolve_pull_repos", lambda *a, **k: repos)
+
+    # CliRunner output is never a terminal, so this is the piped case.
+    result = CliRunner().invoke(kgit.cli, ["pull", "--check", "--all"])
+
+    assert result.exit_code == 0, result.output
+    assert "Repo Staleness" in result.output
+    assert LONG_REPO_ID in result.output
+    assert "2026-05-10T00:00:00+00:00" in result.output
+    assert "fetch_age" in result.output
+    assert "never" in result.output

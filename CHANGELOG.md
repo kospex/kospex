@@ -308,6 +308,15 @@ was relying on the old, wrong success.
   library. The `GitDuckDB` and `GitIngest` modules remain while DuckDB is
   researched further for feasibility and usefulness; to use them, install
   `duckdb` yourself. An existing `~/kospex/kospex-git.duckdb` is left in place.
+- **`kgit status` and `kgit pull --check` print rich tables instead of
+  PrettyTable, and the `--check` column `age` is renamed `fetch_age`.** The
+  column always measured days since `last_fetch` — when kgit last cloned or
+  pulled the repo — not since the last sync or commit, and the new name says
+  so. A repo kgit has never cloned or pulled still shows `never`, even if it is
+  synced. Piped or redirected output is printed at the table's full width, so
+  long `repo_id`s are not cut off with `…`, as they had never been with
+  PrettyTable. `kgit status` also shows directory sizes in MB to three decimal
+  places (they were KB) and the execution time to four.
 - **`kospex advisory-history` is disabled until its redesign**
   ([#282](https://github.com/kospex/kospex/issues/282)). It now exits 1 with a
   notice on stderr instead of running. It crashed with `IndexError` on the

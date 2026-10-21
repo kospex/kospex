@@ -12,6 +12,8 @@ from datetime import datetime, timezone, timedelta
 from dateutil import parser
 from collections import Counter, OrderedDict
 from prettytable import PrettyTable
+from rich.console import Console as RichConsole
+from rich.measure import Measurement as RichMeasurement
 from rich.table import Table as RichTable
 from dotenv import load_dotenv
 
@@ -1373,6 +1375,21 @@ def get_status_legend():
     table.add_row("Stale", "last commit 181-365 days ago")
     table.add_row("Unmaintained", "no commit in over 365 days")
     return table
+
+def print_table(table, console):
+    """Print a rich Table, without truncating it when stdout isn't a terminal.
+
+    Piped or redirected, rich assumes 80 columns and cuts long values with an
+    ellipsis, so `kgit pull --check | grep acme` would quietly lose the end of a
+    long repo_id. In that case print at the table's natural width instead, so
+    what is piped is complete (as it was with PrettyTable). A terminal keeps
+    rich's normal fit-to-width behaviour.
+    """
+    if console.is_terminal:
+        console.print(table)
+        return
+    natural = RichMeasurement.get(console, console.options.update(width=100000), table)
+    RichConsole(file=console.file, width=max(natural.maximum, console.width)).print(table)
 
 def get_status_table(status):
     """
