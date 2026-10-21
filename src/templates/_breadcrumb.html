@@ -1,6 +1,8 @@
 {# Shared breadcrumb. Context: git_server; optional: org + org_key (org scope),
    repo + repo_id (repo scope), page (a sub-page of the entity, e.g. "Tenure" -
-   the entity crumb then links back to its own view). #}
+   the entity crumb then links back to its own view), sub_page + page_url
+   (a narrower view of page, e.g. one file - the page crumb then links back
+   to page_url). #}
 <nav class="text-sm text-gray-500 mb-2" aria-label="Breadcrumb">
     {% if org or page %}
     <a href="/orgs/{{ git_server }}" class="text-blue-600 hover:text-blue-800 underline">{{ git_server }}</a>
@@ -25,6 +27,12 @@
     {% endif %}
     {% if page %}
     <span class="mx-2 text-gray-300">/</span>
+    {% if sub_page %}
+    <a href="{{ page_url }}" class="text-blue-600 hover:text-blue-800 underline">{{ page }}</a>
+    <span class="mx-2 text-gray-300">/</span>
+    <span class="font-semibold text-gray-900" aria-current="page">{{ sub_page }}</span>
+    {% else %}
     <span class="font-semibold text-gray-900" aria-current="page">{{ page }}</span>
+    {% endif %}
     {% endif %}
 </nav>

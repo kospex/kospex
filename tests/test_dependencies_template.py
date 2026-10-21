@@ -47,3 +47,32 @@ def test_dependencies_shows_resolution_category():
     assert "3" in html and "Up to date" in html
     assert "unresolved spec" in html.lower()
     assert "not found" in html.lower()
+
+
+_FILE_ROW = {"_repo_id": "s~o~r", "file_path": "docs/requirements.txt", "package_type": "pypi",
+             "package_name": "mkdocs", "package_version": "1.6.0", "versions_behind": 0}
+
+
+def test_file_links_to_that_files_dependencies_in_its_repo():
+    html = _render([_FILE_ROW])
+    assert 'href="/dependencies/s~o~r?file_path=docs/requirements.txt"' in html
+
+
+def test_advisories_column_null_is_unknown_zero_is_zero():
+    rows = [dict(_FILE_ROW, package_name="none", advisories=0),
+            dict(_FILE_ROW, package_name="some", advisories=7),
+            dict(_FILE_ROW, package_name="null", advisories=None),
+            dict(_FILE_ROW, package_name="legacy", advisories="")]
+    html = _render(rows)
+    assert ">Advisories</th>" in html
+    cells = html.split('data-order="')[1:]
+    assert [c.split('"')[0] for c in cells] == ["0", "7", "-1", "-1"]
+    assert html.count("bg-yellow-100 text-yellow-800\">Unknown</span>") == 2
+    assert "bg-green-100 text-green-800\">0</span>" in html
+    assert "bg-red-100 text-red-800\">7</span>" in html
+
+
+def test_no_self_link_when_already_narrowed_to_a_file():
+    tmpl = kweb2.templates.get_template("dependencies.html")
+    html = tmpl.render({"data": [_FILE_ROW], "request": None, "file_path": "docs/requirements.txt"})
+    assert "?file_path=" not in html

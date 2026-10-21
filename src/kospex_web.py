@@ -1,4 +1,5 @@
 """ Helper functions for kospex web UI """
+import datetime
 import os
 import kospex_utils as KospexUtils
 from kospex.extractors.registry import classify
@@ -56,6 +57,83 @@ def get_id_params(request_id,request_params=None):
         params["server"] = request_id
 
     return params
+
+def dependency_freshness(rows, max_age_days=2, now=None):
+    """
+    Summarise dependency_data.last_checked over the rows a page shows.
+    Reports the OLDEST check, so one stale file can't hide behind fresh ones.
+    A NULL last_checked means "never checked" (pre-0006 rows awaiting a
+    re-sync), not "checked long ago" - it is counted separately and also
+    marks the page stale. Returns None when there are no rows.
+    """
+    if not rows:
+        return None
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    checked = [r["last_checked"] for r in rows if r.get("last_checked")]
+    never_checked = len(rows) - len(checked)
+    oldest = min(checked) if checked else None
+    stale = never_checked > 0
+    if oldest:
+        oldest_dt = datetime.datetime.strptime(oldest, "%Y-%m-%d %H:%M:%S").replace(
+            tzinfo=datetime.timezone.utc)
+        stale = stale or (now - oldest_dt) > datetime.timedelta(days=max_age_days)
+    return {
+        "oldest": oldest,
+        "newest": max(checked) if checked else None,
+        "never_checked": never_checked,
+        "stale": stale,
+        "max_age_days": max_age_days,
+    }
+
+# Why a file's rows were never checked, keyed by its outcome in the latest
+# OSI_EXTRACTION record (kospex.osi_outcomes vocabulary). {examined} is the date
+# of that extraction. Every case but "no record" means the rows shown are left
+# over from an earlier extraction that the latest one did not replace.
+_NEVER_CHECKED_REASONS = {
+    "empty": "Latest extraction ({examined}) found no packages in this file",
+    "parse_error": "Latest extraction ({examined}) could not read this file",
+    "extracted": "Latest extraction ({examined}) extracted this file, but did not refresh these rows",
+    "unsupported": "Latest extraction ({examined}) has no parser for this file",
+    "unclassified": "Latest extraction ({examined}) did not recognise this file",
+    "not_a_manifest": "Latest extraction ({examined}) treated this file as not a package manifest",
+}
+
+def never_checked_files(rows, outcomes):
+    """
+    Group rows with no last_checked by (repo, file) and explain each from the
+    repo's latest extraction outcome.
+
+    outcomes: {repo_id: kospex.osi_queue.get_outcome() result, or None}.
+    Returns a list of dicts: repo_id, file_path, rows, first_seen, reason.
+    """
+    files = {}
+    for row in rows:
+        if row.get("last_checked"):
+            continue
+        key = (row.get("_repo_id"), row.get("file_path"))
+        entry = files.setdefault(key, {"repo_id": key[0], "file_path": key[1],
+                                       "rows": 0, "first_seen": row.get("created_at")})
+        entry["rows"] += 1
+        if row.get("created_at") and (not entry["first_seen"] or row["created_at"] < entry["first_seen"]):
+            entry["first_seen"] = row["created_at"]
+
+    for entry in files.values():
+        outcome = outcomes.get(entry["repo_id"])
+        if not outcome:
+            entry["reason"] = ("No extraction outcome recorded for this repository - "
+                               "these rows predate it; re-run krunner osi to refresh them")
+            continue
+        examined = (outcome.get("examined_at") or "")[:10]
+        file_outcome = outcome.get("files", {}).get(entry["file_path"])
+        if file_outcome is None:
+            entry["reason"] = (f"Not in the latest extraction ({examined}) - the file may have "
+                               "been removed or is no longer detected as a dependency file")
+        else:
+            entry["reason"] = _NEVER_CHECKED_REASONS.get(
+                file_outcome, f"Latest extraction ({{examined}}) recorded '{file_outcome}'"
+            ).format(examined=examined)
+
+    return sorted(files.values(), key=lambda e: (e["repo_id"] or "", e["file_path"] or ""))
 
 def scope_context(params, page):
     """

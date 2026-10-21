@@ -2,4 +2,8 @@
 <div class="mt-1 mb-4 text-xs">
     <span class="font-semibold uppercase tracking-wider text-gray-500">{{ scope_type }}</span>
     {% if scope_name %}<span class="ml-1 font-mono text-gray-700">{{ scope_name }}</span>{% endif %}
+    {% if file_path %}
+    <span class="ml-3 font-semibold uppercase tracking-wider text-gray-500">File</span>
+    <span class="ml-1 font-mono text-gray-700">{{ file_path }}</span>
+    {% endif %}
 </div>
