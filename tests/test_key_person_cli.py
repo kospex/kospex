@@ -92,3 +92,23 @@ def test_directory_and_repo_id_together_is_an_error(tmp_path, monkeypatch):
     assert result.exit_code == 1
     assert "not both" in result.output
     assert seen == {}
+
+
+def test_author_markup_is_printed_literally(monkeypatch):
+    """Author emails come from commit metadata, so rich markup in one must be
+    shown as text: not raise, and not become a link or hidden text (CWE-150)."""
+    kospex_cli, _ = _stub(monkeypatch)
+    hostile = ["evil[/]@example.com",
+               "[link=https://attacker.example]ceo@example.com[/link]",
+               "[conceal]hidden@example.com[/conceal]"]
+    rows = [dict(AUTHORS[1], author=h) for h in hostile]
+    monkeypatch.setattr(kospex_cli.KospexQuery, "key_person",
+                        lambda self, repo_id=None, top=None: rows)
+
+    result = CliRunner().invoke(
+        kospex_cli.cli, ["key-person", "-repo_id", "github.com~acme~[bold]app"])
+
+    assert result.exit_code == 0, result.output
+    for h in hostile:
+        assert h in result.output
+    assert "github.com~acme~[bold]app" in result.output

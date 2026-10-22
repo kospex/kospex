@@ -15,6 +15,7 @@ import click
 import requests
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
@@ -964,7 +965,9 @@ def key_person(directory, top, repo_id):
     # comparable within a repo — a squash-and-merge project has none. See #170.
     headers = ["author", "commits", "merges", "% commits", "last_commit",
                "first_commit", "active_commits", "% active", "tenure"]
-    table = Table(title=f"Key Person: {repo_id}")
+    # Text, not str: rich parses a str as markup, and authors come from commit
+    # metadata (CWE-150). "a[/]@b" would raise; "[link=...]" would render a link.
+    table = Table(title=Text(f"Key Person: {repo_id}"))
     # author is an email: an identifier, so never wrapped mid-value
     table.add_column("author", style="cyan", no_wrap=True)
     for header in headers[1:]:
@@ -973,7 +976,7 @@ def key_person(directory, top, repo_id):
     authors = kquery.key_person(repo_id=repo_id, top=top)
 
     for a in authors:
-        table.add_row(*[str(a.get(h) if a.get(h) is not None else "") for h in headers])
+        table.add_row(*[Text(str(a.get(h) if a.get(h) is not None else "")) for h in headers])
 
     console.print()
     KospexUtils.print_table(table, console)
