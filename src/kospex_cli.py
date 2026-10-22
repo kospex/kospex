@@ -30,7 +30,10 @@ from kospex_query import KospexQuery
 # Initialize Kospex environment with enhanced logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kospex = Kospex()
-console = Console()
+# markup=False: values printed here come from git metadata (author emails,
+# remote URLs, repo_ids). Rich would parse them as markup (CWE-150), so style
+# with style= or rich.text.Text instead of [tags].
+console = Console(markup=False)
 
 # Get logger using the new centralized logging system
 log = KospexUtils.get_kospex_logger("kospex")
@@ -999,7 +1002,7 @@ def developer_stats(repo_id):
 
     stats = kquery.get_developer_stats(repo_id=repo_id)
     if not stats:
-        console.print(f"No developer stats found for [bold]{repo_id}[/bold].")
+        console.print(Text.assemble("No developer stats found for ", (repo_id, "bold"), "."))
         console.print("Run 'kgit sync' on the repo first to populate stats.")
         return
 

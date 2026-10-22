@@ -1362,12 +1362,19 @@ def print_table(table, console):
     long repo_id. In that case print at the table's natural width instead, so
     what is piped is complete (as it was with PrettyTable). A terminal keeps
     rich's normal fit-to-width behaviour.
+
+    Pass a Console(markup=False): on a terminal the table is printed through
+    the caller's console, and print(markup=False) does not reach table cells.
     """
     if console.is_terminal:
         console.print(table)
         return
-    natural = RichMeasurement.get(console, console.options.update(width=100000), table)
-    RichConsole(file=console.file, width=max(natural.maximum, console.width)).print(table)
+    # markup=False whatever the caller's console: cells hold git metadata
+    # (CWE-150). Measure with it too: measuring renders the cells.
+    wide = RichConsole(file=console.file, width=100000, markup=False)
+    natural = RichMeasurement.get(wide, wide.options, table)
+    RichConsole(file=console.file, width=max(natural.maximum, console.width),
+                markup=False).print(table)
 
 def get_status_table(status):
     """
