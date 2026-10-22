@@ -916,8 +916,11 @@ def author_tech(author_email, repo_id):
 
 @cli.command("key-person")
 @click.option("-top", type=int, default=4, help="The number of top authors to assess.")
+@click.option(
+    "-repo_id", type=click.STRING, help="Repo ID to query, in the format SERVER~ORG~REPO."
+)
 @click.argument("directory", required=False, type=GitRepo())
-def key_person(directory, top):
+def key_person(directory, top, repo_id):
     """
     Identify the key people for a repo based on number of commits.
 
@@ -926,30 +929,55 @@ def key_person(directory, top):
     Secondly, the topic X active committers (i.e. last 90 days)
 
     The top X defaults to 4, but can be provided as a switch with -top Y
-    """
-    if not directory:
-        directory = os.getcwd()
-        if not KospexUtils.is_git(directory):
-            print(f"Directory '{directory}' is not a git repository.")
-            print("Please either cd in a git repository directory, or specify one.")
-            exit(1)
 
-    kgit = KospexGit()
-    kgit.set_repo(directory)
+    Reads the kospex DB only. Give either a DIRECTORY (default: the current
+    one), whose git remote gives the repo_id, or a -repo_id, which needs no
+    clone on disk.
+    """
+    if directory and repo_id:
+        click.echo("Give either a DIRECTORY or -repo_id, not both.", err=True)
+        raise SystemExit(1)
+
+    if not repo_id:
+        if not directory:
+            directory = os.getcwd()
+            if not KospexUtils.is_git(directory):
+                print(f"Directory '{directory}' is not a git repository.")
+                print("Please either cd in a git repository directory, or specify one.")
+                exit(1)
+
+        kgit = KospexGit()
+        kgit.set_repo(directory)
+        repo_id = kgit.get_repo_id()
+
+    # An unknown repo_id returns no rows, exactly like a dormant repo. Say
+    # which it is rather than print an empty table. (#134)
+    status = kospex.repo_db_status(repo_id, repo_directory=directory)
+    if status["message"]:
+        click.echo(status["message"], err=True)
+        raise SystemExit(1)
+
     kquery = KospexQuery()
 
-    table = KospexUtils.key_person_prettytable()
-    headers = table.field_names
+    # "merges" sits beside "commits" so a maintainer's lower commit count is
+    # explained in place rather than needing to be taken on trust. It is only
+    # comparable within a repo — a squash-and-merge project has none. See #170.
+    headers = ["author", "commits", "merges", "% commits", "last_commit",
+               "first_commit", "active_commits", "% active", "tenure"]
+    table = Table(title=f"Key Person: {repo_id}")
+    # author is an email: an identifier, so never wrapped mid-value
+    table.add_column("author", style="cyan", no_wrap=True)
+    for header in headers[1:]:
+        table.add_column(header, justify="right")
 
-    authors = kquery.key_person(repo_id=kgit.get_repo_id(), top=top)
-    console.print(authors)
+    authors = kquery.key_person(repo_id=repo_id, top=top)
 
     for a in authors:
-        table.add_row(KospexUtils.get_values_by_keys(a, headers))
+        table.add_row(*[str(a.get(h) if a.get(h) is not None else "") for h in headers])
 
-    print()
-    print(table)
-    print()
+    console.print()
+    KospexUtils.print_table(table, console)
+    console.print()
     print("Merge commits are counted separately. A merge combines work already")
     print("credited to the branch commits, so it is not authorship - but it does")
     print("show who integrates changes. Comparable within a repo only: a project")

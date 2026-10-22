@@ -1286,28 +1286,6 @@ def extract_db_date(date_str):
     else:
         return None
 
-def key_person_prettytable():
-    """ Return a prettytable object for the key_persons table."""
-
-    table = PrettyTable()
-    # "merges" sits beside "commits" so a maintainer's lower commit count is
-    # explained in place rather than needing to be taken on trust. It is only
-    # comparable within a repo — a squash-and-merge project has none. See #170.
-    headers = ["author", "commits", "merges", "% commits", "last_commit",
-               "first_commit", "active_commits", "% active", "tenure"]
-    table.field_names = headers
-    table.align["author"] = "l"
-    table.align["commits"] = "r"
-    table.align["merges"] = "r"
-    table.align["last_commit"] = "r"
-    table.align["first_commit"] = "r"
-    table.align["active_commits"] = "r"
-    table.align["% commits"] = "r"
-    table.align["% active"] = "r"
-    table.align["tenure"] = "r"
-
-    return table
-
 def file_metadata_prettytable():
     """ Return a prettytable object for the file metadata table.
         file_path, Language, tags

@@ -317,6 +317,16 @@ was relying on the old, wrong success.
   long `repo_id`s are not cut off with `…`, as they had never been with
   PrettyTable. `kgit status` also shows directory sizes in MB to three decimal
   places (they were KB) and the execution time to four.
+- **`kospex key-person` prints a rich table instead of PrettyTable, and no
+  longer dumps the raw rows above it.** Columns and alignment are unchanged.
+  Piped or redirected output is printed at the table's full width, so long
+  author emails are not cut off with `…`.
+- **`kospex key-person -repo_id SERVER~ORG~REPO`** runs the analysis for a repo
+  that need not be cloned on disk: the command only ever read the kospex
+  database, and the directory was used just to work out the `repo_id`. A
+  `repo_id` the database has never seen, or one with no commits recorded, now
+  exits 1 and says which, with the command to fix it, instead of printing an
+  empty table that looks like a dormant repo.
 - **`kospex advisory-history` is disabled until its redesign**
   ([#282](https://github.com/kospex/kospex/issues/282)). It now exits 1 with a
   notice on stderr instead of running. It crashed with `IndexError` on the

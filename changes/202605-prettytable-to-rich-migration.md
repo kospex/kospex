@@ -2,10 +2,34 @@
 
 ## Status
 
-**In progress.** Some tables are migrated (see *Update — 2026-10-22* and
-*Update — 2026-10-20*, below). The May inventory and suggested order further
+**In progress.** Some tables are migrated (see *Update — 2026-10-23*,
+*Update — 2026-10-22* and *Update — 2026-10-20*, below). The May inventory and suggested order further
 down are kept for history; their line numbers are out of date, and the
 updates' lists replace them.
+
+## Update — 2026-10-23
+
+### Done
+
+- **`kospex key-person`** (`kospex_cli.py:917`): "Key Person". The table is
+  built inline and `key_person_prettytable()` is deleted, as step 3 of
+  *Order of work* asks. Columns and alignment are as before. `author` is
+  cyan and `no_wrap`, because it is an email, which counts as an identifier.
+  The table prints through `print_table`. A `None` (for example `merges` on
+  an older row) prints as an empty cell, not as the string `None`.
+- **Removed the raw dump.** The command used to `console.print(authors)`, so
+  the list of dicts was printed above the table. It looked like leftover
+  debug output, and it also made the piped test pass on the old code without
+  testing anything, because the full email was already in the dump. The test
+  asserts that the email appears exactly once.
+
+Test: `tests/test_key_person_cli.py::test_key_person_prints_complete_author_when_piped`,
+with an author email of more than 80 characters and the query stubbed. It
+fails on the old code.
+
+### Still to do in step 3
+
+`author-tech`, `metadata`, `secrets-hotspots`, `kgit bitbucket`.
 
 ## Update — 2026-10-22
 
@@ -106,22 +130,22 @@ release.
 ### What's left
 
 Eighteen tables in six modules as of 2026-10-20, all CLI output; sixteen
-after the 2026-10-22 update. kweb doesn't use
+after the 2026-10-22 update, fifteen after 2026-10-23. kweb doesn't use
 prettytable: its `tech_landscape` calls go to `KospexQuery`, which returns
 data rather than printing a table.
 
 | Command | Where the table is built | Notes |
 |---|---|---|
 | `kospex developers`, `kospex orphans` | `Kospex.active_developers()`, `kospex_core.py:987` | Shared by two commands |
-| `kospex orphans` | `orphan_prettytable()`, `kospex_utils.py:1404` | Used once: inline it. The `-csv` output is unaffected |
-| `kospex key-person` | `key_person_prettytable()`, `kospex_utils.py:1290` | Used once: inline it |
+| `kospex orphans` | `orphan_prettytable()`, `kospex_utils.py:1396` | Used once: inline it. The `-csv` output is unaffected |
+| ~~`kospex key-person`~~ | Done 2026-10-23 | See *Update — 2026-10-23* |
 | `kospex author-tech` | `Kospex.author_tech_pretty_table()`, `kospex_core.py:760` | Rename it when migrating |
 | `kospex list-repos`, `krunner find-repos` | `Kospex.list_repos()`, `kospex_core.py:1059` | `repo_id` column; see *Piped output* |
 | `kospex tech-landscape` | `Kospex.tech_landscape()`, `kospex_core.py:1169` | Uses `from_db_cursor`; see *One helper, or each table inline* |
-| `kospex metadata` | `file_metadata_prettytable()`, `kospex_utils.py:1313` | Used once, by `cli_file_metadata()` (`kospex_core.py:1239`) |
+| `kospex metadata` | `file_metadata_prettytable()`, `kospex_utils.py:1289` | Used once, by `cli_file_metadata()` (`kospex_core.py:1239`) |
 | `kospex system-status` | `Kospex.get_kospex_table_summary()`, `kospex_core.py:1626` | |
-| `kospex deps`, `krunner find-docker` | `get_dependency_files_table()` `:947`, `get_repo_stats_table()` `:929` | Used by several commands: keep as functions that return a Rich table |
-| `kospex health-check`, `krunner find-docker`, config output | `get_keyvalue_table()`, `kospex_utils.py:1334` | Used by several commands: keep as a function |
+| `kospex deps`, `krunner find-docker` | `get_dependency_files_table()` `:946`, `get_repo_stats_table()` `:923` | Used by several commands: keep as functions that return a Rich table |
+| `kospex health-check`, `krunner find-docker`, config output | `get_keyvalue_table()`, `kospex_utils.py:1311` | Used by several commands: keep as a function |
 | ~~`kgit status`, `kgit pull`~~ | Done 2026-10-22 | See *Update — 2026-10-22* |
 | `kgit bitbucket` | Inline in `kgit.py:669` | Last PrettyTable in `kgit.py` |
 | `kgit github` | `KospexGit.get_repos_pretty_table()`, `kospex_git.py:71` | |
@@ -208,7 +232,7 @@ This replaces *Suggested order*, below.
    `developers` / `orphans`, ~~`kgit status`~~, ~~`kgit pull`~~,
    `kgit github`.
    These are the ones where piped output matters most.
-3. **Tables built in one place**: `key-person`, `author-tech`, `metadata`,
+3. **Tables built in one place**: ~~`key-person`~~, `author-tech`, `metadata`,
    `secrets-hotspots`, `kgit bitbucket`. Inline them and delete the helpers.
 4. **Helpers used by several commands**: `get_repo_stats_table`,
    `get_dependency_files_table`, `get_keyvalue_table`, migrated as functions
