@@ -4,7 +4,6 @@ It returned the literal string 'TODO_IMPLEMENT_REPO_ID_GENERATION' for every
 URL. It now uses the same parser and builder as sync, so the id it reports is
 the one the database will hold.
 """
-import asyncio
 import json
 
 import pytest
@@ -20,7 +19,7 @@ def _get(url):
     existing web tests importorskip and never run. A handler this small is
     better exercised directly than not at all.
     """
-    response = asyncio.run(kweb2.generate_repo_id(url=url))
+    response = kweb2.generate_repo_id(url=url)
     return response.status_code, json.loads(response.body)
 
 

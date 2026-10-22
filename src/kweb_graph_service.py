@@ -11,8 +11,15 @@ import kospex_email as KospexEmail
 class GraphService:
     """Service class for generating graph data for visualizations."""
 
-    def __init__(self):
-        self.query = KospexQuery()
+    @property
+    def query(self):
+        """A fresh KospexQuery per use.
+
+        kweb2 holds one GraphService for the process, and route handlers run in
+        a threadpool. A sqlite3 connection may only be used on the thread that
+        opened it, so one made at import would fail on every worker thread.
+        """
+        return KospexQuery()
 
     def get_graph_data(self, focus=None, org_key=None, request_args=None):
         """
