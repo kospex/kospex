@@ -788,6 +788,19 @@ was relying on the old, wrong success.
   is extracted from it yet — this only moves it into the parser backlog that
   `unsupported` is meant to count.
 
+### Security
+
+- **Values from git metadata are printed literally, not parsed as console
+  markup** (CWE-150). The CLI's rich consoles parsed every string they printed,
+  including table cells and titles, as markup. That covered author emails,
+  remote URLs and `repo_id`s, which whoever commits to or names a repo
+  controls, and git accepts brackets in all of them. An email such as
+  `a[/]@example.com` aborted the command with `MarkupError`; `[link=...]`
+  rendered a terminal hyperlink to a different target; `[conceal]` hid the
+  value. The `kgit`, `kospex` and `krunner` consoles, and `print_table()`'s
+  piped output, now have markup disabled. Messages that were styled with markup
+  keep their styling.
+
 ## 0.1.0 - 2026-09-11
 
 ### Upgrade notes

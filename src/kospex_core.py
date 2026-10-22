@@ -25,7 +25,8 @@ from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit, MissingGitDirectory
 from kospex_query import KospexData, KospexQuery
 
-_console = RichConsole()
+# markup=False: table cells hold git metadata; see kospex_cli.console (CWE-150)
+_console = RichConsole(markup=False)
 log = KospexUtils.get_kospex_logger("kospex")
 
 

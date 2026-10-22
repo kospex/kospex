@@ -23,12 +23,16 @@ from kospex_bitbucket import (
     REQUIRED_SCOPES,
 )
 from rich.table import Table
+from rich.text import Text
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kgit = KospexGit()
 kospex = Kospex()
-console = Console()
+# markup=False: values printed here come from git metadata (author emails,
+# remote URLs, repo_ids). Rich would parse them as markup (CWE-150), so style
+# with style= or rich.text.Text instead of [tags].
+console = Console(markup=False)
 
 # Get logger using the new centralized logging system
 log = KospexUtils.get_kospex_logger('kgit')
@@ -52,14 +56,15 @@ def clone_path_conflict(kospex, repo_url, force=False):
 
     if conflict:
         log.error(f"refusing to clone {repo_url}: {reason}")
-        console.print(
-            f"[bold red]Refusing to clone[/bold red] {repo_url}\n"
+        console.print(Text.assemble(
+            ("Refusing to clone", "bold red"),
+            f" {repo_url}\n"
             f"  {planned['repo_id']} is already synced from {recorded_path}, "
             f"which still exists.\n"
             f"  Cloning to {planned['path']} would repoint it and lose which clone "
             f"the existing data came from.\n"
             f"  Re-run with -force to clone anyway, or remove the repo from the DB first."
-        )
+        ))
 
     return conflict
 
@@ -375,7 +380,7 @@ def sync(org, sync_db, url):
 
         repo_path = kgit.clone_repo(url)
         if not repo_path:
-            console.print(f"[bold red]Error:[/bold red] Failed to clone {url}")
+            console.print(Text.assemble(("Error:", "bold red"), f" Failed to clone {url}"))
             return
         log.info(f"Syncing repository {url} to path: {repo_path}")
         commits = kospex.sync_repo(repo_path)
