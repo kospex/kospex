@@ -87,6 +87,25 @@ def test_unparseable_last_sync_is_a_miss():
     assert cache.get("k", "not a date") is None
 
 
+def test_entry_count_is_bounded():
+    """The scope comes from the URL, so arbitrary ids each add a key."""
+    cache = RequestCache(max_entries=3)
+    for i in range(100):
+        cache.set(RequestCache.key("developers", org_key=f"junk~{i}"), [])
+    assert len(cache.cache) == 3
+
+
+def test_eviction_is_least_recently_used():
+    cache = RequestCache(max_entries=2)
+    cache.set("a", [1])
+    cache.set("b", [2])
+    cache.get("a", None)      # a is now the most recently used
+    cache.set("c", [3])       # evicts b, not a
+    assert cache.get("a", None) == [1]
+    assert cache.get("b", None) is None
+    assert cache.get("c", None) == [3]
+
+
 def test_clear():
     cache = RequestCache()
     cache.set("k", [1])

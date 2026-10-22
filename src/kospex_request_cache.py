@@ -7,14 +7,26 @@ An entry is stale, and returns None, when:
   - the entry is older than max_age_seconds, because cached statuses and
     days_ago values are relative to the time they were computed
 """
+import threading
+from collections import OrderedDict
 from datetime import datetime, timedelta
 
 
 class RequestCache:
-    """In Memory cache class"""
-    def __init__(self, max_age_seconds=3600):
-        self.cache = {}
+    """In Memory cache class.
+
+    Bounded to max_entries, least recently used evicted first. The scope in a
+    key comes from the request URL, so without a bound each distinct value
+    would hold an entry for the life of the process (CWE-770).
+
+    kweb handlers run on worker threads, so reads and writes take a lock:
+    an eviction between get()'s lookup and move_to_end() would raise KeyError.
+    """
+    def __init__(self, max_age_seconds=3600, max_entries=256):
+        self.cache = OrderedDict()
         self.max_age = timedelta(seconds=max_age_seconds)
+        self.max_entries = max_entries
+        self._lock = threading.Lock()
 
     @staticmethod
     def key(name, **params):
@@ -27,15 +39,17 @@ class RequestCache:
 
     def get(self, key, last_updated):
 
-        results = self.cache.get(key)
-        if results is None:
-            return None
+        with self._lock:
+            results = self.cache.get(key)
+            if results is None:
+                return None
 
-        if self._is_stale(results["cache_time"], last_updated):
-            self.cache.pop(key, None)
-            return None
+            if self._is_stale(results["cache_time"], last_updated):
+                self.cache.pop(key, None)
+                return None
 
-        return results["data"]
+            self.cache.move_to_end(key)
+            return results["data"]
 
     def _is_stale(self, cache_time, last_updated):
         if datetime.now().astimezone() - cache_time > self.max_age:
@@ -60,7 +74,12 @@ class RequestCache:
             'data': data,
             'cache_time': cache_time or datetime.now().astimezone(),
         }
-        self.cache[key] = entry
+        with self._lock:
+            self.cache[key] = entry
+            self.cache.move_to_end(key)
+            while len(self.cache) > self.max_entries:
+                self.cache.popitem(last=False)
 
     def clear(self):
-        self.cache.clear()
+        with self._lock:
+            self.cache.clear()

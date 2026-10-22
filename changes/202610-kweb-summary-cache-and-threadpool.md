@@ -81,8 +81,12 @@ still runs the full queries (~7–13s for `/repos/`, depending on machine load).
 - Two concurrent cold requests for the same key both compute; there is no
   per-key lock. With handlers on the threadpool they no longer block each other,
   but they do double the DB load.
-- The cache is per process and unbounded by key count. It grows with each
-  distinct scope a user visits. Stale entries are dropped when read.
+- The cache is per process and bounded to `max_entries` (default 256), with
+  least recently used entries evicted first. The scope in a key comes from the
+  request URL, and an unknown scope caches an empty result, so without a bound
+  arbitrary ids would each hold an entry for the life of the process
+  (CWE-770). Stale entries are also dropped when read. The cache takes a lock,
+  because handlers now run on worker threads.
 
 ## Follow-ups (not in this change)
 
