@@ -176,7 +176,7 @@ a large repo with and without it before merging.
 
 ## Phase 3 — `update_developer_stats` stores committer time
 
-`developer_stats` is inconsistent today. `commits_last_90_days` counts by
+`developer_stats` is inconsistent today. `commits_last_90_days` counts by		
 `committer_when`, but `first_commit` / `last_commit` are taken from
 `author_when`. The web layer uses committer time throughout. The two differ in
 date for 19,573 of 91,279 (repo, author) pairs, because rebases, cherry-picks
@@ -268,11 +268,44 @@ measure again after Phase 2 before building this.
 
 Its SELECT joins `commit_files` and costs 12–17s on the largest repos (cold),
 or about 3.5s with index A. It runs on **every** sync, including syncs that
-bring in no new commits, where nothing it computes can have changed. Skipping
-it when the sync added no commits removes most of that cost.
+bring in no new commits. Skipping it on those syncs would remove most of that
+cost, but only some of its columns are safe to skip:
 
-Do **not** skip `update_developer_stats` the same way. It must still run, so
-that no-commit syncs keep healing rows (Phase 3).
+| Columns | Can they change with no new commits? | Safe to skip? |
+|---|---|---|
+| `additions`, `deletions`, `unique_files` (all time) | No: they only change when commits are added | **Yes** |
+| `additions_90_days`, `deletions_90_days`, `unique_files_90_days` | **Yes**: the window is relative to when the sync ran, so it moves even when the data doesn't | **No** |
+
+**Caveat.** If the whole function is skipped, the 90-day columns freeze at their
+last values. A repo with no commits for three months should report zero recent
+activity, but it would keep reporting last quarter's numbers indefinitely.
+`update_developer_stats` has the same exposure in `commits_last_90_days` and
+`pct_90_days`. It avoids it only because it runs on every sync.
+
+Two ways to make the skip safe:
+
+1. **Skip only the all-time part.** On a no-commit sync, recompute just the
+   90-day columns. That is cheaper, because only commits inside the window join
+   to `commit_files`.
+2. **Stop storing windowed values.** Keep the timestamps in the table and compute
+   "last N days" at query time, as Phase 4 does for active developers. This is
+   cleaner and has no staleness at all, but it changes what `kospex stats`
+   reads, so it is a bigger change.
+
+Do **not** skip `update_developer_stats` either way. It must still run, so that
+no-commit syncs keep healing rows (Phase 3) and its own 90-day columns stay
+current.
+
+### Scaling note
+
+Measured per-repo stats cost is roughly linear in that repo's commits: about
+7µs per commit for the `update_developer_stats` SELECT. It is independent of
+estate size, because both queries look the repo up by `_repo_id`. Estate-wide
+aggregates grow a little faster than linearly, since `GROUP BY` and
+`COUNT(DISTINCT)` sort. Times also jump once the DB no longer fits in the page
+cache: the dev DB is 4.3GB on a 16GB machine, and a 1,500-repo estate is likely
+3–4x that. The `commit_files` lookups in this function, which hop across the
+table by `hash`, degrade the most when reads go to disk.
 
 ## Verification
 
