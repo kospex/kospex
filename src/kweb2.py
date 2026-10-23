@@ -207,12 +207,12 @@ def summary(request: Request, id: Optional[str] = None):
 
         params = KospexWeb.get_id_params(id)
 
-        with KospexTimer("Loading load_developers") as dev_load:
+        with KospexTimer("Load developers") as dev_load:
             devs = cached_query(
                 "developers", lambda: KospexQuery().developers(**params), **params
             )
 
-        print(dev_load)
+        logger.info(dev_load)
 
         dev_stats = KospexUtils.count_key_occurrences(devs, "status")
         dev_percentages = KospexUtils.convert_to_percentage(dev_stats)
@@ -270,12 +270,12 @@ def summary2(request: Request, id: Optional[str] = None):
 
         params = KospexWeb.get_id_params(id)
 
-        with KospexTimer("Loading load_developers") as dev_load:
+        with KospexTimer("Load developers") as dev_load:
             devs = cached_query(
                 "developers", lambda: KospexQuery().developers(**params), **params
             )
 
-        print(dev_load)
+        logger.info(dev_load)
 
         dev_stats = KospexUtils.count_key_occurrences(devs, "status")
         dev_percentages = KospexUtils.convert_to_percentage(dev_stats)
@@ -443,7 +443,7 @@ def metadata(request: Request):
         with KospexTimer("Summary load") as summary_load:
             data = cached_query("metadata", lambda: KospexQuery().summary())
 
-        print(summary_load)
+        logger.info(summary_load)
 
         # data = KospexQuery().summary()
 
@@ -1971,7 +1971,12 @@ def main():
     if reload:
         print("Debug mode enabled with auto-reload")
 
-    uvicorn.run("kweb2:app", host=host, port=port, reload=reload)
+    # Watch only kweb's own source dir. uvicorn defaults to the cwd, and without
+    # watchfiles it polls every *.py under it: from the repo root that is .venv
+    # and .claude/worktrees too, ~5000 files rescanned every 0.25s, and an edit
+    # in any worktree (or a pip upgrade) restarts kweb and empties request_cache.
+    reload_dirs = [str(Path(__file__).parent)] if reload else None
+    uvicorn.run("kweb2:app", host=host, port=port, reload=reload, reload_dirs=reload_dirs)
 
 
 if __name__ == "__main__":

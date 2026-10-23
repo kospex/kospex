@@ -211,8 +211,7 @@ class KospexQuery:
         {where_clause}
         GROUP BY _git_server
         """
-        print(summary_sql)
-        print(params)
+        log.debug("server_summary SQL: %s params: %s", summary_sql, params)
         data = []
         for row in self.kospex_db.query(summary_sql, params):
             data.append(row)
@@ -430,7 +429,6 @@ class KospexQuery:
         active_devs = self.developers(days=90)
         active_set = set(map(lambda item: item["author"], active_devs))
 
-        print(active_set)
 
         repos = self.repos2(id=id)
 
@@ -456,24 +454,23 @@ class KospexQuery:
 
             committers = set([c["author_email"] for c in commits])
             row["committers"] = len(committers)
-            print("\n")
-            print(f"committers: {committers}\n\n")
 
             intersection_count = len(committers.intersection(active_set))
             row["intersection"] = intersection_count
 
-            print(f"Present: {intersection_count}, Total: {len(committers)} in 12 months.")
+            log.debug(
+                "%s: %d of %d committers active in 12 months",
+                row.get("_repo_id"), intersection_count, len(committers),
+            )
 
             # if all the authors are not in the active_devs_emails list
             # then print the repo status of orphaned
 
             if intersection_count == 0:
-                print("Orphaned")
                 row["orphaned"] = True
                 row["percentage"] = 0
                 # orphaned += 1
             else:
-                print("Working knowledge exists")
                 row["orphaned"] = False
                 row["percentage"] = f"{intersection_count / len(committers) * 100:.2f}"
                 # row.append(f"{intersection_count/len(committers)*100:.2f}%")
@@ -879,7 +876,7 @@ class KospexQuery:
 
         return repos
 
-    @KospexUtils.timer()
+    @KospexUtils.timer(logger=log)
     def developers(
         self, org_key=None, repo_id=None, server=None, days=None, to_date=None, from_date=None
     ):
@@ -929,7 +926,6 @@ class KospexQuery:
             kd.where_org_key(org_key)
 
         if server:
-            print(f"Server: {server}")
             kd.where("_git_server", "=", server)
 
         results = kd.execute()
@@ -988,7 +984,6 @@ class KospexQuery:
             commits
 
         """
-        print()
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
         kd.select_as("count(*)", "commits")
@@ -1015,7 +1010,7 @@ class KospexQuery:
 
         return data
 
-    @KospexUtils.timer()
+    @KospexUtils.timer(logger=log)
     def authors(self, days=None, org_key=None, request_id=None):
         """
         Provide a summary of authors in the known repositories.
@@ -1144,7 +1139,7 @@ class KospexQuery:
             try:
                 server, org = _org_key_parts(org_key)
             except ValueError as exc:
-                print(exc)
+                log.warning("commit_ranges: %s", exc)
                 return None
             params.append(server)
             params.append(org)
@@ -1277,13 +1272,11 @@ class KospexQuery:
         for row in data:
             meta = metadata.get(row["file_path"], {})
             if meta:
-                print(row["file_path"])
                 row["Lines"] = meta.get("Lines", 0)
                 row["Complexity"] = meta.get("Complexity", 0)
                 row["Language"] = meta.get("Language", 0)
-                print(meta)
             else:
-                print("No meta for ", row["file_path"])
+                log.debug("hotspots: no metadata for %s", row["file_path"])
             # row['lines'] = metadata[row['file_path']]['Lines']
             results.append(row)
 
@@ -1532,7 +1525,7 @@ class KospexQuery:
 
         return summary
 
-    @KospexUtils.timer()
+    @KospexUtils.timer(logger=log)
     def summarize_by_language(self, commits):
         """
         Summarize commits by language only (across all authors).
@@ -1683,10 +1676,10 @@ class KospexQuery:
         if year:
             start_date = datetime(year, 1, 1)
             start_iso = start_date.isoformat()  # "2023-01-01T00:00
-            print(f"Start date: {start_iso}")
+            log.debug("developer_tech start date: %s", start_iso)
             end_date = datetime(year, 12, 31, 23, 59, 59)
             end_iso = end_date.isoformat()  # "2023-01-01T00:00
-            print(f"End date: {end_iso}")
+            log.debug("developer_tech end date: %s", end_iso)
             kd.where("commits.committer_when", ">=", start_iso)
             kd.where("commits.committer_when", "<=", end_iso)
 
@@ -1753,7 +1746,6 @@ class KospexQuery:
             kd.group_by("file_path")
 
         data = kd.execute()
-        print(data)
         return data
 
         # return kd.execute()
@@ -2292,7 +2284,7 @@ class KospexQuery:
         if tag:
             kd.where_tag(tag)
 
-        print("Executing query:", kd.generate_sql(), kd.params)
+        log.debug("get_metadata_files SQL: %s params: %s", kd.generate_sql(), kd.params)
 
         return kd.execute()
 
@@ -2781,7 +2773,7 @@ class KospexData:
         if name.upper() in reserved_keywords:
             # raise ValueError(f"Invalid name: '{name}' is a reserved SQL keyword.")
             # TODO - log this instead of print
-            print(f"Invalid name: '{name}' is a reserved SQL keyword.")
+            log.warning("Invalid name: '%s' is a reserved SQL keyword.", name)
             return False
 
         # Regular expression for valid SQL table/column names
@@ -2791,14 +2783,14 @@ class KospexData:
             # We can get this error for a NOT_EXIST_TBL.col
             # TODO - log this instead of print
             # raise ValueError(f"Invalid name: '{name}' does not match SQL naming conventions.")
-            print(f"Invalid name: '{name}' does not match SQL naming conventions.")
+            log.warning("Invalid name: '%s' does not match SQL naming conventions.", name)
             return False
 
         # Optional: Check for length limits (default: 64 characters)
         if len(name) > 64:
             # raise ValueError(f"Invalid name: '{name}' exceeds the maximum allowed length.")
             # TODO - log this instead of print
-            print(f"Invalid name: '{name}' exceeds the maximum allowed length.")
+            log.warning("Invalid name: '%s' exceeds the maximum allowed length.", name)
             return False
 
         return True

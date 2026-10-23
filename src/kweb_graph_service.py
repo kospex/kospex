@@ -7,6 +7,8 @@ import kospex_utils as KospexUtils
 import kospex_web as KospexWeb
 import kospex_email as KospexEmail
 
+log = KospexUtils.get_kospex_logger("kweb2")
+
 
 class GraphService:
     """Service class for generating graph data for visualizations."""
@@ -40,7 +42,10 @@ class GraphService:
         git_server = params.get("server")
         author_email = params.get("author_email")
 
-        print(f"GraphService - org_key: {org_key_param}, repo_id: {repo_id}, focus: {focus}, author_email: {author_email}")
+        log.debug(
+            "GraphService - org_key: %s, repo_id: %s, focus: %s, author_email: %s",
+            org_key_param, repo_id, focus, author_email,
+        )
 
         # Get raw graph information
         org_info = self._get_org_info(
