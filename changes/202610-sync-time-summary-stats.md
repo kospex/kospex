@@ -188,13 +188,18 @@ the DB (warm):
 
 | Production call | PK only | 5-column A | **8-column A′** |
 |---|---|---|---|
-| `repos()`, estate | 1.66s | 2.67s, table scan, A unused | **0.49s** |
+| `repos()`, estate | 1.66s | ~1.5–2.0s, A unused (same plan as PK only) | **0.49s** |
 | `repos(org_key)` | 0.92s | 0.89s, A unused | **0.09s** |
 | `developers(org_key)` | 0.22s | 0.22s, A unused | **0.17s** |
 | `active_devs()`, estate | 1.02s | 0.07s | **0.08s** |
 | `update_developer_stats(tensorflow)`, SELECT + writes | 2.29s | 2.33s | 2.46s |
 | Size / build time | — | 154MB / 1.6s | **190MB (+4.4%) / 4.6s** |
 
+- A single 2.67s reading for `repos()` with the 5-column index was noise. A
+  re-run, 7 timings per configuration over two rounds, gave medians of
+  1.50–2.02s both with and without it, all with the identical plan. Single runs
+  on the dev machine vary by up to 2x (one run with no index took 3.62s), so
+  compare medians, not single runs.
 - `update_developer_stats` as a whole does not get faster. Its SELECT does
   (0.54s → 0.19s, measured above), but row-by-row deletes and inserts dominate
   the total.
