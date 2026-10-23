@@ -76,6 +76,7 @@ py-modules = [
     "kospex_logging",
     "kospex_observation",
     "kospex_query",
+    "kospex_rebuild",
     "kospex_request_cache",
     "kospex_schema",
     "kospex_stats",

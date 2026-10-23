@@ -236,6 +236,32 @@ The format of this file is git clone URLs, one per line.
 - `-window` — days to consider for orphaned repos (default 365)
 - `-target-list` — a file containing repos to check
 
+## rebuild
+
+Recompute data that kospex derives from your synced commits, without re-syncing
+the repos. Each subcommand rebuilds one kind of data:
+
+```bash
+kospex rebuild list                                     # tasks, what they write, whether they need a clone
+kospex rebuild developer-stats -all                     # every repo
+kospex rebuild developer-stats -org github.com~kospex   # every repo in an org
+kospex rebuild developer-stats github.com~kospex~kospex # one repo
+```
+
+`developer-stats` rebuilds the per-developer statistics behind the web summary
+page and `kospex stats`. It reads only the database, so it needs no clones,
+network access or credentials, and takes seconds for hundreds of repos. Run it
+once after upgrading to a release whose upgrade notes ask for it.
+
+**Parameters**
+
+- `REPO_ID`, `-all`, `-org ORG_KEY` or `-server SERVER`: the repos to rebuild.
+  Exactly one is required.
+- `-dry-run`: list the repos in scope without changing anything.
+
+Each repo is rebuilt on its own. If one fails, the error is shown, the rest
+carry on, and the command exits with status 1.
+
 ## list-repos
 
 This command either lists all the known repos that have been synced to the database, or

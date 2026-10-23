@@ -272,8 +272,9 @@ Every sync path (`kgit clone` / `pull`, `kospex sync-directory`,
 - how quickly a whole DB heals depends on sync cadence. `kgit pull --all` heals
   everything in one run. `kospex-agent` syncs at most 3 stale repos per 5-minute
   cycle, which is about 10 hours for 374 repos;
-- optional, if healing should be faster without git: a small command that loops
-  `update_developer_stats()` over every repo, from the DB alone.
+- without git, from the DB alone: `kospex rebuild developer-stats -all`
+  (added in Phase 4, 3.0s for the dev DB). Phase 4 makes this step required on
+  upgrade, since the summary pages no longer fall back.
 
 ## Phase 4 — `/` and `/summary/` read `developer_stats`
 
@@ -301,12 +302,14 @@ time, checked against the live full-scan queries:
 | Repos, estate (374) | ~2.2s | 0.03s | yes |
 | Developers, org `github.com~kospex` | — | 0.007s | yes |
 
-**Unhealed rows: fall back per scope.** Before using the stats, check
-`SELECT 1 FROM developer_stats WHERE last_authored IS NULL AND <scope> LIMIT 1`.
-If any row in scope is unhealed, use the current `commits` query for that scope.
-A repo with commits but no `developer_stats` rows at all (not seen today: all
-374 have them) also falls back. `kospex system-status` reports both counts, so
-the gap is visible instead of hidden by the fallback.
+**Unhealed rows: no fallback (decided).** A first implementation fell back to
+the `commits` queries for any scope containing an unhealed row or a repo with
+no stats. That made the speed-up all-or-nothing: the estate page stayed slow
+until the last repo resynced, and one stuck repo kept it slow indefinitely. It
+also added code that nobody installing after this release would ever run.
+kospex has very few users today, so the fallback was dropped. Instead the
+release is a breaking upgrade: run `kospex rebuild developer-stats -all` after
+`upgrade-db`, and `kospex system-status` reports any repo still to rebuild.
 
 `developers()` and `repos()` themselves are **not** re-pointed in this phase.
 Other pages call them with `from_date` / `to_date` / `days` windows, which
@@ -316,27 +319,33 @@ all-time rows cannot answer.
 
 - **`KospexQuery.developer_statuses()` / `repo_statuses()`**, taking the same
   `org_key` / `repo_id` / `server` as `developers()`. They return rows with
-  `status` (plus `days_ago` for repos), or `None` when the stats don't cover the
-  scope.
-- **Coverage check** (`_stats_cover_scope`), about 17ms per call:
-  - an unhealed row in scope: `last_authored IS NULL`, or a legacy `NULL`
-    `stat_type`;
-  - a repo in scope with commits but no `ALL_TIME` rows. "Repos with commits"
-    comes from a loose index scan of the `commits` primary key, one seek per
-    repo: 8ms for 374 repos, against 85ms warm and 2.4s cold for
-    `SELECT DISTINCT _repo_id`. A `repos` row with no commits doesn't count,
-    because `repos()` doesn't count it either.
-- **kweb:** `summary_rows()` in `kweb2.py` tries the stats under new cache keys
-  (`developer_statuses`, `repo_statuses`), and on `None` falls back to the old
-  `developers` / `repos` keys. Those are the keys `/repos/` uses, so the two
-  pages still share them. A scope that `developer_stats` can't express (a
-  base64 `author_email` id) always takes the old path. `/summary2/` is
-  unchanged.
-- **`kospex system-status`** has a "Summary stats coverage" section: the number
-  of repos not rebuilt yet, and the number with commits but no stats.
+  `status` (plus `days_ago` for repos).
+- **kweb:** `summary_rows()` in `kweb2.py` reads them under new cache keys
+  (`developer_statuses`, `repo_statuses`). A scope that `developer_stats` can't
+  express (a base64 `author_email` id) still uses `developers()` / `repos()`.
+  `/summary2/` is unchanged.
+- **`KospexQuery.developer_stats_coverage()`**, shown by `kospex system-status`
+  under "Summary stats coverage": the number of repos with rows not rebuilt yet
+  (`last_authored IS NULL`, or a legacy `NULL` `stat_type`), and the number with
+  commits but no `ALL_TIME` rows. "Repos with commits" comes from a loose index
+  scan of the `commits` primary key, one seek per repo: 8ms for 374 repos,
+  against 85ms warm and 2.4s cold for `SELECT DISTINCT _repo_id`. A `repos`
+  row with no commits doesn't count, because `repos()` doesn't count it either.
+- **`kospex rebuild developer-stats REPO_ID | -all | -org | -server`**
+  (`src/kospex_rebuild.py`). It is the first task in a small registry: each
+  task declares what it writes and whether it needs a clone, and shares scope
+  resolution (exactly one scope, as `kgit pull`), the per-repo loop with
+  failures isolated, `-dry-run` and a summary.
+- **`update_developer_stats()` is one transaction per repo.** sqlite-utils'
+  `execute()` commits each write on its own when no transaction is open, so
+  every developer row was a commit and a disk sync, and the `DELETE` committed
+  before the inserts. A full rebuild of the dev DB went from 63.2s to **3.0s**
+  (DefinitelyTyped 11.85s to 0.32s), and the step that ends every sync gets the
+  same saving.
 
-**Measured on the real DB.** Phase 3 rows were simulated with a connection-only
-TEMP table shadowing `developer_stats`, read-only and with nothing written. Warm:
+**Measured on the real DB.** Phase 3 rows were first simulated with a
+connection-only TEMP table shadowing `developer_stats` (read-only, nothing
+written), with the since-removed coverage check included in the timings. Warm:
 
 | Scope | Developers / repos | Status counts identical | Stats path | Commits queries |
 |---|---|---|---|---|
@@ -353,9 +362,11 @@ LOWER(author_email)` over 91k rows, 60ms for 72,649 `development_status()`
 calls in Python, and two coverage checks. That is higher than the 0.06s
 "Validated" figure above, which timed the developer query alone.
 
-**Until repos resync, nothing changes.** Rows written before Phase 3 make every
-scope fall back. On the dev DB, `system-status` reports all 374 repos as not
-rebuilt, until a `kgit pull --all` (or each repo's next sync) rebuilds them.
+**After a real rebuild.** On a copy of the dev DB, `kospex rebuild
+developer-stats -all` (3.0s) left coverage at 0 / 0. Read from the real table
+without the coverage check, status counts again matched `developers()` /
+`repos()` for the estate, an org, a server and a repo: estate 0.19s, org
+0.03s, server 0.03s, repo 0.001s.
 
 ### The request cache after this
 

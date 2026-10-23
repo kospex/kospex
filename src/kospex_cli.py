@@ -8,6 +8,7 @@ import os
 import os.path
 import socket
 import ssl
+import time
 from datetime import datetime, timedelta, timezone
 from shutil import which
 
@@ -17,6 +18,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+import kospex_rebuild as KospexRebuild
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
@@ -1048,6 +1050,79 @@ def developer_stats(repo_id):
     console.print()
 
 
+@cli.group("rebuild")
+def rebuild():
+    """Rebuild derived data for repos already in the DB, without re-syncing.
+
+    \b
+    Each subcommand rebuilds one table for a scope of repos:
+        kospex rebuild developer-stats -all
+        kospex rebuild developer-stats -org github.com~kospex
+        kospex rebuild developer-stats github.com~kospex~kospex
+    'kospex rebuild list' shows the tasks and what each writes.
+    """
+
+
+@rebuild.command("list")
+def rebuild_list():
+    """List the rebuild tasks, the tables they write and whether they need a clone."""
+    table = Table(title="Rebuild tasks")
+    table.add_column("Task", style="cyan")
+    table.add_column("Writes")
+    table.add_column("Needs clone")
+    table.add_column("Description")
+    for task in KospexRebuild.TASKS.values():
+        table.add_row(task.name, ", ".join(task.writes), "yes" if task.needs_clone else "no",
+                      task.description)
+    console.print(table)
+
+
+def _rebuild_command(task):
+    """A `kospex rebuild <task>` command with the shared scope options."""
+
+    @click.option("-dry-run", "dry_run", is_flag=True, default=False,
+                  help="List the repos in scope without changing anything.")
+    @click.option("-server", default=None, help="Every repo on a git server, e.g. github.com")
+    @click.option("-org", "org_key", default=None, help="Every repo in an ORG_KEY, e.g. github.com~kospex")
+    @click.option("-all", "all_repos", is_flag=True, default=False, help="Every repo in the DB.")
+    @click.argument("repo_id", required=False, type=click.STRING)
+    def command(repo_id, all_repos, org_key, server, dry_run):
+        kquery = KospexQuery()
+        try:
+            repos = KospexRebuild.resolve_scope(kquery, repo_id=repo_id, all_repos=all_repos,
+                                                org_key=org_key, server=server)
+        except ValueError as e:
+            raise click.UsageError(str(e))
+        if not repos:
+            console.print("No repos in scope.")
+            raise SystemExit(1)
+
+        if dry_run:
+            for repo in repos:
+                console.print(repo["_repo_id"])
+            console.print(f"\n{len(repos)} repo(s) would be rebuilt by '{task.name}'.")
+            return
+
+        def progress(i, total, result):
+            line = f"[{i}/{total}] {result.repo_id}  {result.status}  {result.seconds:.2f}s"
+            console.print(f"{line}  {result.detail}" if result.detail else line)
+
+        started = time.perf_counter()
+        results = KospexRebuild.run_task(task, repos, kquery, on_repo=progress)
+        counts = {s: sum(1 for r in results if r.status == s) for s in ("ok", "skipped", "failed")}
+        console.print(f"\n{task.name}: {counts['ok']} rebuilt, {counts['skipped']} skipped, "
+                      f"{counts['failed']} failed in {time.perf_counter() - started:.1f}s")
+        if counts["failed"]:
+            raise SystemExit(1)
+
+    command.__doc__ = f"Rebuild {task.name} for a REPO_ID, or -all / -org / -server.\n\n{task.description}"
+    return command
+
+
+for _task in KospexRebuild.TASKS.values():
+    rebuild.command(_task.name)(_rebuild_command(_task))
+
+
 @cli.command("orgs")
 def orgs():
     """List all the organizations in the database."""
@@ -1471,8 +1546,8 @@ def status():
         print(f"Repos with stats not rebuilt yet:\t{coverage['repos_not_rebuilt']}")
         print(f"Repos with commits but no stats:\t{coverage['repos_without_stats']}")
         if coverage["repos_not_rebuilt"] or coverage["repos_without_stats"]:
-            print("\nThe web summary pages use the slower full query for any scope that")
-            print("includes these repos. Re-syncing them (e.g. 'kgit pull --all') fixes it.")
+            print("\nThe web summary page counts are wrong for these repos until their")
+            print("stats are rebuilt. Run: kospex rebuild developer-stats -all")
     except Exception as e:
         print(f"Could not read summary stats coverage: {e}")
     print()

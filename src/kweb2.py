@@ -72,15 +72,10 @@ SUMMARY_STATS_SCOPES = {"org_key", "repo_id", "server"}
 def summary_rows(params):
     """(developers, repos) rows for the summary page's status counts.
 
-    Read from developer_stats when it covers the scope, which avoids two full
-    scans of commits. Otherwise, e.g. while repos are still resyncing after an
-    upgrade, use developers() / repos() as before, under the same cache keys
-    /repos/ uses so the two pages still share them.
-
-    A None from the stats path isn't stored usefully by the cache, so an
-    uncovered scope re-runs only the cheap coverage check on each request.
+    Read from developer_stats rather than scanning commits twice. A scope the
+    stats can't express (a base64 author_email id) keeps using developers() /
+    repos(), under the cache keys /repos/ shares.
     """
-    devs = repos = None
     if set(params) <= SUMMARY_STATS_SCOPES:
         devs = cached_query(
             "developer_statuses", lambda: KospexQuery().developer_statuses(**params), **params
@@ -88,10 +83,9 @@ def summary_rows(params):
         repos = cached_query(
             "repo_statuses", lambda: KospexQuery().repo_statuses(**params), **params
         )
-    if devs is None:
-        devs = cached_query("developers", lambda: KospexQuery().developers(**params), **params)
-    if repos is None:
-        repos = cached_query("repos", lambda: KospexQuery().repos(**params), **params)
+        return devs, repos
+    devs = cached_query("developers", lambda: KospexQuery().developers(**params), **params)
+    repos = cached_query("repos", lambda: KospexQuery().repos(**params), **params)
     return devs, repos
 
 @asynccontextmanager
