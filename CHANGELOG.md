@@ -466,6 +466,15 @@ was relying on the old, wrong success.
   repo's committer emails on each request. `krunner`'s `Start date:` and
   `Executing query:` lines now appear only at DEBUG level.
 
+- **Developer tenure is calculated about 2.8x faster.** `days_between_datetimes()`
+  parsed every timestamp with dateutil's general-purpose parser. It now tries
+  `datetime.fromisoformat` first, and falls back to dateutil only for values that
+  aren't ISO 8601. `developers()` on a 72,649-developer database goes from 3.96s
+  to 1.43s, which speeds up every page and command that shows tenure. Results are
+  unchanged: all 1,131,765 distinct stored timestamps parse identically both
+  ways, including the two malformed shapes found in real data.
+  See `changes/202610-sync-time-summary-stats.md`.
+
 ### Fixed
 
 - **`/summary/<org_key>` showed the estate-wide developer count next to the
