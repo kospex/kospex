@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api", tags=["api"])
 
 @router.get("/servers/", response_class=JSONResponse)
 @router.get("/servers/{id}", response_class=JSONResponse)
-async def api_servers(request: Request, id: Optional[str] = None):
+def api_servers(request: Request, id: Optional[str] = None):
     """API endpoint for server information"""
     try:
         logger.info(f"API servers endpoint requested with id: {id}")
@@ -44,7 +44,7 @@ async def api_servers(request: Request, id: Optional[str] = None):
 
 @router.get("/developers/", response_class=JSONResponse)
 @router.get("/developers/{id}", response_class=JSONResponse)
-async def api_developers(request: Request, id: Optional[str] = None):
+def api_developers(request: Request, id: Optional[str] = None):
     """API endpoint for developers information"""
     try:
         logger.info(f"API developers endpoint requested with id: {id}")
@@ -86,7 +86,7 @@ async def api_developers(request: Request, id: Optional[str] = None):
 
 
 @router.get("/orgs/", response_class=JSONResponse)
-async def api_orgs(request: Request):
+def api_orgs(request: Request):
     """API endpoint for organizations information"""
     try:
         logger.info("API orgs endpoint requested")
@@ -110,7 +110,7 @@ async def api_orgs(request: Request):
 
 @router.get("/repos/", response_class=JSONResponse)
 @router.get("/repos/{id}", response_class=JSONResponse)
-async def api_repos(request: Request, id: Optional[str] = None):
+def api_repos(request: Request, id: Optional[str] = None):
     """API endpoint for repositories information"""
     try:
         logger.info(f"API repos endpoint requested with id: {id}")
@@ -159,7 +159,7 @@ async def api_repos(request: Request, id: Optional[str] = None):
 
 
 @router.get("/developer/{id}", response_class=JSONResponse)
-async def api_developer(request: Request, id: str):
+def api_developer(request: Request, id: str):
     """API endpoint for individual developer information (ID required)"""
     try:
         logger.info(f"API developer endpoint requested with id: {id}")
@@ -197,7 +197,7 @@ async def api_developer(request: Request, id: str):
 
 # Additional API endpoints for completeness
 @router.get("/health", response_class=JSONResponse)
-async def api_health():
+def api_health():
     """API health check endpoint"""
     return JSONResponse(content={
         "status": "healthy",
@@ -207,7 +207,7 @@ async def api_health():
 
 
 @router.get("/summary", response_class=JSONResponse)
-async def api_summary(request: Request):
+def api_summary(request: Request):
     """API endpoint for summary information"""
     try:
         logger.info("API summary endpoint requested")
@@ -228,7 +228,7 @@ async def api_summary(request: Request):
 
 
 @router.get("/tech-landscape", response_class=JSONResponse)
-async def api_tech_landscape(request: Request):
+def api_tech_landscape(request: Request):
     """API endpoint for technology landscape"""
     try:
         logger.info("API tech landscape endpoint requested")
