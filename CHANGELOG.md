@@ -478,6 +478,8 @@ was relying on the old, wrong success.
   goes from 1.66s to 0.49s, `repos(org)` from 0.92s to 0.09s, and
   `active_devs()` from 1.02s to 0.08s. These back kweb's `/`, `/summary/` and
   `/repos/` pages, and the developer-stats rebuild at the end of every sync.
+  See `changes/202610-sync-time-summary-stats.md`.
+
 - **Developer tenure is calculated about 2.8x faster.** `days_between_datetimes()`
   parsed every timestamp with dateutil's general-purpose parser. It now tries
   `datetime.fromisoformat` first, and falls back to dateutil only for values that
