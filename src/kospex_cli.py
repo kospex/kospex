@@ -924,32 +924,28 @@ def author_tech(author_email, repo_id):
     "-repo_id", type=click.STRING, help="Repo ID to query, in the format SERVER~ORG~REPO."
 )
 @click.argument("directory", required=False, type=GitRepo())
-def key_person(directory, top, repo_id):
+@click.pass_context
+def key_person(ctx, directory, top, repo_id):
     """
     Identify the key people for a repo based on number of commits.
 
-    Firstly, the top X committers of all time
+    Give either a DIRECTORY (e.g. '.'), whose git remote gives the repo_id,
+    or -repo_id, which needs no clone on disk. Either way the figures come
+    from the kospex DB, as of the repo's last sync.
 
-    Secondly, the topic X active committers (i.e. last 90 days)
-
-    The top X defaults to 4, but can be provided as a switch with -top Y
-
-    Reads the kospex DB only. Give either a DIRECTORY (default: the current
-    one), whose git remote gives the repo_id, or a -repo_id, which needs no
-    clone on disk.
+    Shows the top X committers of all time, plus any of the top X active
+    committers (last 90 days) not already listed. X defaults to 4; set it
+    with -top X.
     """
+    if not directory and not repo_id:
+        # No silent default to the current directory: make the choice explicit.
+        raise click.exceptions.NoArgsIsHelpError(ctx)
+
     if directory and repo_id:
         click.echo("Give either a DIRECTORY or -repo_id, not both.", err=True)
         raise SystemExit(1)
 
-    if not repo_id:
-        if not directory:
-            directory = os.getcwd()
-            if not KospexUtils.is_git(directory):
-                print(f"Directory '{directory}' is not a git repository.")
-                print("Please either cd in a git repository directory, or specify one.")
-                exit(1)
-
+    if directory:
         kgit = KospexGit()
         kgit.set_repo(directory)
         repo_id = kgit.get_repo_id()
@@ -989,6 +985,15 @@ def key_person(directory, top, repo_id):
     print("show who integrates changes. Comparable within a repo only: a project")
     print("using squash-and-merge produces no merge commits at all.")
     print()
+    if directory:
+        # The directory only gives the repo_id; the table is the DB's last sync,
+        # which may be behind what is on disk.
+        repo = kquery.get_repo_by_id(repo_id) or {}
+        last_sync = repo.get("last_sync")
+        last_sync = (KospexUtils.extract_db_date(last_sync) if last_sync else None) or "unknown"
+        print("Note: the repo_id is calculated from this repo directory, but the data")
+        print(f"comes from the last sync in the database ({last_sync}).")
+        print()
 
 
 @cli.command("stats")

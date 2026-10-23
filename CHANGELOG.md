@@ -326,7 +326,12 @@ was relying on the old, wrong success.
   database, and the directory was used just to work out the `repo_id`. A
   `repo_id` the database has never seen, or one with no commits recorded, now
   exits 1 and says which, with the command to fix it, instead of printing an
-  empty table that looks like a dormant repo.
+  empty table that looks like a dormant repo. With neither a directory nor
+  `-repo_id` it prints its help and exits 2, rather than silently using the
+  current directory: pass `.` for that. Run on a directory, it now ends
+  with a note that the directory only supplies the `repo_id` and the figures are
+  from the database's last sync of it, with that sync's date: commits made since
+  are not counted until the repo is synced again.
 - **`kospex advisory-history` is disabled until its redesign**
   ([#282](https://github.com/kospex/kospex/issues/282)). It now exits 1 with a
   notice on stderr instead of running. It crashed with `IndexError` on the
@@ -436,6 +441,12 @@ was relying on the old, wrong success.
   this index.
 
 ### Fixed
+
+- **Key person `tenure` was about 3% too high.** It divided the days between an
+  author's first and last commit by 354 rather than 365, so a year of commits
+  showed as `1.031`. Every other years figure in kospex already used 365. It
+  affects `kospex key-person` and the web key person page. Nothing is stored, so
+  the next run shows the corrected value.
 
 - **The package check page returned a 500 for a file it can't read.**
   Uploading a file whose name kospex doesn't recognise (`req.txt`,
