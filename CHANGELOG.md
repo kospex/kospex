@@ -550,6 +550,11 @@ was relying on the old, wrong success.
   `last_sync` values are compared as times rather than strings, so a sync
   recorded in a different UTC offset still invalidates the cache.
 
+- **`/summary/<base64 email>` returned a 500.** The summary route decodes a
+  base64 id to a developer's email, but its queries take no email, so the page
+  always failed. Nothing links to it, and a summary is per repo, org or server,
+  so it now returns a 404 that points to `/developers/`.
+
 - **Key person `tenure` was about 3% too high.** It divided the days between an
   author's first and last commit by 354 rather than 365, so a year of commits
   showed as `1.031`. Every other years figure in kospex already used 365. It

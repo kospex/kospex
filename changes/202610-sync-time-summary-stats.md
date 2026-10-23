@@ -321,9 +321,11 @@ all-time rows cannot answer.
   `org_key` / `repo_id` / `server` as `developers()`. They return rows with
   `status` (plus `days_ago` for repos).
 - **kweb:** `summary_rows()` in `kweb2.py` reads them under new cache keys
-  (`developer_statuses`, `repo_statuses`). A scope that `developer_stats` can't
-  express (a base64 `author_email` id) still uses `developers()` / `repos()`.
-  `/summary2/` is unchanged.
+  (`developer_statuses`, `repo_statuses`). `/summary/<base64 email>`, which
+  `get_id_params()` turns into an `author_email` scope, is a 404: nothing
+  links to it, it returned 500 before (`developers()` / `repos()` take no
+  `author_email`), and a developer's page is `/developers/`. `/summary2/` is
+  unchanged.
 - **`KospexQuery.developer_stats_coverage()`**, shown by `kospex system-status`
   under "Summary stats coverage": the number of repos with rows not rebuilt yet
   (`last_authored IS NULL`, or a legacy `NULL` `stat_type`), and the number with

@@ -184,10 +184,17 @@ def test_summary_reads_stats_and_counts_match(kweb, monkeypatch, scope):
     assert _status_counts(repos) == expected_repos
 
 
-def test_summary_uses_the_commits_queries_for_a_scope_stats_cannot_express(kweb, monkeypatch):
-    calls = []
-    monkeypatch.setattr(KospexQuery, "developers", lambda self, **kw: calls.append(kw) or [])
-    monkeypatch.setattr(KospexQuery, "repos", lambda self, **kw: [])
-    _forbid(monkeypatch, "developer_statuses", "repo_statuses")
-    kweb.summary_rows({"author_email": "dev@example.com"})
-    assert calls == [{"author_email": "dev@example.com"}]
+def test_a_developer_scoped_summary_is_a_404_not_a_500(kweb, monkeypatch):
+    # get_id_params decodes a base64 id to an author_email scope. Nothing links
+    # to /summary/<base64 email>, and it used to 500 (developers() and repos()
+    # take no author_email). A summary is per repo, org or server.
+    import base64
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    _forbid(monkeypatch, "developers", "repos", "developer_statuses", "repo_statuses")
+    encoded = base64.b64encode(b"dev@example.com").decode()
+    with pytest.raises(HTTPException) as raised:
+        kweb.summary(Request({"type": "http"}), id=encoded)
+    assert raised.value.status_code == 404
+    assert "/developers/" in raised.value.detail

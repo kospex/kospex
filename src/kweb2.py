@@ -72,20 +72,15 @@ SUMMARY_STATS_SCOPES = {"org_key", "repo_id", "server"}
 def summary_rows(params):
     """(developers, repos) rows for the summary page's status counts.
 
-    Read from developer_stats rather than scanning commits twice. A scope the
-    stats can't express (a base64 author_email id) keeps using developers() /
-    repos(), under the cache keys /repos/ shares.
+    Read from developer_stats rather than scanning commits twice. params is a
+    repo_id, org_key or server scope (or empty, for the whole estate).
     """
-    if set(params) <= SUMMARY_STATS_SCOPES:
-        devs = cached_query(
-            "developer_statuses", lambda: KospexQuery().developer_statuses(**params), **params
-        )
-        repos = cached_query(
-            "repo_statuses", lambda: KospexQuery().repo_statuses(**params), **params
-        )
-        return devs, repos
-    devs = cached_query("developers", lambda: KospexQuery().developers(**params), **params)
-    repos = cached_query("repos", lambda: KospexQuery().repos(**params), **params)
+    devs = cached_query(
+        "developer_statuses", lambda: KospexQuery().developer_statuses(**params), **params
+    )
+    repos = cached_query(
+        "repo_statuses", lambda: KospexQuery().repo_statuses(**params), **params
+    )
     return devs, repos
 
 @asynccontextmanager
@@ -229,6 +224,13 @@ def summary(request: Request, id: Optional[str] = None):
         logger.info(f"Summary page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
+        if not set(params) <= SUMMARY_STATS_SCOPES:
+            # get_id_params also decodes a base64 author_email id. A summary is
+            # per repo, org or server; a developer's page is /developers/.
+            raise HTTPException(
+                status_code=404,
+                detail="Summary pages are per repo, org or server. See /developers/ for a developer.",
+            )
 
         with KospexTimer("Load developers") as dev_load:
             devs, repos = summary_rows(params)
