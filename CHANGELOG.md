@@ -440,7 +440,41 @@ was relying on the old, wrong success.
   no repo scope, `repos_with_tech()` — never constrain `_repo_id` and cannot use
   this index.
 
+- **kweb's `/` and `/repos/` serve repeat loads from cache.** `/` goes from
+  ~1.7s to ~0.01s, and a repeat `/repos/` load from ~7s to ~0.09s, on a
+  1.1M-commit database. `/repos/` now caches its `repos()`, `developers()` and
+  `active_devs()` queries, and shares entries with `/`. The first load after a
+  sync, or after the hour-long expiry, still runs the full queries.
+  See `changes/202610-kweb-summary-cache-and-threadpool.md`.
+
+- **kweb route handlers run in FastAPI's threadpool.** They are plain `def`
+  rather than `async def`, so a slow page no longer blocks other requests behind
+  it: `/health` answers in ~2ms while a cold `/repos/` load is running.
+  `GraphService` opens its SQLite connection per use rather than at import,
+  because sqlite3 refuses a connection created on another thread.
+
+- **`kweb --debug` watches only kweb's own `src/` directory for reloads.**
+  Started from the repo root, it was checking about 4,900 `.py` files every
+  0.25s, `.venv` and any worktrees included. That held the reloader at 36–67%
+  CPU, and a pip upgrade or an edit in another worktree restarted kweb and
+  emptied its cache. Templates still update without a restart.
+
+- **kweb and `kospex_query` timings and debug output go to the log files, not
+  stdout.** `@timer` results go to `kospex_query.log`, and kweb's page timings
+  to `kweb2.log`. 22 leftover prints on request paths became debug or warning
+  log lines, or were removed. Among the removed ones, `/orphans/` printed every
+  repo's committer emails on each request. `krunner`'s `Start date:` and
+  `Executing query:` lines now appear only at DEBUG level.
+
 ### Fixed
+
+- **`/summary/<org_key>` showed the estate-wide developer count next to the
+  org's repo count** (e.g. 3 repos and 72,649 developers). kweb cached the
+  developer list under one fixed key, so whichever scope loaded first was served
+  to every scope. The scope is now part of the cache key. Cached entries also
+  expire after an hour, because statuses and "days ago" are relative to now.
+  `last_sync` values are compared as times rather than strings, so a sync
+  recorded in a different UTC offset still invalidates the cache.
 
 - **Key person `tenure` was about 3% too high.** It divided the days between an
   author's first and last commit by 354 rather than 365, so a year of commits
