@@ -6,14 +6,26 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Upgrade notes
 
-**No data changes are required in this release — unlike 0.1.0, nothing needs
-re-syncing or normalising — but there are five schema changes, and one optional
-clean-up.** An existing database needs `kospex upgrade-db -apply`; newly created
-ones pick all five up automatically. The optional clean-up clears the stored
-`''` described under *Fixed* for [#258](https://github.com/kospex/kospex/issues/258);
-it is not needed for kospex to work, and
-[`docs/refreshing-data.md`](docs/refreshing-data.md) has the SQL and the reason
-the figures depend on `latest`.
+**Breaking: an existing database needs two steps, in this order.** There are
+five schema changes, one required data rebuild and one optional clean-up.
+Newly created databases need none of this.
+
+```bash
+kospex upgrade-db -apply                  # back up ~/kospex/kospex.db first
+kospex rebuild developer-stats -all       # seconds; reads the DB only, no clones
+```
+
+- **The rebuild is required.** kweb's `/` and `/summary/` now count statuses
+  from `developer_stats` (see *Changed*), with no fallback to the old queries.
+  Rows written by earlier versions hold author-time dates, so until they are
+  rebuilt the summary counts are wrong: some developers land in the wrong
+  status, and a repo with no stats rows is left out. `kospex system-status`
+  shows how many repos still need it under "Summary stats coverage". Re-syncing
+  every repo (`kgit pull --all`) also rebuilds them, but takes far longer.
+- **The optional clean-up** clears the stored `''` described under *Fixed* for
+  [#258](https://github.com/kospex/kospex/issues/258). It is not needed for
+  kospex to work, and [`docs/refreshing-data.md`](docs/refreshing-data.md) has
+  the SQL and the reason the figures depend on `latest`.
 
 - **`0007`** adds an index to `file_metadata`. Index only: no rows are read,
   rewritten or deleted, and a database left un-upgraded keeps working, just
@@ -42,9 +54,10 @@ the figures depend on `latest`.
   `first_authored` and `last_authored`, to `developer_stats`. The index is
   about 4% of the database size and took 4.6s to build on a 1.1M-commit
   database. It makes per-row commit writes during sync about 26% slower. The
-  columns default to NULL and fill in for each repo on its next sync, so there
-  is no backfill. A database left un-upgraded keeps working, just without the
-  speed-up described under *Changed*.
+  columns default to NULL and are filled by `kospex rebuild developer-stats`
+  (or each repo's next sync). **Unlike the others, this one is required:** sync
+  writes the two columns, so on a database without `0011` every sync fails at
+  its developer-stats step.
 
 Otherwise what changes is how kospex *responds* when it cannot answer a
 question. In four places it previously returned something that looked like an
@@ -97,6 +110,16 @@ was relying on the old, wrong success.
    script that checks for a particular non-zero code should accept 3.
 
 ### Added
+
+- **`kospex rebuild <task>` recomputes derived data without re-syncing.** It
+  takes a scope, exactly one of `REPO_ID`, `-all`, `-org ORG_KEY` or
+  `-server SERVER`, so nothing is rebuilt estate-wide by accident. `-dry-run`
+  lists the repos in scope without changing anything. Each repo is rebuilt
+  independently: a failure is reported and the rest carry on, and the command
+  exits 1 if any failed. The first task is `developer-stats`, which reads only
+  the database, so it needs no clones, network or credentials. `kospex rebuild
+  list` shows the tasks, the tables each writes and whether it needs a clone.
+  Further tasks (file metadata, repo status) are planned on the same pattern.
 
 - **Lockfile install state is recorded: `is_dev`, `is_optional`,
   `runs_install_script` (migration `0009`).** Lockfiles state per entry whether a
@@ -495,19 +518,27 @@ was relying on the old, wrong success.
   Rebases, cherry-picks and applied patches keep the original author time, so
   about a quarter of (repo, author) pairs disagreed. `kospex stats` therefore
   shows committer dates from a repo's next sync onward, and rebased work shows
-  later dates. Rows heal on that next sync, with no backfill needed (it needs
-  migration `0011` for the two columns), and `last_authored IS NULL` marks a
-  row that hasn't been rebuilt yet. `kospex key-person` is unchanged: it
-  calculates tenure live from `commits`, by author time.
+  later dates. Existing rows are rebuilt by `kospex rebuild developer-stats -all`
+  (see *Upgrade notes*), and `last_authored IS NULL` marks a row that hasn't
+  been rebuilt yet. `kospex key-person` is unchanged: it calculates tenure live
+  from `commits`, by author time.
 
 - **kweb's `/` and `/summary/` count statuses from `developer_stats` instead
-  of scanning `commits`.** For the whole estate that's 0.24s instead of 1.81s
+  of scanning `commits`.** For the whole estate that's 0.19s instead of 1.81s
   warm (~5s cold), on 1.1M commits, with identical counts for every scope
-  measured. It only applies once a scope's repos have resynced since the change
-  above. Until then the page uses the full query as before, so nothing is wrong
-  in the meantime, only slower. `kospex system-status` has a new "Summary stats
-  coverage" section showing how many repos haven't been rebuilt yet;
-  `kgit pull --all` rebuilds all of them.
+  measured. There is no fallback: on a database upgraded from an earlier
+  version, run `kospex rebuild developer-stats -all` first (see *Upgrade
+  notes*). `kospex system-status` has a new "Summary stats coverage" section
+  that reports any repo whose stats still need rebuilding.
+
+- **Rebuilding a repo's developer stats is one transaction, and 17x faster.**
+  sqlite-utils commits each write statement on its own unless a transaction is
+  open, so `update_developer_stats()` committed, and synced to disk, once per
+  developer. A failure part-way also left the repo with only some of its rows,
+  because the old rows were deleted and committed first. It now deletes and
+  re-inserts a repo's rows in one transaction. Rebuilding all 374 repos of a
+  1.1M-commit database went from 63s to 3.0s (DefinitelyTyped: 11.9s to 0.3s),
+  and every sync runs this step.
 
 ### Fixed
 
@@ -518,6 +549,11 @@ was relying on the old, wrong success.
   expire after an hour, because statuses and "days ago" are relative to now.
   `last_sync` values are compared as times rather than strings, so a sync
   recorded in a different UTC offset still invalidates the cache.
+
+- **`/summary/<base64 email>` returned a 500.** The summary route decodes a
+  base64 id to a developer's email, but its queries take no email, so the page
+  always failed. Nothing links to it, and a summary is per repo, org or server,
+  so it now returns a 404 that points to `/developers/`.
 
 - **Key person `tenure` was about 3% too high.** It divided the days between an
   author's first and last commit by 354 rather than 365, so a year of commits

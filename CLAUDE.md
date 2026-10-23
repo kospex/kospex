@@ -147,7 +147,8 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 ### Database Operations
 - `kospex upgrade-db` - Show DB migration status (dry run by default)
 - `kospex upgrade-db -apply` - Apply pending DB migrations from `src/kospex/db/migrations/`
-- `kospex system-status` - Check system health
+- `kospex system-status` - Check system health (includes "Summary stats coverage")
+- `kospex rebuild developer-stats REPO_ID|-all|-org ORG_KEY|-server SERVER [-dry-run]` - Recompute derived data from the DB without re-syncing. `kospex rebuild list` shows the tasks. Tasks live in the `TASKS` registry in `src/kospex_rebuild.py`; adding one entry adds the subcommand.
 - `kospex list-repos` - List all synced repositories
 
 ## Development Workflow

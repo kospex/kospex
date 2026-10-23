@@ -72,26 +72,15 @@ SUMMARY_STATS_SCOPES = {"org_key", "repo_id", "server"}
 def summary_rows(params):
     """(developers, repos) rows for the summary page's status counts.
 
-    Read from developer_stats when it covers the scope, which avoids two full
-    scans of commits. Otherwise, e.g. while repos are still resyncing after an
-    upgrade, use developers() / repos() as before, under the same cache keys
-    /repos/ uses so the two pages still share them.
-
-    A None from the stats path isn't stored usefully by the cache, so an
-    uncovered scope re-runs only the cheap coverage check on each request.
+    Read from developer_stats rather than scanning commits twice. params is a
+    repo_id, org_key or server scope (or empty, for the whole estate).
     """
-    devs = repos = None
-    if set(params) <= SUMMARY_STATS_SCOPES:
-        devs = cached_query(
-            "developer_statuses", lambda: KospexQuery().developer_statuses(**params), **params
-        )
-        repos = cached_query(
-            "repo_statuses", lambda: KospexQuery().repo_statuses(**params), **params
-        )
-    if devs is None:
-        devs = cached_query("developers", lambda: KospexQuery().developers(**params), **params)
-    if repos is None:
-        repos = cached_query("repos", lambda: KospexQuery().repos(**params), **params)
+    devs = cached_query(
+        "developer_statuses", lambda: KospexQuery().developer_statuses(**params), **params
+    )
+    repos = cached_query(
+        "repo_statuses", lambda: KospexQuery().repo_statuses(**params), **params
+    )
     return devs, repos
 
 @asynccontextmanager
@@ -235,6 +224,13 @@ def summary(request: Request, id: Optional[str] = None):
         logger.info(f"Summary page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
+        if not set(params) <= SUMMARY_STATS_SCOPES:
+            # get_id_params also decodes a base64 author_email id. A summary is
+            # per repo, org or server; a developer's page is /developers/.
+            raise HTTPException(
+                status_code=404,
+                detail="Summary pages are per repo, org or server. See /developers/ for a developer.",
+            )
 
         with KospexTimer("Load developers") as dev_load:
             devs, repos = summary_rows(params)

@@ -6,11 +6,10 @@ that by aggregating the whole commits table (~5s and ~2s on a 1.1M-commit
 estate, cold). developer_stats already holds it per (repo, author), in
 committer time since Phase 3, so the counts come from ~91k rows instead.
 
-The stats are only trusted when they cover the scope:
-  - a row with last_authored IS NULL predates Phase 3 (author-time dates), so
-    the scope falls back to the commits query until that repo resyncs;
-  - a repo with commits but no developer_stats rows falls back the same way.
-developer_statuses() / repo_statuses() return None to signal the fallback.
+There is deliberately no fallback to the commits queries. A DB upgraded from
+before Phase 3 has rows with author-time dates (last_authored IS NULL); the
+upgrade note says to run `kospex rebuild developer-stats -all`, and
+developer_stats_coverage() / `kospex system-status` report what's left.
 
 Each test compares against developers() / repos() on the same DB, the
 production queries the summary used before, not against a restated copy.
@@ -126,45 +125,6 @@ def test_mixed_case_emails_are_one_developer(db):
     assert authors.count("dev@example.com") == 1
 
 
-def test_an_unhealed_row_makes_only_its_scope_fall_back(db):
-    db.execute("UPDATE developer_stats SET last_authored = NULL WHERE _repo_id = 'github.com~acme~web'")
-    db.conn.commit()
-    kq = KospexQuery(kospex_db=db)
-    for scope in ({}, {"org_key": "github.com~acme"}, {"repo_id": "github.com~acme~web"},
-                  {"server": "github.com"}):
-        assert kq.developer_statuses(**scope) is None, scope
-        assert kq.repo_statuses(**scope) is None, scope
-    assert kq.developer_statuses(org_key="gitlab.com~beta") is not None
-    assert kq.repo_statuses(repo_id="github.com~acme~api") is not None
-
-
-def test_a_legacy_null_stat_type_row_falls_back(db):
-    db["developer_stats"].insert({"_repo_id": "gitlab.com~beta~svc", "_git_server": "gitlab.com",
-                                  "_git_owner": "beta", "author_email": "x@example.com",
-                                  "stat_type": None, "last_commit": _iso(5)})
-    kq = KospexQuery(kospex_db=db)
-    assert kq.developer_statuses(org_key="gitlab.com~beta") is None
-    assert kq.developer_statuses(org_key="github.com~acme") is not None
-
-
-def test_a_repo_with_commits_but_no_stats_falls_back(db):
-    db.execute("DELETE FROM developer_stats WHERE _repo_id = 'gitlab.com~beta~svc'")
-    db.conn.commit()
-    kq = KospexQuery(kospex_db=db)
-    assert kq.developer_statuses() is None
-    assert kq.repo_statuses(server="gitlab.com") is None
-    assert kq.developer_statuses(org_key="github.com~acme") is not None
-
-
-def test_a_repo_row_without_commits_does_not_force_a_fallback(db):
-    # An empty repo (cloned, nothing committed) has a repos row and no stats;
-    # repos() doesn't count it either, so the stats still cover the scope.
-    db["repos"].insert({"_repo_id": "github.com~acme~empty", "_git_server": "github.com",
-                        "_git_owner": "acme", "_git_repo": "empty"})
-    kq = KospexQuery(kospex_db=db)
-    assert kq.developer_statuses(org_key="github.com~acme") is not None
-
-
 def test_a_malformed_org_key_raises_like_developers(db):
     kq = KospexQuery(kospex_db=db)
     with pytest.raises(ValueError):
@@ -173,13 +133,28 @@ def test_a_malformed_org_key_raises_like_developers(db):
         kq.developer_statuses(org_key="no-tilde")
 
 
-def test_coverage_counts_what_the_fallback_is_waiting_for(db):
+def test_coverage_reports_rows_not_rebuilt_and_repos_without_stats(db):
     kq = KospexQuery(kospex_db=db)
     assert kq.developer_stats_coverage() == {"repos_not_rebuilt": 0, "repos_without_stats": 0}
     db.execute("UPDATE developer_stats SET last_authored = NULL WHERE _repo_id = 'github.com~acme~web'")
     db.execute("DELETE FROM developer_stats WHERE _repo_id = 'gitlab.com~beta~svc'")
     db.conn.commit()
     assert kq.developer_stats_coverage() == {"repos_not_rebuilt": 1, "repos_without_stats": 1}
+
+
+def test_coverage_counts_a_legacy_null_stat_type_row_as_not_rebuilt(db):
+    db["developer_stats"].insert({"_repo_id": "gitlab.com~beta~svc", "_git_server": "gitlab.com",
+                                  "_git_owner": "beta", "author_email": "x@example.com",
+                                  "stat_type": None, "last_commit": _iso(5)})
+    assert KospexQuery(kospex_db=db).developer_stats_coverage()["repos_not_rebuilt"] == 1
+
+
+def test_coverage_ignores_a_repo_row_without_commits(db):
+    # An empty repo (cloned, nothing committed) has a repos row and no stats;
+    # repos() doesn't count it either, so it isn't missing anything.
+    db["repos"].insert({"_repo_id": "github.com~acme~empty", "_git_server": "github.com",
+                        "_git_owner": "acme", "_git_repo": "empty"})
+    assert KospexQuery(kospex_db=db).developer_stats_coverage()["repos_without_stats"] == 0
 
 
 # --- kweb wiring -------------------------------------------------------------
@@ -194,7 +169,7 @@ def kweb(db):
 
 def _forbid(monkeypatch, *names):
     def boom(*a, **k):
-        raise AssertionError("the summary scanned commits although developer_stats covers the scope")
+        raise AssertionError("the summary scanned commits instead of reading developer_stats")
     for name in names:
         monkeypatch.setattr(KospexQuery, name, boom)
 
@@ -209,20 +184,17 @@ def test_summary_reads_stats_and_counts_match(kweb, monkeypatch, scope):
     assert _status_counts(repos) == expected_repos
 
 
-def test_summary_falls_back_while_rows_are_unhealed(kweb, db):
-    db.execute("UPDATE developer_stats SET last_authored = NULL WHERE _repo_id = 'github.com~acme~web'")
-    db.conn.commit()
-    devs, repos = kweb.summary_rows({"org_key": "github.com~acme"})
-    # developers() rows carry tenure; the stats rows don't, so this proves the fallback ran
-    assert devs and all("tenure" in d for d in devs)
-    assert _status_counts(devs) == _status_counts(KospexQuery().developers(org_key="github.com~acme"))
-    assert _status_counts(repos) == _status_counts(KospexQuery().repos(org_key="github.com~acme"))
+def test_a_developer_scoped_summary_is_a_404_not_a_500(kweb, monkeypatch):
+    # get_id_params decodes a base64 id to an author_email scope. Nothing links
+    # to /summary/<base64 email>, and it used to 500 (developers() and repos()
+    # take no author_email). A summary is per repo, org or server.
+    import base64
+    from fastapi import HTTPException
+    from starlette.requests import Request
 
-
-def test_summary_falls_back_for_a_scope_stats_cannot_express(kweb, monkeypatch):
-    calls = []
-    monkeypatch.setattr(KospexQuery, "developers", lambda self, **kw: calls.append(kw) or [])
-    monkeypatch.setattr(KospexQuery, "repos", lambda self, **kw: [])
-    _forbid(monkeypatch, "developer_statuses", "repo_statuses")
-    kweb.summary_rows({"author_email": "dev@example.com"})
-    assert calls == [{"author_email": "dev@example.com"}]
+    _forbid(monkeypatch, "developers", "repos", "developer_statuses", "repo_statuses")
+    encoded = base64.b64encode(b"dev@example.com").decode()
+    with pytest.raises(HTTPException) as raised:
+        kweb.summary(Request({"type": "http"}), id=encoded)
+    assert raised.value.status_code == 404
+    assert "/developers/" in raised.value.detail
