@@ -6,14 +6,26 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Upgrade notes
 
-**No data changes are required in this release — unlike 0.1.0, nothing needs
-re-syncing or normalising — but there are four schema changes, and one optional
-clean-up.** An existing database needs `kospex upgrade-db -apply`; newly created
-ones pick all four up automatically. The optional clean-up clears the stored
-`''` described under *Fixed* for [#258](https://github.com/kospex/kospex/issues/258);
-it is not needed for kospex to work, and
-[`docs/refreshing-data.md`](docs/refreshing-data.md) has the SQL and the reason
-the figures depend on `latest`.
+**Breaking: an existing database needs two steps, in this order.** There are
+five schema changes, one required data rebuild and one optional clean-up.
+Newly created databases need none of this.
+
+```bash
+kospex upgrade-db -apply                  # back up ~/kospex/kospex.db first
+kospex rebuild developer-stats -all       # seconds; reads the DB only, no clones
+```
+
+- **The rebuild is required.** kweb's `/` and `/summary/` now count statuses
+  from `developer_stats` (see *Changed*), with no fallback to the old queries.
+  Rows written by earlier versions hold author-time dates, so until they are
+  rebuilt the summary counts are wrong: some developers land in the wrong
+  status, and a repo with no stats rows is left out. `kospex system-status`
+  shows how many repos still need it under "Summary stats coverage". Re-syncing
+  every repo (`kgit pull --all`) also rebuilds them, but takes far longer.
+- **The optional clean-up** clears the stored `''` described under *Fixed* for
+  [#258](https://github.com/kospex/kospex/issues/258). It is not needed for
+  kospex to work, and [`docs/refreshing-data.md`](docs/refreshing-data.md) has
+  the SQL and the reason the figures depend on `latest`.
 
 - **`0007`** adds an index to `file_metadata`. Index only: no rows are read,
   rewritten or deleted, and a database left un-upgraded keeps working, just
@@ -38,6 +50,14 @@ the figures depend on `latest`.
   not backfilled, because `duration_ms` excludes time the machine spent asleep, so
   the true start cannot be recovered by subtraction. `DELETE FROM osi_runs` is the
   clean option if you would rather start the diagnostics over.
+- **`0011`** adds a covering index on `commits`, and two columns,
+  `first_authored` and `last_authored`, to `developer_stats`. The index is
+  about 4% of the database size and took 4.6s to build on a 1.1M-commit
+  database. It makes per-row commit writes during sync about 26% slower. The
+  columns default to NULL and are filled by `kospex rebuild developer-stats`
+  (or each repo's next sync). **Unlike the others, this one is required:** sync
+  writes the two columns, so on a database without `0011` every sync fails at
+  its developer-stats step.
 
 Otherwise what changes is how kospex *responds* when it cannot answer a
 question. In four places it previously returned something that looked like an
@@ -90,6 +110,16 @@ was relying on the old, wrong success.
    script that checks for a particular non-zero code should accept 3.
 
 ### Added
+
+- **`kospex rebuild <task>` recomputes derived data without re-syncing.** It
+  takes a scope, exactly one of `REPO_ID`, `-all`, `-org ORG_KEY` or
+  `-server SERVER`, so nothing is rebuilt estate-wide by accident. `-dry-run`
+  lists the repos in scope without changing anything. Each repo is rebuilt
+  independently: a failure is reported and the rest carry on, and the command
+  exits 1 if any failed. The first task is `developer-stats`, which reads only
+  the database, so it needs no clones, network or credentials. `kospex rebuild
+  list` shows the tasks, the tables each writes and whether it needs a clone.
+  Further tasks (file metadata, repo status) are planned on the same pattern.
 
 - **Lockfile install state is recorded: `is_dev`, `is_optional`,
   `runs_install_script` (migration `0009`).** Lockfiles state per entry whether a
@@ -300,6 +330,38 @@ was relying on the old, wrong success.
 
 ### Changed
 
+- **The DuckDB proof of concept is parked: `kgit sync-repo` and
+  `kospex init-duckdb` are commented out, and `duckdb` is no longer a
+  dependency.** Both commands were labelled experimental, and nothing in
+  reporting or the web UI read what they wrote; kospex stores git history in
+  SQLite (`kospex.db`). Installing kospex no longer pulls in the duckdb native
+  library. The `GitDuckDB` and `GitIngest` modules remain while DuckDB is
+  researched further for feasibility and usefulness; to use them, install
+  `duckdb` yourself. An existing `~/kospex/kospex-git.duckdb` is left in place.
+- **`kgit status` and `kgit pull --check` print rich tables instead of
+  PrettyTable, and the `--check` column `age` is renamed `fetch_age`.** The
+  column always measured days since `last_fetch` — when kgit last cloned or
+  pulled the repo — not since the last sync or commit, and the new name says
+  so. A repo kgit has never cloned or pulled still shows `never`, even if it is
+  synced. Piped or redirected output is printed at the table's full width, so
+  long `repo_id`s are not cut off with `…`, as they had never been with
+  PrettyTable. `kgit status` also shows directory sizes in MB to three decimal
+  places (they were KB) and the execution time to four.
+- **`kospex key-person` prints a rich table instead of PrettyTable, and no
+  longer dumps the raw rows above it.** Columns and alignment are unchanged.
+  Piped or redirected output is printed at the table's full width, so long
+  author emails are not cut off with `…`.
+- **`kospex key-person -repo_id SERVER~ORG~REPO`** runs the analysis for a repo
+  that need not be cloned on disk: the command only ever read the kospex
+  database, and the directory was used just to work out the `repo_id`. A
+  `repo_id` the database has never seen, or one with no commits recorded, now
+  exits 1 and says which, with the command to fix it, instead of printing an
+  empty table that looks like a dormant repo. With neither a directory nor
+  `-repo_id` it prints its help and exits 2, rather than silently using the
+  current directory: pass `.` for that. Run on a directory, it now ends
+  with a note that the directory only supplies the `repo_id` and the figures are
+  from the database's last sync of it, with that sync's date: commits made since
+  are not counted until the repo is synced again.
 - **`kospex advisory-history` is disabled until its redesign**
   ([#282](https://github.com/kospex/kospex/issues/282)). It now exits 1 with a
   notice on stderr instead of running. It crashed with `IndexError` on the
@@ -408,7 +470,96 @@ was relying on the old, wrong success.
   no repo scope, `repos_with_tech()` — never constrain `_repo_id` and cannot use
   this index.
 
+- **kweb's `/` and `/repos/` serve repeat loads from cache.** `/` goes from
+  ~1.7s to ~0.01s, and a repeat `/repos/` load from ~7s to ~0.09s, on a
+  1.1M-commit database. `/repos/` now caches its `repos()`, `developers()` and
+  `active_devs()` queries, and shares entries with `/`. The first load after a
+  sync, or after the hour-long expiry, still runs the full queries.
+  See `changes/202610-kweb-summary-cache-and-threadpool.md`.
+
+- **kweb route handlers run in FastAPI's threadpool.** They are plain `def`
+  rather than `async def`, so a slow page no longer blocks other requests behind
+  it: `/health` answers in ~2ms while a cold `/repos/` load is running.
+  `GraphService` opens its SQLite connection per use rather than at import,
+  because sqlite3 refuses a connection created on another thread.
+
+- **`kweb --debug` watches only kweb's own `src/` directory for reloads.**
+  Started from the repo root, it was checking about 4,900 `.py` files every
+  0.25s, `.venv` and any worktrees included. That held the reloader at 36–67%
+  CPU, and a pip upgrade or an edit in another worktree restarted kweb and
+  emptied its cache. Templates still update without a restart.
+
+- **kweb and `kospex_query` timings and debug output go to the log files, not
+  stdout.** `@timer` results go to `kospex_query.log`, and kweb's page timings
+  to `kweb2.log`. 22 leftover prints on request paths became debug or warning
+  log lines, or were removed. Among the removed ones, `/orphans/` printed every
+  repo's committer emails on each request. `krunner`'s `Start date:` and
+  `Executing query:` lines now appear only at DEBUG level.
+
+- **Repo and active-developer summaries read from an index instead of the
+  `commits` table** (migration `0011`). On a 1.1M-commit database, `repos()`
+  goes from 1.66s to 0.49s, `repos(org)` from 0.92s to 0.09s, and
+  `active_devs()` from 1.02s to 0.08s. These back kweb's `/`, `/summary/` and
+  `/repos/` pages, and the developer-stats rebuild at the end of every sync.
+  See `changes/202610-sync-time-summary-stats.md`.
+
+- **Developer tenure is calculated about 2.8x faster.** `days_between_datetimes()`
+  parsed every timestamp with dateutil's general-purpose parser. It now tries
+  `datetime.fromisoformat` first, and falls back to dateutil only for values that
+  aren't ISO 8601. `developers()` on a 72,649-developer database goes from 3.96s
+  to 1.43s, which speeds up every page and command that shows tenure. Results are
+  unchanged: all 1,131,765 distinct stored timestamps parse identically both
+  ways, including the two malformed shapes found in real data.
+  See `changes/202610-sync-time-summary-stats.md`.
+
+- **`developer_stats.first_commit` / `last_commit` are committer time, and
+  author time moves to `first_authored` / `last_authored`.** They held author
+  time while `commits_last_90_days`, and every web page, used committer time.
+  Rebases, cherry-picks and applied patches keep the original author time, so
+  about a quarter of (repo, author) pairs disagreed. `kospex stats` therefore
+  shows committer dates from a repo's next sync onward, and rebased work shows
+  later dates. Existing rows are rebuilt by `kospex rebuild developer-stats -all`
+  (see *Upgrade notes*), and `last_authored IS NULL` marks a row that hasn't
+  been rebuilt yet. `kospex key-person` is unchanged: it calculates tenure live
+  from `commits`, by author time.
+
+- **kweb's `/` and `/summary/` count statuses from `developer_stats` instead
+  of scanning `commits`.** For the whole estate that's 0.19s instead of 1.81s
+  warm (~5s cold), on 1.1M commits, with identical counts for every scope
+  measured. There is no fallback: on a database upgraded from an earlier
+  version, run `kospex rebuild developer-stats -all` first (see *Upgrade
+  notes*). `kospex system-status` has a new "Summary stats coverage" section
+  that reports any repo whose stats still need rebuilding.
+
+- **Rebuilding a repo's developer stats is one transaction, and 17x faster.**
+  sqlite-utils commits each write statement on its own unless a transaction is
+  open, so `update_developer_stats()` committed, and synced to disk, once per
+  developer. A failure part-way also left the repo with only some of its rows,
+  because the old rows were deleted and committed first. It now deletes and
+  re-inserts a repo's rows in one transaction. Rebuilding all 374 repos of a
+  1.1M-commit database went from 63s to 3.0s (DefinitelyTyped: 11.9s to 0.3s),
+  and every sync runs this step.
+
 ### Fixed
+
+- **`/summary/<org_key>` showed the estate-wide developer count next to the
+  org's repo count** (e.g. 3 repos and 72,649 developers). kweb cached the
+  developer list under one fixed key, so whichever scope loaded first was served
+  to every scope. The scope is now part of the cache key. Cached entries also
+  expire after an hour, because statuses and "days ago" are relative to now.
+  `last_sync` values are compared as times rather than strings, so a sync
+  recorded in a different UTC offset still invalidates the cache.
+
+- **`/summary/<base64 email>` returned a 500.** The summary route decodes a
+  base64 id to a developer's email, but its queries take no email, so the page
+  always failed. Nothing links to it, and a summary is per repo, org or server,
+  so it now returns a 404 that points to `/developers/`.
+
+- **Key person `tenure` was about 3% too high.** It divided the days between an
+  author's first and last commit by 354 rather than 365, so a year of commits
+  showed as `1.031`. Every other years figure in kospex already used 365. It
+  affects `kospex key-person` and the web key person page. Nothing is stored, so
+  the next run shows the corrected value.
 
 - **The package check page returned a 500 for a file it can't read.**
   Uploading a file whose name kospex doesn't recognise (`req.txt`,
@@ -760,6 +911,19 @@ was relying on the old, wrong success.
   a `maven` package manifest with no parser, alongside `build.gradle`. Nothing
   is extracted from it yet — this only moves it into the parser backlog that
   `unsupported` is meant to count.
+
+### Security
+
+- **Values from git metadata are printed literally, not parsed as console
+  markup** (CWE-150). The CLI's rich consoles parsed every string they printed,
+  including table cells and titles, as markup. That covered author emails,
+  remote URLs and `repo_id`s, which whoever commits to or names a repo
+  controls, and git accepts brackets in all of them. An email such as
+  `a[/]@example.com` aborted the command with `MarkupError`; `[link=...]`
+  rendered a terminal hyperlink to a different target; `[conceal]` hid the
+  value. The `kgit`, `kospex` and `krunner` consoles, and `print_table()`'s
+  piped output, now have markup disabled. Messages that were styled with markup
+  keep their styling.
 
 ## 0.1.0 - 2026-09-11
 

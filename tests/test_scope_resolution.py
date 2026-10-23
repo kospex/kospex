@@ -68,8 +68,6 @@ def test_refusing_is_not_the_same_as_returning_nothing(kq):
 # --- the web layer must render a refusal, not a 500 (#158) and not an empty
 #     table (#43) ---------------------------------------------------------
 
-import asyncio
-
 import kweb2
 from fastapi import HTTPException
 
@@ -81,7 +79,7 @@ def _call(handler, **kwargs):
     suites skip unless a live kweb is running. A handler is better exercised
     directly than not at all.
     """
-    return asyncio.run(handler(request=None, **kwargs))
+    return handler(request=None, **kwargs)
 
 
 def _status_of(handler, **kwargs):

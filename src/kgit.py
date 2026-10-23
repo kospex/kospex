@@ -23,12 +23,16 @@ from kospex_bitbucket import (
     REQUIRED_SCOPES,
 )
 from rich.table import Table
+from rich.text import Text
 
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kgit = KospexGit()
 kospex = Kospex()
-console = Console()
+# markup=False: values printed here come from git metadata (author emails,
+# remote URLs, repo_ids). Rich would parse them as markup (CWE-150), so style
+# with style= or rich.text.Text instead of [tags].
+console = Console(markup=False)
 
 # Get logger using the new centralized logging system
 log = KospexUtils.get_kospex_logger('kgit')
@@ -52,14 +56,15 @@ def clone_path_conflict(kospex, repo_url, force=False):
 
     if conflict:
         log.error(f"refusing to clone {repo_url}: {reason}")
-        console.print(
-            f"[bold red]Refusing to clone[/bold red] {repo_url}\n"
+        console.print(Text.assemble(
+            ("Refusing to clone", "bold red"),
+            f" {repo_url}\n"
             f"  {planned['repo_id']} is already synced from {recorded_path}, "
             f"which still exists.\n"
             f"  Cloning to {planned['path']} would repoint it and lose which clone "
             f"the existing data came from.\n"
             f"  Re-run with -force to clone anyway, or remove the repo from the DB first."
-        )
+        ))
 
     return conflict
 
@@ -107,7 +112,7 @@ def _staleness_rows(repos, now=None):
             "last_fetch": r.get("last_fetch") or "never",
             "last_sync": r.get("last_sync") or "-",
             "last_commit": r.get("last_seen") or "-",
-            "age": "never" if days is None else f"{int(days)}d",
+            "fetch_age": "never" if days is None else f"{int(days)}d",
             "_sort": float("inf") if days is None else days,
         })
     # stalest first: never-fetched (inf) first, then largest age
@@ -166,19 +171,22 @@ def status(repo):
 
     st = time.time()
     stats = KospexUtils.get_git_stats(repo, 90)
-    table = PrettyTable()
-    table.field_names = ["Subject", "Value"]
-    table.align["Subject"] = "l"
-    table.align["Value"] = "r"
+    table = Table(title="Repo Status")
+    table.add_column("Subject", style="cyan", no_wrap=True)
+    table.add_column("Value", justify="right")
+    # get_git_stats() reports directory sizes in KB (du -k); show them in MB
+    size_keys = ("total_size", "git_dir_size", "repo_size_without_git")
     for subject, details in stats.items():
-        table.add_row([subject, details])
-    print(table)
+        if subject in size_keys:
+            details = f"{details / 1024:.3f}"
+        table.add_row(subject, str(details))
+    KospexUtils.print_table(table, console)
     print("Notes:")
-    print("\tdirectory sizes are in KB.")
+    print("\tdirectory sizes are in MB.")
     print("\tunique authors are the number of unique authors in the last 90 days.")
     et = time.time()
     elapsed_time = et - st
-    print('\nExecution time:', elapsed_time, 'seconds', "\n")
+    print(f"\nExecution time: {elapsed_time:.4f} seconds\n")
 
 #@cli.command("mailmap")
 @click.option('-sync', is_flag=True, default=False, help="Sync .mailmap to the database (Default)")
@@ -372,7 +380,7 @@ def sync(org, sync_db, url):
 
         repo_path = kgit.clone_repo(url)
         if not repo_path:
-            console.print(f"[bold red]Error:[/bold red] Failed to clone {url}")
+            console.print(Text.assemble(("Error:", "bold red"), f" Failed to clone {url}"))
             return
         log.info(f"Syncing repository {url} to path: {repo_path}")
         commits = kospex.sync_repo(repo_path)
@@ -439,13 +447,16 @@ def pull(all_flag, org, server, check, no_prompt, repo_id):
         return
 
     if check:
-        table = PrettyTable()
-        table.field_names = ["repo_id", "last_fetch", "last_sync", "last_commit", "age"]
-        table.align = "l"
+        table = Table(title="Repo Staleness")
+        table.add_column("repo_id", style="cyan", no_wrap=True)
+        table.add_column("last_fetch")
+        table.add_column("last_sync")
+        table.add_column("last_commit")
+        table.add_column("fetch_age", justify="right", style="magenta")
         for row in _staleness_rows(repos):
-            table.add_row([row["repo_id"], row["last_fetch"], row["last_sync"],
-                           row["last_commit"], row["age"]])
-        print(table)
+            table.add_row(row["repo_id"], row["last_fetch"], row["last_sync"],
+                          row["last_commit"], row["fetch_age"])
+        KospexUtils.print_table(table, console)
         return
 
     updated = current = skipped = failed = 0
@@ -690,111 +701,114 @@ def bitbucket(workspace, out_repo_list, test_auth, out_raw):
             raw_file.write(json.dumps(repos))
 
 
-@cli.command("sync-repo")
-@click.option('-verbose', is_flag=True, default=False, help="Show detailed sync output")
-@click.option('-force-full', is_flag=True, default=False, help="Force full sync even if already synced")
-@click.argument('repo', type=click.STRING, required=True)
-def sync_repo(verbose, force_full, repo):
-    """
-    Sync a git repository to the DuckDB database.
-
-    REPO can be either:
-    - A git URL (https://github.com/owner/repo) - will clone if needed
-    - A local path to an existing git repository
-
-    Examples:
-        kgit sync-repo https://github.com/kospex/kospex
-        kgit sync-repo /path/to/local/repo
-        kgit sync-repo -verbose https://github.com/owner/repo
-        kgit sync-repo -force-full /path/to/repo
-
-    The command will:
-    1. Verify DuckDB database exists (suggest 'kospex init-duckdb' if not)
-    2. Clone the repository if a URL is provided and repo doesn't exist
-    3. Perform full sync if never synced, incremental sync otherwise
-    """
-    console.print("[bold yellow]Warning:[/bold yellow] sync-repo (DuckDB) is experimental, no UI available")
-    log.info(f"Starting sync-repo for: {repo}")
-
-    # Import DuckDB components (deferred to avoid requiring duckdb for other commands)
-    from kospex import GitIngest, GitDuckDB
-
-    # Step 1: Check DuckDB database exists
-    db = GitDuckDB()
-    try:
-        db.connect(create_new=False, verbose=verbose)
-    except FileNotFoundError:
-        log.error("DuckDB database not found")
-        console.print("[bold red]Error:[/bold red] DuckDB database does not exist.")
-        console.print("\nTo initialize the DuckDB database, run:")
-        console.print("  [cyan]kospex init-duckdb[/cyan]")
-        exit(1)
-
-    # Step 2: Determine if repo is URL or local path
-    repo_path = None
-    if repo.startswith(('http://', 'https://', 'git@')):
-        # It's a URL - clone if needed
-        log.info(f"Repository URL detected: {repo}")
-        repo_path = kgit.clone_repo(repo)
-        if not repo_path:
-            log.error(f"Failed to clone repository: {repo}")
-            console.print(f"[bold red]Error:[/bold red] Failed to clone {repo}")
-            db.close()
-            exit(1)
-        console.print(f"Repository cloned/updated: {repo_path}")
-    else:
-        # It's a local path
-        repo_path = os.path.abspath(repo)
-        if not os.path.isdir(repo_path):
-            log.error(f"Directory does not exist: {repo_path}")
-            console.print(f"[bold red]Error:[/bold red] Directory does not exist: {repo_path}")
-            db.close()
-            exit(1)
-        if not KospexUtils.is_git(repo_path):
-            log.error(f"Not a git repository: {repo_path}")
-            console.print(f"[bold red]Error:[/bold red] Not a git repository: {repo_path}")
-            db.close()
-            exit(1)
-
-    # Step 3: Check if repo has been synced before
-    ingest = GitIngest(db)
-
-    # Use KospexGit to extract repo_id from the path
-    kg = KospexGit()
-    kg.set_repo(repo_path)
-    repo_id = kg.repo_id
-
-    last_sync_date = db.get_latest_commit_date(repo_id)
-
-    # Step 4: Perform sync
-    if last_sync_date and not force_full:
-        # Incremental sync
-        log.info(f"Performing incremental sync since {last_sync_date}")
-        console.print(f"[blue]Incremental sync[/blue] (last sync: {last_sync_date})")
-        stats = ingest.sync(
-            repo_directory=repo_path,
-            last_commit=last_sync_date,
-            verbose=verbose
-        )
-    else:
-        # Full sync
-        sync_type = "Full sync (forced)" if force_full else "Full sync (first time)"
-        log.info(f"Performing full sync for {repo_id}")
-        console.print(f"[blue]{sync_type}[/blue]")
-        stats = ingest.sync(
-            repo_directory=repo_path,
-            verbose=verbose
-        )
-
-    # Step 5: Report results
-    log.info(f"Sync complete: {stats}")
-    console.print(f"\n[bold green]Sync complete![/bold green]")
-    console.print(f"  Repository: {stats.get('repo_id', repo_id)}")
-    console.print(f"  Commits added: {stats.get('commits_added', 0)}")
-    console.print(f"  Files processed: {stats.get('files_added', 0)}")
-    console.print(f"  Sync type: {'Incremental' if stats.get('incremental') else 'Full'}")
-
-    db.close()
+# Parked: DuckDB proof of concept, being researched further for feasibility and
+# usefulness. Commented out rather than deleted so it can be reviewed and restored.
+# The duckdb dependency is commented out in pyproject.toml alongside it.
+# @cli.command("sync-repo")
+# @click.option('-verbose', is_flag=True, default=False, help="Show detailed sync output")
+# @click.option('-force-full', is_flag=True, default=False, help="Force full sync even if already synced")
+# @click.argument('repo', type=click.STRING, required=True)
+# def sync_repo(verbose, force_full, repo):
+#     """
+#     Sync a git repository to the DuckDB database.
+#
+#     REPO can be either:
+#     - A git URL (https://github.com/owner/repo) - will clone if needed
+#     - A local path to an existing git repository
+#
+#     Examples:
+#         kgit sync-repo https://github.com/kospex/kospex
+#         kgit sync-repo /path/to/local/repo
+#         kgit sync-repo -verbose https://github.com/owner/repo
+#         kgit sync-repo -force-full /path/to/repo
+#
+#     The command will:
+#     1. Verify DuckDB database exists (suggest 'kospex init-duckdb' if not)
+#     2. Clone the repository if a URL is provided and repo doesn't exist
+#     3. Perform full sync if never synced, incremental sync otherwise
+#     """
+#     console.print("[bold yellow]Warning:[/bold yellow] sync-repo (DuckDB) is experimental, no UI available")
+#     log.info(f"Starting sync-repo for: {repo}")
+#
+#     # Import DuckDB components (deferred to avoid requiring duckdb for other commands)
+#     from kospex import GitIngest, GitDuckDB
+#
+#     # Step 1: Check DuckDB database exists
+#     db = GitDuckDB()
+#     try:
+#         db.connect(create_new=False, verbose=verbose)
+#     except FileNotFoundError:
+#         log.error("DuckDB database not found")
+#         console.print("[bold red]Error:[/bold red] DuckDB database does not exist.")
+#         console.print("\nTo initialize the DuckDB database, run:")
+#         console.print("  [cyan]kospex init-duckdb[/cyan]")
+#         exit(1)
+#
+#     # Step 2: Determine if repo is URL or local path
+#     repo_path = None
+#     if repo.startswith(('http://', 'https://', 'git@')):
+#         # It's a URL - clone if needed
+#         log.info(f"Repository URL detected: {repo}")
+#         repo_path = kgit.clone_repo(repo)
+#         if not repo_path:
+#             log.error(f"Failed to clone repository: {repo}")
+#             console.print(f"[bold red]Error:[/bold red] Failed to clone {repo}")
+#             db.close()
+#             exit(1)
+#         console.print(f"Repository cloned/updated: {repo_path}")
+#     else:
+#         # It's a local path
+#         repo_path = os.path.abspath(repo)
+#         if not os.path.isdir(repo_path):
+#             log.error(f"Directory does not exist: {repo_path}")
+#             console.print(f"[bold red]Error:[/bold red] Directory does not exist: {repo_path}")
+#             db.close()
+#             exit(1)
+#         if not KospexUtils.is_git(repo_path):
+#             log.error(f"Not a git repository: {repo_path}")
+#             console.print(f"[bold red]Error:[/bold red] Not a git repository: {repo_path}")
+#             db.close()
+#             exit(1)
+#
+#     # Step 3: Check if repo has been synced before
+#     ingest = GitIngest(db)
+#
+#     # Use KospexGit to extract repo_id from the path
+#     kg = KospexGit()
+#     kg.set_repo(repo_path)
+#     repo_id = kg.repo_id
+#
+#     last_sync_date = db.get_latest_commit_date(repo_id)
+#
+#     # Step 4: Perform sync
+#     if last_sync_date and not force_full:
+#         # Incremental sync
+#         log.info(f"Performing incremental sync since {last_sync_date}")
+#         console.print(f"[blue]Incremental sync[/blue] (last sync: {last_sync_date})")
+#         stats = ingest.sync(
+#             repo_directory=repo_path,
+#             last_commit=last_sync_date,
+#             verbose=verbose
+#         )
+#     else:
+#         # Full sync
+#         sync_type = "Full sync (forced)" if force_full else "Full sync (first time)"
+#         log.info(f"Performing full sync for {repo_id}")
+#         console.print(f"[blue]{sync_type}[/blue]")
+#         stats = ingest.sync(
+#             repo_directory=repo_path,
+#             verbose=verbose
+#         )
+#
+#     # Step 5: Report results
+#     log.info(f"Sync complete: {stats}")
+#     console.print(f"\n[bold green]Sync complete![/bold green]")
+#     console.print(f"  Repository: {stats.get('repo_id', repo_id)}")
+#     console.print(f"  Commits added: {stats.get('commits_added', 0)}")
+#     console.print(f"  Files processed: {stats.get('files_added', 0)}")
+#     console.print(f"  Sync type: {'Incremental' if stats.get('incremental') else 'Full'}")
+#
+#     db.close()
 
 
 if __name__ == '__main__':

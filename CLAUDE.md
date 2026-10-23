@@ -102,9 +102,12 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
   sync for a repo already on disk) is tracked in [#123](https://github.com/kospex/kospex/issues/123).
 - `kgit clone https://github.com/owner/repo` - Clone with kospex structure (syncs by default)
 - `kgit pull REPO_ID|--all|--org ORG_KEY|--server SERVER` - git pull (ff-only) + re-sync known local clones
-- `kgit pull --check [scope]` - offline staleness report (last_fetch / last_sync / age); no network
+- `kgit pull --check [scope]` - offline staleness report (last_fetch / last_sync / fetch_age); no network
 - `kgit pull --no-prompt [scope]` - non-interactive auth (fail fast) for unattended runs
-- `kgit sync-repo REPO` - Sync repo to DuckDB (experimental, not used in reporting or web UI)
+- **`kgit sync-repo` and `kospex init-duckdb` are commented out**, along with the `duckdb`
+  dependency in `pyproject.toml`. They were a DuckDB proof of concept, parked while its
+  feasibility and usefulness are researched. `src/kospex/git_duckdb.py` and `git_ingest.py`
+  remain but nothing in kospex calls them. Don't delete the commented blocks.
 - `kospex developers -repo PATH/TO/REPO` - Show active developers
 - `kospex tech-landscape -metadata` - Show technology stack overview
 - `kospex summary` - Overview of all synced repositories
@@ -144,7 +147,8 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 ### Database Operations
 - `kospex upgrade-db` - Show DB migration status (dry run by default)
 - `kospex upgrade-db -apply` - Apply pending DB migrations from `src/kospex/db/migrations/`
-- `kospex system-status` - Check system health
+- `kospex system-status` - Check system health (includes "Summary stats coverage")
+- `kospex rebuild developer-stats REPO_ID|-all|-org ORG_KEY|-server SERVER [-dry-run]` - Recompute derived data from the DB without re-syncing. `kospex rebuild list` shows the tasks. Tasks live in the `TASKS` registry in `src/kospex_rebuild.py`; adding one entry adds the subcommand.
 - `kospex list-repos` - List all synced repositories
 
 ## Development Workflow
@@ -198,7 +202,7 @@ deliberately later. Linking it from here is fine; this file is not part of the s
 
 The kospex DB schema is evolved via numbered migration files under `src/kospex/db/migrations/`. The runner is `src/kospex/db/migrator.py`. See `src/kospex/db/migrations/README.md` for the full conventions and limitations; quick reference:
 
-1. **Pick the next prefix.** `0003`–`0006` exist, so the next new migration is `0007`. Check `src/kospex/db/migrations/` rather than trusting this number — new migrations always go at the end (next sequential number) and are never renumbered. The `KOSPEX_DB_VERSION = 2` constant in `kospex_schema.py` is the frozen *baseline*, not the current version; the live version is `max(baseline, max(sequence))`, so a fully migrated DB currently reports 6.
+1. **Pick the next prefix.** `0003`–`0011` exist, so the next new migration is `0012`. Check `src/kospex/db/migrations/` rather than trusting this number — new migrations always go at the end (next sequential number) and are never renumbered. The `KOSPEX_DB_VERSION = 2` constant in `kospex_schema.py` is the frozen *baseline*, not the current version; the live version is `max(baseline, max(sequence))`, so a fully migrated DB currently reports 11.
 2. **Create `NNNN_<short-slug>.sql`** with the schema change. Plain SQL, `--` comments allowed. Do NOT include `BEGIN` / `COMMIT` / `ROLLBACK` — the runner manages the transaction.
 3. **Add the column in the migration ONLY — never also in `kospex_schema.py`.** The `SQL_CREATE_*` constants are the frozen baseline. A newly created DB runs the baseline `CREATE TABLE` and *then* bootstraps the migrations, so a column declared in both places fails with `duplicate column name` on **every clean install** — while an existing DB, which only runs the migration, works fine and hides it. Confirm by checking a column an earlier migration added: `resolution` (from `0005`) and the `0006` columns are all absent from `SQL_CREATE_DEPENDENCY_DATA`. `tests/test_version_constraint_columns.py::TestSchema::test_baseline_create_table_does_not_declare_them` guards this.
 4. **(Optional) Create `NNNN_<short-slug>.py`** with the same prefix and slug for data backfills. Must export `def up(db): ...` — runs after the SQL in the same transaction. Raise to roll back the whole migration.

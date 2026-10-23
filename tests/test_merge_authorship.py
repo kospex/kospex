@@ -202,3 +202,13 @@ def test_the_gatekeeper_is_visible():
     assert people["gatekeeper@e.com"]["commits"] == 1
     assert people["gatekeeper@e.com"]["merges"] == 15
     assert people["writer@e.com"]["merges"] == 0
+
+
+def test_key_person_tenure_is_in_years_of_365_days():
+    """It divided by 354, overstating tenure by ~3%; years_active elsewhere uses 365."""
+    kq = _seed([
+        _commit("c1", "dev@e.com", 1, 5, when="2025-06-01T00:00:00+00:00"),
+        _commit("c2", "dev@e.com", 1, 5, when="2026-06-01T00:00:00+00:00"),
+    ])
+
+    assert kq.key_person(repo_id=REPO)[0]["tenure"] == "1.000"
