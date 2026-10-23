@@ -2582,9 +2582,35 @@ class KospexData:
         `ASP.NET`, `Azure DevOps`, `C#`, `Claude Code`, `Visual Studio` and
         `llms.txt` are 7 of the 63 tags in live data. Binding the value fixes
         both -- any tag is queryable, and no caller value reaches the SQL text.
+
+        With the value bound, the remaining check is no longer load bearing for
+        safety, so it checks something useful instead: that the caller asked for
+        a tag that exists. `panopticas.get_tags()` is the vocabulary, derived
+        from the detection rules rather than hand-maintained. It is called per
+        use rather than cached -- it is a set comprehension over the rule
+        tables, measured at 0.03 ms.
+
+        The comparison is case-insensitive. SQLite's LIKE is itself ASCII
+        case-insensitive, so a case-sensitive gate would reject spellings that
+        would have matched anyway, and panopticas recases tags between releases
+        (`eslint` became `ESLint` in 0.0.21). The caller's spelling is kept in
+        the pattern rather than canonicalised, since LIKE matches either way.
+
+        Known limitation: a tag panopticas has *retired* is rejected alongside a
+        typo, because get_tags() reports only the current vocabulary. On live
+        data that is `Claude Code` (7 files), renamed to brand-level `Claude`.
+        Revisit when panopticas exposes its deprecated tags -- kospex#317,
+        tracking panopticas#54.
         """
         if not isinstance(tag, str) or not tag:
             raise ValueError(f"Tag '{tag}' must be a non-empty string")
+
+        known = {t.lower() for t in Panopticas.get_tags()}
+        if tag.lower() not in known:
+            raise ValueError(
+                f"Tag '{tag}' is not a known tag "
+                f"(panopticas.get_tags() lists {len(known)})"
+            )
 
         # A bound LIKE pattern still honours % and _, so escape them (and the
         # escape character itself) and declare ESCAPE. Without this a tag

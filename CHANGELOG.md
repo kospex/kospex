@@ -540,6 +540,23 @@ was relying on the old, wrong success.
   1.1M-commit database went from 63s to 3.0s (DefinitelyTyped: 11.9s to 0.3s),
   and every sync runs this step.
 
+- **A tag is now checked against `panopticas.get_tags()`** rather than a
+  character pattern. With the value bound (see *Fixed*), the check is no longer
+  what keeps the tag out of the SQL text, so it checks something useful instead:
+  that the tag exists. The comparison is **case-insensitive**, because SQLite's
+  `LIKE` is itself ASCII case-insensitive — a case-sensitive gate would reject
+  spellings that would have matched anyway — and because panopticas recases tags
+  between releases (`eslint` became `ESLint` in 0.0.21, while 66 stored files
+  keep the old spelling). The caller's spelling is passed through unchanged. The
+  vocabulary is read per call rather than cached; it is a comprehension over
+  panopticas' rule tables, measured at 0.03 ms.
+
+  One known gap: `get_tags()` reports only the tags panopticas can *currently*
+  emit, so a tag it has **renamed** is rejected like a typo. On live data that is
+  `Claude Code` (7 files), now brand-level `Claude`, which reaches the same rows.
+  Tracked as [#317](https://github.com/kospex/kospex/issues/317), pending
+  `get_deprecated_tags()` upstream.
+
 ### Fixed
 
 - **`/summary/<org_key>` showed the estate-wide developer count next to the
