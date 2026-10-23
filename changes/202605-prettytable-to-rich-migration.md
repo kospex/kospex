@@ -27,6 +27,14 @@ Test: `tests/test_key_person_cli.py::test_key_person_prints_complete_author_when
 with an author email of more than 80 characters and the query stubbed. It
 fails on the old code.
 
+### Console markup
+
+The CLI consoles are now `Console(markup=False)` (#300), so a table cell
+holding git metadata is printed literally rather than parsed as markup. The
+*Reference pattern* and the new *Console markup* section, below, are updated
+to match. Every table migrated from here on needs only a `markup=False`
+console and `style=` for styling.
+
 ### Still to do in step 3
 
 `author-tech`, `metadata`, `secrets-hotspots`, `kgit bitbucket`.
@@ -263,14 +271,37 @@ eventually be dropped from `pyproject.toml`.
 
 Use `kospex orgs` as the canonical reference:
 
-- Module-level `console = Console()` (already imported in `kospex_cli.py`
-  at line 30; other modules will need the import added).
+- Module-level `console = Console(markup=False)`. `kgit.py`, `kospex_cli.py`,
+  `krunner.py` and `kospex_core.py` already have one. A new console in any
+  other module must be `markup=False` too: see *Console markup*, below.
 - `Table(title="...")` with a clear title.
 - `add_column(name, justify="right" | default, style="cyan" for key cols)`.
 - `str(value or "")` row construction with `dict.get(...)` defaults.
 - Wrap output with `console.print()` blank lines.
+- Style with `style=` on the column or the print, or with `Text.assemble`,
+  never with `[bold]`-style tags: on a `markup=False` console they print
+  literally.
+- Print any table with an identifier column through
+  `KospexUtils.print_table(table, console)`.
 - Inline the table in the command — drop helper factories that are only
   called once.
+
+## Console markup
+
+Rich parses any `str` it's given as console markup unless the console has
+`markup=False`. That includes print arguments, table cells and table titles.
+Author emails, remote URLs and `repo_id`s come from git metadata, and git
+accepts brackets in all of them. On a markup-enabled console, `a[/]@b` raises
+`MarkupError`, `[link=...]` renders a terminal hyperlink to a different target,
+and `[conceal]` hides the value (CWE-150). Fixed in #299 and #300 by making
+the module consoles `markup=False`.
+
+Two details that are easy to get wrong:
+
+- `console.print(table, markup=False)` does **not** protect the cells. Only a
+  console *constructed* with `markup=False` does.
+- Measuring a table renders its cells, so measure with a `markup=False`
+  console too. `print_table()` does this for piped output.
 
 ## Truncation behavior
 
