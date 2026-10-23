@@ -2140,6 +2140,130 @@ class KospexQuery:
             kd.where("_repo_id", "=", repo_id)
         return kd.execute()
 
+    def _stats_scope(self, org_key=None, repo_id=None, server=None):
+        """WHERE clause and params scoping developer_stats (or commits) like developers().
+
+        Both tables carry _repo_id, _git_server and _git_owner, so the same
+        clause works on either.
+        """
+        clauses, params = [], []
+        if repo_id:
+            clauses.append("_repo_id = ?")
+            params.append(repo_id)
+        if org_key:
+            git_server, org = _org_key_parts(org_key)
+            clauses.append("_git_server = ? AND _git_owner = ?")
+            params += [git_server, org]
+        if server:
+            clauses.append("_git_server = ?")
+            params.append(server)
+        return " AND ".join(clauses) or "1 = 1", params
+
+    def _repos_without_stats(self):
+        """repo_ids that have commits but no ALL_TIME developer_stats rows."""
+        # Repos with commits, by a loose index scan of the primary key: one seek
+        # per repo (8ms for 374 repos) instead of reading every commit (85ms+).
+        with_commits = {r[0] for r in self.kospex_db.execute(f"""
+            WITH RECURSIVE r(id) AS (
+                SELECT MIN(_repo_id) FROM {KospexSchema.TBL_COMMITS}
+                UNION ALL
+                SELECT (SELECT MIN(_repo_id) FROM {KospexSchema.TBL_COMMITS} WHERE _repo_id > r.id)
+                FROM r WHERE r.id IS NOT NULL
+            ) SELECT id FROM r WHERE id IS NOT NULL""")}
+        with_stats = {r[0] for r in self.kospex_db.execute(
+            f"SELECT DISTINCT _repo_id FROM {KospexSchema.TBL_DEVELOPER_STATS} "
+            "WHERE stat_type = 'ALL_TIME'")}
+        return with_commits - with_stats
+
+    def developer_stats_coverage(self):
+        """How much of developer_stats the summary pages can't use yet.
+
+        repos_not_rebuilt: repos with rows written before Phase 3 (last_authored
+        IS NULL, or a legacy NULL stat_type). They heal on their next sync.
+        repos_without_stats: repos with commits but no rows at all.
+        While either is non-zero, the summary pages use the full commits query
+        for any scope that includes those repos.
+        """
+        (not_rebuilt,) = self.kospex_db.execute(
+            f"SELECT COUNT(DISTINCT _repo_id) FROM {KospexSchema.TBL_DEVELOPER_STATS} "
+            "WHERE stat_type IS NULL OR (stat_type = 'ALL_TIME' AND last_authored IS NULL)"
+        ).fetchone()
+        return {"repos_not_rebuilt": not_rebuilt,
+                "repos_without_stats": len(self._repos_without_stats())}
+
+    def _stats_cover_scope(self, where, params):
+        """True if developer_stats can stand in for a commits scan of this scope.
+
+        False if any row in scope predates Phase 3 (last_authored IS NULL, or a
+        legacy NULL stat_type), or if a repo in scope has commits but no stats.
+        """
+        table = KospexSchema.TBL_DEVELOPER_STATS
+        unhealed = self.kospex_db.execute(
+            f"SELECT 1 FROM {table} WHERE (stat_type IS NULL OR "
+            f"(stat_type = 'ALL_TIME' AND last_authored IS NULL)) AND {where} LIMIT 1",
+            params,
+        ).fetchone()
+        if unhealed:
+            return False
+
+        for missing in self._repos_without_stats():
+            in_scope = self.kospex_db.execute(
+                f"SELECT 1 FROM {KospexSchema.TBL_COMMITS} WHERE _repo_id = ? AND {where} LIMIT 1",
+                [missing, *params],
+            ).fetchone()
+            if in_scope:
+                return False
+        return True
+
+    def developer_statuses(self, org_key=None, repo_id=None, server=None):
+        """Each developer's last commit and status, from developer_stats.
+
+        The same developers and statuses as developers() for the same scope,
+        without scanning commits. Returns None when the stats don't cover the
+        scope yet, so the caller falls back to developers().
+        """
+        where, params = self._stats_scope(org_key=org_key, repo_id=repo_id, server=server)
+        if not self._stats_cover_scope(where, params):
+            return None
+        # last_commit is always UTC 'Z' text, so MAX over strings is MAX over time
+        rows = self.kospex_db.query(
+            f"""SELECT LOWER(author_email) AS author, MAX(last_commit) AS last_commit
+            FROM {KospexSchema.TBL_DEVELOPER_STATS}
+            WHERE stat_type = 'ALL_TIME' AND {where}
+            GROUP BY LOWER(author_email)""",
+            params,
+        )
+        data = []
+        for row in rows:
+            row["status"] = KospexUtils.development_status(row["last_commit"])
+            data.append(row)
+        return data
+
+    def repo_statuses(self, org_key=None, repo_id=None, server=None):
+        """Each repo's last commit and status, from developer_stats.
+
+        The same repos and statuses as repos() for the same scope. Returns None
+        when the stats don't cover the scope yet, so the caller falls back to
+        repos().
+        """
+        where, params = self._stats_scope(org_key=org_key, repo_id=repo_id, server=server)
+        if not self._stats_cover_scope(where, params):
+            return None
+        rows = self.kospex_db.query(
+            f"""SELECT _repo_id, MAX(last_commit) AS last_commit
+            FROM {KospexSchema.TBL_DEVELOPER_STATS}
+            WHERE stat_type = 'ALL_TIME' AND {where}
+            GROUP BY _repo_id
+            ORDER BY _repo_id""",
+            params,
+        )
+        data = []
+        for row in rows:
+            row["days_ago"] = KospexUtils.days_ago(row["last_commit"])
+            row["status"] = KospexUtils.development_status(row["last_commit"])
+            data.append(row)
+        return data
+
     def groups(self, params=None):
         """Return a list of groups"""
         kd = KospexData(kospex_db=self.kospex_db)

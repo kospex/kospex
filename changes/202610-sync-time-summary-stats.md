@@ -1,6 +1,6 @@
 # Design: summary stats computed at sync time
 
-Status: **in progress**. Phases 1 and 2 merged (#303, #304). Phase 3 implemented. Revision 4, updated after measurement and
+Status: **in progress**. Phases 1–3 merged (#303, #304, #307). Phase 4 implemented. Revision 5, updated after measurement and
 review. Follows #298 (scoped request cache) and #302 (debug reload scope).
 
 ## Problem
@@ -311,6 +311,51 @@ the gap is visible instead of hidden by the fallback.
 `developers()` and `repos()` themselves are **not** re-pointed in this phase.
 Other pages call them with `from_date` / `to_date` / `days` windows, which
 all-time rows cannot answer.
+
+### As implemented
+
+- **`KospexQuery.developer_statuses()` / `repo_statuses()`**, taking the same
+  `org_key` / `repo_id` / `server` as `developers()`. They return rows with
+  `status` (plus `days_ago` for repos), or `None` when the stats don't cover the
+  scope.
+- **Coverage check** (`_stats_cover_scope`), about 17ms per call:
+  - an unhealed row in scope: `last_authored IS NULL`, or a legacy `NULL`
+    `stat_type`;
+  - a repo in scope with commits but no `ALL_TIME` rows. "Repos with commits"
+    comes from a loose index scan of the `commits` primary key, one seek per
+    repo: 8ms for 374 repos, against 85ms warm and 2.4s cold for
+    `SELECT DISTINCT _repo_id`. A `repos` row with no commits doesn't count,
+    because `repos()` doesn't count it either.
+- **kweb:** `summary_rows()` in `kweb2.py` tries the stats under new cache keys
+  (`developer_statuses`, `repo_statuses`), and on `None` falls back to the old
+  `developers` / `repos` keys. Those are the keys `/repos/` uses, so the two
+  pages still share them. A scope that `developer_stats` can't express (a
+  base64 `author_email` id) always takes the old path. `/summary2/` is
+  unchanged.
+- **`kospex system-status`** has a "Summary stats coverage" section: the number
+  of repos not rebuilt yet, and the number with commits but no stats.
+
+**Measured on the real DB.** Phase 3 rows were simulated with a connection-only
+TEMP table shadowing `developer_stats`, read-only and with nothing written. Warm:
+
+| Scope | Developers / repos | Status counts identical | Stats path | Commits queries |
+|---|---|---|---|---|
+| Estate | 72,649 / 374 | yes | 0.24s | 1.81s (~5s cold) |
+| `server=github.com` | 71,723 / 363 | yes | 0.27s | 2.00s |
+| `org_key=github.com~jshttp` | 140 / 14 | yes | 0.06s | 0.20s |
+| `org_key=go.googlesource.com~` | 1,501 / 11 | yes | 0.06s | 0.17s |
+| `org_key=github.com~ljharb` | 97 / 9 | yes | 0.06s | 0.20s |
+| `server=go.googlesource.com` | 1,501 / 11 | yes | 0.07s | 0.19s |
+| `repo_id=github.com~jetbrains~kotlin` | 1,255 / 1 | yes | 0.07s | 0.19s |
+
+The estate's 0.24s breaks down as about 100ms for the `GROUP BY
+LOWER(author_email)` over 91k rows, 60ms for 72,649 `development_status()`
+calls in Python, and two coverage checks. That is higher than the 0.06s
+"Validated" figure above, which timed the developer query alone.
+
+**Until repos resync, nothing changes.** Rows written before Phase 3 make every
+scope fall back. On the dev DB, `system-status` reports all 374 repos as not
+rebuilt, until a `kgit pull --all` (or each repo's next sync) rebuilds them.
 
 ### The request cache after this
 

@@ -500,6 +500,15 @@ was relying on the old, wrong success.
   row that hasn't been rebuilt yet. `kospex key-person` is unchanged: it
   calculates tenure live from `commits`, by author time.
 
+- **kweb's `/` and `/summary/` count statuses from `developer_stats` instead
+  of scanning `commits`.** For the whole estate that's 0.24s instead of 1.81s
+  warm (~5s cold), on 1.1M commits, with identical counts for every scope
+  measured. It only applies once a scope's repos have resynced since the change
+  above. Until then the page uses the full query as before, so nothing is wrong
+  in the meantime, only slower. `kospex system-status` has a new "Summary stats
+  coverage" section showing how many repos haven't been rebuilt yet;
+  `kgit pull --all` rebuilds all of them.
+
 ### Fixed
 
 - **`/summary/<org_key>` showed the estate-wide developer count next to the
