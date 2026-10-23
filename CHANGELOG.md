@@ -7,9 +7,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Upgrade notes
 
 **No data changes are required in this release — unlike 0.1.0, nothing needs
-re-syncing or normalising — but there are four schema changes, and one optional
+re-syncing or normalising — but there are five schema changes, and one optional
 clean-up.** An existing database needs `kospex upgrade-db -apply`; newly created
-ones pick all four up automatically. The optional clean-up clears the stored
+ones pick all five up automatically. The optional clean-up clears the stored
 `''` described under *Fixed* for [#258](https://github.com/kospex/kospex/issues/258);
 it is not needed for kospex to work, and
 [`docs/refreshing-data.md`](docs/refreshing-data.md) has the SQL and the reason
@@ -38,6 +38,13 @@ the figures depend on `latest`.
   not backfilled, because `duration_ms` excludes time the machine spent asleep, so
   the true start cannot be recovered by subtraction. `DELETE FROM osi_runs` is the
   clean option if you would rather start the diagnostics over.
+- **`0011`** adds a covering index on `commits`, and two columns,
+  `first_authored` and `last_authored`, to `developer_stats`. The index is
+  about 4% of the database size and took 4.6s to build on a 1.1M-commit
+  database. It makes per-row commit writes during sync about 26% slower. The
+  columns default to NULL and fill in for each repo on its next sync, so there
+  is no backfill. A database left un-upgraded keeps working, just without the
+  speed-up described under *Changed*.
 
 Otherwise what changes is how kospex *responds* when it cannot answer a
 question. In four places it previously returned something that looked like an
@@ -465,6 +472,13 @@ was relying on the old, wrong success.
   log lines, or were removed. Among the removed ones, `/orphans/` printed every
   repo's committer emails on each request. `krunner`'s `Start date:` and
   `Executing query:` lines now appear only at DEBUG level.
+
+- **Repo and active-developer summaries read from an index instead of the
+  `commits` table** (migration `0011`). On a 1.1M-commit database, `repos()`
+  goes from 1.66s to 0.49s, `repos(org)` from 0.92s to 0.09s, and
+  `active_devs()` from 1.02s to 0.08s. These back kweb's `/`, `/summary/` and
+  `/repos/` pages, and the developer-stats rebuild at the end of every sync.
+  See `changes/202610-sync-time-summary-stats.md`.
 
 ### Fixed
 
