@@ -22,6 +22,51 @@ If you need to restrict the search to only in a given domain name / server:
 kospex developers -server [DOMAIN_NAME]
 ```
 
+## key-person
+
+Identifies the key people for a repo by number of commits. It lists the top committers of
+all time, plus any of the top active committers (last 90 days) not already in that list.
+This is the starting point for key person risk and off-boarding knowledge transfer.
+
+Give it either a repo directory or a `repo_id`. Run on its own, it prints its help.
+
+**By directory**
+
+```bash
+kospex key-person .
+```
+
+The directory is only used to work out the `repo_id`, from its git remote. The figures come
+from the kospex database, as of that repo's last sync, and the command ends with a note
+giving the sync date. Commits made since then are not counted until you sync it again with
+[`kospex sync-directory`](#sync-directory).
+
+**By repo_id**
+
+```bash
+kospex key-person -repo_id github.com~kospex~kospex
+```
+
+This needs no clone on disk, only a previous sync. If the database has never seen the
+`repo_id`, or has no commits for it, the command says so and exits with an error instead
+of printing an empty table.
+
+The table has these columns:
+
+- `author` — the commit author's email
+- `commits` — authored commits, excluding merges
+- `merges` — merge commits, counted separately because a merge is not authorship. Compare
+  them within a repo only: a project that squash-merges has none.
+- `% commits` — share of the repo's authored commits
+- `last_commit`, `first_commit`
+- `active_commits`, `% active` — the same, for the last 90 days
+- `tenure` — years between first and last commit
+
+**Parameters**
+
+- `-repo_id` — the repo to analyse, in the format `SERVER~ORG~REPO`
+- `-top` — the number of top authors to assess (default 4)
+
 ## sync-directory
 
 The sync-directory command finds every git repo in the given directory (including the

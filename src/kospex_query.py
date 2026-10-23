@@ -1998,7 +1998,7 @@ class KospexQuery:
             days = KospexUtils.days_between_datetimes(
                 a["first_commit"], a["last_commit"], min_one=True
             )
-            tenure = f"{days / 354:.3f}"
+            tenure = f"{days / 365:.3f}"
 
             a["tenure"] = tenure
 

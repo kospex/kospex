@@ -1,6 +1,7 @@
 """Tests for the kospex key-person table."""
 import subprocess
 
+import pytest
 from click.testing import CliRunner
 
 KNOWN = {"known": True, "has_commits": True, "message": None}
@@ -17,7 +18,7 @@ AUTHORS = [{"author": AUTHOR, "commits": 1043, "merges": 12, "% commits": "97.5%
             "% active": "0.0%", "tenure": "0.678"}]
 
 
-def _stub(monkeypatch, status=KNOWN):
+def _stub(monkeypatch, status=KNOWN, last_sync="2026-10-13T01:55:12+11:00"):
     """Stub the DB: record which repo_id each query was scoped to."""
     import kospex_cli
 
@@ -34,6 +35,8 @@ def _stub(monkeypatch, status=KNOWN):
     monkeypatch.setattr(kospex_cli.kospex, "repo_db_status", repo_db_status)
     monkeypatch.setattr(kospex_cli.KospexQuery, "__init__", lambda self, **kw: None)
     monkeypatch.setattr(kospex_cli.KospexQuery, "key_person", key_person)
+    monkeypatch.setattr(kospex_cli.KospexQuery, "get_repo_by_id",
+                        lambda self, repo_id: {"last_sync": last_sync})
     return kospex_cli, seen
 
 
@@ -112,3 +115,52 @@ def test_author_markup_is_printed_literally(monkeypatch):
     for h in hostile:
         assert h in result.output
     assert "github.com~acme~[bold]app" in result.output
+
+
+NOTE = "Note: the repo_id is calculated from this repo directory"
+
+
+def test_directory_notes_the_data_is_from_the_last_sync(tmp_path, monkeypatch):
+    kospex_cli, _ = _stub(monkeypatch)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+
+    result = CliRunner().invoke(kospex_cli.cli, ["key-person", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert NOTE in result.output
+    assert "last sync in the database (2026-10-13)" in result.output
+
+
+def test_directory_note_survives_a_missing_last_sync(tmp_path, monkeypatch):
+    kospex_cli, _ = _stub(monkeypatch, last_sync=None)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+
+    result = CliRunner().invoke(kospex_cli.cli, ["key-person", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "last sync in the database (unknown)" in result.output
+
+
+def test_repo_id_has_no_directory_note(monkeypatch):
+    kospex_cli, _ = _stub(monkeypatch)
+
+    result = CliRunner().invoke(
+        kospex_cli.cli, ["key-person", "-repo_id", "github.com~acme~app"])
+
+    assert result.exit_code == 0, result.output
+    assert NOTE not in result.output
+
+
+@pytest.mark.parametrize("args", [[], ["-top", "3"]])
+def test_neither_directory_nor_repo_id_prints_help(tmp_path, monkeypatch, args):
+    """No silent default to the cwd, even inside a git repo: the caller chooses."""
+    kospex_cli, seen = _stub(monkeypatch)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(kospex_cli.cli, ["key-person", *args])
+
+    assert result.exit_code == 2
+    assert "Usage:" in result.output
+    assert "-repo_id" in result.output
+    assert seen == {}
