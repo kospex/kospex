@@ -2028,14 +2028,18 @@ class KospexQuery:
         git_owner = repo.get("_git_owner", "") if repo else ""
         git_repo = repo.get("_git_repo", "") if repo else ""
 
-        # Single query to get all developer stats including conditional 90-day count
+        # Single query to get all developer stats including conditional 90-day count.
+        # first_commit / last_commit are committer time, as everywhere on the web;
+        # author time (kept by rebases and cherry-picks) goes in *_authored.
         sql = f"""
             SELECT
                 author_email,
                 COUNT(*) as total_commits,
-                strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as first_commit,
-                strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as last_commit,
-                SUM(CASE WHEN committer_when > ? THEN 1 ELSE 0 END) as commits_last_90_days
+                strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') as first_commit,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') as last_commit,
+                SUM(CASE WHEN committer_when > ? THEN 1 ELSE 0 END) as commits_last_90_days,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as first_authored,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as last_authored
             FROM {KospexSchema.TBL_COMMITS}
             WHERE _repo_id = ?
             GROUP BY author_email
@@ -2052,10 +2056,11 @@ class KospexQuery:
             self.kospex_db.execute(
                 f"""INSERT INTO {KospexSchema.TBL_DEVELOPER_STATS}
                     (author_email, total_commits, first_commit, last_commit,
-                     commits_last_90_days, last_update, stat_type,
+                     commits_last_90_days, first_authored, last_authored,
+                     last_update, stat_type,
                      _git_server, _git_owner, _git_repo, _repo_id)
-                    VALUES (?, ?, ?, ?, ?, ?, 'ALL_TIME', ?, ?, ?, ?)""",
-                [row[0], row[1], row[2], row[3], row[4], now,
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ALL_TIME', ?, ?, ?, ?)""",
+                [row[0], row[1], row[2], row[3], row[4], row[5], row[6], now,
                  git_server, git_owner, git_repo, repo_id]
             )
 

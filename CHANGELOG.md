@@ -489,6 +489,17 @@ was relying on the old, wrong success.
   ways, including the two malformed shapes found in real data.
   See `changes/202610-sync-time-summary-stats.md`.
 
+- **`developer_stats.first_commit` / `last_commit` are committer time, and
+  author time moves to `first_authored` / `last_authored`.** They held author
+  time while `commits_last_90_days`, and every web page, used committer time.
+  Rebases, cherry-picks and applied patches keep the original author time, so
+  about a quarter of (repo, author) pairs disagreed. `kospex stats` therefore
+  shows committer dates from a repo's next sync onward, and rebased work shows
+  later dates. Rows heal on that next sync, with no backfill needed (it needs
+  migration `0011` for the two columns), and `last_authored IS NULL` marks a
+  row that hasn't been rebuilt yet. `kospex key-person` is unchanged: it
+  calculates tenure live from `commits`, by author time.
+
 ### Fixed
 
 - **`/summary/<org_key>` showed the estate-wide developer count next to the

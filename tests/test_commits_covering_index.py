@@ -16,9 +16,9 @@ repos() also selects _git_server, _git_owner and _git_repo. A first version
 of the index left them out, and repos() then ignored it and scanned the
 table, which these plan tests caught.
 
-first_authored / last_authored are schema only. update_developer_stats will
-write them when it moves first_commit / last_commit to committer time, and
-rows heal on their next sync, so there is no backfill.
+first_authored / last_authored are schema only here. update_developer_stats
+writes them (see test_developer_stats_committer_time.py), and rows heal on
+their next sync, so there is no backfill.
 
 The plan tests capture the SQL that production methods actually send, and
 explain that, rather than restating a copy of the query here.

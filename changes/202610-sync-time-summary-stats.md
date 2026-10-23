@@ -1,6 +1,6 @@
 # Design: summary stats computed at sync time
 
-Status: **in progress**. Phases 1 and 2 implemented on branches. Revision 3, updated after measurement and
+Status: **in progress**. Phases 1 and 2 merged (#303, #304). Phase 3 implemented. Revision 4, updated after measurement and
 review. Follows #298 (scoped request cache) and #302 (debug reload scope).
 
 ## Problem
@@ -220,9 +220,17 @@ around 4.6M commits, that is roughly 9 minutes extra in total.
 
 `developer_stats` is inconsistent today. `commits_last_90_days` counts by		
 `committer_when`, but `first_commit` / `last_commit` are taken from
-`author_when`. The web layer uses committer time throughout. The two differ in
-date for 19,573 of 91,279 (repo, author) pairs, because rebases, cherry-picks
-and applied patches keep the original author time.
+`author_when`. The web layer uses committer time throughout. Rebases,
+cherry-picks and applied patches keep the original author time, so the two
+differ. Of 91,279 (repo, author) pairs on the dev DB, first or last differs:
+
+| Measure | Pairs |
+|---|---:|
+| Any difference in the timestamp | 20,911 (22.9%) |
+| A different local date (date string) | 22,983 (25.2%) |
+| A different UTC day | 11,803 (12.9%) |
+
+(An earlier revision cited 19,573, which none of these measures reproduces.)
 
 Change the SELECT in `update_developer_stats` so that:
 
@@ -231,13 +239,24 @@ Change the SELECT in `update_developer_stats` so that:
 | `first_commit` / `last_commit` | `MIN` / `MAX(committer_when)`, UTC `Z` |
 | `first_authored` / `last_authored` (new) | `MIN` / `MAX(author_when)`, UTC `Z`, which is what `first_commit` / `last_commit` held before |
 
-This costs nothing measurable: it is the same scan of the repo's commits, with
-two more aggregates.
+It is the same scan of the repo's commits with two more aggregates, and still
+answered from `idx_commits_repo_author_when` alone. Measured on the largest
+repo (199k commits, 4,948 authors), the SELECT goes from 0.16s to 0.24s
+(median of 7). That's +80ms per sync of a repo that size, small next to the
+rest of a sync.
 
 **Effect on `kospex stats`.** It displays `first_commit` / `last_commit`, so
 after a repo resyncs those dates move to committer time. Rebased and
 cherry-picked work shows later dates. This is intended: one definition of "last
 commit" across CLI and web.
+
+**Not affected: `kospex key-person`.** `key_person()` computes first/last
+commit and tenure live from `commits` (via `commit_stats()`), by author time,
+and doesn't read `developer_stats`. It is deliberately left unchanged. Tenure
+is currently calculated in three places: `key_person()` uses author time, while
+`developers()` and `kospex developer` use committer time, and `kospex developer`
+divides by 365.25 rather than 365. Which time tenure should use is a separate
+decision, to be made before unifying them.
 
 ### Healing (no backfill)
 
