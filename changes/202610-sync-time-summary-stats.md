@@ -1,12 +1,12 @@
 # Design: summary stats computed at sync time
 
-Status: **proposed**, no code yet. Follows #298 (scoped request cache) and #302
-(debug reload scope).
+Status: **proposed**, no code yet. Revision 2, updated after measurement and
+review. Follows #298 (scoped request cache) and #302 (debug reload scope).
 
 ## Problem
 
 kweb's busiest pages aggregate the whole `commits` table on every cold load.
-Measured on a dev DB with about 375 repos and 1.1M commits:
+Measured on a dev DB with about 375 repos and 1.1M commits (cold, live kweb):
 
 | Query | Time | Used by |
 |---|---|---|
@@ -19,160 +19,301 @@ running `kospex-agent` every 5 minutes therefore sees the cold load (7–13s for
 `/repos/`) after almost every sync. The cost grows with total commits, not with
 what changed.
 
-## What already exists: `developer_stats`
+Measurement also showed that much of `developers()`'s time is **Python, not
+SQL** (Phase 1 below).
 
-`sync_repo()` already ends by calling
-`KospexQuery.update_developer_stats(repo_id)` and
-`update_developer_file_stats(repo_id)`. Together they rebuild one row per
-(`_repo_id`, `author_email`) from that repo's commits. The table:
+## Plan at a glance
 
-- covers **all 374 repos**, with 91,279 rows against 1.1M commits;
-- is rebuilt from the whole repo on each sync, so an interrupted sync is
-  repaired by the next one;
-- carries `_repo_id`, so `kreaper delete-repo` already removes its rows
-  (`get_repo_tables` finds every table with that column);
-- is currently read only by `kospex stats` (key-person analysis).
+| Phase | Change | Storage | Effect |
+|---|---|---|---|
+| 1 | Fast path for date parsing in `days_between_datetimes()` | none | `developers()` loses ~2.5s of its ~3.9s, on every page that lists developers |
+| 2 | Migration `0011`: two author-time columns plus one covering index on `commits` | +154MB (+3.6%) | every `commits` aggregate 2–14x faster, sync's stats queries ~2.5x faster |
+| 3 | `update_developer_stats` stores committer time in `first_commit` / `last_commit` | none | `developer_stats` matches what the web layer reports, and heals itself on sync |
+| 4 | `/` and `/summary/` read status counts from `developer_stats` | none | ~5s → ~0.06s for estate developer counts |
+| 5 (later) | `repo_stats` table for `/repos/` | small | committer counts per repo without a scan |
 
-The same aggregates computed from it instead of `commits`, timed on the same
-DB:
+Phases 1 and 2 stand alone and help pages beyond the summary. Phase 4 depends
+on 2 and 3.
 
-| Equivalent of | From `commits` | From `developer_stats` |
-|---|---|---|
-| `developers()` (72,649 authors) | ~5.0s | **0.25s** |
-| `repos()` commits + authors (374 repos) | ~2.2s | **0.05s** |
-| `active_devs()` | ~1.1s | **0.01s** |
+## Phase 1 — date parsing fast path (Python)
 
-`SUM(total_commits)` per repo matched `COUNT(*)` from `commits` for **all 374
-repos**.
+### What is slow
 
-### Why it can't be used as-is
+`developers()` computes `tenure` for each developer:
 
-1. **Different timestamp.** `developer_stats.first_commit` / `last_commit` use
-   `author_when`, while the web queries use `committer_when`. The two differ in
-   date for **19,573 of 91,279** (repo, author) pairs: rebases, cherry-picks
-   and patches applied later. Status buckets (active / aging / stale) depend on
-   the last commit date, so swapping silently changes the numbers. The
-   `active_devs()` equivalent above already returned 149 repos against 150 from
-   `commits`.
-2. **No committer counts.** `repos()` reports
-   `COUNT(DISTINCT committer_email)` per repo, and nothing stores that.
-3. **`commits_last_90_days` is frozen at sync time.** A repo nobody syncs keeps
-   claiming last quarter's activity. Anything "in the last N days" has to be
-   computed at query time, from stored timestamps.
+```python
+i["tenure"] = KospexUtils.days_between_datetimes(
+    i["first_commit"], i["last_commit"], min_one=True
+)
+```
 
-## Proposal
+`days_between_datetimes()` (`src/kospex_utils.py`) parses both strings with
+`dateutil.parser.parse`. That is a general-purpose parser: it tokenises the
+string and tries many layouts, at about 17µs per call. Over 72,649 developers,
+that is 145,298 calls:
 
-### Schema (migration `0011_summary_stats`; check the directory for the next free number)
+| Measured on the same 72,649 rows | Time |
+|---|---|
+| `developers()` total | 3.94s |
+| of which, day differences via `dateutil.parser.parse` | **2.54s** |
+| the same day differences via `datetime.fromisoformat` | **0.035s** |
 
-1. Add to `developer_stats`:
-   - `first_committed` TEXT: `MIN(committer_when)`, normalised to UTC `Z` the
-     way `repos()` does today;
-   - `last_committed` TEXT: `MAX(committer_when)`, same format.
-2. New table `repo_stats`, one row per repo:
+A cProfile run put 10.0s of 11.5s (profiler-inflated) inside
+`days_between_datetimes`, almost all of it in `dateutil`'s tokeniser.
 
-   | Column | Value |
-   |---|---|
-   | `_repo_id` (PK), `_git_server`, `_git_owner`, `_git_repo` | identity, as elsewhere |
-   | `commits` | `COUNT(*)` |
-   | `authors` | `COUNT(DISTINCT author_email)` (case-sensitive, as `repos()` is today) |
-   | `committers` | `COUNT(DISTINCT committer_email)` |
-   | `first_commit`, `last_commit` | `MIN` / `MAX(committer_when)`, UTC `Z` |
-   | `last_update` | when the row was computed |
+`days_ago()`, which `development_status()` uses, already parses with
+`datetime.fromisoformat` and is not a cost. `days_between_datetimes()` is the
+only `dateutil.parser.parse` call in `src/`. The one in
+`kospex_dependencies.py` is `dateutil.parser.isoparse`, a different, ISO-only
+function.
 
-   A separate table rather than columns on `repos`, so that "the repo exists"
-   and "its stats are current" stay separate facts. `kreaper` picks it up
-   automatically.
+### The change
 
-Per CLAUDE.md: add the columns **in the migration only**, never also in
-`kospex_schema.py`'s `SQL_CREATE_*`, and bump the hardcoded migration counts in
-the three test files.
+Try the C-implemented stdlib ISO parser first, and fall back to `dateutil` only
+for strings it rejects:
 
-### Backfill (`0011_summary_stats.py`, `up(db)`)
+```python
+def _parse_datetime(value: str) -> datetime:
+    """Parse a timestamp, ISO 8601 fast path first.
 
-Fill `first_committed` / `last_committed` with one grouped `UPDATE` from
-`commits`, and `INSERT` `repo_stats` with one `GROUP BY _repo_id`. That is
-one full scan. Comparable grouped queries took 1.4–3.4s on this DB. Being a migration, it runs
-under the user's explicit `kospex upgrade-db -apply`, never on its own.
+    datetime.fromisoformat (C, Python 3.11+ accepts 'Z', offsets, a space
+    separator and date-only strings) handles every timestamp kospex stores, at
+    ~70x the speed of dateutil. dateutil stays as the fallback, so any other
+    format behaves exactly as before, including raising on the same input.
+    """
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return parser.parse(value)
+```
 
-### Sync
+`days_between_datetimes()` then calls `_parse_datetime()` in place of
+`parser.parse()`. Nothing else changes: callers, signature, rounding and
+`min_one` stay as they are.
 
-In `sync_repo()`, next to the existing calls, add an `update_repo_stats(repo_id)`
-and extend `update_developer_stats` to write the two new columns. Each covers
-only the synced repo, so its cost scales with that repo, not the estate.
+### Why it is safe
 
-Write a repo's rows in **one transaction**: delete, insert and the percentage
-update. A reader must never see a repo with its old rows deleted and the new
-ones not yet in. The existing `update_developer_stats` commits once at the end,
-which already holds; verify it with a test rather than assuming it. (See the
-sqlite_utils notes: `insert` / `upsert` auto-commit, and `with conn:` does not
-make several statements atomic.)
+- **Same result wherever the fast path succeeds.** Every distinct timestamp in
+  the dev DB was parsed both ways: 1,131,765 values from
+  `commits.committer_when`, `repos.last_seen` / `last_sync` and
+  `developer_stats.first_commit` / `last_commit`, plus space-separated,
+  date-only and `Z` samples. There were **0 mismatches** in value, in
+  naive-vs-aware, or in UTC offset.
+- **Same behaviour where it doesn't.** Two malformed shapes exist in real data,
+  and `dateutil` raises on both, so falling back to it keeps today's behaviour:
+  - `2011-09-08T02:38:50+518:00`: a broken git timezone, 4 commits.
+    `dateutil` raises `ValueError` (offset out of range).
+  - Multi-line `repos.first_seen` (35 repos): `dateutil` raises `ParserError`.
+    `get_repos()` already splits these on `\n` before calling.
+- `requires-python = ">=3.12"`, so `fromisoformat`'s 3.11 `Z` and offset support
+  is always available.
 
-### Queries
+### Tests
 
-Re-point `repos()`, `developers()` and `active_devs()` at the stats tables:
+- A golden corpus test: for each sample (`Z`, offset, space separator,
+  date-only, naive), `_parse_datetime(s) == dateutil.parser.parse(s)`, and the
+  two malformed shapes still raise.
+- `days_between_datetimes` results unchanged for the same pairs, including
+  `min_one`.
 
-- `developers(scope)`:
-  `SELECT LOWER(author_email), MIN(first_committed), MAX(last_committed), SUM(total_commits) FROM developer_stats WHERE <scope> GROUP BY 1`.
-  `status`, `tenure` and `years_active` stay computed in Python, against now.
-- `repos(scope)`: read `repo_stats`; `days_ago` and `status` computed against
-  now, as today.
-- `active_devs(days)`: `COUNT(*) FROM developer_stats WHERE last_committed > :cutoff GROUP BY _repo_id`.
-  This is exact: an author committed in the window if and only if their last
-  commit in that repo falls inside it. The same identity yields
-  `developers(days=N)` and `authors(days=N)` cheaply later.
+### Existing defect, unchanged by this
 
-`from_date` / `to_date` windows cannot be answered from all-time rows, so they
-stay on `commits`. Those callers keep the current code path.
+`days_between_datetimes()`'s `try` wraps only the subtraction, so a parse error
+propagates to the caller. Mixing a naive and an aware value raises `TypeError`,
+which the `except ValueError` also misses. Both are current behaviour and stay
+so here, to keep the change provably equivalent. Fixing them is a separate
+decision about what callers should see.
 
-**Missing stats.** A repo whose sync predates the migration and that was never
-backfilled has no `repo_stats` row. Pick one behaviour and test it:
-1. **Fall back** to the `commits` query for that scope. Always correct, but it
-   hides the gap, and slowly.
-2. **Report** the gap: `kospex system-status` lists repos with commits but no
-   stats.
+## Phase 2 — migration `0011`: columns and one index
 
-Recommended: both, falling back per scope and reporting the gap.
+Schema only, with **no data migration**. Phase 3 makes every sync rebuild a
+repo's rows, so existing rows heal on their next sync (see "Healing" below).
+
+```sql
+-- 0011_developer_stats_authored.sql
+-- (no semicolons inside comments: the runner's splitter breaks on them)
+
+ALTER TABLE [developer_stats] ADD COLUMN [first_authored] TEXT;
+ALTER TABLE [developer_stats] ADD COLUMN [last_authored] TEXT;
+
+CREATE INDEX IF NOT EXISTS [idx_commits_repo_author_when]
+    ON [commits] ([_repo_id], [author_email], [committer_email], [committer_when], [author_when]);
+```
+
+Per CLAUDE.md: the columns and index go **in the migration only**, never also
+in `kospex_schema.py`. Bump the hardcoded migration counts in the three test
+files, and expect `test_fresh_db_has_no_pending_migrations` to guard the
+clean-install path.
+
+### Index measurements
+
+Measured on a copy of the dev DB (4.3GB), page-cache warm, so the numbers are
+lower than the cold figures above. Compare within the table. Per-repo
+queries show tensorflow (199k commits) / kotlin (145k commits).
+
+| Query | Now (PK indexes only) | + index A | + index B as well |
+|---|---|---|---|
+| `update_developer_stats` SELECT | 0.54 / 0.34s | **0.19 / 0.13s** | same |
+| `update_developer_file_stats` SELECT | 7.6 / 9.4s | **3.2 / 3.5s** | 1.4 / 1.8s |
+| `developers()` SQL, estate | 1.39s | **0.64s** | same |
+| `repos()`, estate | 1.96s | **0.42s** | same |
+| `active_devs()`, estate | 1.01s | **0.07s** | same |
+| Size / build time | — | **154MB (+3.6%) / 1.8s** | +1,062MB (+25%) / 25s |
+
+- **Index A**, `commits(_repo_id, author_email, committer_email, committer_when, author_when)`:
+  **adopt.** These queries can be answered from the index alone, without
+  reading table rows. Leading with `_repo_id` serves every per-repo query, and
+  the estate-wide scans read the 154MB index instead of the 274MB table.
+- **Index B**, `commit_files(_repo_id, hash, file_path, additions, deletions)`:
+  **reject.** It duplicates most of the 1.6GB table to halve one query that
+  index A already cuts by two-thirds. `commit_files` keeps only its primary key,
+  `(hash, file_path, _repo_id)`, which serves the per-commit lookups the join
+  needs.
+
+Not yet measured: the write cost of index A during sync. Sync upserts commits
+one row at a time, so each insert also maintains the index. Time a full sync of
+a large repo with and without it before merging.
+
+## Phase 3 — `update_developer_stats` stores committer time
+
+`developer_stats` is inconsistent today. `commits_last_90_days` counts by
+`committer_when`, but `first_commit` / `last_commit` are taken from
+`author_when`. The web layer uses committer time throughout. The two differ in
+date for 19,573 of 91,279 (repo, author) pairs, because rebases, cherry-picks
+and applied patches keep the original author time.
+
+Change the SELECT in `update_developer_stats` so that:
+
+| Column | Becomes |
+|---|---|
+| `first_commit` / `last_commit` | `MIN` / `MAX(committer_when)`, UTC `Z` |
+| `first_authored` / `last_authored` (new) | `MIN` / `MAX(author_when)`, UTC `Z`, which is what `first_commit` / `last_commit` held before |
+
+This costs nothing measurable: it is the same scan of the repo's commits, with
+two more aggregates.
+
+**Effect on `kospex stats`.** It displays `first_commit` / `last_commit`, so
+after a repo resyncs those dates move to committer time. Rebased and
+cherry-picked work shows later dates. This is intended: one definition of "last
+commit" across CLI and web.
+
+### Healing (no backfill)
+
+Every sync path (`kgit clone` / `pull`, `kospex sync-directory`,
+`kospex-agent`, `krunner`) goes through `Kospex.sync_repo()`, which calls
+`update_developer_stats()` at the end **even when no commits are new**.
+`update_developer_stats()` recomputes the repo from all its commits. So:
+
+- each repo is corrected on its next sync, and an interrupted sync is repaired
+  by the one after;
+- `last_authored IS NULL` marks a row written before the fix, whose
+  `last_commit` still holds author time;
+- how quickly a whole DB heals depends on sync cadence. `kgit pull --all` heals
+  everything in one run. `kospex-agent` syncs at most 3 stale repos per 5-minute
+  cycle, which is about 10 hours for 374 repos;
+- optional, if healing should be faster without git: a small command that loops
+  `update_developer_stats()` over every repo, from the DB alone.
+
+## Phase 4 — `/` and `/summary/` read `developer_stats`
+
+The summary pages only count statuses. That needs each developer's last commit
+and each repo's last commit, and both now come from `developer_stats`. Add two
+narrow `KospexQuery` methods, scoped by repo, org or server like
+`developers()`:
+
+```sql
+-- developer statuses: one row per developer, as developers() groups them
+SELECT MAX(last_commit) FROM developer_stats WHERE <scope> GROUP BY LOWER(author_email)
+
+-- repo statuses
+SELECT MAX(last_commit) FROM developer_stats WHERE <scope> GROUP BY _repo_id
+```
+
+`development_status()` is applied in Python against now, as today.
+
+**Validated before writing this.** A temporary copy of the table with committer
+time, checked against the live full-scan queries:
+
+| Scope | Current query | From `developer_stats` | Status counts identical |
+|---|---|---|---|
+| Developers, estate (72,649) | ~5s | 0.06s | yes |
+| Repos, estate (374) | ~2.2s | 0.03s | yes |
+| Developers, org `github.com~kospex` | — | 0.007s | yes |
+
+**Unhealed rows: fall back per scope.** Before using the stats, check
+`SELECT 1 FROM developer_stats WHERE last_authored IS NULL AND <scope> LIMIT 1`.
+If any row in scope is unhealed, use the current `commits` query for that scope.
+A repo with commits but no `developer_stats` rows at all (not seen today: all
+374 have them) also falls back. `kospex system-status` reports both counts, so
+the gap is visible instead of hidden by the fallback.
+
+`developers()` and `repos()` themselves are **not** re-pointed in this phase.
+Other pages call them with `from_date` / `to_date` / `days` windows, which
+all-time rows cannot answer.
 
 ### The request cache after this
 
-Keep it. A 0.25s query is still worth caching on a busy page. It also stops
-being the thing that hides the problem: a cold load becomes a quarter of a
-second, so invalidating everything on each sync no longer costs anything a user
-notices.
+Keep it. A 0.06s query is still worth caching on a busy page, and invalidating
+everything on each sync stops costing anything users notice.
+
+## Phase 5 (later) — `repo_stats` for `/repos/`
+
+`/repos/` also shows `COUNT(DISTINCT committer_email)` per repo, which no stats
+table stores. A `repo_stats` table, one row per repo (`commits`, `authors`,
+`committers`, first and last commit), rebuilt in `sync_repo()`, would answer it
+without a scan. Index A already brings `repos()` from 1.96s to 0.42s, so
+measure again after Phase 2 before building this.
+
+## Related: `update_developer_file_stats` on every sync
+
+Its SELECT joins `commit_files` and costs 12–17s on the largest repos (cold),
+or about 3.5s with index A. It runs on **every** sync, including syncs that
+bring in no new commits, where nothing it computes can have changed. Skipping
+it when the sync added no commits removes most of that cost.
+
+Do **not** skip `update_developer_stats` the same way. It must still run, so
+that no-commit syncs keep healing rows (Phase 3).
 
 ## Verification
 
-Write a characterisation A/B, in the same spirit as
-`tests/test_url_parsing_characterisation.py`, before switching any query:
+- **Phase 1:** the parser corpus test above.
+- **Phases 2–4:** a characterisation A/B, in the spirit of
+  `tests/test_url_parsing_characterisation.py`. For the estate, each server,
+  each org and a sample of repos, compare the current `commits`-based status
+  counts with the `developer_stats`-based ones.
+  - Run it on a fixture DB in the suite, and once by hand against a real
+    estate DB.
+  - An empty diff covers only the scopes it ran. Include a nested-group (`~~`)
+    org, an owner-less host (`go.googlesource.com` repos have an empty
+    `_git_owner`), mixed-case author emails, and a repo whose author and
+    committer times differ.
+  - Assert each side returned rows, so `[] == []` cannot pass.
+- **Index:** confirm with `EXPLAIN QUERY PLAN` that the target queries use
+  `idx_commits_repo_author_when`, and time a full sync with and without it.
 
-- For the estate, each server, each org and a sample of repos, run the current
-  `commits` query and the stats query, and diff every field per row
-  (`commits`, `authors`, `committers`, `first_commit`, `last_commit`, `status`,
-  `active_devs`).
-- Run it against a fixture DB in the suite, and once by hand against a real
-  estate DB before merging. **An empty diff only covers the scopes it ran.**
-  Include a nested-group (`~~`) org, a repo with mixed-case author emails, and
-  one whose author and committer times differ.
-- Assert each side returned rows: `[] == []` must not pass.
+## Decisions
 
-## Decisions needed
+Resolved in review:
 
-1. **Committer time vs author time.** Recommended: keep committer time, so the
-   numbers users see don't change. The alternative is to move the web layer to
-   `author_when` and accept that status changes for ~20% of (repo, author)
-   pairs.
-2. **Case in author counts.** `repos()` counts `author_email` case-sensitively,
+- Committer time is the definition of first and last commit, in
+  `developer_stats` and everywhere else. Author time is kept in new
+  `*_authored` columns.
+- No data migration. Rows heal on sync, and unhealed scopes fall back.
+- Index A yes, index B no.
+
+Still open:
+
+1. **Case in author counts.** `repos()` counts `author_email` case-sensitively,
    while `developers()` and `orgs()` lowercase it. Recommended: preserve each
-   behaviour exactly in this change, and fix it separately so the A/B diff
-   stays empty.
-3. **Missing-stats behaviour**: fall back, report, or both (recommended).
+   behaviour exactly here, so the A/B diff stays empty, and fix it separately.
+2. **Skip file stats on no-commit syncs**: in this work or as its own change.
 
 ## Out of scope
 
 - `orgs()`: distinct committers per org would need a per-(committer, repo)
-  table. Measure it first.
-- `tenure`, `/developers/` and the other `commits` scans. Move them once this
-  pattern is proven.
-- Identity resolution (`commits_view` / `email_map`). Because stats are keyed
-  on the raw email, mapping can still be applied at query time.
+  table. Index A may make it fast enough without one.
+- `tenure`, `/developers/` and the other `commits` scans. Phase 1 and index A
+  already help them, so re-measure first.
+- Identity resolution (`commits_view` / `email_map`). Stats are keyed on the raw
+  email, so mapping can still be applied at query time.
 - Background cache warming. It becomes unnecessary once cold loads are fast.
