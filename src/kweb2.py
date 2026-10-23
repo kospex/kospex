@@ -47,7 +47,41 @@ logger = KospexUtils.get_kospex_logger("kweb2")
 # Used to cache DB results in memory
 request_cache = RequestCache()
 # structure
-# key: { data, last_updated}
+# key: { data, cache_time}
+
+
+def cached_query(name, compute, **scope):
+    """Return compute() from request_cache, keyed by name and scope.
+
+    Recomputed after a newer repo sync, or once the entry exceeds max_age.
+    cache_time is taken before compute() runs, so a sync that lands mid-query
+    still invalidates the result.
+    """
+    key = RequestCache.key(name, **scope)
+    data = request_cache.get(key, KospexQuery().get_last_sync_datetime())
+    if data is None:
+        started = datetime.now().astimezone()
+        data = compute()
+        request_cache.set(key, data, cache_time=started)
+    return data
+
+
+SUMMARY_STATS_SCOPES = {"org_key", "repo_id", "server"}
+
+
+def summary_rows(params):
+    """(developers, repos) rows for the summary page's status counts.
+
+    Read from developer_stats rather than scanning commits twice. params is a
+    repo_id, org_key or server scope (or empty, for the whole estate).
+    """
+    devs = cached_query(
+        "developer_statuses", lambda: KospexQuery().developer_statuses(**params), **params
+    )
+    repos = cached_query(
+        "repo_statuses", lambda: KospexQuery().repo_statuses(**params), **params
+    )
+    return devs, repos
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -110,7 +144,7 @@ app.include_router(api_router)
 
 
 @app.get("/favicon.ico", include_in_schema=False)
-async def favicon():
+def favicon():
     return FileResponse(Path(__file__).parent / "static/favicon.ico")
 
 
@@ -173,7 +207,7 @@ async def custom_http_exception_handler(request: Request, exc: StarletteHTTPExce
 
 
 @app.get("/clear-cache")
-async def clear_cache(request: Request):
+def clear_cache(request: Request):
     """
     Clear the cache the in-memory cache
     """
@@ -184,25 +218,24 @@ async def clear_cache(request: Request):
 @app.get("/", response_class=HTMLResponse)
 @app.get("/summary/", response_class=HTMLResponse)
 @app.get("/summary/{id}", response_class=HTMLResponse)
-async def summary(request: Request, id: Optional[str] = None):
+def summary(request: Request, id: Optional[str] = None):
     """Serve up the summary home page"""
     try:
         logger.info(f"Summary page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
+        if not set(params) <= SUMMARY_STATS_SCOPES:
+            # get_id_params also decodes a base64 author_email id. A summary is
+            # per repo, org or server; a developer's page is /developers/.
+            raise HTTPException(
+                status_code=404,
+                detail="Summary pages are per repo, org or server. See /developers/ for a developer.",
+            )
 
-        devs = None
-        with KospexTimer("Loading load_developers") as dev_load:
-            if data := request_cache.get(
-                "summary:developers", KospexQuery().get_last_sync_datetime()
-            ):
-                print("Cache found")
-                devs = data
-            else:
-                devs = KospexQuery().developers(**params)
-                request_cache.set("summary:developers", devs)
+        with KospexTimer("Load developers") as dev_load:
+            devs, repos = summary_rows(params)
 
-        print(dev_load)
+        logger.info(dev_load)
 
         dev_stats = KospexUtils.count_key_occurrences(devs, "status")
         dev_percentages = KospexUtils.convert_to_percentage(dev_stats)
@@ -216,7 +249,6 @@ async def summary(request: Request, id: Optional[str] = None):
                 dev_stats[f"{name}_percentage"] = round(percentage)
             result[name] = round(100 * (percentage / 100)) + 40
 
-        repos = KospexQuery().repos(**params)
         repo_stats = KospexUtils.count_key_occurrences(repos, "status")
 
         repo_sizes = {}
@@ -253,25 +285,19 @@ async def summary(request: Request, id: Optional[str] = None):
 
 @app.get("/summary2/", response_class=HTMLResponse)
 @app.get("/summary2/{id}", response_class=HTMLResponse)
-async def summary2(request: Request, id: Optional[str] = None):
+def summary2(request: Request, id: Optional[str] = None):
     """Serve up the summary home page with horizontal stacked bar visualization"""
     try:
         logger.info(f"Summary2 page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
 
-        devs = None
-        with KospexTimer("Loading load_developers") as dev_load:
-            if data := request_cache.get(
-                "summary:developers", KospexQuery().get_last_sync_datetime()
-            ):
-                print("Cache found")
-                devs = data
-            else:
-                devs = KospexQuery().developers(**params)
-                request_cache.set("summary:developers", devs)
+        with KospexTimer("Load developers") as dev_load:
+            devs = cached_query(
+                "developers", lambda: KospexQuery().developers(**params), **params
+            )
 
-        print(dev_load)
+        logger.info(dev_load)
 
         dev_stats = KospexUtils.count_key_occurrences(devs, "status")
         dev_percentages = KospexUtils.convert_to_percentage(dev_stats)
@@ -285,7 +311,7 @@ async def summary2(request: Request, id: Optional[str] = None):
                 dev_stats[f"{name}_percentage"] = round(percentage)
             result[name] = round(100 * (percentage / 100)) + 40
 
-        repos = KospexQuery().repos(**params)
+        repos = cached_query("repos", lambda: KospexQuery().repos(**params), **params)
         repo_stats = KospexUtils.count_key_occurrences(repos, "status")
 
         repo_sizes = {}
@@ -322,7 +348,7 @@ async def summary2(request: Request, id: Optional[str] = None):
 
 @app.get("/help/", response_class=HTMLResponse)
 @app.get("/help/{id}", response_class=HTMLResponse)
-async def help_page(request: Request, id: Optional[str] = None):
+def help_page(request: Request, id: Optional[str] = None):
     """Serve up the help pages"""
     try:
         logger.info(f"Help page requested with id: {id}")
@@ -348,7 +374,7 @@ async def help_page(request: Request, id: Optional[str] = None):
 
 
 @app.get("/developers/active/{repo_id}", response_class=HTMLResponse)
-async def active_developers(request: Request, repo_id: str):
+def active_developers(request: Request, repo_id: str):
     """Developer info page."""
     try:
         logger.info(f"Active developers page requested for repo: {repo_id}")
@@ -371,13 +397,13 @@ async def active_developers(request: Request, repo_id: str):
 
 # Health check endpoint
 @app.get("/health")
-async def health_check():
+def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "kospex-web"}
 
 
 @app.get("/generate-repo-id/")
-async def generate_repo_id(url: str):
+def generate_repo_id(url: str):
     """Generate a repo_id from a git URL"""
     try:
         logger.info(f"Generate repo_id requested for URL: {url}")
@@ -411,7 +437,7 @@ async def generate_repo_id(url: str):
 
 
 @app.get("/servers/", response_class=HTMLResponse)
-async def servers(request: Request):
+def servers(request: Request):
     """Display Git server information."""
     try:
         logger.info("Servers page requested")
@@ -431,23 +457,15 @@ async def servers(request: Request):
 
 
 @app.get("/metadata/", response_class=HTMLResponse)
-async def metadata(request: Request):
+def metadata(request: Request):
     """Metadata about the kospex DB and repos."""
     try:
         logger.info("Metadata page requested")
 
-        data = None
-
         with KospexTimer("Summary load") as summary_load:
-            if data := request_cache.get(
-                "metadata:summary", KospexQuery().get_last_sync_datetime()
-            ):
-                print("Cache found")
-            else:
-                data = KospexQuery().summary()
-                request_cache.set("metadata:summary", data)
+            data = cached_query("metadata", lambda: KospexQuery().summary())
 
-        print(summary_load)
+        logger.info(summary_load)
 
         # data = KospexQuery().summary()
 
@@ -464,7 +482,7 @@ async def metadata(request: Request):
 
 @app.get("/metadata/repos/", response_class=HTMLResponse)
 @app.get("/metadata/repos/{id}", response_class=HTMLResponse)
-async def metadata_repos(request: Request, id: Optional[str] = None):
+def metadata_repos(request: Request, id: Optional[str] = None):
     """
     Display repository metadata information based on git commits and sync.
     """
@@ -496,7 +514,7 @@ async def metadata_repos(request: Request, id: Optional[str] = None):
 
 @app.get("/orphans/", response_class=HTMLResponse)
 @app.get("/orphans/{id}", response_class=HTMLResponse)
-async def orphans(request: Request, id: Optional[str] = None):
+def orphans(request: Request, id: Optional[str] = None):
     """Display orphan information"""
     try:
         logger.info(f"Orphans page requested with id: {id}")
@@ -517,7 +535,7 @@ async def orphans(request: Request, id: Optional[str] = None):
 
 @app.get("/bubble/{id}", response_class=HTMLResponse)
 @app.get("/treemap/{id}", response_class=HTMLResponse)
-async def bubble_treemap(request: Request, id: str):
+def bubble_treemap(request: Request, id: str):
     """
     Display a bubble or treemap chart of developers in a repo
     or the repos for an org_key
@@ -570,7 +588,7 @@ async def bubble_treemap(request: Request, id: str):
 
 @app.get("/osi/", response_class=HTMLResponse)
 @app.get("/osi/{id}", response_class=HTMLResponse)
-async def osi(request: Request, id: Optional[str] = None):
+def osi(request: Request, id: Optional[str] = None):
     """Functions around an Open Source Inventory"""
     try:
         logger.info(f"OSI page requested with id: {id}")
@@ -614,7 +632,7 @@ async def osi(request: Request, id: Optional[str] = None):
 
 
 @app.get("/collab/{repo_id}", response_class=HTMLResponse)
-async def collab(request: Request, repo_id: str):
+def collab(request: Request, repo_id: str):
     """Display repository collaboration information"""
     try:
         logger.info(f"Collaboration page requested for repo: {repo_id}")
@@ -649,7 +667,7 @@ async def collab(request: Request, repo_id: str):
 
 
 @app.get("/collab/graph/{repo_id}", response_class=HTMLResponse)
-async def collab_graph(request: Request, repo_id: str):
+def collab_graph(request: Request, repo_id: str):
     """Display network graph visualization of repository collaboration"""
     try:
         logger.info(f"Collaboration graph page requested for repo: {repo_id}")
@@ -668,7 +686,7 @@ async def collab_graph(request: Request, repo_id: str):
 
 
 @app.get("/api/collab/graph/{repo_id}", response_class=JSONResponse)
-async def collab_graph_data(request: Request, repo_id: str):
+def collab_graph_data(request: Request, repo_id: str):
     """Return JSON data for collaboration network graph"""
     try:
         logger.info(f"Collaboration graph data requested for repo: {repo_id}")
@@ -688,7 +706,7 @@ async def collab_graph_data(request: Request, repo_id: str):
 
 
 @app.get("/file-collab/{repo_id}/", response_class=HTMLResponse)
-async def file_collaboration(request: Request, repo_id: str):
+def file_collaboration(request: Request, repo_id: str):
     """Display file collaboration information"""
     try:
         logger.info(f"File collaboration page requested for repo: {repo_id}")
@@ -723,7 +741,7 @@ async def file_collaboration(request: Request, repo_id: str):
 
 @app.get("/orgs/", response_class=HTMLResponse)
 @app.get("/orgs/{server}", response_class=HTMLResponse)
-async def orgs(request: Request, server: Optional[str] = None):
+def orgs(request: Request, server: Optional[str] = None):
     """Display organization information"""
     try:
         logger.info(f"Organizations page requested with server: {server}")
@@ -750,7 +768,7 @@ async def orgs(request: Request, server: Optional[str] = None):
 
 
 @app.get("/recent/", response_class=HTMLResponse)
-async def recent_syncs(request: Request):
+def recent_syncs(request: Request):
     """Display recently synced repositories"""
     try:
         logger.info("Recent syncs view requested")
@@ -776,7 +794,7 @@ async def recent_syncs(request: Request):
 
 @app.get("/repos/", response_class=HTMLResponse)
 @app.get("/repos/{id}", response_class=HTMLResponse)
-async def repos(request: Request, id: Optional[str] = None):
+def repos(request: Request, id: Optional[str] = None):
     """Display repository information"""
     try:
         logger.info(f"Repositories page requested with id: {id}")
@@ -811,13 +829,23 @@ async def repos(request: Request, id: Optional[str] = None):
         elif server:
             page["git_server"] = server
 
-        # The repos method handles null values for parameters
-        data = kospex.repos(org_key=org_key, server=server)
-        active_devs = kospex.active_devs()
+        # The repos method handles null values for parameters.
+        # Copy the cached rows: the loops below add keys to them.
+        data = [
+            dict(row)
+            for row in cached_query(
+                "repos", lambda: kospex.repos(org_key=org_key, server=server),
+                org_key=org_key, server=server,
+            )
+        ]
+        active_devs = cached_query("active_devs", kospex.active_devs)
         for row in data:
             row["active_devs"] = active_devs.get(row["_repo_id"], 0)
 
-        developers = kospex.developers(org_key=org_key, server=server)
+        developers = cached_query(
+            "developers", lambda: kospex.developers(org_key=org_key, server=server),
+            org_key=org_key, server=server,
+        )
         developer_status = KospexUtils.repo_stats(developers, "last_commit")
 
         for repo in data:
@@ -845,7 +873,7 @@ async def repos(request: Request, id: Optional[str] = None):
 
 
 @app.get("/repo/{repo_id}", response_class=HTMLResponse)
-async def repo(request: Request, repo_id: str):
+def repo(request: Request, repo_id: str):
     """Display individual repository information"""
     try:
         logger.info(f"Repository view requested for repo: {repo_id}")
@@ -900,7 +928,7 @@ async def repo(request: Request, repo_id: str):
 
 
 @app.get("/org/{org_key}", response_class=HTMLResponse)
-async def org_view(request: Request, org_key: str):
+def org_view(request: Request, org_key: str):
     """Display individual organisation information (mirrors the repo view)."""
     try:
         logger.info(f"Organisation view requested for org_key: {org_key}")
@@ -955,7 +983,7 @@ async def org_view(request: Request, org_key: str):
 
 
 @app.get("/key-person/{repo_id}", response_class=HTMLResponse)
-async def key_person(request: Request, repo_id: str):
+def key_person(request: Request, repo_id: str):
     """Display key person analysis for a repository"""
     try:
         logger.info(f"Key person view requested for repo: {repo_id}")
@@ -993,7 +1021,7 @@ async def key_person(request: Request, repo_id: str):
 
 @app.get("/landscape/", response_class=HTMLResponse)
 @app.get("/landscape/{id}", response_class=HTMLResponse)
-async def landscape(request: Request, id: Optional[str] = None):
+def landscape(request: Request, id: Optional[str] = None):
     """Serve up the technology landscape metadata"""
     try:
         logger.info(f"Technology landscape page requested with id: {id}")
@@ -1027,7 +1055,7 @@ async def landscape(request: Request, id: Optional[str] = None):
 
 @app.get("/developers/", response_class=HTMLResponse)
 @app.get("/developers/{id}", response_class=HTMLResponse)
-async def developers(request: Request, id: Optional[str] = None):
+def developers(request: Request, id: Optional[str] = None):
     """Developer info page"""
     try:
         logger.info("Developers page requested")
@@ -1091,7 +1119,7 @@ async def developers(request: Request, id: Optional[str] = None):
 
 @app.get("/graph/", response_class=HTMLResponse)
 @app.get("/graph/{org_key}", response_class=HTMLResponse)
-async def graph(request: Request, org_key: Optional[str] = None):
+def graph(request: Request, org_key: Optional[str] = None):
     """Force directed graphs for data in the Kospex DB."""
     try:
         logger.info(f"Graph page requested with org_key: {org_key}")
@@ -1126,7 +1154,7 @@ async def graph(request: Request, org_key: Optional[str] = None):
 @app.get("/org-graph/", response_class=JSONResponse)
 @app.get("/org-graph/{org_key}", response_class=JSONResponse)
 @app.get("/org-graph/{focus}/{org_key}", response_class=JSONResponse)
-async def org_graph(request: Request, org_key: Optional[str] = None, focus: Optional[str] = None):
+def org_graph(request: Request, org_key: Optional[str] = None, focus: Optional[str] = None):
     """Return JSON data for the force directed graph."""
     try:
         logger.info(f"Org graph data requested - focus: {focus}, org_key: {org_key}")
@@ -1144,7 +1172,7 @@ async def org_graph(request: Request, org_key: Optional[str] = None, focus: Opti
 
 @app.get("/tenure/", response_class=HTMLResponse)
 @app.get("/tenure/{id}", response_class=HTMLResponse)
-async def tenure(request: Request, id: Optional[str] = None):
+def tenure(request: Request, id: Optional[str] = None):
     """
     View developer tenure for all, a server, org or a repo
     """
@@ -1220,7 +1248,7 @@ async def tenure(request: Request, id: Optional[str] = None):
 
 
 @app.get("/meta/author-domains", response_class=HTMLResponse)
-async def author_domains(request: Request):
+def author_domains(request: Request):
     """Display author email domain analysis"""
     try:
         logger.info("Author domains page requested")
@@ -1252,7 +1280,7 @@ async def author_domains(request: Request):
 
 
 @app.get("/tech-change/", response_class=HTMLResponse)
-async def tech_change(request: Request):
+def tech_change(request: Request):
     """Technology change radar visualization"""
     try:
         logger.info("Tech change radar page requested")
@@ -1273,7 +1301,7 @@ async def tech_change(request: Request):
 
 
 @app.get("/tech/{tech}", response_class=HTMLResponse)
-async def repo_with_tech(request: Request, tech: str):
+def repo_with_tech(request: Request, tech: str):
     """Show repositories with the given technology"""
     try:
         logger.info(f"Tech filtering page requested for technology: {tech}")
@@ -1304,7 +1332,7 @@ async def repo_with_tech(request: Request, tech: str):
 
 @app.get("/developer/", response_class=HTMLResponse)
 @app.get("/developer/{id}", response_class=HTMLResponse)
-async def developer_view(request: Request, id: Optional[str] = None):
+def developer_view(request: Request, id: Optional[str] = None):
     """
     View individual developer details
     """
@@ -1363,7 +1391,7 @@ async def developer_view(request: Request, id: Optional[str] = None):
 
 
 @app.get("/observation/{uuid}", response_class=HTMLResponse)
-async def observation(request: Request, uuid: str):
+def observation(request: Request, uuid: str):
     """
     Display observation information
     """
@@ -1391,7 +1419,7 @@ async def observation(request: Request, uuid: str):
 
 
 @app.get("/observations/", response_class=HTMLResponse)
-async def observations(request: Request):
+def observations(request: Request):
     """Display observation information"""
     try:
         logger.info("Observations page requested")
@@ -1440,7 +1468,7 @@ async def observations(request: Request):
 
 @app.get("/commits/", response_class=HTMLResponse)
 @app.get("/commits/{repo_id}", response_class=HTMLResponse)
-async def commits(request: Request, repo_id: Optional[str] = None):
+def commits(request: Request, repo_id: Optional[str] = None):
     """
     Display Git commit information
     """
@@ -1477,7 +1505,7 @@ async def commits(request: Request, repo_id: Optional[str] = None):
 
 
 @app.get("/history/{repo_id}", response_class=HTMLResponse)
-async def commit_history(request: Request, repo_id: str):
+def commit_history(request: Request, repo_id: str):
     """Display commit history chart for a repository"""
     try:
         logger.info(f"Commit history page requested for repo: {repo_id}")
@@ -1515,7 +1543,7 @@ async def commit_history(request: Request, repo_id: str):
 
 @app.get("/dependencies/", response_class=HTMLResponse)
 @app.get("/dependencies/{id}", response_class=HTMLResponse)
-async def dependencies(
+def dependencies(
     request: Request, id: Optional[str] = None, file_path: Optional[str] = None
 ):
     """Display SCA (Software Composition Analysis) information.
@@ -1563,7 +1591,7 @@ async def dependencies(
 
 
 @app.get("/commit/{repo_id}/{commit_hash}", response_class=HTMLResponse)
-async def commit(request: Request, repo_id: str, commit_hash: str):
+def commit(request: Request, repo_id: str, commit_hash: str):
     """Display individual commit information"""
     try:
         logger.info(f"Commit page requested for repo: {repo_id}, hash: {commit_hash}")
@@ -1629,7 +1657,7 @@ def _classify_upload_status(item: dict) -> str:
 
 
 @app.get("/package-check/", response_class=HTMLResponse)
-async def package_check(request: Request):
+def package_check(request: Request):
     """Display the package check page with drag and drop interface"""
     try:
         logger.info("Package check page requested")
@@ -1646,7 +1674,7 @@ async def package_check(request: Request):
 
 
 @app.post("/package-check/upload", response_class=JSONResponse)
-async def package_check_upload(file: UploadFile = File(...)):
+def package_check_upload(file: UploadFile = File(...)):
     """Handle file upload and analyze dependencies"""
     try:
         import os
@@ -1689,7 +1717,7 @@ async def package_check_upload(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Invalid filename")
 
         # Read and save file content
-        content = await file.read()
+        content = file.file.read()
         with open(temp_path, "wb") as f:
             f.write(content)
 
@@ -1741,7 +1769,7 @@ async def package_check_upload(file: UploadFile = File(...)):
 
 
 @app.get("/hotspots/{repo_id}", response_class=HTMLResponse)
-async def hotspots(request: Request, repo_id: str):
+def hotspots(request: Request, repo_id: str):
     """Display code hotspots analysis for a repository"""
     try:
         logger.info(f"Hotspots page requested for repo: {repo_id}")
@@ -1761,7 +1789,7 @@ async def hotspots(request: Request, repo_id: str):
 
 @app.get("/files/repo/", response_class=HTMLResponse)
 @app.get("/files/repo/{repo_id}", response_class=HTMLResponse)
-async def repo_files(request: Request, repo_id: Optional[str] = None):
+def repo_files(request: Request, repo_id: Optional[str] = None):
     """Show file metadata for a repository"""
     try:
         logger.info(f"Repository files page requested for repo: {repo_id}")
@@ -1782,7 +1810,7 @@ async def repo_files(request: Request, repo_id: Optional[str] = None):
 
 
 @app.get("/supply-chain/", response_class=HTMLResponse)
-async def supply_chain(request: Request):
+def supply_chain(request: Request):
     """
     Display supply chain analysis - either a search form or visualization.
     If no package parameter is provided, shows a search form.
@@ -1904,7 +1932,7 @@ async def supply_chain(request: Request):
 
 # Catch-all route for unmatched paths (must be last)
 @app.get("/{full_path:path}", response_class=HTMLResponse)
-async def catch_all(request: Request, full_path: str):
+def catch_all(request: Request, full_path: str):
     """Catch-all route that serves 404 for unmatched paths"""
     logger.warning(f"404 - Path not found: {full_path}")
     raise HTTPException(status_code=404, detail="Page not found")
@@ -1965,7 +1993,12 @@ def main():
     if reload:
         print("Debug mode enabled with auto-reload")
 
-    uvicorn.run("kweb2:app", host=host, port=port, reload=reload)
+    # Watch only kweb's own source dir. uvicorn defaults to the cwd, and without
+    # watchfiles it polls every *.py under it: from the repo root that is .venv
+    # and .claude/worktrees too, ~5000 files rescanned every 0.25s, and an edit
+    # in any worktree (or a pip upgrade) restarts kweb and empties request_cache.
+    reload_dirs = [str(Path(__file__).parent)] if reload else None
+    uvicorn.run("kweb2:app", host=host, port=port, reload=reload, reload_dirs=reload_dirs)
 
 
 if __name__ == "__main__":

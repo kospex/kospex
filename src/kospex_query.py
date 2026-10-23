@@ -211,8 +211,7 @@ class KospexQuery:
         {where_clause}
         GROUP BY _git_server
         """
-        print(summary_sql)
-        print(params)
+        log.debug("server_summary SQL: %s params: %s", summary_sql, params)
         data = []
         for row in self.kospex_db.query(summary_sql, params):
             data.append(row)
@@ -430,7 +429,6 @@ class KospexQuery:
         active_devs = self.developers(days=90)
         active_set = set(map(lambda item: item["author"], active_devs))
 
-        print(active_set)
 
         repos = self.repos2(id=id)
 
@@ -456,24 +454,23 @@ class KospexQuery:
 
             committers = set([c["author_email"] for c in commits])
             row["committers"] = len(committers)
-            print("\n")
-            print(f"committers: {committers}\n\n")
 
             intersection_count = len(committers.intersection(active_set))
             row["intersection"] = intersection_count
 
-            print(f"Present: {intersection_count}, Total: {len(committers)} in 12 months.")
+            log.debug(
+                "%s: %d of %d committers active in 12 months",
+                row.get("_repo_id"), intersection_count, len(committers),
+            )
 
             # if all the authors are not in the active_devs_emails list
             # then print the repo status of orphaned
 
             if intersection_count == 0:
-                print("Orphaned")
                 row["orphaned"] = True
                 row["percentage"] = 0
                 # orphaned += 1
             else:
-                print("Working knowledge exists")
                 row["orphaned"] = False
                 row["percentage"] = f"{intersection_count / len(committers) * 100:.2f}"
                 # row.append(f"{intersection_count/len(committers)*100:.2f}%")
@@ -879,7 +876,7 @@ class KospexQuery:
 
         return repos
 
-    @KospexUtils.timer()
+    @KospexUtils.timer(logger=log)
     def developers(
         self, org_key=None, repo_id=None, server=None, days=None, to_date=None, from_date=None
     ):
@@ -929,7 +926,6 @@ class KospexQuery:
             kd.where_org_key(org_key)
 
         if server:
-            print(f"Server: {server}")
             kd.where("_git_server", "=", server)
 
         results = kd.execute()
@@ -988,7 +984,6 @@ class KospexQuery:
             commits
 
         """
-        print()
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
         kd.select_as("count(*)", "commits")
@@ -1015,7 +1010,7 @@ class KospexQuery:
 
         return data
 
-    @KospexUtils.timer()
+    @KospexUtils.timer(logger=log)
     def authors(self, days=None, org_key=None, request_id=None):
         """
         Provide a summary of authors in the known repositories.
@@ -1144,7 +1139,7 @@ class KospexQuery:
             try:
                 server, org = _org_key_parts(org_key)
             except ValueError as exc:
-                print(exc)
+                log.warning("commit_ranges: %s", exc)
                 return None
             params.append(server)
             params.append(org)
@@ -1277,13 +1272,11 @@ class KospexQuery:
         for row in data:
             meta = metadata.get(row["file_path"], {})
             if meta:
-                print(row["file_path"])
                 row["Lines"] = meta.get("Lines", 0)
                 row["Complexity"] = meta.get("Complexity", 0)
                 row["Language"] = meta.get("Language", 0)
-                print(meta)
             else:
-                print("No meta for ", row["file_path"])
+                log.debug("hotspots: no metadata for %s", row["file_path"])
             # row['lines'] = metadata[row['file_path']]['Lines']
             results.append(row)
 
@@ -1532,7 +1525,7 @@ class KospexQuery:
 
         return summary
 
-    @KospexUtils.timer()
+    @KospexUtils.timer(logger=log)
     def summarize_by_language(self, commits):
         """
         Summarize commits by language only (across all authors).
@@ -1683,10 +1676,10 @@ class KospexQuery:
         if year:
             start_date = datetime(year, 1, 1)
             start_iso = start_date.isoformat()  # "2023-01-01T00:00
-            print(f"Start date: {start_iso}")
+            log.debug("developer_tech start date: %s", start_iso)
             end_date = datetime(year, 12, 31, 23, 59, 59)
             end_iso = end_date.isoformat()  # "2023-01-01T00:00
-            print(f"End date: {end_iso}")
+            log.debug("developer_tech end date: %s", end_iso)
             kd.where("commits.committer_when", ">=", start_iso)
             kd.where("commits.committer_when", "<=", end_iso)
 
@@ -1753,7 +1746,6 @@ class KospexQuery:
             kd.group_by("file_path")
 
         data = kd.execute()
-        print(data)
         return data
 
         # return kd.execute()
@@ -1998,7 +1990,7 @@ class KospexQuery:
             days = KospexUtils.days_between_datetimes(
                 a["first_commit"], a["last_commit"], min_one=True
             )
-            tenure = f"{days / 354:.3f}"
+            tenure = f"{days / 365:.3f}"
 
             a["tenure"] = tenure
 
@@ -2036,53 +2028,60 @@ class KospexQuery:
         git_owner = repo.get("_git_owner", "") if repo else ""
         git_repo = repo.get("_git_repo", "") if repo else ""
 
-        # Single query to get all developer stats including conditional 90-day count
+        # Single query to get all developer stats including conditional 90-day count.
+        # first_commit / last_commit are committer time, as everywhere on the web;
+        # author time (kept by rebases and cherry-picks) goes in *_authored.
         sql = f"""
             SELECT
                 author_email,
                 COUNT(*) as total_commits,
-                strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as first_commit,
-                strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as last_commit,
-                SUM(CASE WHEN committer_when > ? THEN 1 ELSE 0 END) as commits_last_90_days
+                strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') as first_commit,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') as last_commit,
+                SUM(CASE WHEN committer_when > ? THEN 1 ELSE 0 END) as commits_last_90_days,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as first_authored,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', author_when) AS INTEGER)), 'unixepoch') as last_authored
             FROM {KospexSchema.TBL_COMMITS}
             WHERE _repo_id = ?
             GROUP BY author_email
         """
         rows = list(self.kospex_db.execute(sql, [days_90_ago, repo_id]).fetchall())
 
-        # Delete existing ALL_TIME stats for this repo and insert fresh
-        self.kospex_db.execute(
-            f"DELETE FROM {KospexSchema.TBL_DEVELOPER_STATS} WHERE _repo_id = ? AND (stat_type = 'ALL_TIME' OR stat_type IS NULL)",
-            [repo_id]
-        )
-
-        for row in rows:
-            self.kospex_db.execute(
-                f"""INSERT INTO {KospexSchema.TBL_DEVELOPER_STATS}
-                    (author_email, total_commits, first_commit, last_commit,
-                     commits_last_90_days, last_update, stat_type,
-                     _git_server, _git_owner, _git_repo, _repo_id)
-                    VALUES (?, ?, ?, ?, ?, ?, 'ALL_TIME', ?, ?, ?, ?)""",
-                [row[0], row[1], row[2], row[3], row[4], now,
-                 git_server, git_owner, git_repo, repo_id]
-            )
-
-        # Calculate repo totals and update per-developer percentages
+        # Calculate repo totals for the per-developer percentages
         total_all_time = sum(row[1] for row in rows)
         total_90_days = sum(row[4] for row in rows)
 
-        if total_all_time > 0:
-            pct_sql = f"""
-                UPDATE {KospexSchema.TBL_DEVELOPER_STATS}
-                SET pct_all_time = ROUND(100.0 * total_commits / ?, 2),
-                    pct_90_days = CASE WHEN ? > 0
-                        THEN ROUND(100.0 * commits_last_90_days / ?, 2)
-                        ELSE 0 END
-                WHERE _repo_id = ? AND stat_type = 'ALL_TIME'
-            """
-            self.kospex_db.execute(pct_sql, [total_all_time, total_90_days, total_90_days, repo_id])
+        # One transaction per repo. sqlite-utils' execute() commits each write
+        # on its own when no transaction is open, which cost a commit (and a
+        # disk sync) per developer and let a failure leave the repo half-built.
+        with self.kospex_db.atomic():
+            # Delete existing ALL_TIME stats for this repo and insert fresh
+            self.kospex_db.execute(
+                f"DELETE FROM {KospexSchema.TBL_DEVELOPER_STATS} WHERE _repo_id = ? AND (stat_type = 'ALL_TIME' OR stat_type IS NULL)",
+                [repo_id]
+            )
 
-        self.kospex_db.conn.commit()
+            self.kospex_db.conn.executemany(
+                f"""INSERT INTO {KospexSchema.TBL_DEVELOPER_STATS}
+                    (author_email, total_commits, first_commit, last_commit,
+                     commits_last_90_days, first_authored, last_authored,
+                     last_update, stat_type,
+                     _git_server, _git_owner, _git_repo, _repo_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ALL_TIME', ?, ?, ?, ?)""",
+                [[row[0], row[1], row[2], row[3], row[4], row[5], row[6], now,
+                  git_server, git_owner, git_repo, repo_id] for row in rows]
+            )
+
+            if total_all_time > 0:
+                pct_sql = f"""
+                    UPDATE {KospexSchema.TBL_DEVELOPER_STATS}
+                    SET pct_all_time = ROUND(100.0 * total_commits / ?, 2),
+                        pct_90_days = CASE WHEN ? > 0
+                            THEN ROUND(100.0 * commits_last_90_days / ?, 2)
+                            ELSE 0 END
+                    WHERE _repo_id = ? AND stat_type = 'ALL_TIME'
+                """
+                self.kospex_db.execute(pct_sql, [total_all_time, total_90_days, total_90_days, repo_id])
+
         return len(rows)
 
     def update_developer_file_stats(self, repo_id):
@@ -2142,6 +2141,98 @@ class KospexQuery:
         if repo_id:
             kd.where("_repo_id", "=", repo_id)
         return kd.execute()
+
+    def _stats_scope(self, org_key=None, repo_id=None, server=None):
+        """WHERE clause and params scoping developer_stats like developers()."""
+        clauses, params = [], []
+        if repo_id:
+            clauses.append("_repo_id = ?")
+            params.append(repo_id)
+        if org_key:
+            git_server, org = _org_key_parts(org_key)
+            clauses.append("_git_server = ? AND _git_owner = ?")
+            params += [git_server, org]
+        if server:
+            clauses.append("_git_server = ?")
+            params.append(server)
+        return " AND ".join(clauses) or "1 = 1", params
+
+    def _repos_without_stats(self):
+        """repo_ids that have commits but no ALL_TIME developer_stats rows."""
+        # Repos with commits, by a loose index scan of the primary key: one seek
+        # per repo (8ms for 374 repos) instead of reading every commit (85ms+).
+        with_commits = {r[0] for r in self.kospex_db.execute(f"""
+            WITH RECURSIVE r(id) AS (
+                SELECT MIN(_repo_id) FROM {KospexSchema.TBL_COMMITS}
+                UNION ALL
+                SELECT (SELECT MIN(_repo_id) FROM {KospexSchema.TBL_COMMITS} WHERE _repo_id > r.id)
+                FROM r WHERE r.id IS NOT NULL
+            ) SELECT id FROM r WHERE id IS NOT NULL""")}
+        with_stats = {r[0] for r in self.kospex_db.execute(
+            f"SELECT DISTINCT _repo_id FROM {KospexSchema.TBL_DEVELOPER_STATS} "
+            "WHERE stat_type = 'ALL_TIME'")}
+        return with_commits - with_stats
+
+    def developer_stats_coverage(self):
+        """Repos whose developer_stats the summary pages would read wrongly.
+
+        repos_not_rebuilt: rows written before last_commit moved to committer
+        time (last_authored IS NULL, or a legacy NULL stat_type).
+        repos_without_stats: repos with commits but no rows at all.
+        The summary pages read developer_stats without a fallback, so while
+        either is non-zero their counts are off for those repos.
+        `kospex rebuild developer-stats` fixes both.
+        """
+        (not_rebuilt,) = self.kospex_db.execute(
+            f"SELECT COUNT(DISTINCT _repo_id) FROM {KospexSchema.TBL_DEVELOPER_STATS} "
+            "WHERE stat_type IS NULL OR (stat_type = 'ALL_TIME' AND last_authored IS NULL)"
+        ).fetchone()
+        return {"repos_not_rebuilt": not_rebuilt,
+                "repos_without_stats": len(self._repos_without_stats())}
+
+    def developer_statuses(self, org_key=None, repo_id=None, server=None):
+        """Each developer's last commit and status, from developer_stats.
+
+        The same developers and statuses as developers() for the same scope,
+        without scanning commits, provided every repo's stats were built since
+        last_commit moved to committer time (see developer_stats_coverage()).
+        """
+        where, params = self._stats_scope(org_key=org_key, repo_id=repo_id, server=server)
+        # last_commit is always UTC 'Z' text, so MAX over strings is MAX over time
+        rows = self.kospex_db.query(
+            f"""SELECT LOWER(author_email) AS author, MAX(last_commit) AS last_commit
+            FROM {KospexSchema.TBL_DEVELOPER_STATS}
+            WHERE stat_type = 'ALL_TIME' AND {where}
+            GROUP BY LOWER(author_email)""",
+            params,
+        )
+        data = []
+        for row in rows:
+            row["status"] = KospexUtils.development_status(row["last_commit"])
+            data.append(row)
+        return data
+
+    def repo_statuses(self, org_key=None, repo_id=None, server=None):
+        """Each repo's last commit and status, from developer_stats.
+
+        The same repos and statuses as repos() for the same scope, under the
+        same condition as developer_statuses().
+        """
+        where, params = self._stats_scope(org_key=org_key, repo_id=repo_id, server=server)
+        rows = self.kospex_db.query(
+            f"""SELECT _repo_id, MAX(last_commit) AS last_commit
+            FROM {KospexSchema.TBL_DEVELOPER_STATS}
+            WHERE stat_type = 'ALL_TIME' AND {where}
+            GROUP BY _repo_id
+            ORDER BY _repo_id""",
+            params,
+        )
+        data = []
+        for row in rows:
+            row["days_ago"] = KospexUtils.days_ago(row["last_commit"])
+            row["status"] = KospexUtils.development_status(row["last_commit"])
+            data.append(row)
+        return data
 
     def groups(self, params=None):
         """Return a list of groups"""
@@ -2292,7 +2383,7 @@ class KospexQuery:
         if tag:
             kd.where_tag(tag)
 
-        print("Executing query:", kd.generate_sql(), kd.params)
+        log.debug("get_metadata_files SQL: %s params: %s", kd.generate_sql(), kd.params)
 
         return kd.execute()
 
@@ -2781,7 +2872,7 @@ class KospexData:
         if name.upper() in reserved_keywords:
             # raise ValueError(f"Invalid name: '{name}' is a reserved SQL keyword.")
             # TODO - log this instead of print
-            print(f"Invalid name: '{name}' is a reserved SQL keyword.")
+            log.warning("Invalid name: '%s' is a reserved SQL keyword.", name)
             return False
 
         # Regular expression for valid SQL table/column names
@@ -2791,14 +2882,14 @@ class KospexData:
             # We can get this error for a NOT_EXIST_TBL.col
             # TODO - log this instead of print
             # raise ValueError(f"Invalid name: '{name}' does not match SQL naming conventions.")
-            print(f"Invalid name: '{name}' does not match SQL naming conventions.")
+            log.warning("Invalid name: '%s' does not match SQL naming conventions.", name)
             return False
 
         # Optional: Check for length limits (default: 64 characters)
         if len(name) > 64:
             # raise ValueError(f"Invalid name: '{name}' exceeds the maximum allowed length.")
             # TODO - log this instead of print
-            print(f"Invalid name: '{name}' exceeds the maximum allowed length.")
+            log.warning("Invalid name: '%s' exceeds the maximum allowed length.", name)
             return False
 
         return True

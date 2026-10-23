@@ -74,8 +74,15 @@ Resolve the in-scope repos from the DB (reuse the existing
 
 From the DB only, no network, no auth prompts. For each in-scope repo, show:
 `last_fetch`, `last_sync`, last commit date (the repos `last_seen`, = newest
-`committer_when`), and an age (e.g. "63d"). Sorted stalest-first so overdue
+`committer_when`), and `fetch_age`, the days since `last_fetch` (e.g. "63d";
+"never" when kgit has never cloned or pulled the repo). Sorted stalest-first so overdue
 refreshes are obvious. This is the cheap "what needs pulling" view.
+
+`never` is shown as is: there is deliberately no fallback to the `last_sync` age
+(decided 2026-10-22). `last_fetch` is only stamped by `kgit clone` / `kgit pull`,
+so repos synced before migration `0004`, or updated outside kgit, show `never`.
+kospex has few users, and their data gets cleaner as they clone and pull, so it
+isn't worth the extra logic.
 
 ## Authentication handling
 

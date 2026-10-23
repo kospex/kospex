@@ -2,10 +2,100 @@
 
 ## Status
 
-**In progress.** Some tables are migrated (see *Update — 2026-10-20*,
-below). The May inventory and suggested order further down are kept for
-history; their line numbers are out of date, and the update's lists replace
-them.
+**In progress.** Some tables are migrated (see *Update — 2026-10-23*,
+*Update — 2026-10-22* and *Update — 2026-10-20*, below). The May inventory and suggested order further
+down are kept for history; their line numbers are out of date, and the
+updates' lists replace them.
+
+## Update — 2026-10-23
+
+### Done
+
+- **`kospex key-person`** (`kospex_cli.py:917`): "Key Person". The table is
+  built inline and `key_person_prettytable()` is deleted, as step 3 of
+  *Order of work* asks. Columns and alignment are as before. `author` is
+  cyan and `no_wrap`, because it is an email, which counts as an identifier.
+  The table prints through `print_table`. A `None` (for example `merges` on
+  an older row) prints as an empty cell, not as the string `None`.
+- **Removed the raw dump.** The command used to `console.print(authors)`, so
+  the list of dicts was printed above the table. It looked like leftover
+  debug output, and it also made the piped test pass on the old code without
+  testing anything, because the full email was already in the dump. The test
+  asserts that the email appears exactly once.
+
+Test: `tests/test_key_person_cli.py::test_key_person_prints_complete_author_when_piped`,
+with an author email of more than 80 characters and the query stubbed. It
+fails on the old code.
+
+### Console markup
+
+The CLI consoles are now `Console(markup=False)` (#300), so a table cell
+holding git metadata is printed literally rather than parsed as markup. The
+*Reference pattern* and the new *Console markup* section, below, are updated
+to match. Every table migrated from here on needs only a `markup=False`
+console and `style=` for styling.
+
+### Still to do in step 3
+
+`author-tech`, `metadata`, `secrets-hotspots`, `kgit bitbucket`.
+
+## Update — 2026-10-22
+
+### Done
+
+- **The printing helper (step 1 of *Order of work*).**
+  `KospexUtils.print_table(table, console)` (`kospex_utils.py:1379`). On a
+  terminal it is `console.print(table)`. Otherwise it measures the table's
+  natural width and prints it at that width (or the console's, if that is
+  wider), through a `Console` on the same file. That is option 1 under
+  *Piped output*. It keeps PrettyTable's guarantee that piped output is
+  complete, and leaves terminal output as rich's fit-to-width.
+- **`kgit status`** (`kgit.py:169`): "Repo Status", with Subject (cyan,
+  `no_wrap`) and Value (right-aligned, as before). Values go through `str()`
+  because the stats dict holds ints.
+- **`kgit pull --check`** (`kgit.py:441`): "Repo Staleness". `repo_id` is
+  cyan and `no_wrap`. The `age` column was renamed `fetch_age`, because it
+  is days since `last_fetch` and not since the last sync or commit. That is
+  a user-visible change, recorded in the CHANGELOG.
+
+Both print through `print_table`. Each has a `CliRunner` test, as *Tests*
+asks: `tests/test_kgit_pull.py::test_pull_check_prints_complete_repo_id_when_piped`
+uses a `repo_id` longer than 80 characters, and
+`tests/test_kgit_status.py` does the same with a long `remote_url`.
+
+### Why the helper had to come first
+
+`kgit pull --check` was migrated before the helper existed, with a bare
+`console.print` and `no_wrap=True` on `repo_id`. Piped, an 80-character
+`repo_id` then took the whole width, and the other four columns collapsed to
+zero:
+
+```
+┃ repo_id                                                                  ┃┃┃┃┃
+│ gitlab.com~example-organisation~~platform-subgroup~a-fairly-long-reposi… │││││
+```
+
+So `no_wrap` alone doesn't protect an identifier column: it only decides
+which column loses. It still matters on a terminal, where it stops the
+`repo_id` being wrapped mid-id. Every remaining table with an identifier
+column should print through `print_table`.
+
+### Learned along the way
+
+- `console.print(table, width=N)` doesn't widen past the console's own
+  width. The helper builds a second `Console(file=console.file, width=N)`
+  for that reason.
+- Measure with `console.options.update(width=...)` set very large. With the
+  default options the measurement is capped at 80, the width being avoided.
+- A `Console()` made at import time with no `file` writes to whatever
+  `sys.stdout` is when it prints, so `CliRunner` captures module-level
+  consoles without patching.
+
+### Still to do in kgit
+
+- `kgit bitbucket` (`kgit.py:669`) is the last PrettyTable in `kgit.py`, and
+  then the `from prettytable import PrettyTable` at `kgit.py:10` can go. Its
+  `clone_url` column is an identifier: print it through `print_table`.
 
 ## Update — 2026-10-20
 
@@ -47,23 +137,25 @@ release.
 
 ### What's left
 
-Eighteen tables in six modules, all CLI output. kweb doesn't use
+Eighteen tables in six modules as of 2026-10-20, all CLI output; sixteen
+after the 2026-10-22 update, fifteen after 2026-10-23. kweb doesn't use
 prettytable: its `tech_landscape` calls go to `KospexQuery`, which returns
 data rather than printing a table.
 
 | Command | Where the table is built | Notes |
 |---|---|---|
 | `kospex developers`, `kospex orphans` | `Kospex.active_developers()`, `kospex_core.py:987` | Shared by two commands |
-| `kospex orphans` | `orphan_prettytable()`, `kospex_utils.py:1404` | Used once: inline it. The `-csv` output is unaffected |
-| `kospex key-person` | `key_person_prettytable()`, `kospex_utils.py:1290` | Used once: inline it |
+| `kospex orphans` | `orphan_prettytable()`, `kospex_utils.py:1396` | Used once: inline it. The `-csv` output is unaffected |
+| ~~`kospex key-person`~~ | Done 2026-10-23 | See *Update — 2026-10-23* |
 | `kospex author-tech` | `Kospex.author_tech_pretty_table()`, `kospex_core.py:760` | Rename it when migrating |
 | `kospex list-repos`, `krunner find-repos` | `Kospex.list_repos()`, `kospex_core.py:1059` | `repo_id` column; see *Piped output* |
 | `kospex tech-landscape` | `Kospex.tech_landscape()`, `kospex_core.py:1169` | Uses `from_db_cursor`; see *One helper, or each table inline* |
-| `kospex metadata` | `file_metadata_prettytable()`, `kospex_utils.py:1313` | Used once, by `cli_file_metadata()` (`kospex_core.py:1239`) |
+| `kospex metadata` | `file_metadata_prettytable()`, `kospex_utils.py:1289` | Used once, by `cli_file_metadata()` (`kospex_core.py:1239`) |
 | `kospex system-status` | `Kospex.get_kospex_table_summary()`, `kospex_core.py:1626` | |
-| `kospex deps`, `krunner find-docker` | `get_dependency_files_table()` `:947`, `get_repo_stats_table()` `:929` | Used by several commands: keep as functions that return a Rich table |
-| `kospex health-check`, `krunner find-docker`, config output | `get_keyvalue_table()`, `kospex_utils.py:1334` | Used by several commands: keep as a function |
-| `kgit status`, `kgit pull`, `kgit bitbucket` | Inline in `kgit.py`, `:169`, `:442`, `:666` | `kgit pull` is new since May |
+| `kospex deps`, `krunner find-docker` | `get_dependency_files_table()` `:946`, `get_repo_stats_table()` `:923` | Used by several commands: keep as functions that return a Rich table |
+| `kospex health-check`, `krunner find-docker`, config output | `get_keyvalue_table()`, `kospex_utils.py:1311` | Used by several commands: keep as a function |
+| ~~`kgit status`, `kgit pull`~~ | Done 2026-10-22 | See *Update — 2026-10-22* |
+| `kgit bitbucket` | Inline in `kgit.py:669` | Last PrettyTable in `kgit.py` |
 | `kgit github` | `KospexGit.get_repos_pretty_table()`, `kospex_git.py:71` | |
 | `krunner secrets-hotspots` | `get_secrets_heatmap_table()`, `krunner_utils.py:203` | |
 
@@ -142,11 +234,13 @@ piped-output case directly, because `CliRunner` output is never a terminal.
 This replaces *Suggested order*, below.
 
 1. **The printing helper and its test**, migrating nothing. It's the piece
-   every later step relies on.
+   every later step relies on. *Done 2026-10-22, with the two `kgit` tables
+   below.*
 2. **Tables whose first column is an identifier**: `list-repos`,
-   `developers` / `orphans`, `kgit status`, `kgit pull`, `kgit github`.
+   `developers` / `orphans`, ~~`kgit status`~~, ~~`kgit pull`~~,
+   `kgit github`.
    These are the ones where piped output matters most.
-3. **Tables built in one place**: `key-person`, `author-tech`, `metadata`,
+3. **Tables built in one place**: ~~`key-person`~~, `author-tech`, `metadata`,
    `secrets-hotspots`, `kgit bitbucket`. Inline them and delete the helpers.
 4. **Helpers used by several commands**: `get_repo_stats_table`,
    `get_dependency_files_table`, `get_keyvalue_table`, migrated as functions
@@ -177,14 +271,37 @@ eventually be dropped from `pyproject.toml`.
 
 Use `kospex orgs` as the canonical reference:
 
-- Module-level `console = Console()` (already imported in `kospex_cli.py`
-  at line 30; other modules will need the import added).
+- Module-level `console = Console(markup=False)`. `kgit.py`, `kospex_cli.py`,
+  `krunner.py` and `kospex_core.py` already have one. A new console in any
+  other module must be `markup=False` too: see *Console markup*, below.
 - `Table(title="...")` with a clear title.
 - `add_column(name, justify="right" | default, style="cyan" for key cols)`.
 - `str(value or "")` row construction with `dict.get(...)` defaults.
 - Wrap output with `console.print()` blank lines.
+- Style with `style=` on the column or the print, or with `Text.assemble`,
+  never with `[bold]`-style tags: on a `markup=False` console they print
+  literally.
+- Print any table with an identifier column through
+  `KospexUtils.print_table(table, console)`.
 - Inline the table in the command — drop helper factories that are only
   called once.
+
+## Console markup
+
+Rich parses any `str` it's given as console markup unless the console has
+`markup=False`. That includes print arguments, table cells and table titles.
+Author emails, remote URLs and `repo_id`s come from git metadata, and git
+accepts brackets in all of them. On a markup-enabled console, `a[/]@b` raises
+`MarkupError`, `[link=...]` renders a terminal hyperlink to a different target,
+and `[conceal]` hides the value (CWE-150). Fixed in #299 and #300 by making
+the module consoles `markup=False`.
+
+Two details that are easy to get wrong:
+
+- `console.print(table, markup=False)` does **not** protect the cells. Only a
+  console *constructed* with `markup=False` does.
+- Measuring a table renders its cells, so measure with a `markup=False`
+  console too. `print_table()` does this for piped output.
 
 ## Truncation behavior
 

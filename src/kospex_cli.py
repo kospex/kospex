@@ -8,6 +8,7 @@ import os
 import os.path
 import socket
 import ssl
+import time
 from datetime import datetime, timedelta, timezone
 from shutil import which
 
@@ -15,7 +16,9 @@ import click
 import requests
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
+import kospex_rebuild as KospexRebuild
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
@@ -29,7 +32,10 @@ from kospex_query import KospexQuery
 # Initialize Kospex environment with enhanced logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kospex = Kospex()
-console = Console()
+# markup=False: values printed here come from git metadata (author emails,
+# remote URLs, repo_ids). Rich would parse them as markup (CWE-150), so style
+# with style= or rich.text.Text instead of [tags].
+console = Console(markup=False)
 
 # Get logger using the new centralized logging system
 log = KospexUtils.get_kospex_logger("kospex")
@@ -916,45 +922,80 @@ def author_tech(author_email, repo_id):
 
 @cli.command("key-person")
 @click.option("-top", type=int, default=4, help="The number of top authors to assess.")
+@click.option(
+    "-repo_id", type=click.STRING, help="Repo ID to query, in the format SERVER~ORG~REPO."
+)
 @click.argument("directory", required=False, type=GitRepo())
-def key_person(directory, top):
+@click.pass_context
+def key_person(ctx, directory, top, repo_id):
     """
     Identify the key people for a repo based on number of commits.
 
-    Firstly, the top X committers of all time
+    Give either a DIRECTORY (e.g. '.'), whose git remote gives the repo_id,
+    or -repo_id, which needs no clone on disk. Either way the figures come
+    from the kospex DB, as of the repo's last sync.
 
-    Secondly, the topic X active committers (i.e. last 90 days)
-
-    The top X defaults to 4, but can be provided as a switch with -top Y
+    Shows the top X committers of all time, plus any of the top X active
+    committers (last 90 days) not already listed. X defaults to 4; set it
+    with -top X.
     """
-    if not directory:
-        directory = os.getcwd()
-        if not KospexUtils.is_git(directory):
-            print(f"Directory '{directory}' is not a git repository.")
-            print("Please either cd in a git repository directory, or specify one.")
-            exit(1)
+    if not directory and not repo_id:
+        # No silent default to the current directory: make the choice explicit.
+        raise click.exceptions.NoArgsIsHelpError(ctx)
 
-    kgit = KospexGit()
-    kgit.set_repo(directory)
+    if directory and repo_id:
+        click.echo("Give either a DIRECTORY or -repo_id, not both.", err=True)
+        raise SystemExit(1)
+
+    if directory:
+        kgit = KospexGit()
+        kgit.set_repo(directory)
+        repo_id = kgit.get_repo_id()
+
+    # An unknown repo_id returns no rows, exactly like a dormant repo. Say
+    # which it is rather than print an empty table. (#134)
+    status = kospex.repo_db_status(repo_id, repo_directory=directory)
+    if status["message"]:
+        click.echo(status["message"], err=True)
+        raise SystemExit(1)
+
     kquery = KospexQuery()
 
-    table = KospexUtils.key_person_prettytable()
-    headers = table.field_names
+    # "merges" sits beside "commits" so a maintainer's lower commit count is
+    # explained in place rather than needing to be taken on trust. It is only
+    # comparable within a repo — a squash-and-merge project has none. See #170.
+    headers = ["author", "commits", "merges", "% commits", "last_commit",
+               "first_commit", "active_commits", "% active", "tenure"]
+    # Text, not str: rich parses a str as markup, and authors come from commit
+    # metadata (CWE-150). "a[/]@b" would raise; "[link=...]" would render a link.
+    table = Table(title=Text(f"Key Person: {repo_id}"))
+    # author is an email: an identifier, so never wrapped mid-value
+    table.add_column("author", style="cyan", no_wrap=True)
+    for header in headers[1:]:
+        table.add_column(header, justify="right")
 
-    authors = kquery.key_person(repo_id=kgit.get_repo_id(), top=top)
-    console.print(authors)
+    authors = kquery.key_person(repo_id=repo_id, top=top)
 
     for a in authors:
-        table.add_row(KospexUtils.get_values_by_keys(a, headers))
+        table.add_row(*[Text(str(a.get(h) if a.get(h) is not None else "")) for h in headers])
 
-    print()
-    print(table)
-    print()
+    console.print()
+    KospexUtils.print_table(table, console)
+    console.print()
     print("Merge commits are counted separately. A merge combines work already")
     print("credited to the branch commits, so it is not authorship - but it does")
     print("show who integrates changes. Comparable within a repo only: a project")
     print("using squash-and-merge produces no merge commits at all.")
     print()
+    if directory:
+        # The directory only gives the repo_id; the table is the DB's last sync,
+        # which may be behind what is on disk.
+        repo = kquery.get_repo_by_id(repo_id) or {}
+        last_sync = repo.get("last_sync")
+        last_sync = (KospexUtils.extract_db_date(last_sync) if last_sync else None) or "unknown"
+        print("Note: the repo_id is calculated from this repo directory, but the data")
+        print(f"comes from the last sync in the database ({last_sync}).")
+        print()
 
 
 @cli.command("stats")
@@ -968,7 +1009,7 @@ def developer_stats(repo_id):
 
     stats = kquery.get_developer_stats(repo_id=repo_id)
     if not stats:
-        console.print(f"No developer stats found for [bold]{repo_id}[/bold].")
+        console.print(Text.assemble("No developer stats found for ", (repo_id, "bold"), "."))
         console.print("Run 'kgit sync' on the repo first to populate stats.")
         return
 
@@ -1007,6 +1048,79 @@ def developer_stats(repo_id):
     console.print()
     console.print(table)
     console.print()
+
+
+@cli.group("rebuild")
+def rebuild():
+    """Rebuild derived data for repos already in the DB, without re-syncing.
+
+    \b
+    Each subcommand rebuilds one table for a scope of repos:
+        kospex rebuild developer-stats -all
+        kospex rebuild developer-stats -org github.com~kospex
+        kospex rebuild developer-stats github.com~kospex~kospex
+    'kospex rebuild list' shows the tasks and what each writes.
+    """
+
+
+@rebuild.command("list")
+def rebuild_list():
+    """List the rebuild tasks, the tables they write and whether they need a clone."""
+    table = Table(title="Rebuild tasks")
+    table.add_column("Task", style="cyan")
+    table.add_column("Writes")
+    table.add_column("Needs clone")
+    table.add_column("Description")
+    for task in KospexRebuild.TASKS.values():
+        table.add_row(task.name, ", ".join(task.writes), "yes" if task.needs_clone else "no",
+                      task.description)
+    console.print(table)
+
+
+def _rebuild_command(task):
+    """A `kospex rebuild <task>` command with the shared scope options."""
+
+    @click.option("-dry-run", "dry_run", is_flag=True, default=False,
+                  help="List the repos in scope without changing anything.")
+    @click.option("-server", default=None, help="Every repo on a git server, e.g. github.com")
+    @click.option("-org", "org_key", default=None, help="Every repo in an ORG_KEY, e.g. github.com~kospex")
+    @click.option("-all", "all_repos", is_flag=True, default=False, help="Every repo in the DB.")
+    @click.argument("repo_id", required=False, type=click.STRING)
+    def command(repo_id, all_repos, org_key, server, dry_run):
+        kquery = KospexQuery()
+        try:
+            repos = KospexRebuild.resolve_scope(kquery, repo_id=repo_id, all_repos=all_repos,
+                                                org_key=org_key, server=server)
+        except ValueError as e:
+            raise click.UsageError(str(e))
+        if not repos:
+            console.print("No repos in scope.")
+            raise SystemExit(1)
+
+        if dry_run:
+            for repo in repos:
+                console.print(repo["_repo_id"])
+            console.print(f"\n{len(repos)} repo(s) would be rebuilt by '{task.name}'.")
+            return
+
+        def progress(i, total, result):
+            line = f"[{i}/{total}] {result.repo_id}  {result.status}  {result.seconds:.2f}s"
+            console.print(f"{line}  {result.detail}" if result.detail else line)
+
+        started = time.perf_counter()
+        results = KospexRebuild.run_task(task, repos, kquery, on_repo=progress)
+        counts = {s: sum(1 for r in results if r.status == s) for s in ("ok", "skipped", "failed")}
+        console.print(f"\n{task.name}: {counts['ok']} rebuilt, {counts['skipped']} skipped, "
+                      f"{counts['failed']} failed in {time.perf_counter() - started:.1f}s")
+        if counts["failed"]:
+            raise SystemExit(1)
+
+    command.__doc__ = f"Rebuild {task.name} for a REPO_ID, or -all / -org / -server.\n\n{task.description}"
+    return command
+
+
+for _task in KospexRebuild.TASKS.values():
+    rebuild.command(_task.name)(_rebuild_command(_task))
 
 
 @cli.command("orgs")
@@ -1425,6 +1539,19 @@ def status():
         print(f"Could not read database status: {e}")
     print()
 
+    print("Summary stats coverage")
+    print("----------------------")
+    try:
+        coverage = KospexQuery().developer_stats_coverage()
+        print(f"Repos with stats not rebuilt yet:\t{coverage['repos_not_rebuilt']}")
+        print(f"Repos with commits but no stats:\t{coverage['repos_without_stats']}")
+        if coverage["repos_not_rebuilt"] or coverage["repos_without_stats"]:
+            print("\nThe web summary page counts are wrong for these repos until their")
+            print("stats are rebuilt. Run: kospex rebuild developer-stats -all")
+    except Exception as e:
+        print(f"Could not read summary stats coverage: {e}")
+    print()
+
     print("Installed tool status")
     print("---------------------")
     installed = which("scc")
@@ -1500,43 +1627,46 @@ def commit_stats(commits, request_id, dev):
     console.print()
 
 
-@cli.command("init-duckdb")
-@click.option("-verbose", is_flag=True, default=False, help="Show detailed output")
-@click.option("-force", is_flag=True, default=False, help="Force recreate if database exists")
-def init_duckdb(verbose, force):
-    """
-    Initialize the DuckDB database for git sync operations.
-
-    This creates the DuckDB database file at ~/kospex/kospex-git.duckdb
-    with the required schema for storing git commit and file data.
-
-    Example:
-        kospex init-duckdb
-        kospex init-duckdb -verbose
-        kospex init-duckdb -force  (recreate existing database)
-    """
-    from kospex import GitDuckDB
-
-    log.info("Initializing DuckDB database")
-
-    db = GitDuckDB()
-
-    # Check if database already exists
-    if os.path.exists(db.db_path) and not force:
-        console.print(f"[bold yellow]DuckDB database already exists![/bold yellow]")
-        console.print(f"  Location: {db.db_path}")
-        console.print("\nUse [cyan]-force[/cyan] to recreate the database (will drop existing tables).")
-        return
-
-    db.connect(create_new=True, force=force, verbose=verbose)
-    db.create_schema(verbose=verbose)
-    db.create_indexes(verbose=verbose)
-
-    console.print(f"[bold green]DuckDB database initialized![/bold green]")
-    console.print(f"  Location: {db.db_path}")
-
-    db.close()
-    log.info("DuckDB database initialization complete")
+# Parked: DuckDB proof of concept, being researched further for feasibility and
+# usefulness. Commented out rather than deleted so it can be reviewed and restored.
+# The duckdb dependency is commented out in pyproject.toml alongside it.
+# @cli.command("init-duckdb")
+# @click.option("-verbose", is_flag=True, default=False, help="Show detailed output")
+# @click.option("-force", is_flag=True, default=False, help="Force recreate if database exists")
+# def init_duckdb(verbose, force):
+#     """
+#     Initialize the DuckDB database for git sync operations.
+#
+#     This creates the DuckDB database file at ~/kospex/kospex-git.duckdb
+#     with the required schema for storing git commit and file data.
+#
+#     Example:
+#         kospex init-duckdb
+#         kospex init-duckdb -verbose
+#         kospex init-duckdb -force  (recreate existing database)
+#     """
+#     from kospex import GitDuckDB
+#
+#     log.info("Initializing DuckDB database")
+#
+#     db = GitDuckDB()
+#
+#     # Check if database already exists
+#     if os.path.exists(db.db_path) and not force:
+#         console.print(f"[bold yellow]DuckDB database already exists![/bold yellow]")
+#         console.print(f"  Location: {db.db_path}")
+#         console.print("\nUse [cyan]-force[/cyan] to recreate the database (will drop existing tables).")
+#         return
+#
+#     db.connect(create_new=True, force=force, verbose=verbose)
+#     db.create_schema(verbose=verbose)
+#     db.create_indexes(verbose=verbose)
+#
+#     console.print(f"[bold green]DuckDB database initialized![/bold green]")
+#     console.print(f"  Location: {db.db_path}")
+#
+#     db.close()
+#     log.info("DuckDB database initialization complete")
 
 
 @cli.command("connectivity")

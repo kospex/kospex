@@ -12,6 +12,8 @@ from datetime import datetime, timezone, timedelta
 from dateutil import parser
 from collections import Counter, OrderedDict
 from prettytable import PrettyTable
+from rich.console import Console as RichConsole
+from rich.measure import Measurement as RichMeasurement
 from rich.table import Table as RichTable
 from dotenv import load_dotenv
 
@@ -539,6 +541,22 @@ def generate_date_ranges(to_date, days_apart, previous_days):
 
 
 
+def _parse_datetime(value: str) -> datetime:
+    """Parse a timestamp, ISO 8601 fast path first.
+
+    datetime.fromisoformat (C, and since Python 3.11 accepting 'Z', offsets, a
+    space separator and date-only strings) handles every timestamp kospex
+    stores, at ~70x the speed of dateutil.parser.parse. dateutil stays as the
+    fallback, so any other format behaves exactly as before, including raising
+    on the same input. developers() parses two per developer, so on a large
+    estate this was most of its runtime.
+    """
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return parser.parse(value)
+
+
 def days_between_datetimes(datetime1: str, datetime2: str, min_one=None) -> float:
     """
     Calculate the difference in days between two ISO 8601 formatted datetime strings.
@@ -546,8 +564,8 @@ def days_between_datetimes(datetime1: str, datetime2: str, min_one=None) -> floa
       if the difference is less than one day.
     """
     # Parse the ISO 8601 formatted datetime strings
-    d1 = parser.parse(datetime1)
-    d2 = parser.parse(datetime2)
+    d1 = _parse_datetime(datetime1)
+    d2 = _parse_datetime(datetime2)
 
     # Calculate the absolute difference in days
     try:
@@ -1284,28 +1302,6 @@ def extract_db_date(date_str):
     else:
         return None
 
-def key_person_prettytable():
-    """ Return a prettytable object for the key_persons table."""
-
-    table = PrettyTable()
-    # "merges" sits beside "commits" so a maintainer's lower commit count is
-    # explained in place rather than needing to be taken on trust. It is only
-    # comparable within a repo — a squash-and-merge project has none. See #170.
-    headers = ["author", "commits", "merges", "% commits", "last_commit",
-               "first_commit", "active_commits", "% active", "tenure"]
-    table.field_names = headers
-    table.align["author"] = "l"
-    table.align["commits"] = "r"
-    table.align["merges"] = "r"
-    table.align["last_commit"] = "r"
-    table.align["first_commit"] = "r"
-    table.align["active_commits"] = "r"
-    table.align["% commits"] = "r"
-    table.align["% active"] = "r"
-    table.align["tenure"] = "r"
-
-    return table
-
 def file_metadata_prettytable():
     """ Return a prettytable object for the file metadata table.
         file_path, Language, tags
@@ -1373,6 +1369,28 @@ def get_status_legend():
     table.add_row("Stale", "last commit 181-365 days ago")
     table.add_row("Unmaintained", "no commit in over 365 days")
     return table
+
+def print_table(table, console):
+    """Print a rich Table, without truncating it when stdout isn't a terminal.
+
+    Piped or redirected, rich assumes 80 columns and cuts long values with an
+    ellipsis, so `kgit pull --check | grep acme` would quietly lose the end of a
+    long repo_id. In that case print at the table's natural width instead, so
+    what is piped is complete (as it was with PrettyTable). A terminal keeps
+    rich's normal fit-to-width behaviour.
+
+    Pass a Console(markup=False): on a terminal the table is printed through
+    the caller's console, and print(markup=False) does not reach table cells.
+    """
+    if console.is_terminal:
+        console.print(table)
+        return
+    # markup=False whatever the caller's console: cells hold git metadata
+    # (CWE-150). Measure with it too: measuring renders the cells.
+    wide = RichConsole(file=console.file, width=100000, markup=False)
+    natural = RichMeasurement.get(wide, wide.options, table)
+    RichConsole(file=console.file, width=max(natural.maximum, console.width),
+                markup=False).print(table)
 
 def get_status_table(status):
     """

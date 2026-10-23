@@ -36,7 +36,10 @@ from kospex.osi_extract import extract_repo
 # Initialize Kospex environment with logging
 KospexUtils.init(create_directories=True, setup_logging=True, verbose=False)
 kospex = Kospex()
-console = Console()
+# markup=False: values printed here come from git metadata (author emails,
+# remote URLs, repo_ids). Rich would parse them as markup (CWE-150), so style
+# with style= or rich.text.Text instead of [tags].
+console = Console(markup=False)
 
 # Get logger using the new centralized logging system
 log = KospexUtils.get_kospex_logger("krunner")
@@ -1215,11 +1218,12 @@ def find_actions(repo_id):
     if not repo_paths:
         if repo_id:
             console.log(
-                f"[red]No local file_path for repo '{repo_id}' "
-                f"(or repo not found in the database).[/red]"
+                f"No local file_path for repo '{repo_id}' "
+                f"(or repo not found in the database).",
+                style="red",
             )
         else:
-            console.log("[red]No repos with local file paths in the database.[/red]")
+            console.log("No repos with local file paths in the database.", style="red")
         sys.exit(1)
 
     console.log(f"Found {len(repo_paths)} repo(s) with local paths")
@@ -1228,7 +1232,7 @@ def find_actions(repo_id):
     console.log(f"Found {len(workflow_files)} workflow file(s) in metadata")
 
     if not workflow_files:
-        console.log("[yellow]No workflow files found.[/yellow]")
+        console.log("No workflow files found.", style="yellow")
         return
 
     records = []
@@ -1259,7 +1263,7 @@ def find_actions(repo_id):
 
     if skipped:
         console.log(
-            f"[yellow]Skipped {skipped} workflow file(s) — repo not found locally[/yellow]"
+            f"Skipped {skipped} workflow file(s) — repo not found locally", style="yellow"
         )
 
     table = Table(title="GitHub Actions Found", show_lines=False)
