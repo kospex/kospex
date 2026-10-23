@@ -1464,6 +1464,19 @@ def status():
         print(f"Could not read database status: {e}")
     print()
 
+    print("Summary stats coverage")
+    print("----------------------")
+    try:
+        coverage = KospexQuery().developer_stats_coverage()
+        print(f"Repos with stats not rebuilt yet:\t{coverage['repos_not_rebuilt']}")
+        print(f"Repos with commits but no stats:\t{coverage['repos_without_stats']}")
+        if coverage["repos_not_rebuilt"] or coverage["repos_without_stats"]:
+            print("\nThe web summary pages use the slower full query for any scope that")
+            print("includes these repos. Re-syncing them (e.g. 'kgit pull --all') fixes it.")
+    except Exception as e:
+        print(f"Could not read summary stats coverage: {e}")
+    print()
+
     print("Installed tool status")
     print("---------------------")
     installed = which("scc")

@@ -65,6 +65,35 @@ def cached_query(name, compute, **scope):
         request_cache.set(key, data, cache_time=started)
     return data
 
+
+SUMMARY_STATS_SCOPES = {"org_key", "repo_id", "server"}
+
+
+def summary_rows(params):
+    """(developers, repos) rows for the summary page's status counts.
+
+    Read from developer_stats when it covers the scope, which avoids two full
+    scans of commits. Otherwise, e.g. while repos are still resyncing after an
+    upgrade, use developers() / repos() as before, under the same cache keys
+    /repos/ uses so the two pages still share them.
+
+    A None from the stats path isn't stored usefully by the cache, so an
+    uncovered scope re-runs only the cheap coverage check on each request.
+    """
+    devs = repos = None
+    if set(params) <= SUMMARY_STATS_SCOPES:
+        devs = cached_query(
+            "developer_statuses", lambda: KospexQuery().developer_statuses(**params), **params
+        )
+        repos = cached_query(
+            "repo_statuses", lambda: KospexQuery().repo_statuses(**params), **params
+        )
+    if devs is None:
+        devs = cached_query("developers", lambda: KospexQuery().developers(**params), **params)
+    if repos is None:
+        repos = cached_query("repos", lambda: KospexQuery().repos(**params), **params)
+    return devs, repos
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Build (and migrate) the kospex schema once, before serving any request.
@@ -208,9 +237,7 @@ def summary(request: Request, id: Optional[str] = None):
         params = KospexWeb.get_id_params(id)
 
         with KospexTimer("Load developers") as dev_load:
-            devs = cached_query(
-                "developers", lambda: KospexQuery().developers(**params), **params
-            )
+            devs, repos = summary_rows(params)
 
         logger.info(dev_load)
 
@@ -226,7 +253,6 @@ def summary(request: Request, id: Optional[str] = None):
                 dev_stats[f"{name}_percentage"] = round(percentage)
             result[name] = round(100 * (percentage / 100)) + 40
 
-        repos = cached_query("repos", lambda: KospexQuery().repos(**params), **params)
         repo_stats = KospexUtils.count_key_occurrences(repos, "status")
 
         repo_sizes = {}
