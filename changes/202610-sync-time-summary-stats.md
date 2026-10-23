@@ -1,6 +1,6 @@
 # Design: summary stats computed at sync time
 
-Status: **proposed**, no code yet. Revision 2, updated after measurement and
+Status: **in progress**. Phases 1 and 2 implemented on branches. Revision 3, updated after measurement and
 review. Follows #298 (scoped request cache) and #302 (debug reload scope).
 
 ## Problem
@@ -27,7 +27,7 @@ SQL** (Phase 1 below).
 | Phase | Change | Storage | Effect |
 |---|---|---|---|
 | 1 | Fast path for date parsing in `days_between_datetimes()` | none | `developers()` loses ~2.5s of its ~3.9s, on every page that lists developers |
-| 2 | Migration `0011`: two author-time columns plus one covering index on `commits` | +154MB (+3.6%) | every `commits` aggregate 2–14x faster, sync's stats queries ~2.5x faster |
+| 2 | Migration `0011`: two author-time columns plus one covering index on `commits` | +190MB (+4.4%), +26% on commit upserts | `repos()` 3–10x and `active_devs()` ~13x faster |
 | 3 | `update_developer_stats` stores committer time in `first_commit` / `last_commit` | none | `developer_stats` matches what the web layer reports, and heals itself on sync |
 | 4 | `/` and `/summary/` read status counts from `developer_stats` | none | ~5s → ~0.06s for estate developer counts |
 | 5 (later) | `repo_stats` table for `/repos/` | small | committer counts per repo without a scan |
@@ -99,10 +99,15 @@ def _parse_datetime(value: str) -> datetime:
   `developer_stats.first_commit` / `last_commit`, plus space-separated,
   date-only and `Z` samples. There were **0 mismatches** in value, in
   naive-vs-aware, or in UTC offset.
-- **Same behaviour where it doesn't.** Two malformed shapes exist in real data,
-  and `dateutil` raises on both, so falling back to it keeps today's behaviour:
-  - `2011-09-08T02:38:50+518:00`: a broken git timezone, 4 commits.
-    `dateutil` raises `ValueError` (offset out of range).
+- **Same behaviour where it doesn't.** Two malformed shapes exist in real data.
+  `fromisoformat` rejects both, so they fall back to `dateutil`, which returns
+  exactly what it returned before:
+  - `2011-09-08T02:38:50+518:00`: a broken git timezone, 4 commits. `dateutil`
+    does **not** raise here. It returns a datetime with an out-of-range offset,
+    which errors only when used. `days_between_datetimes()`'s `except ValueError`
+    then catches it and returns 0, both before and after. (An earlier draft of
+    this spec said `dateutil` raises. That was wrong: the error surfaced while
+    printing the result.)
   - Multi-line `repos.first_seen` (35 repos): `dateutil` raises `ParserError`.
     `get_repos()` already splits these on `\n` before calling.
 - `requires-python = ">=3.12"`, so `fromisoformat`'s 3.11 `Z` and offset support
@@ -111,8 +116,9 @@ def _parse_datetime(value: str) -> datetime:
 ### Tests
 
 - A golden corpus test: for each sample (`Z`, offset, space separator,
-  date-only, naive), `_parse_datetime(s) == dateutil.parser.parse(s)`, and the
-  two malformed shapes still raise.
+  date-only, naive), `_parse_datetime(s) == dateutil.parser.parse(s)`. The
+  `+518:00` value still gives 0 days, and the multi-line value still raises.
+  Implemented in `tests/test_parse_datetime.py`.
 - `days_between_datetimes` results unchanged for the same pairs, including
   `min_one`.
 
@@ -129,16 +135,19 @@ decision about what callers should see.
 Schema only, with **no data migration**. Phase 3 makes every sync rebuild a
 repo's rows, so existing rows heal on their next sync (see "Healing" below).
 
+As implemented, in `src/kospex/db/migrations/0011_commits_covering_index.sql`:
+
 ```sql
--- 0011_developer_stats_authored.sql
--- (no semicolons inside comments: the runner's splitter breaks on them)
+CREATE INDEX IF NOT EXISTS idx_commits_repo_author_when
+    ON commits (_repo_id, _git_server, _git_owner, _git_repo,
+                author_email, committer_email, committer_when, author_when);
 
-ALTER TABLE [developer_stats] ADD COLUMN [first_authored] TEXT;
-ALTER TABLE [developer_stats] ADD COLUMN [last_authored] TEXT;
-
-CREATE INDEX IF NOT EXISTS [idx_commits_repo_author_when]
-    ON [commits] ([_repo_id], [author_email], [committer_email], [committer_when], [author_when]);
+ALTER TABLE developer_stats ADD COLUMN first_authored TEXT;
+ALTER TABLE developer_stats ADD COLUMN last_authored TEXT;
 ```
+
+(No semicolons inside the file's comments: the runner's statement splitter
+breaks on them.)
 
 Per CLAUDE.md: the columns and index go **in the migration only**, never also
 in `kospex_schema.py`. Bump the hardcoded migration counts in the three test
@@ -160,19 +169,47 @@ queries show tensorflow (199k commits) / kotlin (145k commits).
 | `active_devs()`, estate | 1.01s | **0.07s** | same |
 | Size / build time | — | **154MB (+3.6%) / 1.8s** | +1,062MB (+25%) / 25s |
 
-- **Index A**, `commits(_repo_id, author_email, committer_email, committer_when, author_when)`:
-  **adopt.** These queries can be answered from the index alone, without
-  reading table rows. Leading with `_repo_id` serves every per-repo query, and
-  the estate-wide scans read the 154MB index instead of the 274MB table.
+- **Index A** (first draft), `commits(_repo_id, author_email, committer_email, committer_when, author_when)`:
+  **superseded by A′, below.** The table above was measured with a hand-written
+  `repos()` query that omitted `_git_server`, `_git_owner` and `_git_repo`.
+  Production `repos()` selects all three, so with A it ignored the index and
+  scanned the table.
 - **Index B**, `commit_files(_repo_id, hash, file_path, additions, deletions)`:
   **reject.** It duplicates most of the 1.6GB table to halve one query that
   index A already cuts by two-thirds. `commit_files` keeps only its primary key,
   `(hash, file_path, _repo_id)`, which serves the per-commit lookups the join
   needs.
 
-Not yet measured: the write cost of index A during sync. Sync upserts commits
-one row at a time, so each insert also maintains the index. Time a full sync of
-a large repo with and without it before merging.
+### Index A′, as implemented
+
+`commits(_repo_id, _git_server, _git_owner, _git_repo, author_email, committer_email, committer_when, author_when)`.
+Measured again with the **production** `KospexQuery` methods on a fresh copy of
+the DB (warm):
+
+| Production call | PK only | 5-column A | **8-column A′** |
+|---|---|---|---|
+| `repos()`, estate | 1.66s | 2.67s, table scan, A unused | **0.49s** |
+| `repos(org_key)` | 0.92s | 0.89s, A unused | **0.09s** |
+| `developers(org_key)` | 0.22s | 0.22s, A unused | **0.17s** |
+| `active_devs()`, estate | 1.02s | 0.07s | **0.08s** |
+| `update_developer_stats(tensorflow)`, SELECT + writes | 2.29s | 2.33s | 2.46s |
+| Size / build time | — | 154MB / 1.6s | **190MB (+4.4%) / 4.6s** |
+
+- `update_developer_stats` as a whole does not get faster. Its SELECT does
+  (0.54s → 0.19s, measured above), but row-by-row deletes and inserts dominate
+  the total.
+- `developers()` estate barely moves (3.99s → 3.77s), because Python dominates
+  it. Phase 1 fixes that part.
+- `tests/test_commits_covering_index.py` captures the SQL that `repos()`,
+  `repos(repo_id)`, `active_devs()` and `update_developer_stats()` actually
+  send, and asserts each uses `COVERING INDEX idx_commits_repo_author_when`.
+  That test caught the A-versus-A′ gap.
+
+**Write cost, measured.** 20,000 sync-style commit upserts (one
+`table.upsert()` per commit, as `sync_repo()` does): 9.22s without the index,
+11.62s with it. That is **+26%, about 120µs per commit**. `commit_files`
+upserts, the bulk of a sync, are unaffected. For a 1,500-repo initial sync of
+around 4.6M commits, that is roughly 9 minutes extra in total.
 
 ## Phase 3 — `update_developer_stats` stores committer time
 
@@ -261,7 +298,7 @@ everything on each sync stops costing anything users notice.
 `/repos/` also shows `COUNT(DISTINCT committer_email)` per repo, which no stats
 table stores. A `repo_stats` table, one row per repo (`commits`, `authors`,
 `committers`, first and last commit), rebuilt in `sync_repo()`, would answer it
-without a scan. Index A already brings `repos()` from 1.96s to 0.42s, so
+without a scan. Index A′ already brings `repos()` from 1.66s to 0.49s, so
 measure again after Phase 2 before building this.
 
 ## Related: `update_developer_file_stats` on every sync
@@ -332,7 +369,7 @@ Resolved in review:
   `developer_stats` and everywhere else. Author time is kept in new
   `*_authored` columns.
 - No data migration. Rows heal on sync, and unhealed scopes fall back.
-- Index A yes, index B no.
+- Index A′ (8 columns) yes, index B no.
 
 Still open:
 
