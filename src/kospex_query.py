@@ -2572,13 +2572,55 @@ class KospexData:
     def where_tag(self, tag):
         """
         Add a where clause to the query for tag, also called tech type
-        """
-        # We have to check this is a strict format of only allowing
-        # letters and a dash, otherwise raise a ValueError
-        if not re.match(r"^[a-zA-Z-]+$", tag):
-            raise ValueError(f"Tag '{tag}' is not a valid format")
 
-        self.where_clause.append(f"tech_type LIKE '%|{tag}|%'")
+        tech_type holds tags pipe-delimited and pipe-terminated
+        (`|Git|GitHub|dependencies|`), so matching one tag is LIKE '%|tag|%'.
+
+        The tag is bound, not interpolated. It used to be formatted into the
+        clause text behind an `^[a-zA-Z-]+$` allowlist which stood in for the
+        binding it lacked, and that allowlist rejected real tags: `.NET`,
+        `ASP.NET`, `Azure DevOps`, `C#`, `Claude Code`, `Visual Studio` and
+        `llms.txt` are 7 of the 63 tags in live data. Binding the value fixes
+        both -- any tag is queryable, and no caller value reaches the SQL text.
+
+        With the value bound, the remaining check is no longer load bearing for
+        safety, so it checks something useful instead: that the caller asked for
+        a tag that exists. `panopticas.get_tags()` is the vocabulary, derived
+        from the detection rules rather than hand-maintained. It is called per
+        use rather than cached -- it is a set comprehension over the rule
+        tables, measured at 0.03 ms.
+
+        The comparison is case-insensitive. SQLite's LIKE is itself ASCII
+        case-insensitive, so a case-sensitive gate would reject spellings that
+        would have matched anyway, and panopticas recases tags between releases
+        (`eslint` became `ESLint` in 0.0.21). The caller's spelling is kept in
+        the pattern rather than canonicalised, since LIKE matches either way.
+
+        Known limitation: a tag panopticas has *retired* is rejected alongside a
+        typo, because get_tags() reports only the current vocabulary. On live
+        data that is `Claude Code` (7 files), renamed to brand-level `Claude`.
+        Revisit when panopticas exposes its deprecated tags -- kospex#317,
+        tracking panopticas#54.
+        """
+        if not isinstance(tag, str) or not tag:
+            raise ValueError(f"Tag '{tag}' must be a non-empty string")
+
+        known = {t.lower() for t in Panopticas.get_tags()}
+        if tag.lower() not in known:
+            raise ValueError(
+                f"Tag '{tag}' is not a known tag "
+                f"(panopticas.get_tags() lists {len(known)})"
+            )
+
+        # A bound LIKE pattern still honours % and _, so escape them (and the
+        # escape character itself) and declare ESCAPE. Without this a tag
+        # containing `_` silently matches tags it is not.
+        pattern = tag
+        for char in ("\\", "%", "_"):
+            pattern = pattern.replace(char, f"\\{char}")
+
+        self.where_clause.append(r"tech_type LIKE ? ESCAPE '\'")
+        self.params.append(f"%|{pattern}|%")
 
     def where_org_key(self, org_key):
         """Use parse the org_key and set the required where fields

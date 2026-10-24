@@ -540,6 +540,23 @@ was relying on the old, wrong success.
   1.1M-commit database went from 63s to 3.0s (DefinitelyTyped: 11.9s to 0.3s),
   and every sync runs this step.
 
+- **A tag is now checked against `panopticas.get_tags()`** rather than a
+  character pattern. With the value bound (see *Fixed*), the check is no longer
+  what keeps the tag out of the SQL text, so it checks something useful instead:
+  that the tag exists. The comparison is **case-insensitive**, because SQLite's
+  `LIKE` is itself ASCII case-insensitive — a case-sensitive gate would reject
+  spellings that would have matched anyway — and because panopticas recases tags
+  between releases (`eslint` became `ESLint` in 0.0.21, while 66 stored files
+  keep the old spelling). The caller's spelling is passed through unchanged. The
+  vocabulary is read per call rather than cached; it is a comprehension over
+  panopticas' rule tables, measured at 0.03 ms.
+
+  One known gap: `get_tags()` reports only the tags panopticas can *currently*
+  emit, so a tag it has **renamed** is rejected like a typo. On live data that is
+  `Claude Code` (7 files), now brand-level `Claude`, which reaches the same rows.
+  Tracked as [#317](https://github.com/kospex/kospex/issues/317), pending
+  `get_deprecated_tags()` upstream.
+
 ### Fixed
 
 - **`/summary/<org_key>` showed the estate-wide developer count next to the
@@ -912,6 +929,18 @@ was relying on the old, wrong success.
   is extracted from it yet — this only moves it into the parser backlog that
   `unsupported` is meant to count.
 
+- **7 of the tags in use could not be queried
+  ([#291](https://github.com/kospex/kospex/issues/291)).** `where_tag()`
+  validated the tag against `^[a-zA-Z-]+$` and raised `ValueError` for anything
+  else, so `.NET`, `ASP.NET`, `Azure DevOps`, `C#`, `Claude Code`,
+  `Visual Studio` and `llms.txt` — 7 of the 63 distinct tags in a live database
+  — were rejected on a `.`, a `#` or a space. `krunner devs-by-tag -tag "C#"`
+  raised rather than returning its developers. **The tag is now a bind
+  parameter**, so every tag in the data is queryable. The pattern escapes `%`,
+  `_` and `\` and the clause declares `ESCAPE`, so a tag containing a LIKE
+  wildcard matches itself and not its neighbours — a tag `A_B` would otherwise
+  have matched `AxB`.
+
 ### Security
 
 - **Values from git metadata are printed literally, not parsed as console
@@ -924,6 +953,17 @@ was relying on the old, wrong success.
   value. The `kgit`, `kospex` and `krunner` consoles, and `print_table()`'s
   piped output, now have markup disabled. Messages that were styled with markup
   keep their styling.
+
+- **`where_tag()` formatted the tag into the SQL text rather than binding it
+  (CWE-89).** The clause was built as `f"tech_type LIKE '%|{tag}|%'"`, placing a
+  caller-supplied value inside a quoted SQL literal, with an `^[a-zA-Z-]+$`
+  input filter on the line above as the only control. That filter held — letters
+  and a dash cannot close the quote — and the two call sites are both local
+  `krunner` arguments, with no web route reaching the function, so no released
+  version was exploitable. It is fixed anyway, because an input filter should
+  not be the thing standing between a value and the statement: the tag is now
+  bound and the format check is a plain non-empty-string check. See *Fixed*
+  above for the behaviour change this also resolves.
 
 ## 0.1.0 - 2026-09-11
 
