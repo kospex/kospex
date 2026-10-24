@@ -286,3 +286,94 @@ class TestThroughProduction:
         rows = KospexQuery(kospex_db=db).get_metadata_files(tag="GitHub")
 
         assert [r["Filename"] for r in rows] == ["dependabot.yml"]
+
+
+# Payloads for the CWE-89 cases below. Each targets a different mechanism:
+# breaking out of the quoted literal, terminating the statement, appending a
+# second statement, and smuggling a comment.
+_PAYLOADS = [
+    "Python' OR '1'='1",
+    "x' OR 1=1 --",
+    "x'; DROP TABLE file_metadata; --",
+    "x' UNION SELECT 1, 2, 3 --",
+    "%' --",
+]
+
+
+class TestInjection:
+    """CWE-89: a caller-supplied tag must never be able to alter the statement.
+
+    Read the two halves together, because the obvious test here is a test of
+    nothing. In production a payload is rejected by the *vocabulary* check long
+    before it reaches the pattern, so asserting `pytest.raises(ValueError)` on a
+    payload passes identically whether the value is bound or formatted straight
+    into the SQL with an f-string -- it would keep passing after a regression
+    that reintroduced the defect.
+
+    So the first test pins where production actually stops a payload, and the
+    rest patch the vocabulary to *admit* each payload, which is the only way to
+    exercise the binding itself.
+    """
+
+    @pytest.mark.parametrize("payload", _PAYLOADS)
+    def test_in_production_a_payload_is_stopped_by_the_vocabulary(self, payload):
+        """Not the injection defence -- the outer layer, pinned so the tests
+        below are understood as being about the binding underneath it."""
+        kd = KospexData(kospex_db=_seed_db())
+
+        with pytest.raises(ValueError, match="is not a known tag"):
+            kd.where_tag(payload)
+
+    @pytest.mark.parametrize("payload", _PAYLOADS)
+    def test_an_admitted_payload_never_reaches_the_sql_text(self, vocabulary, payload):
+        """The assertion that fails if the f-string ever comes back."""
+        vocabulary(payload)
+        kd = KospexData(kospex_db=_seed_db())
+        kd.from_table(KospexSchema.TBL_FILE_METADATA)
+        kd.select("*")
+        kd.where_tag(payload)
+
+        sql = kd.generate_sql()
+
+        assert payload not in sql, f"payload reached the SQL text: {sql}"
+        assert "'" not in sql.split("ESCAPE")[0], (
+            f"a quote appeared in the clause ahead of ESCAPE: {sql}")
+        assert kd.where_clause == [r"tech_type LIKE ? ESCAPE '\'"]
+        assert len(kd.get_bind_parameters()) == 1
+
+    @pytest.mark.parametrize("payload", _PAYLOADS)
+    def test_an_admitted_payload_matches_nothing_and_destroys_nothing(
+            self, vocabulary, payload):
+        """Executed, not just generated: the payload is a literal to match
+        against, so it matches no tag and leaves the schema and rows alone."""
+        vocabulary(payload)
+        db = _seed_db()
+        before = db[KospexSchema.TBL_FILE_METADATA].count
+
+        kd = KospexData(kospex_db=db)
+        kd.from_table(KospexSchema.TBL_FILE_METADATA)
+        kd.select("*")
+        kd.where_tag(payload)
+        rows = kd.execute()
+
+        assert rows == []
+        tables = [r[0] for r in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        assert KospexSchema.TBL_FILE_METADATA in tables, "the table was dropped"
+        assert db[KospexSchema.TBL_FILE_METADATA].count == before
+
+    def test_a_quote_in_a_tag_is_data_and_still_matches(self, vocabulary):
+        """The complement of the above: a quote is not merely rejected, it is
+        carried through as a value. If the quote were escaping into the SQL this
+        would error or return the wrong rows rather than match its own row."""
+        vocabulary("O'Brien")
+        db = _seed_db()
+        db[KospexSchema.TBL_FILE_METADATA].insert({
+            "Provider": "quoted.txt", "hash": "h1",
+            "_repo_id": "github.com~acme~six", "Filename": "quoted.txt",
+            "tech_type": "|O'Brien|", "latest": 1,
+        }, pk=["Provider", "hash", "_repo_id"])
+
+        rows = KospexQuery(kospex_db=db).get_metadata_files(tag="O'Brien")
+
+        assert [r["Filename"] for r in rows] == ["quoted.txt"]
