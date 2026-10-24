@@ -9,6 +9,7 @@ from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import (
@@ -1318,7 +1319,8 @@ def repo_with_tech(request: Request, tech: str):
 
         return templates.TemplateResponse(
             request, template,
-            {"data": repos_with_tech, "tech": tech, "page": {}},
+            {"data": repos_with_tech, "tech": tech, "tech_kind": "Technology",
+             "tech_url": f"/tech/{quote(tech, safe='')}", "page": {}},
         )
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any
@@ -1327,6 +1329,50 @@ def repo_with_tech(request: Request, tech: str):
         raise
     except Exception as e:
         logger.error(f"Error in repo_with_tech endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/tag/{tag}", response_class=HTMLResponse)
+def repo_with_tag(request: Request, tag: str):
+    """Show repositories carrying a panopticas tag, or its files in one repo.
+
+    Deliberately a separate route from /tech/{tech} rather than a fallback
+    inside it. 9 names -- `Go`, `Python`, `JavaScript`, `C#` and others -- are
+    both a Language and a tag, and they count very different things: `Go` is
+    24,236 files as a Language and 345 as a tag. A route that guessed between
+    them, in either order, would not be trustworthy; two routes keep both
+    meanings addressable.
+    """
+    try:
+        logger.info(f"Tag filtering page requested for tag: {tag}")
+
+        repo_id = request.query_params.get("repo_id")
+        kospex = KospexQuery()
+
+        try:
+            if repo_id:
+                data = kospex.repo_files_by_tag(tag, repo_id=repo_id)
+                template = "repo_files.html"
+            else:
+                data = kospex.repos_with_tag(tag)
+                template = "repos-tech.html"
+        except ValueError as error:
+            # where_tag() rejects a tag panopticas does not define. That is a
+            # bad URL, so say so: a 200 with an empty table reads as "no
+            # repositories have this tag", which is the confusion this route
+            # exists to remove.
+            logger.info(f"Unknown tag requested: {tag} ({error})")
+            raise HTTPException(status_code=404, detail=f"Unknown tag: {tag}")
+
+        return templates.TemplateResponse(
+            request, template,
+            {"data": data, "tech": tag, "tech_kind": "Tag",
+             "tech_url": f"/tag/{quote(tag, safe='')}", "page": {}},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in repo_with_tag endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

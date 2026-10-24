@@ -37,7 +37,7 @@
                     {% if page.get('git_server') %}
                     <h3 class="text-xl font-semibold text-gray-700 mb-4">{{ page['git_server'] }}</h3>
                     {% endif %}
-                    <h3 class="text-xl font-semibold text-gray-700 mb-4"> Technology: {{ tech }} </h3>
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4"> {{ tech_kind | default('Technology') }}: {{ tech }} </h3>
 
                     {% if page.get('git_owner') %}
                     <div class="mb-6">
@@ -67,7 +67,7 @@
                                         <a href="/repo/{{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['_git_repo'] }}</a>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                                        <a href="/tech/{{tech}}?repo_id={{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline"> See Files</a>
+                                        <a href="{{ tech_url | default('/tech/' ~ tech | urlencode) }}?repo_id={{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline"> See Files</a>
                                     </td>
 
                                 </tr>

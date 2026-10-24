@@ -270,6 +270,50 @@ class KospexQuery:
 
         return data
 
+    def repos_with_tag(self, tag):
+        """Find repos with the given panopticas tag, and how many files carry it.
+
+        The tag counterpart of repos_with_tech(), which filters `Language`. The
+        two are not interchangeable: panopticas tags from the *filename*, so an
+        `AI`-tagged CLAUDE.md is Language Markdown, and 9 names (`Go`,
+        `Python`, `JavaScript`, `C#` ...) exist as both a Language and a tag
+        with different meanings. Hence a separate method rather than a fallback.
+
+        Raises ValueError, via where_tag(), for a tag panopticas does not
+        define -- callers should treat that as a bad request, not as a repo
+        list that happens to be empty.
+        """
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_FILE_METADATA)
+        kd.select("_repo_id", "_git_server", "_git_owner", "_git_repo")
+        kd.select_as("count(*)", "count")
+        kd.where("latest", "=", 1)
+        kd.where_tag(tag)
+        kd.group_by("_repo_id")
+        kd.order_by("count")
+
+        return kd.execute()
+
+    def repo_files_by_tag(self, tag, repo_id=None):
+        """Grab the files carrying a panopticas tag, optionally in one repo.
+
+        The reverse direction of repos_with_tag(), and the tag counterpart of
+        repo_files(). Returns the same columns repo_files() does, so the file
+        listing renders either without knowing which it was given.
+        """
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_FILE_METADATA)
+        kd.select("_repo_id", "_git_server", "_git_owner", "_git_repo",
+                  "Provider", "Filename", "committer_when", "Language",
+                  "tech_type", "hash", "Lines", "latest")
+        kd.where("latest", "=", 1)
+        kd.where_tag(tag)
+
+        if repo_id:
+            kd.where("_repo_id", "=", repo_id)
+
+        return kd.execute()
+
     def repo_files(self, tech=None, repo_id=None):
         """Grab files by metadata type for a given repo_id."""
 
