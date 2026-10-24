@@ -21,6 +21,7 @@ Two things are worth stating about the assertions below:
   A tag the vocabulary does not define is a bad URL and says so.
 """
 import os
+import re
 
 import panopticas
 import pytest
@@ -186,18 +187,37 @@ class _FakeQuery:
         self.reject = reject
         self.calls = []
 
+    _REPOS = [
+        {"_repo_id": "github.com~acme~one", "_git_server": "github.com",
+         "_git_owner": "acme", "_git_repo": "one", "count": 2},
+        {"_repo_id": "github.com~acme~two", "_git_server": "github.com",
+         "_git_owner": "acme", "_git_repo": "two", "count": 1},
+    ]
+
     def repos_with_tag(self, tag):
         if self.reject:
             raise ValueError(f"Tag '{tag}' is not a known tag")
         self.calls.append(("repos_with_tag", tag))
-        return [{"_repo_id": "github.com~acme~one", "_git_server": "github.com",
-                 "_git_owner": "acme", "_git_repo": "one", "count": 2}]
+        return list(self._REPOS)
+
+    def repos_with_tech(self, tech):
+        self.calls.append(("repos_with_tech", tech))
+        return list(self._REPOS)
+
+    def repo_files(self, tech=None, repo_id=None):
+        self.calls.append(("repo_files", tech, repo_id))
+        return [{"Provider": "main.py", "_repo_id": repo_id}]
 
     def repo_files_by_tag(self, tag, repo_id=None):
         if self.reject:
             raise ValueError(f"Tag '{tag}' is not a known tag")
         self.calls.append(("repo_files_by_tag", tag, repo_id))
         return [{"Provider": "CLAUDE.md", "_repo_id": repo_id}]
+
+
+def _text(body):
+    """The page's text with runs of whitespace collapsed, as a browser shows it."""
+    return re.sub(r"\s+", " ", body)
 
 
 def _request(query_string=b""):
@@ -281,6 +301,79 @@ class TestRoute:
                 _request(b"repo_id=github.com~acme~one"), tag="NotATag")
 
         assert raised.value.status_code == 404
+
+
+class TestRenderedListing:
+    """What the page actually shows.
+
+    The handler's TemplateResponse renders on construction, so `response.body`
+    is the real HTML -- worth asserting on, because the count these assertions
+    look for is returned by the query and was never displayed.
+    """
+
+    def _body(self, fake_query, path="/tag/AI", tag="AI"):
+        fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": path,
+            "headers": [], "query_string": b"", "app": kweb2.app,
+        })
+        return kweb2.repo_with_tag(request, tag=tag).body.decode()
+
+    def test_says_how_many_repositories_have_the_tag(self, fake_query):
+        # Collapsed, because the template wraps the sentence over lines and the
+        # browser collapses that whitespace -- asserting on the indentation
+        # would break on reformatting without the page changing.
+        assert "2 repositories with this tag" in _text(self._body(fake_query))
+
+    def test_counts_one_repository_in_the_singular(self, fake_query, monkeypatch):
+        fake = _FakeQuery()
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: fake)
+        monkeypatch.setattr(
+            fake, "repos_with_tag", lambda tag: [_FakeQuery._REPOS[0]])
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tag/llms.txt",
+            "headers": [], "query_string": b"", "app": kweb2.app,
+        })
+
+        body = kweb2.repo_with_tag(request, tag="llms.txt").body.decode()
+
+        assert "1 repository with this tag" in _text(body)
+
+    def test_shows_each_repositorys_file_count(self, fake_query):
+        """The query returns `count` per repository. Without it in the table
+        there is no column worth sorting on -- every row's Files cell held the
+        same words."""
+        body = self._body(fake_query)
+
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S)
+        counts = [r for r in rows if re.search(r">\s*2\s*<", r)]
+        assert counts, "no row renders the file count 2"
+
+    def test_the_datatable_sorts_on_a_column_that_exists(self, fake_query):
+        """`order: [[4, "asc"]]` on a two-column table throws on init, which
+        silently loses paging, search and sorting altogether."""
+        body = self._body(fake_query)
+
+        table = re.search(r'<table[^>]*id="myTable".*?</thead>', body, re.S)
+        assert table, "no #myTable to configure"
+        columns = len(re.findall(r"<th", table.group(0)))
+        order = re.search(r"order:\s*\[\[\s*(\d+)", body)
+
+        assert order, "no DataTables order configured"
+        assert int(order.group(1)) < columns, (
+            f"orders on column {order.group(1)} of a {columns}-column table")
+
+    def test_the_technology_page_counts_its_repositories_too(self, fake_query):
+        """Same template, so /tech/ gets the same line with its own wording."""
+        fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tech/Python",
+            "headers": [], "query_string": b"", "app": kweb2.app,
+        })
+
+        body = kweb2.repo_with_tech(request, tech="Python").body.decode()
+
+        assert "2 repositories with this technology" in _text(body)
 
 
 class TestVocabulary:

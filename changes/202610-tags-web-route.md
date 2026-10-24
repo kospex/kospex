@@ -87,10 +87,12 @@ repositories respectively — a substring match would have conflated them.
 - `src/kospex_query.py` — `repos_with_tag()`, `repo_files_by_tag()`
 - `src/kweb2.py` — the `/tag/{tag}` route; `/tech/` now passes the same two
   template variables
-- `src/templates/repos-tech.html` — two lines: the heading says `Tag:` or
-  `Technology:` from `tech_kind`, and the "See Files" link comes from `tech_url`
-  instead of being hardcoded to `/tech/`. Both default to the `/tech/` behaviour,
-  so the template is unchanged for any caller that does not set them.
+- `src/templates/repos-tech.html` — the heading says `Tag:` or `Technology:`
+  from `tech_kind`; the "See Files" link comes from `tech_url` instead of being
+  hardcoded to `/tech/`; a line under the heading gives the repository count;
+  and the table gained Server / Org / Repo / # Files columns. `tech_kind` and
+  `tech_url` default to the `/tech/` behaviour, so the template is unchanged for
+  any caller that does not set them.
 - `tests/test_repos_by_tag.py` — 21 tests: the counts, the `latest = 1` filter,
   the `Git`/`GitHub` delimiter case, the 404 mapping, and the columns the
   templates consume
@@ -100,6 +102,28 @@ repositories respectively — a substring match would have conflated them.
 generically, and showing the Language of a tagged file is informative here —
 an `AI`-tagged file listing reads `CLAUDE.md  Markdown`, which is the
 distinction the issue is about.
+
+## The listing table, and a DataTables bug it exposed
+
+The page reports how many repositories carry the tag — `Tag: license`, then
+`359 repositories with this tag` (singular at 1). `/tech/` gets the same line in
+its own wording, since the template is shared.
+
+The table now has the same shape as `/orgs/`: Server, Org, Repo, and a
+right-aligned **# Files** count. That count was already returned by the query
+and simply never rendered — the only Files cell was a "See Files" link, so every
+row read identically and there was nothing to sort on.
+
+**`repos-tech.html` carried `order: [[4, "asc"]]` against a two-column table.**
+DataTables 1.13.11's sort-flatten reads `aoColumns[i].sType` with no bounds
+check, so an index past the last column dereferences `undefined` and throws
+during init — losing the entire DataTable: no search, no paging, no sorting,
+just every row dumped into the page. It is now `[[3, "desc"]]`, which is the
+`# Files` column and matches the SQL ordering.
+
+`tests/test_repos_by_tag.py` guards this by rendering the page and asserting the
+configured order index is within the table's column count, rather than
+hard-coding 3.
 
 ## Out of scope
 

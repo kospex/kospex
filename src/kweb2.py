@@ -1320,7 +1320,11 @@ def repo_with_tech(request: Request, tech: str):
         return templates.TemplateResponse(
             request, template,
             {"data": repos_with_tech, "tech": tech, "tech_kind": "Technology",
-             "tech_url": f"/tech/{quote(tech, safe='')}", "page": {}},
+             "tech_url": f"/tech/{quote(tech, safe='')}",
+             # Only the repo listing counts repositories; the file listing for
+             # a single repo is a different template.
+             "repo_count": None if repo_id else len(repos_with_tech),
+             "page": {}},
         )
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any
@@ -1367,7 +1371,9 @@ def repo_with_tag(request: Request, tag: str):
         return templates.TemplateResponse(
             request, template,
             {"data": data, "tech": tag, "tech_kind": "Tag",
-             "tech_url": f"/tag/{quote(tag, safe='')}", "page": {}},
+             "tech_url": f"/tag/{quote(tag, safe='')}",
+             "repo_count": None if repo_id else len(data),
+             "page": {}},
         )
     except HTTPException:
         raise
