@@ -82,7 +82,7 @@ class TestWebEndpoints:
             "/observations/",
             "/commits/",
             "/dependencies/",
-            "/package-check/",
+            # "/package-check/",  # disabled pending a refactor
             "/files/repo/",
             "/supply-chain/",
         ],
@@ -274,17 +274,17 @@ class TestWebEndpoints:
             f"Generate repo ID endpoint returned unexpected status {response.status_code}"
         )
 
-    # Test POST endpoint (without actually uploading a file)
+    # Package check is disabled pending a refactor: neither route is served.
     @pytest.mark.web
-    def test_package_upload_endpoint_options(self):
-        """Test the package upload endpoint with OPTIONS request."""
-        # Test OPTIONS request to ensure CORS is working
-        response = requests.options(f"{BASE_URL}/package-check/upload", timeout=TIMEOUT)
+    def test_package_check_is_disabled(self):
+        """Neither the package check page nor its upload endpoint is served."""
+        page = requests.get(f"{BASE_URL}/package-check/", timeout=TIMEOUT)
+        upload = requests.post(f"{BASE_URL}/package-check/upload", timeout=TIMEOUT)
 
-        # OPTIONS should be allowed, or we get 405 Method Not Allowed (which is also fine)
-        assert response.status_code in [200, 204, 405], (
-            f"Package upload OPTIONS returned unexpected status {response.status_code}"
-        )
+        assert page.status_code == 404, f"/package-check/ returned {page.status_code}"
+        # 405, not 404: the GET-only catch-all route matches every path, so no
+        # route accepts a POST here.
+        assert upload.status_code == 405, f"/package-check/upload returned {upload.status_code}"
 
     # Error handling tests
     @pytest.mark.web

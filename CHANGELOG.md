@@ -387,6 +387,14 @@ was relying on the old, wrong success.
   only the current vocabulary
   ([#317](https://github.com/kospex/kospex/issues/317)).
 
+- **kweb's package check is disabled: `/package-check/` and
+  `/package-check/upload` are commented out and now return 404.** The page let
+  you drop a single dependency file to analyse it, but nothing linked to it and
+  it was not in use. It will be refactored before it returns. The route code,
+  `templates/package_check.html` and its status classifier remain in the source,
+  and the route is removed from the page list in `docs/kweb/index.md`. To check a
+  file, sync the repo that contains it and use `/dependencies/`.
+
 - **The DuckDB proof of concept is parked: `kgit sync-repo` and
   `kospex init-duckdb` are commented out, and `duckdb` is no longer a
   dependency.** Both commands were labelled experimental, and nothing in

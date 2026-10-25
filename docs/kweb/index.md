@@ -100,7 +100,6 @@ These aren't all in the top menu, but are reachable by drilling down:
 | Hotspots | `/hotspots/{repo_id}` | Files that change often and are hard to change |
 | Files | `/files/repo/{repo_id}` | File inventory for a repo |
 | Dependencies | `/dependencies/` | Declared dependencies and how far behind they are |
-| Package check | `/package-check/` | Drag and drop a dependency file to analyse it ad hoc |
 | Commits | `/commits/{repo_id}` | Commit history and individual commit detail |
 | Tenure | `/tenure/` | How long contributors have been active |
 | Observations | `/observations/` | Stored analysis results |

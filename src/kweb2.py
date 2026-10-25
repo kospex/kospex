@@ -1853,116 +1853,119 @@ def _classify_upload_status(item: dict) -> str:
     return "Current"
 
 
-@app.get("/package-check/", response_class=HTMLResponse)
-def package_check(request: Request):
-    """Display the package check page with drag and drop interface"""
-    try:
-        logger.info("Package check page requested")
-
-        return templates.TemplateResponse(request, "package_check.html")
-    except HTTPException:
-        # Re-raise the route's own 4xx. The handler below converts any
-        # Exception to a 500, and HTTPException is an Exception, so a
-        # deliberate 404/400 was reported as a server error. (#210)
-        raise
-    except Exception as e:
-        logger.error(f"Error in package_check endpoint: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@app.post("/package-check/upload", response_class=JSONResponse)
-def package_check_upload(file: UploadFile = File(...)):
-    """Handle file upload and analyze dependencies"""
-    try:
-        import os
-        import tempfile
-
-        from kospex.extractors.registry import classify
-
-        logger.info(f"Package upload requested for file: {file.filename}")
-
-        if not file.filename:
-            raise HTTPException(status_code=400, detail="No file selected")
-
-        # Strip any directory components from the client-supplied filename before
-        # joining it onto our temp dir. os.path.join(dir, "/abs") discards dir and
-        # a "../" name traverses out, so the raw name is a path-traversal sink
-        # (CWE-22). basename keeps the meaningful part — assess() dispatches the
-        # parser off it (requirements.txt / package.json / pom.xml / ...).
-        safe_name = os.path.basename(file.filename)
-        if not safe_name or safe_name in (".", ".."):
-            raise HTTPException(status_code=400, detail="Invalid filename")
-
-        # assess() picks the parser from the filename and returns None for one
-        # it doesn't support, which used to surface as a 500 ("'NoneType'
-        # object is not iterable"). Check up front, the same way assess() does.
-        classification = classify(safe_name)
-        if classification.extractor is None or not classification.supported:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported file: {safe_name}. Upload a dependency file "
-                       "kospex can read, such as requirements.txt or package.json.",
-            )
-
-        # Save the uploaded file temporarily
-        temp_dir = tempfile.mkdtemp()
-        temp_path = os.path.join(temp_dir, safe_name)
-
-        # Belt-and-braces: assert the destination stays under the temp dir, the
-        # same containment check clone_repo() uses for clone destinations.
-        if not Path(temp_path).resolve().is_relative_to(Path(temp_dir).resolve()):
-            raise HTTPException(status_code=400, detail="Invalid filename")
-
-        # Read and save file content
-        content = file.file.read()
-        with open(temp_path, "wb") as f:
-            f.write(content)
-
-        try:
-            # Analyze the file using KospexDependencies
-            kospex = Kospex()
-            results = kospex.dependencies.assess(temp_path, quiet=True)
-
-            # Clean up the temporary file
-            os.remove(temp_path)
-            os.rmdir(temp_dir)
-
-            # The name is supported, so None means the parser couldn't read
-            # the file. assess() has already logged why.
-            if results is None:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"Could not read {safe_name}. Check the file is "
-                           "complete and in the expected format.",
-                )
-
-            # Add status based on advisories, resolution and versions behind
-            for item in results:
-                item["status"] = _classify_upload_status(item)
-
-            return JSONResponse(content=results)
-
-        except HTTPException:
-            # Re-raise the route's own 4xx. The handler below converts any
-            # Exception to a 500, and HTTPException is an Exception, so a
-            # deliberate 404/400 was reported as a server error. (#210)
-            raise
-        except Exception as e:
-            # Clean up in case of error
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            if os.path.exists(temp_dir):
-                os.rmdir(temp_dir)
-            # Log the exception, but don't send its text to the client: it can
-            # carry internal paths and implementation detail (CWE-209).
-            logger.error(f"Error processing file: {e}")
-            raise HTTPException(status_code=500, detail="Error analyzing file")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in package_check_upload endpoint: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+# Package check is disabled: unused, not linked from any page, and due to be
+# refactored. Kept commented out (with templates/package_check.html and
+# _classify_upload_status above) rather than deleted.
+# @app.get("/package-check/", response_class=HTMLResponse)
+# def package_check(request: Request):
+#     """Display the package check page with drag and drop interface"""
+#     try:
+#         logger.info("Package check page requested")
+#
+#         return templates.TemplateResponse(request, "package_check.html")
+#     except HTTPException:
+#         # Re-raise the route's own 4xx. The handler below converts any
+#         # Exception to a 500, and HTTPException is an Exception, so a
+#         # deliberate 404/400 was reported as a server error. (#210)
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error in package_check endpoint: {e}")
+#         raise HTTPException(status_code=500, detail="Internal server error")
+#
+#
+# @app.post("/package-check/upload", response_class=JSONResponse)
+# def package_check_upload(file: UploadFile = File(...)):
+#     """Handle file upload and analyze dependencies"""
+#     try:
+#         import os
+#         import tempfile
+#
+#         from kospex.extractors.registry import classify
+#
+#         logger.info(f"Package upload requested for file: {file.filename}")
+#
+#         if not file.filename:
+#             raise HTTPException(status_code=400, detail="No file selected")
+#
+#         # Strip any directory components from the client-supplied filename before
+#         # joining it onto our temp dir. os.path.join(dir, "/abs") discards dir and
+#         # a "../" name traverses out, so the raw name is a path-traversal sink
+#         # (CWE-22). basename keeps the meaningful part — assess() dispatches the
+#         # parser off it (requirements.txt / package.json / pom.xml / ...).
+#         safe_name = os.path.basename(file.filename)
+#         if not safe_name or safe_name in (".", ".."):
+#             raise HTTPException(status_code=400, detail="Invalid filename")
+#
+#         # assess() picks the parser from the filename and returns None for one
+#         # it doesn't support, which used to surface as a 500 ("'NoneType'
+#         # object is not iterable"). Check up front, the same way assess() does.
+#         classification = classify(safe_name)
+#         if classification.extractor is None or not classification.supported:
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail=f"Unsupported file: {safe_name}. Upload a dependency file "
+#                        "kospex can read, such as requirements.txt or package.json.",
+#             )
+#
+#         # Save the uploaded file temporarily
+#         temp_dir = tempfile.mkdtemp()
+#         temp_path = os.path.join(temp_dir, safe_name)
+#
+#         # Belt-and-braces: assert the destination stays under the temp dir, the
+#         # same containment check clone_repo() uses for clone destinations.
+#         if not Path(temp_path).resolve().is_relative_to(Path(temp_dir).resolve()):
+#             raise HTTPException(status_code=400, detail="Invalid filename")
+#
+#         # Read and save file content
+#         content = file.file.read()
+#         with open(temp_path, "wb") as f:
+#             f.write(content)
+#
+#         try:
+#             # Analyze the file using KospexDependencies
+#             kospex = Kospex()
+#             results = kospex.dependencies.assess(temp_path, quiet=True)
+#
+#             # Clean up the temporary file
+#             os.remove(temp_path)
+#             os.rmdir(temp_dir)
+#
+#             # The name is supported, so None means the parser couldn't read
+#             # the file. assess() has already logged why.
+#             if results is None:
+#                 raise HTTPException(
+#                     status_code=422,
+#                     detail=f"Could not read {safe_name}. Check the file is "
+#                            "complete and in the expected format.",
+#                 )
+#
+#             # Add status based on advisories, resolution and versions behind
+#             for item in results:
+#                 item["status"] = _classify_upload_status(item)
+#
+#             return JSONResponse(content=results)
+#
+#         except HTTPException:
+#             # Re-raise the route's own 4xx. The handler below converts any
+#             # Exception to a 500, and HTTPException is an Exception, so a
+#             # deliberate 404/400 was reported as a server error. (#210)
+#             raise
+#         except Exception as e:
+#             # Clean up in case of error
+#             if os.path.exists(temp_path):
+#                 os.remove(temp_path)
+#             if os.path.exists(temp_dir):
+#                 os.rmdir(temp_dir)
+#             # Log the exception, but don't send its text to the client: it can
+#             # carry internal paths and implementation detail (CWE-209).
+#             logger.error(f"Error processing file: {e}")
+#             raise HTTPException(status_code=500, detail="Error analyzing file")
+#
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error in package_check_upload endpoint: {e}")
+#         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/hotspots/{repo_id}", response_class=HTMLResponse)
