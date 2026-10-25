@@ -32,6 +32,9 @@ TEST_REPO_ID = "github.com~kospex~kospex"
 TEST_SERVER = "github.com"
 TEST_ORG_KEY = "github.com~kospex"
 TEST_TECH = "Python"
+# A panopticas tag, not a Language. Both exist under these names and mean
+# different things, which is why /tag/ is a separate route from /tech/.
+TEST_TAG = "AI"
 TEST_DEVELOPER_EMAIL = "test@example.com"
 TEST_COMMIT_HASH = "abc123"
 
@@ -70,6 +73,7 @@ class TestWebEndpoints:
             "/recent/",
             "/repos/",
             "/landscape/",
+            "/tags/",
             "/graph/",
             "/tenure/",
             "/meta/author-domains",
@@ -115,6 +119,7 @@ class TestWebEndpoints:
             ("/graph/{}", TEST_ORG_KEY),
             ("/tenure/{}", TEST_REPO_ID),
             ("/tech/{}", TEST_TECH),
+            ("/tag/{}", TEST_TAG),
             ("/developer/?author_email={}", TEST_DEVELOPER_EMAIL),
             ("/commits/{}", TEST_REPO_ID),
             ("/dependencies/{}", TEST_REPO_ID),

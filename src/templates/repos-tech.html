@@ -37,7 +37,23 @@
                     {% if page.get('git_server') %}
                     <h3 class="text-xl font-semibold text-gray-700 mb-4">{{ page['git_server'] }}</h3>
                     {% endif %}
-                    <h3 class="text-xl font-semibold text-gray-700 mb-4"> Technology: {{ tech }} </h3>
+                    <h3 class="text-xl font-semibold text-gray-700 mb-2"> {{ tech_kind | default('Technology') }}: {{ tech }} </h3>
+                    {% if repo_count is not none %}
+                    <p class="text-gray-700 mb-4">
+                        {%- if absent_view %}
+                        {{ repo_count }} {{ 'repository has' if repo_count == 1 else 'repositories have' }}
+                        no files with this {{ (tech_kind | default('Technology')) | lower }}{% if universe_count %}, of {{ universe_count }} repositories that have file metadata{% endif %}
+                        <br>
+                        The '# Files' column shows the total number of all file types and tags in this repository.
+                        {%- else %}
+                        {{ repo_count }} {{ 'repository' if repo_count == 1 else 'repositories' }}
+                        with this {{ (tech_kind | default('Technology')) | lower }}{% if absent_count is defined and absent_count is not none %},
+                        <a href="{{ absent_url }}" class="text-blue-600 hover:text-blue-800 underline">{{ absent_count }}
+                        {{ 'repository does' if absent_count == 1 else 'repositories do' }} not have files with this
+                        {{ (tech_kind | default('Technology')) | lower }}</a>{% endif %}
+                        {%- endif %}
+                    </p>
+                    {% endif %}
 
                     {% if page.get('git_owner') %}
                     <div class="mb-6">
@@ -56,19 +72,31 @@
                         <table class="min-w-full divide-y divide-gray-200" id="myTable">
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repo ID</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"> Files </th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Server</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Org</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repo</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Files</th>
+                                    {% if not absent_view %}
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Files</th>
+                                    {% endif %}
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for row in data %}
                                 <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ row['_git_server'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                        <a href="/repos/?org_key={{ row['_git_server'] }}~{{ row['_git_owner'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['_git_owner'] }}</a>
+                                    </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
                                         <a href="/repo/{{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['_git_repo'] }}</a>
                                     </td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['count'] }}</td>
+                                    {% if not absent_view %}
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                                        <a href="/tech/{{tech}}?repo_id={{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline"> See Files</a>
+                                        <a href="{{ tech_url | default('/tech/' ~ tech | urlencode) }}?repo_id={{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline"> See Files</a>
                                     </td>
+                                    {% endif %}
 
                                 </tr>
                                 {% endfor %}
@@ -122,7 +150,10 @@
         <script>
             $(document).ready(function () {
                 $("#myTable").DataTable({
-                    order: [[4, "asc"]],
+                    // Column 3 is '# Files'. This was [[4, "asc"]] against a
+                    // two-column table, which throws on init and silently
+                    // costs the whole DataTable -- no search, no paging.
+                    order: [[3, "desc"]],
                     responsive: true,
                     pageLength: 25,
                     lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],

@@ -9,6 +9,7 @@ from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import (
@@ -20,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import panopticas as Panopticas
 from requests.models import LocationParseError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -186,9 +188,28 @@ def download_csv_fastapi(dict_data, filename=None):
 # Custom 404 handler
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, exc: HTTPException):
-    """Custom 404 error handler that serves the 404.html template"""
+    """Custom 404 error handler that serves the 404.html template.
+
+    Passes the route's own `detail` through to the template's error callout,
+    which nothing filled before: /tech/Fortran, /tag/NotATag and a plain
+    mistyped path all rendered the identical "Oops! Page not found.", so a
+    reader could not tell a name this estate does not have from a bad URL.
+
+    A detail that only restates the heading is dropped: starlette's default
+    for an unmatched route is the bare string "Not Found", and the catch-all
+    route's is "Page not found", both of which the page already says in 3xl
+    bold above. Repeating it in an orange warning box reads as a second,
+    different problem. Every other route's detail is information the heading
+    does not give -- "Repository not in the kospex database: ..." -- and has
+    been discarded until now.
+    """
+    generic = ("not found", "page not found")
+    detail = getattr(exc, "detail", None)
+    error = detail if detail and detail.strip().lower() not in generic else None
+
     try:
-        return templates.TemplateResponse(request, "404.html", status_code=404)
+        return templates.TemplateResponse(
+            request, "404.html", {"error": error}, status_code=404)
     except Exception as e:
         # Fallback to basic 404 if template fails
         logger.error(f"Error rendering 404 template: {e}")
@@ -1300,6 +1321,18 @@ def tech_change(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _absent_requested(request: Request) -> bool:
+    """Whether the caller asked for the negative view: `?absent=true`.
+
+    A bare `?absent` is what a person types, so its empty value counts as yes;
+    an explicit false/0/no counts as no. Shared by /tag/ and /tech/ so the two
+    cannot drift on which spellings they accept.
+    """
+    raw = request.query_params.get("absent")
+
+    return raw is not None and raw.lower() not in ("false", "0", "no")
+
+
 @app.get("/tech/{tech}", response_class=HTMLResponse)
 def repo_with_tech(request: Request, tech: str):
     """Show repositories with the given technology"""
@@ -1307,18 +1340,61 @@ def repo_with_tech(request: Request, tech: str):
         logger.info(f"Tech filtering page requested for technology: {tech}")
 
         repo_id = request.query_params.get("repo_id")
+        absent = _absent_requested(request)
         kospex = KospexQuery()
         template = "repos-tech.html"
+        absent_count = None
+        universe = None
 
-        if repo_id:
-            repos_with_tech = kospex.repo_files(tech, repo_id=repo_id)
-            template = "repo_files.html"
-        else:
-            repos_with_tech = kospex.repos_with_tech(tech)
+        try:
+            if repo_id:
+                # Files in one repository that lack the technology is not a
+                # question with an answer, so the drill-down wins.
+                if not kospex.has_tech(tech):
+                    raise ValueError(f"no current file has '{tech}'")
+                repos_with_tech = kospex.repo_files(tech, repo_id=repo_id)
+                template = "repo_files.html"
+            elif absent:
+                repos_with_tech = kospex.repos_without_tech(tech)
+                universe = kospex.count_repos_with_file_metadata()
+            else:
+                repos_with_tech = kospex.repos_with_tech(tech)
+                if not repos_with_tech:
+                    # No current file anywhere has it, so this is a bad URL,
+                    # not an estate with none of it. A 200 with an empty table
+                    # reads as "no repositories have Fortran" -- the confusion
+                    # #293 exists to remove, and the same call /tag/ makes.
+                    raise ValueError(f"no current file has '{tech}'")
+                # The other side of the estate, as on /tag/: how many
+                # repositories we have looked at and found no file of this
+                # technology in.
+                universe = kospex.count_repos_with_file_metadata()
+                absent_count = max(universe - len(repos_with_tech), 0)
+        except ValueError as error:
+            # Both words, because /tech/ serves scc's `Language` and what the
+            # Landscape pages call a technology -- a reader cannot be expected
+            # to know which one they were asking for.
+            logger.info(f"Unknown technology requested: {tech} ({error})")
+            # Names what was asked for: the URL may have come from a paste or
+            # a long link whose end the reader cannot see, and the browser
+            # shows the percent-encoded form. Jinja autoescapes it into the
+            # template, which the tests assert rather than assume.
+            raise HTTPException(
+                status_code=404,
+                detail=f"{tech} is an unknown Technology or Language.")
 
         return templates.TemplateResponse(
             request, template,
-            {"data": repos_with_tech, "tech": tech, "page": {}},
+            {"data": repos_with_tech, "tech": tech, "tech_kind": "Technology",
+             "tech_url": f"/tech/{quote(tech, safe='')}",
+             # Only the repo listing counts repositories; the file listing for
+             # a single repo is a different template.
+             "repo_count": None if repo_id else len(repos_with_tech),
+             "absent_view": absent and not repo_id,
+             "absent_count": absent_count,
+             "absent_url": f"/tech/{quote(tech, safe='')}?absent=true",
+             "universe_count": universe,
+             "page": {}},
         )
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any
@@ -1327,6 +1403,102 @@ def repo_with_tech(request: Request, tech: str):
         raise
     except Exception as e:
         logger.error(f"Error in repo_with_tech endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/tags/", response_class=HTMLResponse)
+def tags_index(request: Request):
+    """List the tag vocabulary, as an entry point to /tag/{tag}.
+
+    The vocabulary is panopticas.get_tags() -- what panopticas *can* assign,
+    derived from its detection rules. That is deliberately not "the tags in
+    this database": the two differ, and this is the set where_tag() validates
+    against, so every tag listed here resolves rather than 404ing. Some will
+    have no repositories.
+
+    No counts. Counting repositories per tag is not a single-table lookup:
+    tech_type holds several tags per row, and grouping by the stored value
+    double-counts repositories.
+    """
+    try:
+        logger.info("Tag index page requested")
+
+        # Case-insensitive, or every lowercase tag would file after `yarn` and
+        # the page would run the alphabet twice.
+        tags = sorted(Panopticas.get_tags(), key=str.lower)
+
+        return templates.TemplateResponse(
+            request, "tags.html", {"tags": tags, "page": {}},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in tags_index endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/tag/{tag}", response_class=HTMLResponse)
+def repo_with_tag(request: Request, tag: str):
+    """Show repositories carrying a panopticas tag, or its files in one repo.
+
+    Deliberately a separate route from /tech/{tech} rather than a fallback
+    inside it. 9 names -- `Go`, `Python`, `JavaScript`, `C#` and others -- are
+    both a Language and a tag, and they count very different things: `Go` is
+    24,236 files as a Language and 345 as a tag. A route that guessed between
+    them, in either order, would not be trustworthy; two routes keep both
+    meanings addressable.
+    """
+    try:
+        logger.info(f"Tag filtering page requested for tag: {tag}")
+
+        repo_id = request.query_params.get("repo_id")
+        absent = _absent_requested(request)
+        kospex = KospexQuery()
+        template = "repos-tech.html"
+        absent_count = None
+        universe = None
+
+        try:
+            if repo_id:
+                # Files in one repository that lack the tag is not a question
+                # with an answer, so the drill-down wins over `absent`.
+                data = kospex.repo_files_by_tag(tag, repo_id=repo_id)
+                template = "repo_files.html"
+            elif absent:
+                data = kospex.repos_without_tag(tag)
+                universe = kospex.count_repos_with_file_metadata()
+            else:
+                data = kospex.repos_with_tag(tag)
+                # The other side of the estate: how many repositories we have
+                # looked at and found no file with this tag. This is the
+                # adoption question -- "everyone should have a Dependabot
+                # file" is only readable next to how many don't.
+                universe = kospex.count_repos_with_file_metadata()
+                absent_count = max(universe - len(data), 0)
+        except ValueError as error:
+            # where_tag() rejects a tag panopticas does not define. That is a
+            # bad URL, so say so: a 200 with an empty table reads as "no
+            # repositories have this tag", which is the confusion this route
+            # exists to remove.
+            logger.info(f"Unknown tag requested: {tag} ({error})")
+            raise HTTPException(
+                status_code=404, detail=f"{tag} is an unknown Tag.")
+
+        return templates.TemplateResponse(
+            request, template,
+            {"data": data, "tech": tag, "tech_kind": "Tag",
+             "tech_url": f"/tag/{quote(tag, safe='')}",
+             "repo_count": None if repo_id else len(data),
+             "absent_view": absent and not repo_id,
+             "absent_count": absent_count,
+             "absent_url": f"/tag/{quote(tag, safe='')}?absent=true",
+             "universe_count": universe,
+             "page": {}},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in repo_with_tag endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
