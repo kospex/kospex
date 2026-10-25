@@ -151,7 +151,11 @@ view:
 
 and the absent page states its denominator, so the number is readable:
 
-> 252 repositories have no files with this tag, of 374 with file metadata
+> 252 repositories have no files with this tag, of 374 repositories with file
+> metadata
+>
+> The '# Files' column shows the total number of all file types and tags in
+> this repository.
 
 Measured on a local ~370-repo database, present + absent equals the universe
 exactly for every tag tried, with no repository in both: `Dependabot` 122 + 252,
@@ -170,6 +174,21 @@ count of tagged files, which would be zero on every row. It is the context for
 whether a missing file matters — a 3-file repository without a Dependabot
 config is a different finding from a 3,000-file one. The "See Files" column is
 dropped entirely, since there are no tagged files to show.
+
+The page says that in so many words, because on a list of repositories that
+have *no* file with the tag, a non-zero count beside each one otherwise reads
+as a contradiction. The same column on the positive listing *is* the tagged
+count, so the sentence appears only in the absent view.
+
+**A guard on an undefined variable, not a `none` check.** `/tech/` shares this
+template and passes no `absent_count`, and Jinja's `Undefined` satisfies
+`is not none` — so `{% if absent_count is not none %}` rendered the second half
+of the sentence with no number in it on every technology page
+("96 repositories with this technology, repositories do not have files with
+this technology"). The condition now tests `is defined` first. A test renders
+`/tech/` and asserts the dangling clause is absent, since this is the failure
+mode of sharing a template between a route that sets a variable and one that
+does not.
 
 `repo_id` takes precedence over `absent`: files within one repository that lack
 the tag is not a question with an answer.

@@ -513,6 +513,21 @@ class TestRenderedListing:
 
         assert "2 repositories with this technology" in _text(body)
 
+    def test_the_technology_page_has_no_dangling_absent_clause(self, fake_query):
+        """/tech/ passes no absent_count, and Jinja's Undefined is `is not
+        none`, so a bare `is not none` guard renders the second half of the
+        sentence with no number in it."""
+        fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tech/Python",
+            "headers": [], "query_string": b"", "app": kweb2.app,
+        })
+
+        body = _visible(kweb2.repo_with_tech(request, tech="Python").body.decode())
+
+        assert "2 repositories with this technology" in body
+        assert "do not have files" not in body
+
 
 class TestAbsentView:
     """`?absent=true`: which repositories do NOT have the tag.
@@ -551,10 +566,22 @@ class TestAbsentView:
         assert "1 repository has no files with this tag" in body
 
     def test_reports_the_denominator(self, fake_query):
-        """Without the universe the number is unreadable: 1 of how many?"""
+        """Without the universe the number is unreadable: 1 of how many?
+
+        The unit is named, because "of 3" alone reads as 3 of something --
+        files, tags -- on a page whose other numbers are file counts.
+        """
         body = _text(self._body(fake_query).body.decode())
 
-        assert "of 3" in body
+        assert "of 3 repositories with file metadata" in body
+
+    def test_says_what_the_files_column_counts(self, fake_query):
+        """Every row has zero files with the tag, so the count beside it has
+        to say what it does count, or it reads as a contradiction."""
+        body = _visible(self._body(fake_query).body.decode())
+
+        assert ("The '# Files' column shows the total number of all file "
+                "types and tags in this repository") in body
 
     def test_offers_no_see_files_link(self, fake_query):
         """There are no files with the tag to see -- the link would go to an
@@ -638,6 +665,13 @@ class TestPositiveViewMentionsAbsent:
 
         assert ("2 repositories with this tag, "
                 "1 repository does not have files with this tag") in _visible(body)
+
+    def test_does_not_explain_the_files_column(self, fake_query):
+        """Here # Files *is* the tagged-file count, so the absent page's
+        explanation of it would be wrong."""
+        body = _visible(kweb2.repo_with_tag(_request(), tag="AI").body.decode())
+
+        assert "The '# Files' column" not in body
 
     def test_links_to_the_absent_listing(self, fake_query):
         fake_query()
