@@ -1681,6 +1681,10 @@ def connectivity(save):
     Test connectivity to api.deps.dev and check for SSL errors.
 
     This command attempts to connect to api.deps.dev and reports any SSL certificate errors.
+
+    One key use case for this funcion is if your organisation uses a make and break proxy,
+    and the CA CERT is unknown to Python.
+
     Use the -save flag to export the certificate chain to ~/kospex/REQUEST_CA_CERTS.
     """
     log.info("Testing connectivity to api.deps.dev")
