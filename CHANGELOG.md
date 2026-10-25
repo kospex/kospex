@@ -2,7 +2,58 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## Unreleased
+## 0.2.0 - 2026-10-25
+
+### Highlights
+
+**Upgrading an existing database takes two commands, in this order.** Back up
+`~/kospex/kospex.db` first:
+
+```bash
+kospex upgrade-db -apply
+kospex rebuild developer-stats -all
+```
+
+Migration `0011` is required: without it every sync fails at its
+developer-stats step. The rebuild is required too, or the counts on `/` and
+`/summary/` are wrong. Details are under *Upgrade notes*.
+
+- **Some commands and pages now report a failure where they used to return an
+  empty success.** `developers`, `tech-landscape` and `hotspot` exit 1 for a
+  `-repo` that was never synced. `/dependencies/{id}` and `/osi/{id}` return 400
+  for an author id, `/collab/` returns 404 for an unknown repository, and routes
+  return their real 4xx instead of 500. Scripts that check exit codes, and
+  alerts on 5xx, will see the difference.
+- **`kospex sca` no longer saves by default.** Pass `-save`, which refuses
+  unless the repository and its HEAD are synced and the worktree is clean.
+  `-scope` replaces `-dev`.
+- **kweb answers only to `127.0.0.1` and `localhost`, and sends no CORS
+  headers** (CWE-346). Set `KOSPEX_WEB_ALLOWED_HOSTS` to reach it by another
+  name, for example behind a reverse proxy or from another Compose service.
+  kweb now exits with code 3 when it can't start.
+- **More of the dependency tree is read.** `package-lock.json` (v1–v3) and
+  `uv.lock` are parsed, and multi-document `pnpm-lock.yaml` files are read in
+  full. Lockfile rows record whether a dependency is dev-only, optional, or runs
+  an install script (migration `0009`). A manifest kospex can't read is now
+  reported as `parse_error`, not as one that declares nothing.
+- **`krunner osi -next N` scans dependencies in batches suited to cron**, least
+  recently examined first. `-max-seconds` bounds a run, and per-run
+  diagnostics go to `osi_runs`.
+- **Panopticas tags in the web UI: `/tags/` and `/tag/{tag}`.** `?absent=true`
+  on tag and technology pages lists the repositories that *don't* have one,
+  such as every repo without a Dependabot file.
+- **`kospex rebuild` recomputes derived data from the database without
+  re-syncing.** The first task is `developer-stats`.
+- **Faster.** The summary pages count statuses in 0.19s rather than 1.81s on
+  1.1M commits. Repeat loads of `/` and `/repos/` are cached. `krunner osi`'s
+  read path drops from 11.5s to 0.4s on 167 repositories.
+- **Removed or disabled:** the DuckDB proof of concept (`kgit sync-repo` and
+  `kospex init-duckdb`; `duckdb` is no longer a dependency), kweb's package
+  check page, and `kospex advisory-history`, pending its redesign.
+- **Dependency minimums raised**, including click 8.4.1, fastapi 0.140,
+  uvicorn 0.52 and requests 2.34. certifi 2026.10.19 or later is now a direct
+  dependency. Git metadata is printed literally rather than parsed as console
+  markup (CWE-150).
 
 ### Upgrade notes
 
