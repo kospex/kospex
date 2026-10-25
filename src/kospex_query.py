@@ -352,6 +352,27 @@ class KospexQuery:
         return [row for row in self.repos_with_file_metadata()
                 if row["_repo_id"] not in tagged]
 
+    def has_tech(self, tech):
+        """Whether any current file has this Language.
+
+        There is no vocabulary to validate a Language against -- `scc` reports
+        whatever it reports -- so "nothing current has it" is the only signal
+        available that a name is a typo rather than a real technology this
+        estate happens to lack. The file drill-down needs that answer without
+        pulling a repository list.
+
+        LIMIT 1 rather than a count: a Language that is present stops at the
+        first row, and only an absent one pays for the scan.
+        """
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_FILE_METADATA)
+        kd.select_raw("1 AS present")
+        kd.where("Language", "=", tech)
+        kd.where("latest", "=", 1)
+        kd.limit(1)
+
+        return bool(kd.execute())
+
     def repos_without_tech(self, tech):
         """Repositories with current file metadata and no file of that Language.
 

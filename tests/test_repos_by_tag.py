@@ -91,6 +91,13 @@ _ROWS = [
      "_git_owner": "acme", "_git_repo": "three", "Filename": "LICENSE",
      "Language": "Text", "tech_type": "|license|", "Lines": 20,
      "committer_when": "2026-01-01T00:00:00+00:00", "latest": 1},
+    # a Language nothing current has: the only COBOL file is superseded, so
+    # /tech/COBOL is as unknown as a typo. latest = 0, so no count moves.
+    {"Provider": "legacy.cbl", "hash": "h0",
+     "_repo_id": "github.com~acme~two", "_git_server": "github.com",
+     "_git_owner": "acme", "_git_repo": "two", "Filename": "legacy.cbl",
+     "Language": "COBOL", "tech_type": "|license|", "Lines": 300,
+     "committer_when": "2025-01-01T00:00:00+00:00", "latest": 0},
     # two current files, no AI, so the absent list has an order to check
     {"Provider": "LICENSE", "hash": "h1",
      "_repo_id": "github.com~acme~four", "_git_server": "github.com",
@@ -287,6 +294,25 @@ class TestRepoFilesByTag:
             assert column in row, f"{column} missing: {sorted(row)}"
 
 
+class TestHasTech:
+    """Whether any current file has a Language at all.
+
+    The drill-down needs this without pulling a repository list: there is no
+    vocabulary to validate a Language against, so "nothing has it" is the only
+    signal available that a name is a typo.
+    """
+
+    def test_true_for_a_language_a_current_file_has(self):
+        assert KospexQuery(kospex_db=_seed_db()).has_tech("Markdown") is True
+
+    def test_false_for_a_language_nothing_has(self):
+        assert KospexQuery(kospex_db=_seed_db()).has_tech("Fortran") is False
+
+    def test_false_when_only_a_superseded_file_has_it(self):
+        """The one COBOL file is latest = 0, so no current file is COBOL."""
+        assert KospexQuery(kospex_db=_seed_db()).has_tech("COBOL") is False
+
+
 class TestReposWithoutTech:
     """The same question for a Language: which repositories have no file of it.
 
@@ -373,10 +399,15 @@ class _FakeQuery:
         return 3
 
     def repos_with_tech(self, tech):
-        if self.reject:
-            raise ValueError(f"No files with technology '{tech}'")
         self.calls.append(("repos_with_tech", tech))
-        return list(self._REPOS)
+        # Unlike repos_with_tag(), this never raises -- there is no vocabulary
+        # to reject a Language against, so an unknown one is simply empty, and
+        # turning that into a 404 is the route's job.
+        return [] if self.reject else list(self._REPOS)
+
+    def has_tech(self, tech):
+        self.calls.append(("has_tech", tech))
+        return not self.reject
 
     def repos_without_tech(self, tech):
         if self.reject:
@@ -814,6 +845,7 @@ class TestTechnologyAbsentView:
 
         assert raised.value.status_code == 404
 
+
     def test_a_repo_id_takes_precedence(self, fake_query):
         fake = fake_query()
         request = self._tech_request(
@@ -845,6 +877,144 @@ class TestTechnologyAbsentView:
         assert ("repos_with_tech", "Python") in fake.calls
         assert ("repos_without_tech", "Python") not in fake.calls
 
+
+class TestUnknownTechnologyIsA404:
+    """A technology no current file has is a bad URL on every view.
+
+    The positive page used to return 200 with an empty table, which reads as
+    "no repositories have Fortran" when the truth is that this database has
+    never seen it -- the same confusion #293 exists to remove for tags.
+    """
+
+    _MESSAGE = "This is an unknown Technology or Language."
+
+    def _request(self, query_string=b""):
+        return Request({
+            "type": "http", "method": "GET", "path": "/tech/Fortran",
+            "headers": [], "query_string": query_string, "app": kweb2.app,
+        })
+
+    @pytest.mark.parametrize("query_string", [
+        b"",
+        b"absent=true",
+        b"repo_id=github.com~acme~one",
+    ])
+    def test_every_view_is_a_404(self, fake_query, query_string):
+        fake_query(reject=True)
+
+        with pytest.raises(HTTPException) as raised:
+            kweb2.repo_with_tech(self._request(query_string), tech="Fortran")
+
+        assert raised.value.status_code == 404
+
+    @pytest.mark.parametrize("query_string", [
+        b"",
+        b"absent=true",
+        b"repo_id=github.com~acme~one",
+    ])
+    def test_the_message_names_both_words_a_reader_might_have_used(
+            self, fake_query, query_string):
+        """`/tech/` serves both scc Languages and the Landscape's
+        "technology", so the message has to cover whichever the reader thought
+        they were asking for."""
+        fake_query(reject=True)
+
+        with pytest.raises(HTTPException) as raised:
+            kweb2.repo_with_tech(self._request(query_string), tech="Fortran")
+
+        assert raised.value.detail == self._MESSAGE
+
+    def test_the_drill_down_does_not_list_files_for_an_unknown_technology(
+            self, fake_query):
+        fake = fake_query(reject=True)
+
+        with pytest.raises(HTTPException):
+            kweb2.repo_with_tech(
+                self._request(b"repo_id=github.com~acme~one"), tech="Fortran")
+
+        assert not any(call[0] == "repo_files" for call in fake.calls)
+
+    def test_a_known_technology_is_unaffected(self, fake_query):
+        fake_query()
+
+        response = kweb2.repo_with_tech(
+            Request({"type": "http", "method": "GET", "path": "/tech/Python",
+                     "headers": [], "query_string": b"", "app": kweb2.app}),
+            tech="Python")
+
+        assert response.status_code == 200
+
+
+class TestThe404PageShowsWhy:
+    """The 404 template has an `error` callout that nothing ever filled.
+
+    Every route's `detail` was discarded by the handler, so `/tech/Fortran`,
+    `/tag/NotATag` and a plain mistyped path all rendered the identical
+    "Oops! Page not found." -- and a reader could not tell a bad tag from a
+    bad URL.
+    """
+
+    def _page(self, detail):
+        exc = HTTPException(status_code=404, detail=detail)
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tech/Fortran",
+            "headers": [], "query_string": b"", "app": kweb2.app,
+        })
+        import asyncio
+        response = asyncio.run(kweb2.custom_404_handler(request, exc))
+        body = response.body.decode()
+        # From <body> on: the <title> is "404 Not Found - Kospex Web", which
+        # would satisfy an assertion about the callout's text.
+        return response.status_code, _visible(body[body.index("<body"):])
+
+    def test_shows_the_routes_own_message(self):
+        status, body = self._page("This is an unknown Technology or Language.")
+
+        assert status == 404
+        assert "This is an unknown Technology or Language." in body
+
+    def test_still_shows_the_generic_explanation(self):
+        """The callout adds to the page, it does not replace it."""
+        _, body = self._page("This is an unknown Tag.")
+
+        assert "Oops! Page not found." in body
+        assert "This is an unknown Tag." in body
+
+    @pytest.mark.parametrize("detail", [
+        "Not Found",      # starlette's default for an unmatched route
+        "Page not found",  # the catch-all route's own detail
+        "page not found",
+        "",
+        None,
+    ])
+    def test_says_nothing_extra_when_the_detail_restates_the_heading(
+            self, detail):
+        """The callout is for information the heading does not already give.
+
+        The page already says "Oops! Page not found." in 3xl bold; repeating
+        it in an orange warning box below reads as a second, different
+        problem.
+        """
+        _, body = self._page(detail)
+
+        assert "Oops! Page not found." in body
+        # Once, in the heading -- a second occurrence is the callout saying it
+        # again.
+        assert body.count("not found") == 1, (
+            f"the callout restates the heading: {body}")
+        assert "Not Found" not in body
+
+    @pytest.mark.parametrize("detail", [
+        "Repository not in the kospex database: github.com~acme~one",
+        "Organisation not found",
+        "Summary pages are per repo, org or server.",
+    ])
+    def test_keeps_the_details_other_routes_already_wrote(self, detail):
+        """Those routes have always set a useful detail and the handler has
+        always thrown it away; the filter must not swallow them too."""
+        _, body = self._page(detail)
+
+        assert detail in body
 
 class TestPositiveTechnologyViewMentionsAbsent:
 

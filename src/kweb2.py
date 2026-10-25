@@ -188,9 +188,28 @@ def download_csv_fastapi(dict_data, filename=None):
 # Custom 404 handler
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, exc: HTTPException):
-    """Custom 404 error handler that serves the 404.html template"""
+    """Custom 404 error handler that serves the 404.html template.
+
+    Passes the route's own `detail` through to the template's error callout,
+    which nothing filled before: /tech/Fortran, /tag/NotATag and a plain
+    mistyped path all rendered the identical "Oops! Page not found.", so a
+    reader could not tell a name this estate does not have from a bad URL.
+
+    A detail that only restates the heading is dropped: starlette's default
+    for an unmatched route is the bare string "Not Found", and the catch-all
+    route's is "Page not found", both of which the page already says in 3xl
+    bold above. Repeating it in an orange warning box reads as a second,
+    different problem. Every other route's detail is information the heading
+    does not give -- "Repository not in the kospex database: ..." -- and has
+    been discarded until now.
+    """
+    generic = ("not found", "page not found")
+    detail = getattr(exc, "detail", None)
+    error = detail if detail and detail.strip().lower() not in generic else None
+
     try:
-        return templates.TemplateResponse(request, "404.html", status_code=404)
+        return templates.TemplateResponse(
+            request, "404.html", {"error": error}, status_code=404)
     except Exception as e:
         # Fallback to basic 404 if template fails
         logger.error(f"Error rendering 404 template: {e}")
@@ -1331,6 +1350,8 @@ def repo_with_tech(request: Request, tech: str):
             if repo_id:
                 # Files in one repository that lack the technology is not a
                 # question with an answer, so the drill-down wins.
+                if not kospex.has_tech(tech):
+                    raise ValueError(f"no current file has '{tech}'")
                 repos_with_tech = kospex.repo_files(tech, repo_id=repo_id)
                 template = "repo_files.html"
             elif absent:
@@ -1338,19 +1359,25 @@ def repo_with_tech(request: Request, tech: str):
                 universe = kospex.count_repos_with_file_metadata()
             else:
                 repos_with_tech = kospex.repos_with_tech(tech)
+                if not repos_with_tech:
+                    # No current file anywhere has it, so this is a bad URL,
+                    # not an estate with none of it. A 200 with an empty table
+                    # reads as "no repositories have Fortran" -- the confusion
+                    # #293 exists to remove, and the same call /tag/ makes.
+                    raise ValueError(f"no current file has '{tech}'")
                 # The other side of the estate, as on /tag/: how many
                 # repositories we have looked at and found no file of this
                 # technology in.
                 universe = kospex.count_repos_with_file_metadata()
                 absent_count = max(universe - len(repos_with_tech), 0)
         except ValueError as error:
-            # repos_without_tech() rejects a technology no current file has.
-            # Its complement is every repository, so rendering it would be a
-            # confident list of repositories "missing" something that does not
-            # exist here.
+            # Both words, because /tech/ serves scc's `Language` and what the
+            # Landscape pages call a technology -- a reader cannot be expected
+            # to know which one they were asking for.
             logger.info(f"Unknown technology requested: {tech} ({error})")
             raise HTTPException(
-                status_code=404, detail=f"Unknown technology: {tech}")
+                status_code=404,
+                detail="This is an unknown Technology or Language.")
 
         return templates.TemplateResponse(
             request, template,
@@ -1450,7 +1477,8 @@ def repo_with_tag(request: Request, tag: str):
             # repositories have this tag", which is the confusion this route
             # exists to remove.
             logger.info(f"Unknown tag requested: {tag} ({error})")
-            raise HTTPException(status_code=404, detail=f"Unknown tag: {tag}")
+            raise HTTPException(
+                status_code=404, detail="This is an unknown Tag.")
 
         return templates.TemplateResponse(
             request, template,

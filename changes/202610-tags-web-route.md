@@ -28,6 +28,7 @@ both `AI`. The two columns carry different information.
 /tag/AI?repo_id=<repo_id>            that tag's files within one repository
 /tag/C%23                            '#' must be percent-encoded or it never arrives
 /tech/Python?absent=true             the same negative view for a Language
+/tech/Fortran                        404 -- nothing here has ever been Fortran
 ```
 
 Unknown tags are a **404**, not an empty table — see below.
@@ -99,6 +100,8 @@ repositories respectively — a substring match would have conflated them.
   same template variables and supports the same `?absent=true`;
   `_absent_requested()` is shared by both
 - `src/templates/tags.html` — the tag index
+- `src/templates/404.html` — unchanged; its `error` callout simply gets filled
+  now
 - `src/templates/repos-tech.html` — the heading says `Tag:` or `Technology:`
   from `tech_kind`; the "See Files" link comes from `tech_url` instead of being
   hardcoded to `/tech/`; a line under the heading gives the repository count;
@@ -213,19 +216,64 @@ The universe is the same count for both, which is not a coincidence worth
 glossing over: `Language` and `tech_type` are columns of the *same* table, so
 "repositories we have looked at" means exactly the same thing on either side.
 
-**A technology no current file has is a 404 on the absent view**, via a
-`ValueError` from `repos_without_tech()`. There is no vocabulary to validate a
-Language against — unlike a tag — so an unseen name cannot be told apart from a
-typo, and its complement is *every* repository. Rendering that would be a
+**A technology no current file has is a 404 on every view** — the listing, the
+absent view and the file drill-down. There is no vocabulary to validate a
+Language against, unlike a tag: `scc` reports whatever it reports, so "nothing
+current has it" is the only available signal that a name is a typo. And its
+complement is *every* repository, so the absent view would otherwise render a
 confident list of repositories "missing" something this database has never
-seen. `/tech/Fortran?absent=true` is therefore a 404.
+seen.
 
-**The positive `/tech/Fortran` still returns 200 with an empty table**, which is
-the same reads-as-"nobody has this" problem #293 exists to remove. It is left
-alone deliberately: changing it is a behaviour change to a shipped endpoint
-rather than part of adding the negative view, and `/tech/` links are generated
-from Languages already in the data, so a typo there is rare. Worth its own
-decision.
+The positive view previously returned **200 with an empty table**, which reads
+as "no repositories have Fortran" when the truth is that nothing here has ever
+been Fortran — the same confusion #293 exists to remove for tags. All three
+paths now agree.
+
+Each path gets the answer from what it already needed, so only the drill-down
+pays for a query it would not otherwise run:
+
+| path | how it knows | measured |
+|---|---|---|
+| listing | `repos_with_tech()` came back empty | free |
+| absent | `repos_without_tech()` raises `ValueError` | free |
+| drill-down | `has_tech()` — `LIMIT 1`, not a count | 3 ms present, 52 ms absent |
+
+`has_tech()` uses `LIMIT 1` rather than `count(*)` precisely so the common case
+is nearly free: a Language that is present stops at the first row, and only a
+name nothing has pays for the scan — and that one ends in a 404 anyway.
+
+One side effect worth knowing: `Language = ?` has always been case-sensitive,
+so `/tech/python` is now a 404 where it used to be a 200 with an empty table.
+Both say "wrong URL"; the 404 says it legibly.
+
+## The 404 page now says why
+
+`404.html` has had an `error` callout since it was written and **nothing ever
+filled it**. The handler discarded `exc.detail` entirely, so `/tech/Fortran`,
+`/tag/NotATag`, `/repo/nope` and a plain mistyped path all rendered the
+identical "Oops! Page not found." — a reader could not tell a name this estate
+does not have from a URL that was never a page.
+
+The handler now passes the detail through, which is why several routes' long-
+dead messages become visible at once: "Repository not in the kospex database:
+…", "Organisation not found", "Summary pages are per repo, org or server."
+
+The two routes this change is about say:
+
+> This is an unknown Technology or Language.
+
+> This is an unknown Tag.
+
+"Technology or Language" names both words a reader might have had in mind:
+`/tech/` serves `scc`'s `Language` column, while the Landscape pages call the
+same thing a technology.
+
+**A detail that only restates the heading is dropped.** Starlette's default for
+an unmatched route is the bare string `Not Found`, and the catch-all route's is
+`Page not found` — the page already says that in 3xl bold, and repeating it in
+an orange warning box reads as a second, different problem. Tests cover both
+directions: the generic strings are suppressed, and the informative details
+other routes already wrote still render.
 
 Measured on a local ~370-repo database, present + absent equals the universe
 exactly with no repository in both, for every Language tried: `Python`
