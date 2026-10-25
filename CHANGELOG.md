@@ -387,6 +387,14 @@ was relying on the old, wrong success.
   only the current vocabulary
   ([#317](https://github.com/kospex/kospex/issues/317)).
 
+- **kweb's package check is disabled: `/package-check/` and
+  `/package-check/upload` are commented out and now return 404.** The page let
+  you drop a single dependency file to analyse it, but nothing linked to it and
+  it was not in use. It will be refactored before it returns. The route code,
+  `templates/package_check.html` and its status classifier remain in the source,
+  and the route is removed from the page list in `docs/kweb/index.md`. To check a
+  file, sync the repo that contains it and use `/dependencies/`.
+
 - **The DuckDB proof of concept is parked: `kgit sync-repo` and
   `kospex init-duckdb` are commented out, and `duckdb` is no longer a
   dependency.** Both commands were labelled experimental, and nothing in
@@ -1018,6 +1026,27 @@ was relying on the old, wrong success.
   have matched `AxB`.
 
 ### Security
+
+- **kweb's web security setup is simplified for running on localhost.** kweb
+  listens on 127.0.0.1 and its pages only call kweb itself, so it no longer
+  sends CORS headers. The previous `Access-Control-Allow-Origin: *` allowed
+  other websites to read kweb's responses, and kweb never needed it.
+
+  kweb also now checks the `Host` header and answers only to `127.0.0.1` and
+  `localhost` (any port), returning `400 Invalid host header` otherwise
+  (CWE-346). Binding to 127.0.0.1 limits who can connect, and this adds a
+  check on the name a request uses. That stops a website reaching kweb by
+  pointing its own hostname at 127.0.0.1 (DNS rebinding).
+
+  To reach kweb by another name or IP, list them in `KOSPEX_WEB_ALLOWED_HOSTS`
+  as comma-separated values, set in the environment or in `kospex.env`. This
+  applies from another machine, through a reverse proxy that forwards the
+  original `Host`, or from another container by its Compose service name.
+  Wildcards take the form `*.example.com`. A malformed pattern is skipped with
+  a warning, and `*` turns the check off and logs that it has. In Docker,
+  browsing to a published port on `localhost` needs no setting. Publish it as
+  `-p 127.0.0.1:8000:8000`, because a plain `-p 8000:8000` exposes kweb on
+  every interface of the host. `http://[::1]:8000` is refused; use `localhost`.
 
 - **Values from git metadata are printed literally, not parsed as console
   markup** (CWE-150). The CLI's rich consoles parsed every string they printed,

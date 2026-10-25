@@ -110,7 +110,7 @@ def client():
     from fastapi.testclient import TestClient
     from kweb2 import app
 
-    return TestClient(app)
+    return TestClient(app, base_url="http://localhost")
 
 
 def test_repo_route_404_on_malformed_id(client):
