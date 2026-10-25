@@ -258,15 +258,32 @@ The handler now passes the detail through, which is why several routes' long-
 dead messages become visible at once: "Repository not in the kospex database:
 …", "Organisation not found", "Summary pages are per repo, org or server."
 
-The two routes this change is about say:
+The two routes this change is about name what was asked for:
 
-> This is an unknown Technology or Language.
+> Fortran is an unknown Technology or Language.
 
-> This is an unknown Tag.
+> NotATag is an unknown Tag.
 
 "Technology or Language" names both words a reader might have had in mind:
 `/tech/` serves `scc`'s `Language` column, while the Landscape pages call the
-same thing a technology.
+same thing a technology. The name itself is in the message because the URL may
+have come from a paste or a long link whose end is not visible, and the address
+bar shows the percent-encoded form (`C%23`, `Azure%20DevOps`) rather than what
+was meant.
+
+The callout is centred — `justify-center` on its flex row and `text-center` on
+the sentence — because the rest of the page is centred and a left-aligned icon
+and sentence in the middle of it read as a misplaced block. Both classes are
+already in the compiled `tailwind.css`, so no `npm run build-css`.
+
+**The name comes from the URL path, so the escaping is tested, not assumed.**
+Reflecting a path segment into a page is the reflected-markup injection shape
+(CWE-79). Jinja autoescapes it — `Jinja2Templates` builds its environment with
+`select_autoescape()`, which covers `.html` — and a test renders a payload
+through the handler and asserts the markup comes back as entities rather than
+tags. Confirmed against the running server too: `"><img src=x onerror=...>`
+renders as `&#34;&gt;&lt;img src=x onerror=...&gt;`. The message is plain text
+in a `<p>`, never an attribute or an `href`.
 
 **A detail that only restates the heading is dropped.** Starlette's default for
 an unmatched route is the bare string `Not Found`, and the catch-all route's is

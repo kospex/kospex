@@ -886,7 +886,7 @@ class TestUnknownTechnologyIsA404:
     never seen it -- the same confusion #293 exists to remove for tags.
     """
 
-    _MESSAGE = "This is an unknown Technology or Language."
+    _MESSAGE = "Fortran is an unknown Technology or Language."
 
     def _request(self, query_string=b""):
         return Request({
@@ -916,7 +916,8 @@ class TestUnknownTechnologyIsA404:
             self, fake_query, query_string):
         """`/tech/` serves both scc Languages and the Landscape's
         "technology", so the message has to cover whichever the reader thought
-        they were asking for."""
+        they were asking for -- and names what they asked for, since the URL
+        may have come from a paste they cannot see the end of."""
         fake_query(reject=True)
 
         with pytest.raises(HTTPException) as raised:
@@ -943,6 +944,21 @@ class TestUnknownTechnologyIsA404:
             tech="Python")
 
         assert response.status_code == 200
+
+
+class TestUnknownTagMessage:
+
+    def test_names_the_tag_that_was_asked_for(self, fake_query):
+        fake_query(reject=True)
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tag/NotATag",
+            "headers": [], "query_string": b"", "app": kweb2.app,
+        })
+
+        with pytest.raises(HTTPException) as raised:
+            kweb2.repo_with_tag(request, tag="NotATag")
+
+        assert raised.value.detail == "NotATag is an unknown Tag."
 
 
 class TestThe404PageShowsWhy:
@@ -1015,6 +1031,61 @@ class TestThe404PageShowsWhy:
         _, body = self._page(detail)
 
         assert detail in body
+
+    def test_centres_the_message_in_the_callout(self):
+        """The rest of the page is centred; a left-aligned icon and sentence
+        in the middle of it read as a misplaced block."""
+        exc = HTTPException(status_code=404, detail="Fortran is unknown.")
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tech/Fortran",
+            "headers": [], "query_string": b"", "app": kweb2.app,
+        })
+        import asyncio
+        raw = asyncio.run(
+            kweb2.custom_404_handler(request, exc)).body.decode()
+
+        callout = re.search(r'<div class="bg-orange-100[^"]*".*?</div>\s*</div>',
+                            raw, re.S)
+        assert callout, "no error callout rendered"
+        assert "justify-center" in callout.group(0)
+        assert "text-center" in callout.group(0)
+
+
+class TestTheMessageDoesNotTrustTheUrl:
+    """The name in the message comes from the URL path.
+
+    Reflecting a path segment into the page is the classic reflected-markup
+    injection shape (CWE-79), so the escaping is worth a test rather than an
+    assumption about the template engine's defaults.
+    """
+
+    _PAYLOAD = '<script>alert(1)</script>'
+
+    def _page_for(self, tech):
+        fake = _FakeQuery(reject=True)
+        request = Request({
+            "type": "http", "method": "GET", "path": f"/tech/{tech}",
+            "headers": [], "query_string": b"", "app": kweb2.app,
+        })
+        import asyncio
+        import pytest as _pytest
+        with _pytest.MonkeyPatch.context() as mp:
+            mp.setattr(kweb2, "KospexQuery", lambda *a, **k: fake)
+            with pytest.raises(HTTPException) as raised:
+                kweb2.repo_with_tech(request, tech=tech)
+        return asyncio.run(
+            kweb2.custom_404_handler(request, raised.value)).body.decode()
+
+    def test_markup_in_the_name_is_escaped(self):
+        body = self._page_for(self._PAYLOAD)
+
+        assert self._PAYLOAD not in body
+        assert "&lt;script&gt;" in body
+
+    def test_the_name_is_still_readable_once_escaped(self):
+        body = self._page_for("C++")
+
+        assert "C++ is an unknown Technology or Language." in body
 
 class TestPositiveTechnologyViewMentionsAbsent:
 

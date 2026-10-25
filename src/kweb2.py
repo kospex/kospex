@@ -1375,9 +1375,13 @@ def repo_with_tech(request: Request, tech: str):
             # Landscape pages call a technology -- a reader cannot be expected
             # to know which one they were asking for.
             logger.info(f"Unknown technology requested: {tech} ({error})")
+            # Names what was asked for: the URL may have come from a paste or
+            # a long link whose end the reader cannot see, and the browser
+            # shows the percent-encoded form. Jinja autoescapes it into the
+            # template, which the tests assert rather than assume.
             raise HTTPException(
                 status_code=404,
-                detail="This is an unknown Technology or Language.")
+                detail=f"{tech} is an unknown Technology or Language.")
 
         return templates.TemplateResponse(
             request, template,
@@ -1478,7 +1482,7 @@ def repo_with_tag(request: Request, tag: str):
             # exists to remove.
             logger.info(f"Unknown tag requested: {tag} ({error})")
             raise HTTPException(
-                status_code=404, detail="This is an unknown Tag.")
+                status_code=404, detail=f"{tag} is an unknown Tag.")
 
         return templates.TemplateResponse(
             request, template,
