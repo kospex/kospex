@@ -660,6 +660,14 @@ class TestAbsentView:
 
         assert "1 repository has no files with this tag" in body
 
+    def test_the_title_itself_says_the_tag_is_not_present(self, fake_query):
+        """The sentence below carries it, but the heading is what a reader
+        scans -- and "Tag: AI" over a list of repositories reads as the
+        repositories that have it."""
+        body = _visible(self._body(fake_query).body.decode())
+
+        assert "Tag: AI is not present" in body
+
     def test_reports_the_denominator(self, fake_query):
         """Without the universe the number is unreadable: 1 of how many?
 
@@ -761,6 +769,13 @@ class TestPositiveViewMentionsAbsent:
         assert ("2 repositories with this tag, "
                 "1 repository does not have files with this tag") in _visible(body)
 
+    def test_the_title_does_not_say_not_present(self, fake_query):
+        """These repositories do have the tag."""
+        body = _visible(kweb2.repo_with_tag(_request(), tag="AI").body.decode())
+
+        assert "Tag: AI" in body
+        assert "is not present" not in body
+
     def test_does_not_explain_the_files_column(self, fake_query):
         """Here # Files *is* the tagged-file count, so the absent page's
         explanation of it would be wrong."""
@@ -820,6 +835,13 @@ class TestTechnologyAbsentView:
 
         assert "1 repository has no files with this technology" in _text(
             body.decode())
+
+    def test_the_title_itself_says_the_technology_is_not_present(
+            self, fake_query):
+        fake_query()
+        body = kweb2.repo_with_tech(self._tech_request(), tech="Python").body
+
+        assert "Technology: Python is not present" in _visible(body.decode())
 
     def test_reports_the_same_denominator_as_the_tag_page(self, fake_query):
         fake_query()
@@ -1105,6 +1127,12 @@ class TestPositiveTechnologyViewMentionsAbsent:
 
     def test_links_to_the_absent_listing(self, fake_query):
         assert 'href="/tech/Python?absent=true"' in self._body(fake_query)
+
+    def test_the_title_does_not_say_not_present(self, fake_query):
+        body = _visible(self._body(fake_query))
+
+        assert "Technology: Python" in body
+        assert "is not present" not in body
 
 
 class TestVocabulary:
