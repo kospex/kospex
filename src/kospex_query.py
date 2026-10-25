@@ -352,6 +352,29 @@ class KospexQuery:
         return [row for row in self.repos_with_file_metadata()
                 if row["_repo_id"] not in tagged]
 
+    def repos_without_tech(self, tech):
+        """Repositories with current file metadata and no file of that Language.
+
+        The Language counterpart of repos_without_tag(), sharing the same
+        universe -- `Language` and `tech_type` are columns of the same table,
+        so "repositories we have looked at" means the same thing for both.
+
+        Raises ValueError when no current file anywhere has the Language.
+        Unlike a tag there is no vocabulary to validate against, so an unseen
+        name is indistinguishable from a typo -- and its complement is *every*
+        repository, which would render a confident list of repositories
+        "missing" something that does not exist. Callers should treat it as a
+        bad request.
+        """
+        present = {row["_repo_id"] for row in self.repos_with_tech(tech)}
+
+        if not present:
+            raise ValueError(
+                f"No current file has the technology '{tech}'")
+
+        return [row for row in self.repos_with_file_metadata()
+                if row["_repo_id"] not in present]
+
     def repo_files_by_tag(self, tag, repo_id=None):
         """Grab the files carrying a panopticas tag, optionally in one repo.
 

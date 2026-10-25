@@ -287,6 +287,51 @@ class TestRepoFilesByTag:
             assert column in row, f"{column} missing: {sorted(row)}"
 
 
+class TestReposWithoutTech:
+    """The same question for a Language: which repositories have no file of it.
+
+    Lives here because it shares the universe (repositories with current file
+    metadata) and the template with the tag side; the wording and the
+    denominator have to stay identical between the two.
+    """
+
+    def test_lists_the_repositories_with_no_file_of_that_language(self):
+        rows = KospexQuery(kospex_db=_seed_db()).repos_without_tech("Markdown")
+
+        assert {r["_repo_id"] for r in rows} == {"github.com~acme~two",
+                                                 "github.com~acme~three"}
+
+    def test_a_superseded_file_does_not_count_as_having_the_language(self):
+        """Repo three's only Markdown file is latest = 0, so it has none."""
+        rows = KospexQuery(kospex_db=_seed_db()).repos_without_tech("Markdown")
+
+        assert "github.com~acme~three" in {r["_repo_id"] for r in rows}
+
+    def test_the_count_is_the_repositorys_total_files(self):
+        """Not files of that Language, which is zero on every row -- the total,
+        as the context for whether the gap matters."""
+        rows = KospexQuery(kospex_db=_seed_db()).repos_without_tech("Text")
+
+        assert [(r["_repo_id"], r["count"]) for r in rows] == [
+            ("github.com~acme~one", 4), ("github.com~acme~two", 1)]
+
+    def test_a_technology_with_no_files_anywhere_is_rejected(self):
+        """Its complement is every repository, which for a typo is a
+        confidently wrong answer. The route turns this into a 404."""
+        with pytest.raises(ValueError):
+            KospexQuery(kospex_db=_seed_db()).repos_without_tech("Fortran")
+
+    def test_present_and_absent_cover_every_repo_we_have_looked_at(self):
+        kospex = KospexQuery(kospex_db=_seed_db())
+
+        present = {r["_repo_id"] for r in kospex.repos_with_tech("Markdown")}
+        absent = {r["_repo_id"] for r in kospex.repos_without_tech("Markdown")}
+        universe = {r["_repo_id"] for r in kospex.repos_with_file_metadata()}
+
+        assert present | absent == universe
+        assert not present & absent
+
+
 class _FakeQuery:
     """Stands in for KospexQuery so the route can be driven without a database.
 
@@ -328,8 +373,16 @@ class _FakeQuery:
         return 3
 
     def repos_with_tech(self, tech):
+        if self.reject:
+            raise ValueError(f"No files with technology '{tech}'")
         self.calls.append(("repos_with_tech", tech))
         return list(self._REPOS)
+
+    def repos_without_tech(self, tech):
+        if self.reject:
+            raise ValueError(f"No files with technology '{tech}'")
+        self.calls.append(("repos_without_tech", tech))
+        return list(self._ABSENT)
 
     def repo_files(self, tech=None, repo_id=None):
         self.calls.append(("repo_files", tech, repo_id))
@@ -513,20 +566,31 @@ class TestRenderedListing:
 
         assert "2 repositories with this technology" in _text(body)
 
-    def test_the_technology_page_has_no_dangling_absent_clause(self, fake_query):
-        """/tech/ passes no absent_count, and Jinja's Undefined is `is not
-        none`, so a bare `is not none` guard renders the second half of the
-        sentence with no number in it."""
+    @pytest.mark.parametrize("path,handler,kind", [
+        ("/tag/AI", "repo_with_tag", "tag"),
+        ("/tech/Python", "repo_with_tech", "technology"),
+    ])
+    def test_the_absent_clause_always_carries_a_count(
+            self, fake_query, path, handler, kind):
+        """The second half of the sentence must never render empty.
+
+        Jinja's Undefined satisfies `is not none`, so a route that does not
+        set absent_count renders "96 repositories with this technology,
+        repositories do not have files with this technology" -- which /tech/
+        did until the guard tested `is defined` first.
+        """
         fake_query()
         request = Request({
-            "type": "http", "method": "GET", "path": "/tech/Python",
+            "type": "http", "method": "GET", "path": path,
             "headers": [], "query_string": b"", "app": kweb2.app,
         })
+        name = path.rsplit("/", 1)[1]
 
-        body = _visible(kweb2.repo_with_tech(request, tech="Python").body.decode())
+        body = _visible(getattr(kweb2, handler)(request, **{
+            "tag" if kind == "tag" else "tech": name}).body.decode())
 
-        assert "2 repositories with this technology" in body
-        assert "do not have files" not in body
+        assert not re.search(r",\s*repositor(y|ies) do(es)? not have", body), (
+            f"the count is missing from the absent clause: {body[:400]}")
 
 
 class TestAbsentView:
@@ -573,7 +637,7 @@ class TestAbsentView:
         """
         body = _text(self._body(fake_query).body.decode())
 
-        assert "of 3 repositories with file metadata" in body
+        assert "of 3 repositories that have file metadata" in body
 
     def test_says_what_the_files_column_counts(self, fake_query):
         """Every row has zero files with the tag, so the count beside it has
@@ -688,6 +752,118 @@ class TestPositiveViewMentionsAbsent:
         body = kweb2.repo_with_tag(_request(), tag="AI").body.decode()
 
         assert "3 repositories do not have files with this tag" in _visible(body)
+
+
+class TestTechnologyAbsentView:
+    """`/tech/{tech}?absent=true`: the same question for a Language.
+
+    The tag side answers "who has no Dependabot file"; this answers "who has
+    no Dockerfile, no tests in this language". Same template, same universe,
+    same wording -- so the differences are what is worth asserting.
+    """
+
+    def _tech_request(self, query_string=b"absent=true"):
+        return Request({
+            "type": "http", "method": "GET", "path": "/tech/Python",
+            "headers": [], "query_string": query_string, "app": kweb2.app,
+        })
+
+    def test_lists_the_repositories_without_the_technology(self, fake_query):
+        fake = fake_query()
+
+        response = kweb2.repo_with_tech(self._tech_request(), tech="Python")
+
+        assert response.status_code == 200
+        assert ("repos_without_tech", "Python") in fake.calls
+
+    def test_renders_the_repo_listing_template(self, fake_query):
+        fake_query()
+
+        response = kweb2.repo_with_tech(self._tech_request(), tech="Python")
+
+        assert response.template.name == "repos-tech.html"
+
+    def test_the_heading_says_these_lack_the_technology(self, fake_query):
+        fake_query()
+        body = kweb2.repo_with_tech(self._tech_request(), tech="Python").body
+
+        assert "1 repository has no files with this technology" in _text(
+            body.decode())
+
+    def test_reports_the_same_denominator_as_the_tag_page(self, fake_query):
+        fake_query()
+        body = kweb2.repo_with_tech(self._tech_request(), tech="Python").body
+
+        assert "of 3 repositories that have file metadata" in _text(
+            body.decode())
+
+    def test_offers_no_see_files_link(self, fake_query):
+        fake_query()
+        body = kweb2.repo_with_tech(self._tech_request(), tech="Python").body
+
+        assert "See Files" not in body.decode()
+
+    def test_a_technology_with_no_files_anywhere_is_a_404(self, fake_query):
+        """Its complement is every repository, so a typo would render a
+        confident list of repositories "missing" something that does not
+        exist."""
+        fake_query(reject=True)
+
+        with pytest.raises(HTTPException) as raised:
+            kweb2.repo_with_tech(self._tech_request(), tech="Fortran")
+
+        assert raised.value.status_code == 404
+
+    def test_a_repo_id_takes_precedence(self, fake_query):
+        fake = fake_query()
+        request = self._tech_request(
+            b"absent=true&repo_id=github.com~acme~one")
+
+        response = kweb2.repo_with_tech(request, tech="Python")
+
+        assert response.template.name == "repo_files.html"
+        assert ("repos_without_tech", "Python") not in fake.calls
+
+    @pytest.mark.parametrize("query_string", [b"absent=true", b"absent=1",
+                                              b"absent=yes", b"absent="])
+    def test_the_usual_spellings_of_yes_are_accepted(
+            self, fake_query, query_string):
+        fake = fake_query()
+
+        kweb2.repo_with_tech(self._tech_request(query_string), tech="Python")
+
+        assert ("repos_without_tech", "Python") in fake.calls
+
+    @pytest.mark.parametrize("query_string", [b"absent=false", b"absent=0",
+                                              b"absent=no", b""])
+    def test_not_asking_for_absent_gives_the_positive_listing(
+            self, fake_query, query_string):
+        fake = fake_query()
+
+        kweb2.repo_with_tech(self._tech_request(query_string), tech="Python")
+
+        assert ("repos_with_tech", "Python") in fake.calls
+        assert ("repos_without_tech", "Python") not in fake.calls
+
+
+class TestPositiveTechnologyViewMentionsAbsent:
+
+    def _body(self, fake_query):
+        fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tech/Python",
+            "headers": [], "query_string": b"", "app": kweb2.app,
+        })
+        return kweb2.repo_with_tech(request, tech="Python").body.decode()
+
+    def test_says_how_many_repositories_lack_the_technology(self, fake_query):
+        body = _visible(self._body(fake_query))
+
+        assert ("2 repositories with this technology, "
+                "1 repository does not have files with this technology") in body
+
+    def test_links_to_the_absent_listing(self, fake_query):
+        assert 'href="/tech/Python?absent=true"' in self._body(fake_query)
 
 
 class TestVocabulary:

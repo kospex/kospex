@@ -1302,6 +1302,18 @@ def tech_change(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _absent_requested(request: Request) -> bool:
+    """Whether the caller asked for the negative view: `?absent=true`.
+
+    A bare `?absent` is what a person types, so its empty value counts as yes;
+    an explicit false/0/no counts as no. Shared by /tag/ and /tech/ so the two
+    cannot drift on which spellings they accept.
+    """
+    raw = request.query_params.get("absent")
+
+    return raw is not None and raw.lower() not in ("false", "0", "no")
+
+
 @app.get("/tech/{tech}", response_class=HTMLResponse)
 def repo_with_tech(request: Request, tech: str):
     """Show repositories with the given technology"""
@@ -1309,14 +1321,36 @@ def repo_with_tech(request: Request, tech: str):
         logger.info(f"Tech filtering page requested for technology: {tech}")
 
         repo_id = request.query_params.get("repo_id")
+        absent = _absent_requested(request)
         kospex = KospexQuery()
         template = "repos-tech.html"
+        absent_count = None
+        universe = None
 
-        if repo_id:
-            repos_with_tech = kospex.repo_files(tech, repo_id=repo_id)
-            template = "repo_files.html"
-        else:
-            repos_with_tech = kospex.repos_with_tech(tech)
+        try:
+            if repo_id:
+                # Files in one repository that lack the technology is not a
+                # question with an answer, so the drill-down wins.
+                repos_with_tech = kospex.repo_files(tech, repo_id=repo_id)
+                template = "repo_files.html"
+            elif absent:
+                repos_with_tech = kospex.repos_without_tech(tech)
+                universe = kospex.count_repos_with_file_metadata()
+            else:
+                repos_with_tech = kospex.repos_with_tech(tech)
+                # The other side of the estate, as on /tag/: how many
+                # repositories we have looked at and found no file of this
+                # technology in.
+                universe = kospex.count_repos_with_file_metadata()
+                absent_count = max(universe - len(repos_with_tech), 0)
+        except ValueError as error:
+            # repos_without_tech() rejects a technology no current file has.
+            # Its complement is every repository, so rendering it would be a
+            # confident list of repositories "missing" something that does not
+            # exist here.
+            logger.info(f"Unknown technology requested: {tech} ({error})")
+            raise HTTPException(
+                status_code=404, detail=f"Unknown technology: {tech}")
 
         return templates.TemplateResponse(
             request, template,
@@ -1325,6 +1359,10 @@ def repo_with_tech(request: Request, tech: str):
              # Only the repo listing counts repositories; the file listing for
              # a single repo is a different template.
              "repo_count": None if repo_id else len(repos_with_tech),
+             "absent_view": absent and not repo_id,
+             "absent_count": absent_count,
+             "absent_url": f"/tech/{quote(tech, safe='')}?absent=true",
+             "universe_count": universe,
              "page": {}},
         )
     except HTTPException:
@@ -1383,11 +1421,7 @@ def repo_with_tag(request: Request, tag: str):
         logger.info(f"Tag filtering page requested for tag: {tag}")
 
         repo_id = request.query_params.get("repo_id")
-        # A bare `?absent` is what a person types, so its empty value counts as
-        # yes; an explicit false/0/no counts as no.
-        raw_absent = request.query_params.get("absent")
-        absent = (raw_absent is not None
-                  and raw_absent.lower() not in ("false", "0", "no"))
+        absent = _absent_requested(request)
         kospex = KospexQuery()
         template = "repos-tech.html"
         absent_count = None

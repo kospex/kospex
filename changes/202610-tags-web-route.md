@@ -27,6 +27,7 @@ both `AI`. The two columns carry different information.
 /tag/AI?absent=true                  repositories with NO file carrying the tag
 /tag/AI?repo_id=<repo_id>            that tag's files within one repository
 /tag/C%23                            '#' must be percent-encoded or it never arrives
+/tech/Python?absent=true             the same negative view for a Language
 ```
 
 Unknown tags are a **404**, not an empty table — see below.
@@ -91,9 +92,12 @@ repositories respectively — a substring match would have conflated them.
 
 ### Files changed
 
-- `src/kospex_query.py` — `repos_with_tag()`, `repo_files_by_tag()`
+- `src/kospex_query.py` — `repos_with_tag()`, `repo_files_by_tag()`,
+  `repos_without_tag()`, `repos_without_tech()`, `repos_with_file_metadata()`,
+  `count_repos_with_file_metadata()`
 - `src/kweb2.py` — the `/tag/{tag}` and `/tags/` routes; `/tech/` now passes the
-  same template variables
+  same template variables and supports the same `?absent=true`;
+  `_absent_requested()` is shared by both
 - `src/templates/tags.html` — the tag index
 - `src/templates/repos-tech.html` — the heading says `Tag:` or `Technology:`
   from `tech_kind`; the "See Files" link comes from `tech_url` instead of being
@@ -151,8 +155,8 @@ view:
 
 and the absent page states its denominator, so the number is readable:
 
-> 252 repositories have no files with this tag, of 374 repositories with file
-> metadata
+> 252 repositories have no files with this tag, of 374 repositories that have
+> file metadata
 >
 > The '# Files' column shows the total number of all file types and tags in
 > this repository.
@@ -194,7 +198,38 @@ does not.
 the tag is not a question with an answer.
 
 `?absent`, `?absent=true`, `?absent=1` and `?absent=yes` all mean yes — a bare
-flag is what a person types — while `false`, `0` and `no` mean no.
+flag is what a person types — while `false`, `0` and `no` mean no. One helper,
+`_absent_requested()`, decides this for both routes so they cannot drift on
+which spellings they accept.
+
+### `/tech/` gets the same two sides
+
+`/tech/{tech}?absent=true` answers the Language version of the question —
+"which repositories have no Python in them?" — and the positive page links to
+it in the same wording. Both pages share the template, so the sentence and the
+denominator are identical by construction.
+
+The universe is the same count for both, which is not a coincidence worth
+glossing over: `Language` and `tech_type` are columns of the *same* table, so
+"repositories we have looked at" means exactly the same thing on either side.
+
+**A technology no current file has is a 404 on the absent view**, via a
+`ValueError` from `repos_without_tech()`. There is no vocabulary to validate a
+Language against — unlike a tag — so an unseen name cannot be told apart from a
+typo, and its complement is *every* repository. Rendering that would be a
+confident list of repositories "missing" something this database has never
+seen. `/tech/Fortran?absent=true` is therefore a 404.
+
+**The positive `/tech/Fortran` still returns 200 with an empty table**, which is
+the same reads-as-"nobody has this" problem #293 exists to remove. It is left
+alone deliberately: changing it is a behaviour change to a shipped endpoint
+rather than part of adding the negative view, and `/tech/` links are generated
+from Languages already in the data, so a typo there is rare. Worth its own
+decision.
+
+Measured on a local ~370-repo database, present + absent equals the universe
+exactly with no repository in both, for every Language tried: `Python`
+96 + 278, `Go` 121 + 253, `Markdown` 363 + 11, `YAML` 343 + 31 — all 374.
 
 **Implemented as a set difference, not a `HAVING` clause.** A single statement
 with `HAVING sum(CASE WHEN tech_type LIKE ? ...) = 0` measured 93 ms against the
