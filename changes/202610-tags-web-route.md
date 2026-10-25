@@ -22,6 +22,7 @@ both `AI`. The two columns carry different information.
 ## Usage
 
 ```
+/tags/                               the tag vocabulary, three columns, alphabetical
 /tag/AI                              repositories with the AI tag, most files first
 /tag/AI?repo_id=<repo_id>            that tag's files within one repository
 /tag/C%23                            '#' must be percent-encoded or it never arrives
@@ -29,9 +30,9 @@ both `AI`. The two columns carry different information.
 
 Unknown tags are a **404**, not an empty table — see below.
 
-**The route is deliberately not linked from anywhere**, and is not in
-`sitemap.xml`. It is addressable for 0.2.0 and gets an entry point once there is
-a page to put it on.
+**Neither route is linked from the header nav**, and neither is in
+`sitemap.xml`. `/tags/` is the entry point to `/tag/{tag}`; whether `/tags/`
+itself earns a nav entry is a separate decision.
 
 ## Why a separate route, not a fallback inside `/tech/`
 
@@ -85,8 +86,9 @@ repositories respectively — a substring match would have conflated them.
 ### Files changed
 
 - `src/kospex_query.py` — `repos_with_tag()`, `repo_files_by_tag()`
-- `src/kweb2.py` — the `/tag/{tag}` route; `/tech/` now passes the same two
-  template variables
+- `src/kweb2.py` — the `/tag/{tag}` and `/tags/` routes; `/tech/` now passes the
+  same template variables
+- `src/templates/tags.html` — the tag index
 - `src/templates/repos-tech.html` — the heading says `Tag:` or `Technology:`
   from `tech_kind`; the "See Files" link comes from `tech_url` instead of being
   hardcoded to `/tech/`; a line under the heading gives the repository count;
@@ -96,7 +98,11 @@ repositories respectively — a substring match would have conflated them.
 - `tests/test_repos_by_tag.py` — 21 tests: the counts, the `latest = 1` filter,
   the `Git`/`GitHub` delimiter case, the 404 mapping, and the columns the
   templates consume
-- `tests/test_web_endpoints.py` — `/tag/AI` added to the parametrised list
+- `tests/test_tags_index.py` — 11 tests: the sort, the three columns and their
+  fill order, the percent-encoding of `#` and spaces, and that every listed tag
+  passes `where_tag()`
+- `tests/test_web_endpoints.py` — `/tag/AI` and `/tags/` added to the
+  parametrised lists
 
 `repo_files.html` needed no change: it already renders filename and Language
 generically, and showing the Language of a tagged file is informative here —
@@ -124,6 +130,29 @@ just every row dumped into the page. It is now `[[3, "desc"]]`, which is the
 `tests/test_repos_by_tag.py` guards this by rendering the page and asserting the
 configured order index is within the table's column count, rather than
 hard-coding 3.
+
+## `/tags/` — the vocabulary, not the database
+
+A plain index: `panopticas.get_tags()` sorted case-insensitively and laid out in
+three columns, each tag linking to its own page. Jinja's `slice(3)` fills each
+column in turn, so the alphabet runs *down* a column rather than across the
+rows. No database access and no counts.
+
+It lists what panopticas **can** assign, which is deliberately not "the tags in
+this database" — on a local ~370-repo database that is **123 tags, of which 61
+have no repositories**. The page says so under the heading rather than implying
+every entry has data. The upside of using the vocabulary is that it is the same
+set `where_tag()` validates against, so **no listed tag can 404**; a test
+asserts that for every tag, and all 123 links were followed against a real
+database and returned 200.
+
+Listing only the tags actually present would need the counting that is out of
+scope below: `tech_type` holds several tags per row, so the present-tag set
+cannot be read without splitting every tagged row.
+
+The three-column grid uses `grid-cols-1 md:grid-cols-3`, both already in the
+compiled `tailwind.css`, so no `npm run build-css` is required. (`columns-3`
+would have needed a rebuild.)
 
 ## Out of scope
 

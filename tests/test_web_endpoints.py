@@ -73,6 +73,7 @@ class TestWebEndpoints:
             "/recent/",
             "/repos/",
             "/landscape/",
+            "/tags/",
             "/graph/",
             "/tenure/",
             "/meta/author-domains",

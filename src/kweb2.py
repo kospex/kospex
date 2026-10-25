@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import panopticas as Panopticas
 from requests.models import LocationParseError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -1333,6 +1334,37 @@ def repo_with_tech(request: Request, tech: str):
         raise
     except Exception as e:
         logger.error(f"Error in repo_with_tech endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/tags/", response_class=HTMLResponse)
+def tags_index(request: Request):
+    """List the tag vocabulary, as an entry point to /tag/{tag}.
+
+    The vocabulary is panopticas.get_tags() -- what panopticas *can* assign,
+    derived from its detection rules. That is deliberately not "the tags in
+    this database": the two differ, and this is the set where_tag() validates
+    against, so every tag listed here resolves rather than 404ing. Some will
+    have no repositories.
+
+    No counts. Counting repositories per tag is not a single-table lookup:
+    tech_type holds several tags per row, and grouping by the stored value
+    double-counts repositories.
+    """
+    try:
+        logger.info("Tag index page requested")
+
+        # Case-insensitive, or every lowercase tag would file after `yarn` and
+        # the page would run the alphabet twice.
+        tags = sorted(Panopticas.get_tags(), key=str.lower)
+
+        return templates.TemplateResponse(
+            request, "tags.html", {"tags": tags, "page": {}},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in tags_index endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Kospex Web - Tags</title>
+        <!-- Local static assets -->
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+    </head>
+    <body class="bg-white">
+        {% include '_header.html' %}
+
+        <!-- Main content area -->
+        <div class="container mx-auto px-4 mt-12">
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Tags</h1>
+                    <p class="text-gray-700 mb-6">
+                        {{ tags | length }} tags panopticas can assign from a filename.
+                        Not every one is present in this database.
+                    </p>
+
+                    <!-- slice(3) fills each column in turn, so the alphabet
+                         runs down a column rather than across the rows. -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-x-8">
+                        {% for column in tags | slice(3) %}
+                        <ul data-tag-column class="mb-4">
+                            {% for tag in column %}
+                            <li class="py-1 text-sm">
+                                <a href="/tag/{{ tag | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ tag }}</a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %}
+    </body>
+</html>
