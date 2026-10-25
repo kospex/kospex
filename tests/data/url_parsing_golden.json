@@ -40,6 +40,15 @@
       },
       "repo_id": "github.com~acme~svc"
     },
+    "git@gitlab.com:a/b/c/repo.git": {
+      "parts": {
+        "org": "a/b/c",
+        "remote": "gitlab.com",
+        "remote_type": "ssh",
+        "repo": "repo"
+      },
+      "repo_id": "gitlab.com~a~~b~~c~repo"
+    },
     "git@gitlab.com:group/subgroup/repo.git": {
       "parts": {
         "org": "group/subgroup",
@@ -193,6 +202,15 @@
       },
       "repo_id": "github.com~acme~svc"
     },
+    "https://github.com/acme.corp/svc": {
+      "parts": {
+        "org": "acme.corp",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme.corp~svc"
+    },
     "https://github.com/acme/dashboard.js.git": {
       "parts": {
         "org": "acme",
@@ -330,6 +348,24 @@
         "repo": "myrepo"
       },
       "repo_id": "dev.azure.com~myorg~~myproject~myrepo"
+    },
+    "https://source.developers.google.com/p/my-project/r/my-repo": {
+      "parts": {
+        "org": "p/my-project/r",
+        "remote": "source.developers.google.com",
+        "remote_type": "https",
+        "repo": "my-repo"
+      },
+      "repo_id": "source.developers.google.com~p~~my-project~~r~my-repo"
+    },
+    "https://user:token@github.com/acme/svc.git": {
+      "parts": {
+        "org": "acme",
+        "remote": "github.com",
+        "remote_type": "https",
+        "repo": "svc"
+      },
+      "repo_id": "github.com~acme~svc"
     },
     "https://user@bitbucket.example.com/scm/PROJ/repo.git": {
       "parts": {

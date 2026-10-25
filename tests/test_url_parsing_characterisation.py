@@ -71,6 +71,11 @@ CORPUS: list[dict] = [
      "note": "query string also prevented the .git suffix being stripped"},
     {"url": "https://github.com/acme/svc#frag", "group": "github",
      "note": "fragment: same class as the query string"},
+    {"url": "https://user:token@github.com/acme/svc.git", "group": "github",
+     "note": "user AND password in the URL: neither may reach the repo_id, "
+             "or a token is stored in every row keyed on it"},
+    {"url": "https://github.com/acme.corp/svc", "group": "github",
+     "note": "dots in the owner, not just the repo name"},
 
     # ---------------------------------------------------------------- GitLab
     {"url": "https://gitlab.com/group/repo.git", "group": "gitlab"},
@@ -79,6 +84,8 @@ CORPUS: list[dict] = [
     {"url": "https://gitlab.com/a/b/c/repo.git", "group": "gitlab",
      "note": "two levels of subgroup"},
     {"url": "git@gitlab.com:group/subgroup/repo.git", "group": "gitlab"},
+    {"url": "git@gitlab.com:a/b/c/repo.git", "group": "gitlab",
+     "note": "two levels of subgroup, scp-style"},
 
     # ----------------------------------------------------------- Azure DevOps
     # Four URL shapes reach the same repository. They currently produce four
@@ -141,6 +148,11 @@ CORPUS: list[dict] = [
     {"url": "https://android.googlesource.com/platform/frameworks/base",
      "group": "google", "note": "deep path uses the nested-group encoding"},
     {"url": "https://boringssl.googlesource.com/boringssl", "group": "google"},
+    {"url": "https://source.developers.google.com/p/my-project/r/my-repo",
+     "group": "google",
+     "known_wrong": "Cloud Source Repositories: the 'p' and 'r' path markers "
+                    "land in the org ('p/my-project/r'), the way '_git' once "
+                    "did for ADO; the project alone is the org"},
 
     # ----------------------------------------------------------- Should reject
     # Nothing here is a git remote. Every one currently returns a populated
