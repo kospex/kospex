@@ -1383,15 +1383,33 @@ def repo_with_tag(request: Request, tag: str):
         logger.info(f"Tag filtering page requested for tag: {tag}")
 
         repo_id = request.query_params.get("repo_id")
+        # A bare `?absent` is what a person types, so its empty value counts as
+        # yes; an explicit false/0/no counts as no.
+        raw_absent = request.query_params.get("absent")
+        absent = (raw_absent is not None
+                  and raw_absent.lower() not in ("false", "0", "no"))
         kospex = KospexQuery()
+        template = "repos-tech.html"
+        absent_count = None
+        universe = None
 
         try:
             if repo_id:
+                # Files in one repository that lack the tag is not a question
+                # with an answer, so the drill-down wins over `absent`.
                 data = kospex.repo_files_by_tag(tag, repo_id=repo_id)
                 template = "repo_files.html"
+            elif absent:
+                data = kospex.repos_without_tag(tag)
+                universe = kospex.count_repos_with_file_metadata()
             else:
                 data = kospex.repos_with_tag(tag)
-                template = "repos-tech.html"
+                # The other side of the estate: how many repositories we have
+                # looked at and found no file with this tag. This is the
+                # adoption question -- "everyone should have a Dependabot
+                # file" is only readable next to how many don't.
+                universe = kospex.count_repos_with_file_metadata()
+                absent_count = max(universe - len(data), 0)
         except ValueError as error:
             # where_tag() rejects a tag panopticas does not define. That is a
             # bad URL, so say so: a 200 with an empty table reads as "no
@@ -1405,6 +1423,10 @@ def repo_with_tag(request: Request, tag: str):
             {"data": data, "tech": tag, "tech_kind": "Tag",
              "tech_url": f"/tag/{quote(tag, safe='')}",
              "repo_count": None if repo_id else len(data),
+             "absent_view": absent and not repo_id,
+             "absent_count": absent_count,
+             "absent_url": f"/tag/{quote(tag, safe='')}?absent=true",
+             "universe_count": universe,
              "page": {}},
         )
     except HTTPException:

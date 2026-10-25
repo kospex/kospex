@@ -84,6 +84,24 @@ _ROWS = [
      "_git_owner": "acme", "_git_repo": "three", "Filename": "old-CLAUDE.md",
      "Language": "Markdown", "tech_type": "|AI|", "Lines": 9,
      "committer_when": "2025-01-01T00:00:00+00:00", "latest": 0},
+    # ... and a current file that is not AI, so repo `three` is a repository we
+    # have looked at and found no AI in -- the case the absent view is for.
+    {"Provider": "LICENSE", "hash": "h1",
+     "_repo_id": "github.com~acme~three", "_git_server": "github.com",
+     "_git_owner": "acme", "_git_repo": "three", "Filename": "LICENSE",
+     "Language": "Text", "tech_type": "|license|", "Lines": 20,
+     "committer_when": "2026-01-01T00:00:00+00:00", "latest": 1},
+    # two current files, no AI, so the absent list has an order to check
+    {"Provider": "LICENSE", "hash": "h1",
+     "_repo_id": "github.com~acme~four", "_git_server": "github.com",
+     "_git_owner": "acme", "_git_repo": "four", "Filename": "LICENSE",
+     "Language": "Text", "tech_type": "|license|", "Lines": 20,
+     "committer_when": "2026-01-01T00:00:00+00:00", "latest": 1},
+    {"Provider": "LICENSE.md", "hash": "h1",
+     "_repo_id": "github.com~acme~four", "_git_server": "github.com",
+     "_git_owner": "acme", "_git_repo": "four", "Filename": "LICENSE.md",
+     "Language": "Markdown", "tech_type": "|license|", "Lines": 22,
+     "committer_when": "2026-01-01T00:00:00+00:00", "latest": 1},
 ]
 
 
@@ -145,6 +163,100 @@ class TestReposWithTag:
             KospexQuery(kospex_db=_seed_db()).repos_with_tag("Markdown")
 
 
+class TestReposWithoutTag:
+    """The negative direction: repositories that have *no* file with the tag.
+
+    This is the "everyone should have a Dependabot file" question, so the
+    denominator matters. The universe is repositories with current
+    file_metadata -- repositories we have actually looked at. A repository with
+    no file metadata at all is excluded rather than reported as missing the
+    tag, because "we have not looked" is not the same finding as "it is not
+    there".
+    """
+
+    def test_lists_repositories_with_no_file_carrying_the_tag(self):
+        rows = KospexQuery(kospex_db=_seed_db()).repos_without_tag("AI")
+
+        assert {r["_repo_id"] for r in rows} == {
+            "github.com~acme~three", "github.com~acme~four"}
+
+    def test_a_superseded_tagged_file_does_not_count_as_having_the_tag(self):
+        """Repo `three`'s only AI file is latest = 0. The tag was there once;
+        it is not there now, which is the whole point of the question."""
+        rows = KospexQuery(kospex_db=_seed_db()).repos_without_tag("AI")
+
+        assert "github.com~acme~three" in {r["_repo_id"] for r in rows}
+
+    def test_counts_every_current_file_not_just_tagged_ones(self):
+        """In this view the count is the repository's size, which is the
+        context for whether a missing file matters."""
+        rows = {r["_repo_id"]: r["count"]
+                for r in KospexQuery(kospex_db=_seed_db()).repos_without_tag("AI")}
+
+        # `three` has one current file (the superseded one is excluded),
+        # `four` has two.
+        assert rows == {"github.com~acme~three": 1, "github.com~acme~four": 2}
+
+    def test_the_biggest_repo_comes_first(self):
+        rows = KospexQuery(kospex_db=_seed_db()).repos_without_tag("AI")
+
+        assert [r["count"] for r in rows] == sorted(
+            (r["count"] for r in rows), reverse=True)
+
+    def test_present_and_absent_do_not_overlap(self):
+        kq = KospexQuery(kospex_db=_seed_db())
+
+        present = {r["_repo_id"] for r in kq.repos_with_tag("AI")}
+        absent = {r["_repo_id"] for r in kq.repos_without_tag("AI")}
+
+        assert not present & absent
+
+    def test_present_and_absent_cover_every_repo_we_have_looked_at(self):
+        kq = KospexQuery(kospex_db=_seed_db())
+
+        present = {r["_repo_id"] for r in kq.repos_with_tag("AI")}
+        absent = {r["_repo_id"] for r in kq.repos_without_tag("AI")}
+
+        assert len(present) + len(absent) == kq.count_repos_with_file_metadata()
+
+    def test_the_git_details_are_returned_for_the_template(self):
+        row = KospexQuery(kospex_db=_seed_db()).repos_without_tag("AI")[0]
+
+        for column in ("_git_server", "_git_owner", "_git_repo"):
+            assert row[column], f"{column} missing"
+
+    def test_a_tag_the_vocabulary_does_not_define_is_rejected(self):
+        with pytest.raises(ValueError):
+            KospexQuery(kospex_db=_seed_db()).repos_without_tag("NotATag")
+
+    def test_a_tag_every_repo_has_gives_an_empty_list(self):
+        rows = KospexQuery(kospex_db=_seed_db()).repos_without_tag("license")
+
+        assert {r["_repo_id"] for r in rows} == {
+            "github.com~acme~one", "github.com~acme~two"}
+
+
+class TestRepoUniverse:
+
+    def test_counts_repositories_with_current_file_metadata(self):
+        count = KospexQuery(kospex_db=_seed_db()).count_repos_with_file_metadata()
+
+        assert count == 4
+
+    def test_a_repo_with_only_superseded_files_is_not_counted(self):
+        """It is not a repository we can make a statement about."""
+        db = _seed_db()
+        db[KospexSchema.TBL_FILE_METADATA].insert({
+            "Provider": "gone.md", "hash": "h0",
+            "_repo_id": "github.com~acme~five", "_git_server": "github.com",
+            "_git_owner": "acme", "_git_repo": "five", "Filename": "gone.md",
+            "Language": "Markdown", "tech_type": "|AI|", "Lines": 1,
+            "committer_when": "2025-01-01T00:00:00+00:00", "latest": 0,
+        }, pk=["Provider", "hash", "_repo_id"])
+
+        assert KospexQuery(kospex_db=db).count_repos_with_file_metadata() == 4
+
+
 class TestRepoFilesByTag:
     """The reverse direction: a tag's files within one repository."""
 
@@ -200,6 +312,21 @@ class _FakeQuery:
         self.calls.append(("repos_with_tag", tag))
         return list(self._REPOS)
 
+    _ABSENT = [
+        {"_repo_id": "github.com~acme~three", "_git_server": "github.com",
+         "_git_owner": "acme", "_git_repo": "three", "count": 9},
+    ]
+
+    def repos_without_tag(self, tag):
+        if self.reject:
+            raise ValueError(f"Tag '{tag}' is not a known tag")
+        self.calls.append(("repos_without_tag", tag))
+        return list(self._ABSENT)
+
+    def count_repos_with_file_metadata(self):
+        self.calls.append(("count_repos_with_file_metadata",))
+        return 3
+
     def repos_with_tech(self, tech):
         self.calls.append(("repos_with_tech", tech))
         return list(self._REPOS)
@@ -218,6 +345,15 @@ class _FakeQuery:
 def _text(body):
     """The page's text with runs of whitespace collapsed, as a browser shows it."""
     return re.sub(r"\s+", " ", body)
+
+
+def _visible(body):
+    """What a reader sees: markup removed, whitespace collapsed.
+
+    Needed where a sentence has a link in the middle of it -- the words are
+    contiguous on screen but not in the HTML.
+    """
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", body)).strip()
 
 
 def _request(query_string=b""):
@@ -246,7 +382,9 @@ class TestRoute:
         response = kweb2.repo_with_tag(_request(), tag="AI")
 
         assert response.status_code == 200
-        assert fake.calls == [("repos_with_tag", "AI")]
+        # Plus the universe count, for the "how many do not have it" wording.
+        assert ("repos_with_tag", "AI") in fake.calls
+        assert ("repos_without_tag", "AI") not in fake.calls
 
     def test_renders_the_repo_listing_template(self, fake_query):
         fake_query()
@@ -374,6 +512,148 @@ class TestRenderedListing:
         body = kweb2.repo_with_tech(request, tech="Python").body.decode()
 
         assert "2 repositories with this technology" in _text(body)
+
+
+class TestAbsentView:
+    """`?absent=true`: which repositories do NOT have the tag.
+
+    The point is adoption of a good practice -- "everyone should have a
+    Dependabot file" -- so the page has to name the repositories that don't,
+    and the positive page has to say how many those are and link to them.
+    """
+
+    def _body(self, fake_query, query_string=b"absent=true", tag="AI"):
+        fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": f"/tag/{tag}",
+            "headers": [], "query_string": query_string, "app": kweb2.app,
+        })
+        return kweb2.repo_with_tag(request, tag=tag)
+
+    def test_lists_the_repositories_without_the_tag(self, fake_query):
+        fake = fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tag/AI",
+            "headers": [], "query_string": b"absent=true", "app": kweb2.app,
+        })
+
+        response = kweb2.repo_with_tag(request, tag="AI")
+
+        assert response.status_code == 200
+        assert ("repos_without_tag", "AI") in fake.calls
+
+    def test_renders_the_repo_listing_template(self, fake_query):
+        assert self._body(fake_query).template.name == "repos-tech.html"
+
+    def test_the_heading_says_these_lack_the_tag(self, fake_query):
+        body = _text(self._body(fake_query).body.decode())
+
+        assert "1 repository has no files with this tag" in body
+
+    def test_reports_the_denominator(self, fake_query):
+        """Without the universe the number is unreadable: 1 of how many?"""
+        body = _text(self._body(fake_query).body.decode())
+
+        assert "of 3" in body
+
+    def test_offers_no_see_files_link(self, fake_query):
+        """There are no files with the tag to see -- the link would go to an
+        empty page."""
+        body = self._body(fake_query).body.decode()
+
+        assert "See Files" not in body
+
+    def test_still_links_each_repository(self, fake_query):
+        body = self._body(fake_query).body.decode()
+
+        assert 'href="/repo/github.com~acme~three"' in body
+
+    def test_an_unknown_tag_is_a_404(self, fake_query):
+        fake_query(reject=True)
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tag/NotATag",
+            "headers": [], "query_string": b"absent=true", "app": kweb2.app,
+        })
+
+        with pytest.raises(HTTPException) as raised:
+            kweb2.repo_with_tag(request, tag="NotATag")
+
+        assert raised.value.status_code == 404
+
+    def test_a_repo_id_takes_precedence(self, fake_query):
+        """Files in one repo that lack the tag is not a question with an
+        answer; the drill-down wins."""
+        fake = fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tag/AI",
+            "headers": [],
+            "query_string": b"absent=true&repo_id=github.com~acme~one",
+            "app": kweb2.app,
+        })
+
+        response = kweb2.repo_with_tag(request, tag="AI")
+
+        assert response.template.name == "repo_files.html"
+        assert ("repos_without_tag", "AI") not in fake.calls
+
+    @pytest.mark.parametrize("query_string", [b"absent=false", b"absent=0",
+                                              b"absent=no", b""])
+    def test_not_asking_for_absent_gives_the_positive_listing(
+            self, fake_query, query_string):
+        fake = fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tag/AI",
+            "headers": [], "query_string": query_string, "app": kweb2.app,
+        })
+
+        kweb2.repo_with_tag(request, tag="AI")
+
+        assert ("repos_with_tag", "AI") in fake.calls
+        assert ("repos_without_tag", "AI") not in fake.calls
+
+    @pytest.mark.parametrize("query_string", [b"absent=true", b"absent=1",
+                                              b"absent=yes", b"absent="])
+    def test_the_usual_spellings_of_yes_are_accepted(
+            self, fake_query, query_string):
+        """`?absent` with no value included -- a bare flag is what a person
+        types."""
+        fake = fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tag/AI",
+            "headers": [], "query_string": query_string, "app": kweb2.app,
+        })
+
+        kweb2.repo_with_tag(request, tag="AI")
+
+        assert ("repos_without_tag", "AI") in fake.calls
+
+
+class TestPositiveViewMentionsAbsent:
+
+    def test_says_how_many_repositories_lack_the_tag(self, fake_query):
+        """The wording asked for: both sides of the estate in one line. Read as
+        visible text, because the second half is a link."""
+        fake_query()
+        body = kweb2.repo_with_tag(_request(), tag="AI").body.decode()
+
+        assert ("2 repositories with this tag, "
+                "1 repository does not have files with this tag") in _visible(body)
+
+    def test_links_to_the_absent_listing(self, fake_query):
+        fake_query()
+        body = kweb2.repo_with_tag(_request(), tag="AI").body.decode()
+
+        assert 'href="/tag/AI?absent=true"' in body
+
+    def test_plural_when_more_than_one_repository_lacks_it(
+            self, fake_query, monkeypatch):
+        fake = _FakeQuery()
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: fake)
+        monkeypatch.setattr(fake, "count_repos_with_file_metadata", lambda: 5)
+
+        body = kweb2.repo_with_tag(_request(), tag="AI").body.decode()
+
+        assert "3 repositories do not have files with this tag" in _visible(body)
 
 
 class TestVocabulary:

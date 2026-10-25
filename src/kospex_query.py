@@ -294,6 +294,64 @@ class KospexQuery:
 
         return kd.execute()
 
+    def repos_with_file_metadata(self):
+        """Every repository we have current file metadata for, with its size.
+
+        The universe for any "which repositories are missing X?" question.
+        Deliberately not the `repos` table: a repository we have never
+        collected file metadata for cannot be said to be missing a tagged
+        file -- "we have not looked" is a different finding from "it is not
+        there", and reporting the two the same way would put false entries in
+        a compliance list.
+        """
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_FILE_METADATA)
+        kd.select("_repo_id", "_git_server", "_git_owner", "_git_repo")
+        kd.select_as("count(*)", "count")
+        kd.where("latest", "=", 1)
+        kd.group_by("_repo_id")
+        kd.order_by("count")
+
+        return kd.execute()
+
+    def count_repos_with_file_metadata(self):
+        """How many repositories repos_with_file_metadata() would return.
+
+        Its own query because the count is wanted on the tag listing, where
+        the full list is not -- 24 ms against ~500k rows versus 31 ms, and no
+        rows to carry.
+        """
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_FILE_METADATA)
+        # select_as cannot express count(DISTINCT x): its validator rejects the
+        # argument for the space, and then drops the column silently.
+        kd.select_raw("count(DISTINCT _repo_id) AS count")
+        kd.where("latest", "=", 1)
+
+        rows = kd.execute()
+
+        return rows[0]["count"] if rows else 0
+
+    def repos_without_tag(self, tag):
+        """Repositories with current file metadata and no file carrying the tag.
+
+        The negative of repos_with_tag(), for adoption questions -- which
+        repositories have no Dependabot file, no licence, no workflow.
+
+        Computed as a set difference rather than a HAVING clause so that
+        where_tag() stays the only place a tag is matched; writing the LIKE by
+        hand here would duplicate its escaping and could drift from it. The
+        cost of that choice is 14 ms (107 vs 93) on ~500k rows.
+
+        `count` is the repository's total current file count, not a count of
+        tagged files, which would be zero for every row. It is the context for
+        whether a missing file matters.
+        """
+        tagged = {row["_repo_id"] for row in self.repos_with_tag(tag)}
+
+        return [row for row in self.repos_with_file_metadata()
+                if row["_repo_id"] not in tagged]
+
     def repo_files_by_tag(self, tag, repo_id=None):
         """Grab the files carrying a panopticas tag, optionally in one repo.
 

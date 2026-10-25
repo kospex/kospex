@@ -24,6 +24,7 @@ both `AI`. The two columns carry different information.
 ```
 /tags/                               the tag vocabulary, three columns, alphabetical
 /tag/AI                              repositories with the AI tag, most files first
+/tag/AI?absent=true                  repositories with NO file carrying the tag
 /tag/AI?repo_id=<repo_id>            that tag's files within one repository
 /tag/C%23                            '#' must be percent-encoded or it never arrives
 ```
@@ -72,6 +73,11 @@ and escaped by `where_tag()`:
   repository, ordered by count. The tag counterpart of `repos_with_tech()`.
 - `repo_files_by_tag(tag, repo_id=None)` — the reverse direction, returning the
   same columns as `repo_files()` so the existing file listing renders either.
+- `repos_without_tag(tag)` — the complement, as a set difference against
+  `repos_with_file_metadata()`.
+- `repos_with_file_metadata()` / `count_repos_with_file_metadata()` — the
+  universe, and its size for the wording. The count is its own query because
+  the listing page wants the number without the rows (24 ms versus 31 ms).
 
 **One table, no join, no new index, no migration.** Measured on a database of
 ~500k `file_metadata` rows, the lookup is **78–84 ms** and flat across
@@ -130,6 +136,54 @@ just every row dumped into the page. It is now `[[3, "desc"]]`, which is the
 `tests/test_repos_by_tag.py` guards this by rendering the page and asserting the
 configured order index is within the table's column count, rather than
 hard-coding 3.
+
+## The absent view — which repositories *don't* have it
+
+`?absent=true` lists the repositories with no file carrying the tag. This is
+the adoption question: "everyone should have a Dependabot file" is only
+answerable from the complement.
+
+The tag listing reports both sides, with the second half linking to the absent
+view:
+
+> **Tag: Dependabot** — 122 repositories with this tag, [252 repositories do not
+> have files with this tag](#)
+
+and the absent page states its denominator, so the number is readable:
+
+> 252 repositories have no files with this tag, of 374 with file metadata
+
+Measured on a local ~370-repo database, present + absent equals the universe
+exactly for every tag tried, with no repository in both: `Dependabot` 122 + 252,
+`AI` 51 + 323, `license` 359 + 15, `llms.txt` 1 + 373, all totalling 374.
+
+**The denominator is repositories with current `file_metadata`, not the `repos`
+table.** A repository we have never collected file metadata for cannot be said
+to be missing a tagged file — "we have not looked" is a different finding from
+"it is not there", and conflating them would put false entries in a compliance
+list. On this database the two sets happen to be identical (374 each, with no
+repository in `repos` lacking metadata), so the choice costs nothing today and
+degrades honestly if that stops being true.
+
+**In this view `# Files` is the repository's total current file count**, not a
+count of tagged files, which would be zero on every row. It is the context for
+whether a missing file matters — a 3-file repository without a Dependabot
+config is a different finding from a 3,000-file one. The "See Files" column is
+dropped entirely, since there are no tagged files to show.
+
+`repo_id` takes precedence over `absent`: files within one repository that lack
+the tag is not a question with an answer.
+
+`?absent`, `?absent=true`, `?absent=1` and `?absent=yes` all mean yes — a bare
+flag is what a person types — while `false`, `0` and `no` mean no.
+
+**Implemented as a set difference, not a `HAVING` clause.** A single statement
+with `HAVING sum(CASE WHEN tech_type LIKE ? ...) = 0` measured 93 ms against the
+set difference's 107 ms, and both return identical results. The 14 ms buys
+keeping `where_tag()` as the only place a tag is matched: writing the `LIKE` by
+hand here would duplicate its escaping and could drift from it. `KospexData` has
+no `HAVING` support, so the alternative was either raw SQL or extending the
+shared query builder.
 
 ## `/tags/` — the vocabulary, not the database
 
