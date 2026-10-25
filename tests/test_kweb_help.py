@@ -108,7 +108,7 @@ class TestHelpIntegration:
         pytest.importorskip("httpx", reason="httpx required for FastAPI TestClient")
         from fastapi.testclient import TestClient
         from kweb2 import app
-        return TestClient(app)
+        return TestClient(app, base_url="http://localhost")
 
     def test_help_default_route(self, client):
         """Test default help route."""

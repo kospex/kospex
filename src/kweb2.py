@@ -17,7 +17,7 @@ from fastapi.exception_handlers import (
     request_validation_exception_handler,
 )
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -120,14 +120,39 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+DEFAULT_ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+
+
+def allowed_hosts():
+    """Host header values kweb will answer to.
+
+    Rejecting any other Host stops DNS rebinding (CWE-346): a rebound page
+    reaches 127.0.0.1 as same-origin, so CORS never applies, but its requests
+    still carry the attacker's hostname. KOSPEX_WEB_ALLOWED_HOSTS (comma
+    separated, also read from kospex.env) adds names or IPs, e.g. to reach kweb
+    in a container from another machine. Ports are not part of the match.
+
+    A pattern Starlette would refuse is dropped with a warning rather than
+    stopping the server booting.
+    """
+    hosts = list(DEFAULT_ALLOWED_HOSTS)
+    raw = os.environ.get("KOSPEX_WEB_ALLOWED_HOSTS", "")
+    for host in (h.strip().lower() for h in raw.split(",")):
+        if not host or host in hosts:
+            continue
+        if "*" in host[1:] or (host.startswith("*") and host != "*" and not host.startswith("*.")):
+            logger.warning("KOSPEX_WEB_ALLOWED_HOSTS: ignoring %r, wildcards must be like '*.example.com'", host)
+            continue
+        if host == "*":
+            logger.warning("KOSPEX_WEB_ALLOWED_HOSTS contains '*': Host header checking is disabled")
+        hosts.append(host)
+    return hosts
+
+
+# No CORS middleware: kweb's pages only call kweb, which is same-origin, and
+# without Access-Control-Allow-Origin browsers keep other sites from reading
+# its responses. Add it back only with explicit origins, never "*".
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
 
 # Mount static files
 static_dir = Path(__file__).parent / "static"

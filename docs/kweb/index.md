@@ -17,7 +17,7 @@ You'll need repositories synced into the database first — see
 [Getting started](../getting-started) if you haven't done that yet.
 
 > **The Web UI has no authentication.** It binds to `127.0.0.1` by default, so it's only
-> reachable from your own machine. Don't expose it to a network or the internet without
+> reachable from your own machine. **Don't expose it to a network or the internet** without
 > putting your own authentication in front of it — everything kospex knows about your
 > code and developers is readable by anyone who can reach the port.
 
