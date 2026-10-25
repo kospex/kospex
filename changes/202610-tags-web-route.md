@@ -156,6 +156,15 @@ view:
 > **Tag: Dependabot** — 122 repositories with this tag, [252 repositories do not
 > have files with this tag](#)
 
+**The heading says it too**, because the heading is what a reader scans:
+
+> **Tag: Dependabot is not present**
+
+`Tag: Dependabot` over a list of repositories reads as the repositories that
+*have* it — the opposite of the page. `/tech/` gets the same suffix from the
+same template (`Technology: C Header is not present`), and neither positive
+listing carries it.
+
 and the absent page states its denominator, so the number is readable:
 
 > 252 repositories have no files with this tag, of 374 repositories that have
