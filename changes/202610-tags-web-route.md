@@ -342,7 +342,15 @@ would have needed a rebuild.)
   lookup: `tech_type` holds several tags per row, and the obvious
   `GROUP BY tech_type` shortcut double-counts repositories — on live data 25 of
   63 tags come out wrong, one reporting more repositories than exist. A tag can
-  also appear twice in one stored value, so splitting needs a `set`. Its own
-  issue.
+  also appear twice in one stored value, so splitting needs a `set`. Tracked as
+  #322, with the measurements.
 - **Developers behind a tag.** That needs `commit_files` joins, and the per-file
   loop shape it would reach for is #319.
+- **Scoping the absent views by org.** `?absent=true` counts the whole
+  database, which is the right number for correctness and the wrong one for
+  "are we following this practice?" — on a local ~370-repo database the 374
+  repositories span 233 orgs, 180 of them holding a single repository, so
+  `Dependabot`'s 252 absent are almost all third-party clones. `where_org_key()`
+  already exists and every method here is `KospexData`-built, but the
+  denominator has to be scoped with the numerator or the page misreports.
+  Tracked as #323.
