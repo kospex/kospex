@@ -111,6 +111,48 @@ was relying on the old, wrong success.
 
 ### Added
 
+- **Panopticas tags are reachable from the web UI: `/tags/` and `/tag/{tag}`**
+  ([#293](https://github.com/kospex/kospex/issues/293)).
+  `file_metadata.tech_type` holds the tags panopticas assigns from a filename —
+  `AI`, `license`, `Dependabot`, `llms.txt` and ~60 others — and nothing
+  rendered or filtered on it. `/tech/{tech}` could not: it filters `Language`,
+  and a tag is not a Language. The AI signal in particular is in the *filename*,
+  so `scc` records `CLAUDE.md` as Markdown while panopticas tags it `AI`;
+  `/tech/AI` returned 200 with zero rows, which reads as "no repositories have
+  AI" when 51 of them do.
+
+  Deliberately a separate route rather than a fallback inside `/tech/`: **9
+  names are both a Language and a tag** and count very different things — `Go`
+  is 24,236 files as a Language and 345 as a tag. A route guessing between them,
+  in either order, would not be a page anyone could trust.
+
+  `/tags/` lists the vocabulary in three alphabetical columns, so no listed tag
+  can 404 — it is the same set `where_tag()` validates against. It lists what
+  panopticas *can* assign, which is deliberately not "the tags in this
+  database"; counting the tags actually present needs the per-row split
+  described in [#322](https://github.com/kospex/kospex/issues/322). Neither
+  route is in the header nav or `sitemap.xml`.
+
+- **`?absent=true` lists the repositories that do *not* have a tag or
+  technology**, on both `/tag/{tag}` and `/tech/{tech}`. The adoption question —
+  "everyone should have a Dependabot file" — is only answerable from the
+  complement, so the positive listing reports both sides and links across: *122
+  repositories with this tag, 252 repositories do not have files with this tag*.
+  The absent page states its denominator and says so in its heading (*Tag:
+  Dependabot is not present*).
+
+  **The denominator is repositories with current `file_metadata`, not the
+  `repos` table.** A repository whose file metadata was never collected cannot
+  be said to be *missing* a tagged file — "we have not looked" is a different
+  finding from "it is not there", and conflating them would put false entries in
+  a compliance list. `/tech/` shares the same denominator, because `Language`
+  and `tech_type` are columns of the same table.
+
+  In the absent view `# Files` is the repository's total current file count, not
+  a count of tagged files, which would be zero on every row. The page says so,
+  since a non-zero count beside a repository that has none of the tag otherwise
+  reads as a contradiction.
+
 - **`kospex rebuild <task>` recomputes derived data without re-syncing.** It
   takes a scope, exactly one of `REPO_ID`, `-all`, `-org ORG_KEY` or
   `-server SERVER`, so nothing is rebuilt estate-wide by accident. `-dry-run`
@@ -329,6 +371,21 @@ was relying on the old, wrong success.
   for what is deliberately not read.
 
 ### Changed
+
+- **An unknown tag or technology is a 404, not an empty table.** `/tag/{tag}`
+  rejects a tag panopticas does not define, and `/tech/{tech}` a technology no
+  current file has — on the listing, the absent view and the file drill-down
+  alike. A 200 with no rows is the failure mode these routes exist to remove: it
+  reads as "no repositories have this". The message names what was asked for
+  ("Fortran is an unknown Technology or Language."), because the address bar
+  shows the percent-encoded form rather than what was meant.
+
+  Two consequences worth knowing. `Language = ?` has always been
+  case-sensitive, so `/tech/python` is now a 404 where it was a 200 with an
+  empty table — both say "wrong URL"; the 404 says it legibly. And a tag
+  panopticas has *retired* 404s alongside a typo, because `get_tags()` reports
+  only the current vocabulary
+  ([#317](https://github.com/kospex/kospex/issues/317)).
 
 - **The DuckDB proof of concept is parked: `kgit sync-repo` and
   `kospex init-duckdb` are commented out, and `duckdb` is no longer a
@@ -558,6 +615,25 @@ was relying on the old, wrong success.
   `get_deprecated_tags()` upstream.
 
 ### Fixed
+
+- **`/tech/{tech}` lost its entire DataTable to an out-of-range sort index.**
+  `repos-tech.html` carried `order: [[4, "asc"]]` against a two-column table.
+  DataTables 1.13.11's sort-flatten reads `aoColumns[i].sType` with no bounds
+  check, so an index past the last column dereferences `undefined` and throws
+  during init — costing the whole table: no search, no paging, no sorting, just
+  every row dumped into the page. The listing now has Server / Org / Repo /
+  # Files columns and orders on the count, which the query already returned and
+  nothing rendered. A test renders the page and asserts the configured order
+  index is within the table's column count rather than hard-coding it.
+
+- **The 404 page discarded every route's own message.** `404.html` has had an
+  error callout since it was written and nothing ever filled it: the handler
+  dropped `exc.detail`, so a bad tag, an unknown repository and a mistyped path
+  all rendered the identical "Oops! Page not found." The detail is now shown,
+  which also revives the messages several routes already wrote ("Repository not
+  in the kospex database: …", "Organisation not found"). A detail that only
+  restates the heading — starlette's `Not Found`, the catch-all route's `Page
+  not found` — is suppressed rather than repeated in a warning box below it.
 
 - **`/summary/<org_key>` showed the estate-wide developer count next to the
   org's repo count** (e.g. 3 repos and 72,649 developers). kweb cached the
