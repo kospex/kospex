@@ -4,9 +4,10 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+| 0.2.x   | :white_check_mark: |
+| 0.1.x   | :x:                |
 
-**Note**: Kospex is currently in beta, and active development. Security updates are provided for the latest release only.
+**Note**: Kospex is currently in active development. Security updates are provided for the latest release only, rolling forward.
 
 ## Reporting Security Vulnerabilities
 
@@ -38,7 +39,7 @@ Out of scope:
 
 - The absence of authentication or TLS on the web interface — these are documented
   limitations (see [Known Limitations](#known-limitations))
-- Issues that require the web interface to be exposed on a routable network interface
+- Issues that require the web interface to be exposed on a routable network interface. It's designed to solo use on loopback!
 
 ### What to Include
 
@@ -56,31 +57,32 @@ Out of scope:
 
 ## Security Features & Practices
 
-### Built-in Security Testing
+### Development Security Testing
 
 Kospex employs multiple layers of automated security testing:
 
 - **GitHub Secrets Detection**: Automatically scans for exposed secrets and API keys, and blocks pushes containing secrets (push protection)
 - **CodeQL (SAST)**: Static Application Security Testing for code vulnerability detection
 - **Dependabot alerts (SCA)**: Software Composition Analysis alerts for vulnerable dependencies
+- **[Vulnetix](https://www.vulnetix.com/)** - Specialist security vendor with many application security capabilties and quality data feeds
 
 ### Web Interface Security
 
 - **Network Binding**: Web interface runs on loopback interface (127.0.0.1) by default
-- **No SSL/TLS**: Kospex Beta does not implement SSL/TLS (justified by loopback-only operation)
+- **No SSL/TLS**: Kospex Beta does not implement SSL/TLS (loopback-only operation)
 
 > ⚠️ **Warning: the web interface can listen on routable interfaces.** The `--host`
 > option binds to any address you give it, and when kweb detects it is running inside a
 > Docker container it binds to all interfaces (`0.0.0.0`) automatically. The web
 > interface has **no authentication**, so anyone who can reach that port can read
-> everything in your kospex database. Never expose it to a network without a reverse
+> everything in your kospex database. **Never expose it to a network** without a reverse
 > proxy that adds TLS and authentication in front of it, and when running in Docker,
 > publish the port to loopback only (e.g. `-p 127.0.0.1:8000:8000`).
 
 ### Data Security
 
 - **Local Storage**: All repository data and analysis results stored locally in user's filesystem
-- **Database Security**: SQLite database files stored in user-controlled directory (`~/kospex/`)
+- **Database Security**: SQLite database files stored in user-controlled directory (`~/kospex/ `by default)
 - **No Cloud Storage**: No data is stored on external services by default
 - **Outbound Lookups**: Some commands contact external services. Repository content
   and commit history are never uploaded, but the following are sent:
@@ -128,8 +130,8 @@ Kospex employs multiple layers of automated security testing:
   request parameters, repository identifiers and data read from analysed repositories
   are checked or constrained before they reach queries, file paths or templates
 - **SQL Injection**: Uses parameterized queries and SQLite-utils for database operations
-- **Cross-Site Scripting (XSS)**: Jinja2 templates with automatic escaping enabled
-- **Authentication**: Kospex Beta does not have authentication, the web UI runs on loopback. 
+- **Cross-Site Scripting (XSS)**: Jinja2 templates with automatic escaping enabled.
+- **Authentication**: Kospex does not have authentication, the web UI runs on loopback. 
 
 ## Deployment Security Recommendations
 
@@ -150,26 +152,31 @@ Kospex employs multiple layers of automated security testing:
 
 ### Production Considerations
 
-⚠️ **Important**: Kospex Beta is designed for local development and analysis. Production deployment requires additional security measures:
+⚠️ **Important**: Kospex is designed for local development and analysis. Any other deployment requires additional security measures:
 
 - **Reverse Proxy**: Use nginx/Apache with SSL/TLS termination
+
 - **Authentication**: Implement proper authentication and authorization
+
 - **Network Security**: Configure firewalls and network access controls
+
 - **Monitoring**: Implement logging and monitoring for security events
+
+  
 
 ## Known Limitations
 
 ### Current Security Limitations
 
 - **No Authentication**: Web interface has no built-in authentication mechanism, relying on 127.0.0.1 connection only
-- **No SSL/TLS**: Direct HTTPS support not implemented in MVP
+- **No SSL/TLS**: Direct HTTPS support not implemented
 - **File System Security**: Relies on operating system file permissions
 - **Session Management**: The application does not use sessions currently.
 
 ### Future Security Enhancements
 
 - [ ] Web interface authentication system
-- [ ] SSL/TLS support for production deployments
+- [ ] SSL/TLS support for deployments
 - [ ] Enhanced audit logging
 - [ ] Role-based access controls
 
@@ -179,7 +186,7 @@ Kospex employs multiple layers of automated security testing:
 
 - **Dependabot Alerts**: Automated dependency vulnerability monitoring
 - **GitHub Security Advisories**: Receive notifications for dependency vulnerabilities
-- **Regular Updates**: Dependencies reviewed and updated as alerts are raised
+- **Regular Updates**: Dependencies reviewed and updated as alerts are raised. Vulnerable depdencies can generally be updated. 
 
 ### Key Security-Relevant Dependencies
 
@@ -218,4 +225,4 @@ Kospex employs multiple layers of automated security testing:
 
 ---
 
-*This security policy is updated regularly. Last updated: 2026-10-19*
+*This security policy is updated regularly. Last updated: 2026-10-26
