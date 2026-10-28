@@ -905,6 +905,9 @@ def sca(repo, scope, save, malware, as_json, out, file_path):
     console.print(footer, markup=False, soft_wrap=True)
     if save:
         console.print(f"Saved {len(results)} packages to the kospex DB.")
+    else:
+        console.print("Dependency data not saved to db, use the -save option "
+                      "to store these results")
 
 
 @cli.command("author-tech")

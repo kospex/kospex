@@ -150,7 +150,13 @@ class TestColumns:
     def test_missing_values_render_as_dash(self):
         assert KospexDependencies.summary_line(
             {"package_name": "pyyaml", "package_version": "", "published_at": None}
-        ) == "pyyaml\t-\t-"
+        ) == "pyyaml, -"
+
+    def test_summary_line_is_name_and_version_only(self):
+        assert KospexDependencies.summary_line(
+            {"package_name": "click", "package_version": "<9,>=8.4.1",
+             "published_at": "2026-05-22T04:08:35Z"}
+        ) == "click, <9,>=8.4.1"
 
     def test_extras_brackets_survive_rich_rendering(self):
         from rich.console import Console
@@ -210,10 +216,12 @@ class TestCli:
         assert result.exit_code == 0, result.output
         lines = result.output.splitlines()
         assert lines[0] == str(path)
-        assert lines[1] == "express\t4.18.2\t2026-01-01T00:00:00Z"
+        assert lines[1] == "express, 4.18.2"
         assert "jest" not in result.output          # dev is not the default scope
         assert "{" not in result.output             # no dict dump
         assert "Other scopes in this file: dev (2), peer (1)" in result.output
+        assert lines[-1] == ("Dependency data not saved to db, use the -save option "
+                             "to store these results")
 
     def test_scope_selects_rows(self, cli_deps, tmp_path):
         kospex_cli, _ = cli_deps

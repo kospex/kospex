@@ -2,6 +2,22 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+### Changed
+
+- **`kospex sca` and `krunner osi` print one `name, version` line per package,
+  instead of dumping records** — for example `click, <9,>=8.4.1`.
+  - `kospex sca` used to print each package as tab-separated name, version and
+    release date. The date is already in the table that follows, so it is
+    dropped.
+  - `kospex sca` now ends with `Dependency data not saved to db, use the -save
+    option to store these results` when `-save` isn't given.
+  - `krunner osi` printed every deps.dev response as a dict. It also dumped the
+    matched repositories and every extracted record before the lookups started.
+    It now prints the `name, version` line per lookup, and both dumps are gone.
+  - The CSV exports, `-json` output and saved data are unchanged.
+
 ## 0.2.0 - 2026-10-25
 
 ### Highlights
