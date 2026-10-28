@@ -253,6 +253,8 @@ class TestCli:
         assert list(rows[0]) == kd.get_table_field_names()
         assert "deprecated" in result.stderr
         assert "sca run with scope [direct]" in result.stderr
+        assert "Dependency data not saved to db" in result.stderr
+        assert "not saved" not in result.stdout
 
     def test_out_writes_csv_of_the_table(self, cli_deps, tmp_path):
         kospex_cli, kd = cli_deps

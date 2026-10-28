@@ -892,10 +892,17 @@ def sca(repo, scope, save, malware, as_json, out, file_path):
             writer.writerows(kdeps.table_rows(shown))
 
     footer = KospexDependencies.scope_footer(results, scopes)
+    if save:
+        save_status = f"Saved {len(results)} packages to the kospex DB."
+    else:
+        save_status = ("Dependency data not saved to db, use the -save option "
+                       "to store these results")
 
     if as_json:
+        # stdout carries the JSON alone; the status lines go to stderr.
         click.echo(json.dumps(kdeps.table_rows(shown), indent=2))
         err.print(footer, markup=False)
+        err.print(save_status)
         return
 
     print(file_path)
@@ -903,11 +910,7 @@ def sca(repo, scope, save, malware, as_json, out, file_path):
         print(KospexDependencies.summary_line(record))
     kdeps.print_table_rows(shown, console=console)
     console.print(footer, markup=False, soft_wrap=True)
-    if save:
-        console.print(f"Saved {len(results)} packages to the kospex DB.")
-    else:
-        console.print("Dependency data not saved to db, use the -save option "
-                      "to store these results")
+    console.print(save_status)
 
 
 @cli.command("author-tech")
