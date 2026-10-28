@@ -159,7 +159,7 @@
                     <div id="coverage_details" class="mt-4 hidden">
                     {% if coverage_gaps %}
                         {% if commentary['no_parser'] %}
-                        <p class="text-gray-700 mb-2">Not extracted — no parser yet:</p>
+                        <p class="text-gray-700 mb-2">Dependencies not extracted, format not currently supported:</p>
                         <ul class="list-disc list-inside text-gray-700 mb-3">
                             {% for label, types in commentary['no_parser'].items() %}
                             <li>
@@ -182,8 +182,13 @@
                         {% endif %}
                         {% if commentary['not_scanned'] %}
                         <p class="text-gray-700">
-                            {{ commentary['not_scanned'] }} supported file{{ 's' if commentary['not_scanned'] != 1 else '' }} not yet scanned — run <code>kospex sca</code> / <code>krunner osi</code> to extract them.
+                            {{ commentary['not_scanned'] }} supported file{{ 's' if commentary['not_scanned'] != 1 else '' }} not yet scanned.
                         </p>
+                        <p class="mt-3 font-medium text-gray-700">To fix, run:</p>
+                        <pre id="not_scanned_fix" class="mt-1 p-2 bg-white border border-gray-200 rounded font-mono text-xs overflow-x-auto">{{ osi_cmd }}    # sync all supported dependencies
+or
+cd {{ repo_dir }}
+kospex sca -save &lt;path to dependency file&gt;    # sync a single file</pre>
                         {% endif %}
                     {% else %}
                         <p class="text-gray-700">All discovered dependency files have extracted details.</p>
@@ -254,9 +259,60 @@
             <!-- Individual Files -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">
                         Individual Files
                     </h2>
+                    <p class="mb-6">
+                        <a
+                            href="#column_details"
+                            id="column_toggle"
+                            role="button"
+                            aria-expanded="false"
+                            aria-controls="column_details"
+                            class="text-sm text-blue-600 hover:text-blue-800 underline"
+                            >explain column descriptions</a
+                        >
+                    </p>
+                    <script>
+                        // Plain JS, bound before the table for the same reason
+                        // as coverage_toggle above.
+                        (function () {
+                            const toggle = document.getElementById("column_toggle");
+                            toggle.addEventListener("click", function (e) {
+                                e.preventDefault();
+                                const details = document.getElementById("column_details");
+                                const expanded = toggle.getAttribute("aria-expanded") === "true";
+                                details.classList.toggle("hidden", expanded);
+                                toggle.setAttribute("aria-expanded", String(!expanded));
+                                toggle.textContent = expanded ? "explain column descriptions" : "hide";
+                            });
+                        })();
+                    </script>
+                    <dl id="column_details" class="hidden mb-6 text-sm text-gray-700 space-y-2">
+                        <div>
+                            <dt class="font-semibold inline">Last Commit</dt>
+                            <dd class="inline">- when this file was last changed, from the git history.</dd>
+                        </div>
+                        <div>
+                            <dt class="font-semibold inline">Days Ago</dt>
+                            <dd class="inline">- how many days ago this file was last modified (its last commit).</dd>
+                        </div>
+                        <div>
+                            <dt class="font-semibold">Status</dt>
+                            <dd>
+                                Based on Days Ago:
+                                <ul class="list-disc list-inside mt-1">
+                                    <li><span class="font-medium">Active</span> - modified in the last {{ status_days.active }} days</li>
+                                    <li><span class="font-medium">Aging</span> - last modified {{ status_days.active + 1 }} to {{ status_days.aging }} days ago</li>
+                                    <li><span class="font-medium">Stale</span> - last modified {{ status_days.aging + 1 }} to {{ status_days.stale }} days ago</li>
+                                    <li><span class="font-medium">Unmaintained</span> - not modified for more than {{ status_days.stale }} days</li>                                </ul>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="font-semibold inline">Extracted?</dt>
+                            <dd class="inline">- kospex has parsed and enriched dependency details from this file.</dd>
+                        </div>
+                    </dl>
 
                     <div class="overflow-x-auto">
                         <table
@@ -351,9 +407,6 @@
                             </tbody>
                         </table>
                     </div>
-                    <p class="text-sm text-gray-500 mt-3">
-                        "Extracted?" = kospex has parsed and enriched dependency details from this file.
-                    </p>
                 </div>
             </div>
         </div>

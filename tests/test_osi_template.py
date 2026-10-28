@@ -6,7 +6,8 @@ def _render(context):
     tmpl = kweb2.templates.get_template("osi.html")
     base = {"request": None, "data": [], "file_number": 0,
             "dep_files": [], "status": {},
-            "commentary": {"no_parser": {}, "not_a_source": {}, "not_scanned": 0}}
+            "commentary": {"no_parser": {}, "not_a_source": {}, "not_scanned": 0},
+            "status_days": {"active": 90, "aging": 180, "stale": 365}}
     base.update(context)
     return tmpl.render(base)
 
@@ -84,6 +85,73 @@ def test_unsupported_warning_visible_without_expanding_details():
     assert ">explain why<" in html
     # The toggle sits under the warning it explains
     assert html.index('id="unsupported_files"') < html.index('id="coverage_toggle"')
+
+
+def test_column_descriptions_match_development_status_bands():
+    import re
+    import kospex_utils as KospexUtils
+    days = {"active": KospexUtils.DEV_STATUS_ACTIVE_DAYS,
+            "aging": KospexUtils.DEV_STATUS_AGING_DAYS,
+            "stale": KospexUtils.DEV_STATUS_STALE_DAYS}
+    html = _render({"status_days": days})
+    details = html.split('id="column_details"')[1].split("</dl>")[0]
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", details))
+
+    # Each band's stated edges give the status development_status() returns there
+    edges = {"Active": (0, days["active"]),
+             "Aging": (days["active"] + 1, days["aging"]),
+             "Stale": (days["aging"] + 1, days["stale"])}
+    for status, (low, high) in edges.items():
+        assert KospexUtils.development_status(low) == status
+        assert KospexUtils.development_status(high) == status
+    assert KospexUtils.development_status(days["stale"] + 1) == "Unmaintained"
+
+    assert f"Active - modified in the last {days['active']} days" in text
+    assert f"Aging - last modified {days['active'] + 1} to {days['aging']} days ago" in text
+    assert f"Stale - last modified {days['aging'] + 1} to {days['stale']} days ago" in text
+    assert f"Unmaintained - not modified for more than {days['stale']} days" in text
+    assert "Extracted? - kospex has parsed and enriched" in text
+    # Moved into the descriptions, not left under the table as well
+    assert html.count("has parsed and enriched dependency details") == 1
+
+
+def test_fix_commands_fill_in_a_repo_and_use_placeholders_otherwise():
+    import kospex_web as KospexWeb
+    repo = "github.com~androidx~androidx"
+    assert KospexWeb.osi_fix_commands(repo, repo) == {
+        "osi_cmd": f"krunner osi {repo}",
+        "repo_dir": "$KOSPEX_CODE/github.com/androidx/androidx"}
+    nested = "gitlab.com~group~~sub~repo"
+    assert KospexWeb.osi_fix_commands(nested, nested)["repo_dir"] == \
+        "$KOSPEX_CODE/gitlab.com/group/sub/repo"
+    assert KospexWeb.osi_fix_commands("github.com~androidx") == {
+        "osi_cmd": "krunner osi github.com~androidx",
+        "repo_dir": "$KOSPEX_CODE/SERVER/ORG/REPO"}
+    assert KospexWeb.osi_fix_commands(None)["osi_cmd"] == "krunner osi -all"
+
+
+def test_fix_commands_keep_shell_syntax_out():
+    # CWE-77: the id comes from the request path and the commands are pasted into a shell
+    import kospex_web as KospexWeb
+    for bad in ("github.com~x$(id)~y", "github.com~x;id~y", "x`id`"):
+        fix = KospexWeb.osi_fix_commands(bad, bad)
+        assert fix == {"osi_cmd": "krunner osi <scope>",
+                       "repo_dir": "$KOSPEX_CODE/SERVER/ORG/REPO"}, bad
+
+
+def test_not_scanned_fix_lists_both_commands():
+    commentary = {"no_parser": {}, "not_a_source": {}, "not_scanned": 5}
+    html = _render({"commentary": commentary, "file_number": 5, "osi_cmd": "krunner osi s~o~r",
+                    "repo_dir": "$KOSPEX_CODE/s/o/r"})
+    assert "To fix, run:" in html
+    fix = html.split('id="not_scanned_fix"')[1].split("</pre>")[0]
+    lines = [line.strip() for line in fix.split(">", 1)[1].splitlines()]
+    assert lines == [
+        "krunner osi s~o~r    # sync all supported dependencies",
+        "or",
+        "cd $KOSPEX_CODE/s/o/r",
+        "kospex sca -save &lt;path to dependency file&gt;    # sync a single file",
+    ]
 
 
 def test_toggle_says_show_details_when_nothing_to_explain():
