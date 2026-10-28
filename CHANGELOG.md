@@ -12,11 +12,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
     release date. The date is already in the table that follows, so it is
     dropped.
   - `kospex sca` now ends with `Dependency data not saved to db, use the -save
-    option to store these results` when `-save` isn't given.
+    option to store these results` when `-save` isn't given. With `-json`, this
+    line and `Saved N packages to the kospex DB.` go to stderr, so stdout is
+    still only JSON. Previously `-json` printed neither.
   - `krunner osi` printed every deps.dev response as a dict. It also dumped the
     matched repositories and every extracted record before the lookups started.
     It now prints the `name, version` line per lookup, and both dumps are gone.
-  - The CSV exports, `-json` output and saved data are unchanged.
+  - The CSV exports, the JSON on stdout and saved data are unchanged.
 
 ## 0.2.0 - 2026-10-25
 
