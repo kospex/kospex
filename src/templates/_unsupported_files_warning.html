@@ -1,0 +1,15 @@
+{# Dependency files kospex has no parser for yet; see KospexWeb.unsupported_dependency_files().
+   Expects `unsupported`. `unsupported_link` (optional) appends a "See Open source inventory" link. #}
+{% if unsupported %}
+<p id="unsupported_files" class="mt-3 text-sm text-gray-700 inline-flex items-start">
+    <svg class="h-4 w-4 mr-1 mt-0.5 flex-shrink-0 text-orange-400" fill="currentColor" viewBox="0 0 20 20" role="img" aria-label="Warning: some dependency files are not analysed">
+        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+    </svg>
+    <span>
+        <span class="font-medium text-orange-800">{{ '{:,}'.format(unsupported.count) }} of {{ '{:,}'.format(unsupported.total) }} dependency file{{ 's' if unsupported.total != 1 }} not analysed</span>
+        - kospex has no parser for them yet, so their packages are not shown:
+        {% for name, n in unsupported.by_name.items() %}{% if loop.index <= 5 %}<span class="font-mono">{{ name }}</span> ({{ '{:,}'.format(n) }}){% if not loop.last and loop.index < 5 %}, {% endif %}{% endif %}{% endfor %}{% if unsupported.by_name | length > 5 %} and {{ unsupported.by_name | length - 5 }} more{% endif %}.
+        {% if unsupported_link %}See <a href="{{ unsupported_link }}" class="text-blue-600 hover:text-blue-800 underline">Open source inventory</a>.{% endif %}
+    </span>
+</p>
+{% endif %}

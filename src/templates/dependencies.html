@@ -38,6 +38,22 @@
                     <h1 class="text-3xl font-bold text-gray-900">Dependencies</h1>
                     {% include '_scope_label.html' %}
                     <p class="text-gray-600">Analysis of project dependencies and their maintenance and security status.</p>
+                    {% set unsupported_link = osi_url %}
+                    {% include '_unsupported_files_warning.html' %}
+                    {% if not data and empty_state %}
+                    <div id="no_dependencies" class="mt-4 p-4 bg-orange-50 border border-orange-200 rounded text-sm text-gray-700">
+                        <p class="font-medium text-orange-800">{{ empty_state.title }}</p>
+                        <p class="mt-1">{{ empty_state.detail }}</p>
+                        {% if empty_state.actions %}
+                        <p class="mt-3 font-medium">{{ empty_state.actions_label or "To fix, run:" }}</p>
+                        <pre class="mt-1 p-2 bg-white border border-orange-200 rounded font-mono text-xs overflow-x-auto">{% for cmd in empty_state.actions %}{{ cmd }}{% if not loop.last %}
+{% endif %}{% endfor %}</pre>
+                        {% endif %}
+                        {% if empty_state.osi_url %}
+                        <p class="mt-3">See <a href="{{ empty_state.osi_url }}" class="text-blue-600 hover:text-blue-800 underline">Open source inventory</a> for the status of each dependency file.</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     {% if freshness %}
                     <p id="last_checked" class="mt-3 text-sm text-gray-600 inline-flex items-center"
                        title="Oldest last_checked of the dependencies shown{% if freshness.newest and freshness.newest != freshness.oldest %} (newest {{ freshness.newest }} UTC){% endif %}. Flagged when older than {{ freshness.max_age_days }} days or when any row has no check date.">
@@ -77,6 +93,7 @@
                 </div>
             </div>
 
+            {% if data or not empty_state %}
             <!-- Dependencies Table -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
@@ -152,11 +169,13 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
         </div>
 
         {% include '_footer_scripts.html' %}
         {% include '_datatable_scripts.html' %}
 
+        {% if data or not empty_state %}
         <script>
             $(document).ready(function () {
                 $("#myTable").DataTable({
@@ -168,5 +187,6 @@
                 });
             });
         </script>
+        {% endif %}
     </body>
 </html>

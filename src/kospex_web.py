@@ -1,6 +1,8 @@
 """ Helper functions for kospex web UI """
 import datetime
 import os
+import re
+import shlex
 import kospex_utils as KospexUtils
 from kospex.extractors.registry import classify
 
@@ -148,6 +150,174 @@ def never_checked_files(rows, outcomes):
             ).format(examined=examined)
 
     return sorted(files.values(), key=lambda e: (e["repo_id"] or "", e["file_path"] or ""))
+
+
+# How each extraction outcome reads in the "nothing extracted" summary, in display order.
+_OUTCOME_PHRASES = {
+    "empty": "with no packages",
+    "unsupported": "with no parser",
+    "parse_error": "unreadable",
+    "unclassified": "unrecognised",
+    "not_a_manifest": "not a package manifest",
+    "extracted": "extracted",
+}
+
+
+def _plural(n, word):
+    return f"{n:,} {word}{'' if n == 1 else 's'}"
+
+
+# What a server, org or repo name can contain, plus the '~' separators (and the
+# '~~' a nested group encodes to).
+_SAFE_SCOPE_ID = re.compile(r"[A-Za-z0-9._~-]+")
+
+
+def safe_scope_id(scope_id, placeholder="<scope>"):
+    """
+    scope_id for a command the page tells the user to paste into a shell, or
+    placeholder. The id comes from the request path, so anything outside a
+    plain server/org/repo id could be shell syntax (CWE-77): a crafted link
+    would otherwise show "krunner osi x;<anything>" as the fix to run.
+    """
+    if scope_id and _SAFE_SCOPE_ID.fullmatch(scope_id):
+        return scope_id
+    return placeholder
+
+
+def unsupported_dependency_files(dependency_files):
+    """
+    Summarise the dependency files kospex has no parser for yet, so their
+    packages are missing from /dependencies/ whether or not other files
+    produced rows.
+
+    Uses the rule behind the /osi/ "no parser yet" commentary in
+    osi_extraction_view(): not supported, and not a kind kospex deliberately
+    does not scan for packages (_NOT_A_SOURCE_KINDS, e.g. go.sum checksums).
+
+    dependency_files: file_metadata rows tagged as dependency files.
+    Returns {"total", "count", "by_name": {basename: count}, most common first},
+    or None when every file has a parser.
+    """
+    by_name = {}
+    for f in dependency_files or []:
+        result = classify(f.get("Provider") or "")
+        if result.supported or result.kind.value in _NOT_A_SOURCE_KINDS:
+            continue
+        basename = os.path.basename(f.get("Provider") or "")
+        by_name[basename] = by_name.get(basename, 0) + 1
+    if not by_name:
+        return None
+    return {
+        "total": len(dependency_files),
+        "count": sum(by_name.values()),
+        "by_name": dict(sorted(by_name.items(), key=lambda kv: (-kv[1], kv[0]))),
+    }
+
+
+def dependencies_empty_state(scope_id, repo_scope=False, repo=None, file_count=0,
+                             dependency_files=None, outcome=None, file_path=None):
+    """
+    Explain why /dependencies/ has no rows, and what the user should run.
+    Only meaningful when the page has no data; the caller decides that.
+
+    For a repo scope the steps run in pipeline order -- synced, file metadata
+    collected, examined by `krunner osi` -- and the first missing step is the
+    answer. Wider scopes cover many repos in different states, so they only
+    say how to run the analysis for that scope.
+
+    scope_id: the page's id (repo_id, org key, server) or None for all repos.
+    repo_scope: True when scope_id is a repo_id; the rest apply only then.
+    repo: the repos row, or None if the repo has not been synced.
+    file_count: latest file_metadata rows for the repo.
+    dependency_files: file_metadata rows tagged as dependency files.
+    outcome: kospex.osi_queue.get_outcome() result, or None if never examined.
+
+    Returns a dict: reason, title, detail, actions (commands to run, in
+    order; may be empty), optionally actions_label (the line introducing
+    them) and osi_url (link to the per-file view, or None).
+    """
+    osi_cmd = f"krunner osi {safe_scope_id(scope_id)}" if scope_id else "krunner osi -all"
+
+    if not repo_scope:
+        return {"reason": "no_data", "title": "No dependency data",
+                "detail": "No dependencies have been recorded for the repositories in this "
+                          "scope. Dependency analysis runs separately from sync.",
+                "actions": [osi_cmd], "osi_url": None}
+
+    osi_url = f"/osi/{scope_id}"
+    dependency_files = dependency_files or []
+
+    if repo is None:
+        return {"reason": "not_synced", "title": "Repository not synced",
+                "detail": f"kospex has no record of {scope_id}. Clone and sync it first, "
+                          "then run dependency analysis.",
+                "actions": ["kgit clone <repository url>", osi_cmd], "osi_url": None}
+
+    if file_count == 0:
+        path = repo.get("file_path")
+        path = shlex.quote(path) if path else "<path to repository>"
+        return {"reason": "no_file_metadata", "title": "File metadata has not been collected",
+                "detail": "Dependency files are found from the file metadata recorded during "
+                          "sync, and none has been recorded for this repository. The sync may "
+                          "have failed or not finished. Re-sync it, then run dependency analysis.",
+                "actions": [f"kospex sync-directory {path}", osi_cmd], "osi_url": None}
+
+    if file_path:
+        file_outcome = (outcome or {}).get("files", {}).get(file_path)
+        if file_outcome is None:
+            detail = f"{file_path} has not been examined by dependency analysis."
+            actions = [osi_cmd]
+        else:
+            examined = (outcome.get("examined_at") or "")[:10]
+            detail = _NEVER_CHECKED_REASONS.get(
+                file_outcome, f"Latest extraction ({{examined}}) recorded '{file_outcome}'"
+            ).format(examined=examined) + "."
+            actions = []
+        return {"reason": "file_not_extracted", "title": "No dependencies for this file",
+                "detail": detail, "actions": actions, "osi_url": osi_url}
+
+    if outcome is None:
+        if not dependency_files:
+            return {"reason": "no_dependency_files", "title": "No dependency files found",
+                    "detail": "The file metadata for this repository contains no dependency "
+                              "files, so there is nothing to analyse.",
+                    "actions": [], "osi_url": None}
+        # The files with no parser are listed by unsupported_dependency_files();
+        # this says how many running the analysis will actually help with.
+        parseable = sum(1 for f in dependency_files
+                        if classify(f.get("Provider") or "").supported)
+        if parseable:
+            actions_label = f"{parseable:,} of them can be analysed by running:"
+        else:
+            actions_label = ("None of them can be analysed yet, but running this records "
+                             "that they were examined:")
+        return {"reason": "osi_not_run", "title": "Dependency analysis has not been run",
+                "detail": f"Sync found {_plural(len(dependency_files), 'dependency file')} in "
+                          "this repository, but krunner osi has not examined them yet.",
+                "actions": [osi_cmd], "actions_label": actions_label, "osi_url": osi_url}
+
+    examined_at = outcome.get("examined_at") or ""
+    counts = {}
+    for value in (outcome.get("files") or {}).values():
+        counts[value] = counts.get(value, 0) + 1
+    if counts:
+        order = list(_OUTCOME_PHRASES)
+        parts = [f"{n:,} {_OUTCOME_PHRASES.get(k, k)}"
+                 for k, n in sorted(counts.items(), key=lambda kv: (order.index(kv[0])
+                                    if kv[0] in order else len(order), kv[0]))]
+        summary = (f"Dependency analysis on {examined_at[:10]} examined "
+                   f"{_plural(sum(counts.values()), 'file')}: {', '.join(parts)}.")
+    else:
+        summary = f"Dependency analysis on {examined_at[:10]} found no dependency files."
+
+    # Both UTC; normalise "YYYY-MM-DDTHH:MM:SSZ" to last_sync's "YYYY-MM-DD HH:MM:SS".
+    last_sync = repo.get("last_sync") or ""
+    stale = bool(last_sync) and examined_at.replace("T", " ").rstrip("Z") < last_sync
+    actions = [osi_cmd] if stale else []
+    if stale:
+        summary += " The repository has been synced since, so re-run the analysis."
+    return {"reason": "nothing_extracted", "title": "No dependencies extracted",
+            "detail": summary, "actions": actions, "osi_url": osi_url}
 
 def scope_context(params, page):
     """

@@ -653,6 +653,9 @@ def osi(request: Request, id: Optional[str] = None):
 
         extracted_keys = KospexQuery().extracted_dependency_file_keys(request_id=params)
         deps, commentary = KospexWeb.osi_extraction_view(deps, extracted_keys)
+        # Shown above the collapsed coverage details, so a gap is visible
+        # without expanding them. Same warning as /dependencies/.
+        unsupported = KospexWeb.unsupported_dependency_files(deps)
 
         file_number = len(deps)
         status = KospexUtils.repo_stats(deps, "committer_when")
@@ -666,6 +669,7 @@ def osi(request: Request, id: Optional[str] = None):
                 "dep_files": filenames,
                 "status": status,
                 "commentary": commentary,
+                "unsupported": unsupported,
             },
         )
     except HTTPException:
@@ -1765,8 +1769,39 @@ def dependencies(
             outcomes = {repo_id: get_osi_outcome(db, repo_id) for repo_id in repo_ids}
             never_checked = KospexWeb.never_checked_files(data, outcomes)
 
+        # Dependency files kospex has no parser for are missing from the table
+        # whether or not other files produced rows, so warn on every scope.
+        # Same scope as get_dependencies above, which has already refused any
+        # scope this query cannot honour.
+        kquery = KospexQuery()
+        dependency_files = kquery.get_dependency_files(request_id=params)
+        if file_path:
+            dependency_files = [f for f in dependency_files if f.get("Provider") == file_path]
+        unsupported = KospexWeb.unsupported_dependency_files(dependency_files)
+
+        empty_state = None
+        if not data:
+            # Say why the page is empty, and what to run: a newly synced repo
+            # has no rows until krunner osi examines it.
+            repo_id = params.get("repo_id")
+            if repo_id:
+                repo = next(iter(kquery.get_repos(repo_id=repo_id)), None)
+                count_sql = (f"SELECT COUNT(*) AS n FROM {KospexSchema.TBL_FILE_METADATA} "
+                             "WHERE _repo_id = ? AND latest = 1")
+                file_count = next(iter(kquery.kospex_db.query(count_sql, [repo_id])))["n"]
+                empty_state = KospexWeb.dependencies_empty_state(
+                    repo_id, repo_scope=True, repo=repo, file_count=file_count,
+                    dependency_files=dependency_files,
+                    outcome=get_osi_outcome(kquery.kospex_db, repo_id),
+                    file_path=file_path)
+            else:
+                empty_state = KospexWeb.dependencies_empty_state(id)
+
         context = {
             "data": data,
+            "empty_state": empty_state,
+            "unsupported": unsupported,
+            "osi_url": f"/osi/{id}" if id else "/osi/",
             "freshness": freshness,
             "never_checked": never_checked,
             **KospexWeb.scope_context(params, "Dependencies"),
