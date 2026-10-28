@@ -121,16 +121,22 @@
                     <h2 class="text-2xl font-bold text-gray-900 mb-4">
                         Dependency Files and Coverage
                     </h2>
+                    {% set coverage_gaps = commentary and (commentary['no_parser'] or commentary['not_a_source'] or commentary['not_scanned']) %}
+                    {% set toggle_label = "explain why" if coverage_gaps else "show details" %}
                     <p class="text-gray-700 text-lg">
                         {{ file_number }} dependency files found.
+                    </p>
+                    {% include '_unsupported_files_warning.html' %}
+                    <p class="mt-1">
                         <a
                             href="#coverage_details"
                             id="coverage_toggle"
                             role="button"
                             aria-expanded="false"
                             aria-controls="coverage_details"
-                            class="ml-2 text-sm text-blue-600 hover:text-blue-800 underline"
-                            >show details</a
+                            data-label="{{ toggle_label }}"
+                            class="text-sm text-blue-600 hover:text-blue-800 underline"
+                            >{{ toggle_label }}</a
                         >
                     </p>
                     <script>
@@ -146,12 +152,12 @@
                                 const expanded = toggle.getAttribute("aria-expanded") === "true";
                                 details.classList.toggle("hidden", expanded);
                                 toggle.setAttribute("aria-expanded", String(!expanded));
-                                toggle.textContent = expanded ? "show details" : "hide details";
+                                toggle.textContent = expanded ? toggle.dataset.label : "hide";
                             });
                         })();
                     </script>
                     <div id="coverage_details" class="mt-4 hidden">
-                    {% if commentary and (commentary['no_parser'] or commentary['not_a_source'] or commentary['not_scanned']) %}
+                    {% if coverage_gaps %}
                         {% if commentary['no_parser'] %}
                         <p class="text-gray-700 mb-2">Not extracted — no parser yet:</p>
                         <ul class="list-disc list-inside text-gray-700 mb-3">
