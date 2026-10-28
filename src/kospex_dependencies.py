@@ -109,15 +109,23 @@ class KospexDependencies:
         # Example: purl = "pkg:pypi/requests@2.31.0"
         # Extract the package type, name, and version from the purl
         # Return a dictionary with the extracted information
-        package_only = purl.split(":")[1]
-        package_type = package_only.split("/")[0]
-        full_package = package_only.split("/")[1]
-        package_name = full_package.split("@")[0]
-        version = full_package.split("@")[1]
+        #
+        # The type is followed by the namespace and name, which may contain
+        # one or more "/" (purl-spec: pkg:type/namespace/name@version), and
+        # the version follows the LAST "@" so scoped npm names survive:
+        #   pkg:golang/github.com/gorilla/mux@v1.8.0
+        #   pkg:maven/org.apache.commons/commons-lang3@3.0
+        #   pkg:npm/%40types/uuid@10.0.0 (deps.dev) or pkg:npm/@types/uuid@9.0.0
+        # Percent-encoded namespace and name segments are decoded.
+        package_only = purl.split(":", 1)[1]
+        package_type, _, name_and_version = package_only.partition("/")
+        package_name, at, version = name_and_version.rpartition("@")
+        if not at or not package_name or not version:
+            raise ValueError(f"no version in purl: {purl}")
         return {
             "ecosystem": package_type,
-            "package_name": package_name,
-            "package_version": version,
+            "package_name": urllib.parse.unquote(package_name),
+            "package_version": urllib.parse.unquote(version),
         }
 
     def deps_dev(self, package_type, package_name, version):
