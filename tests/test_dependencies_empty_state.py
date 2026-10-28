@@ -168,3 +168,27 @@ def test_page_with_data_shows_table_not_message():
     html = _render({"data": [row], "empty_state": None})
     assert 'id="myTable"' in html
     assert 'id="no_dependencies"' not in html
+
+
+# --- suggested commands (CWE-77) ------------------------------------------
+# The scope id comes from the request path and is shown in a "To fix, run:"
+# box to be pasted into a shell, so shell syntax in it must never reach the box.
+
+def test_scope_id_with_shell_syntax_is_replaced_by_a_placeholder():
+    for bad in ("x;rm -rf ~", "x$(id)", "x`id`", "x|sh", "x && y", "x\nid", "x'y"):
+        state = KospexWeb.dependencies_empty_state(scope_id=bad)
+        assert state["actions"] == ["krunner osi <scope>"], bad
+        state = _state(scope_id=bad, repo=None, file_count=0)
+        assert bad not in " ".join(state["actions"]), bad
+
+
+def test_real_ids_are_kept_in_commands():
+    for ok in ("github.com", "github.com~acme", "github.com~acme~app.js",
+               "gitlab.com~group~~subgroup~repo", "github.com~a_b~c-d"):
+        assert KospexWeb.safe_scope_id(ok) == ok
+
+
+def test_sync_directory_path_is_shell_quoted():
+    repo = {"_repo_id": REPO, "file_path": "/code/my repo;id", "last_sync": None}
+    state = _state(repo=repo, file_count=0)
+    assert state["actions"][0] == "kospex sync-directory '/code/my repo;id'"

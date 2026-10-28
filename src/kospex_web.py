@@ -1,6 +1,8 @@
 """ Helper functions for kospex web UI """
 import datetime
 import os
+import re
+import shlex
 import kospex_utils as KospexUtils
 from kospex.extractors.registry import classify
 
@@ -165,6 +167,23 @@ def _plural(n, word):
     return f"{n:,} {word}{'' if n == 1 else 's'}"
 
 
+# What a server, org or repo name can contain, plus the '~' separators (and the
+# '~~' a nested group encodes to).
+_SAFE_SCOPE_ID = re.compile(r"[A-Za-z0-9._~-]+")
+
+
+def safe_scope_id(scope_id, placeholder="<scope>"):
+    """
+    scope_id for a command the page tells the user to paste into a shell, or
+    placeholder. The id comes from the request path, so anything outside a
+    plain server/org/repo id could be shell syntax (CWE-77): a crafted link
+    would otherwise show "krunner osi x;<anything>" as the fix to run.
+    """
+    if scope_id and _SAFE_SCOPE_ID.fullmatch(scope_id):
+        return scope_id
+    return placeholder
+
+
 def unsupported_dependency_files(dependency_files):
     """
     Summarise the dependency files kospex has no parser for yet, so their
@@ -217,7 +236,7 @@ def dependencies_empty_state(scope_id, repo_scope=False, repo=None, file_count=0
     order; may be empty), optionally actions_label (the line introducing
     them) and osi_url (link to the per-file view, or None).
     """
-    osi_cmd = f"krunner osi {scope_id}" if scope_id else "krunner osi -all"
+    osi_cmd = f"krunner osi {safe_scope_id(scope_id)}" if scope_id else "krunner osi -all"
 
     if not repo_scope:
         return {"reason": "no_data", "title": "No dependency data",
@@ -235,7 +254,8 @@ def dependencies_empty_state(scope_id, repo_scope=False, repo=None, file_count=0
                 "actions": ["kgit clone <repository url>", osi_cmd], "osi_url": None}
 
     if file_count == 0:
-        path = repo.get("file_path") or "<path to repository>"
+        path = repo.get("file_path")
+        path = shlex.quote(path) if path else "<path to repository>"
         return {"reason": "no_file_metadata", "title": "File metadata has not been collected",
                 "detail": "Dependency files are found from the file metadata recorded during "
                           "sync, and none has been recorded for this repository. The sync may "
