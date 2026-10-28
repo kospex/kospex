@@ -114,3 +114,11 @@ def test_the_batch_runs_when_the_progress_callback_raises():
 
     assert kdeps.lookups == 10
     assert len(out) == 10
+
+
+def test_echo_prints_name_and_version_per_package():
+    """One `name, version` line per lookup, not the deps.dev record."""
+    said = []
+    enrich_dependency_records(_records(2), _Kdeps(), echo=said.append)
+
+    assert said == ["p0, 1.0.0", "p1, 1.0.0"]

@@ -169,7 +169,7 @@ def enrich_dependency_records(results, kdeps, echo=None, progress=None):
             cleaned_version,
         )
         if echo:
-            echo(deps_rec)
+            echo(KospexDependencies.summary_line(d))
         d["versions_behind"] = deps_rec.get("versions_behind")   # int or None, no "Unknown"
         d["advisories"] = deps_rec.get("advisories")
         d["resolution"] = deps_rec.get("resolution")
@@ -846,7 +846,6 @@ def osi(all, next_, write_csv, max_seconds, request_id):
 
     # Before we load all the data, let's check if the request_id is valid
     repos = KospexQuery().get_repos(request_id=request_id)
-    console.print(repos)
 
     # Check if the request_id is valid
     if not repos:
@@ -891,7 +890,6 @@ def osi(all, next_, write_csv, max_seconds, request_id):
         for provider, outcome in sorted(outcomes.items()):
             console.print(f"  {provider}: {outcome}")
 
-    console.print(results)
     enrich_dependency_records(
         results, kdeps, echo=console.print,
         progress=lambda m: log.info("osi: %s", m))

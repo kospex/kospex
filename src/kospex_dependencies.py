@@ -341,10 +341,14 @@ class KospexDependencies:
 
     @staticmethod
     def summary_line(record):
-        """Tab-separated name, declared version and release date of one package."""
-        return "\t".join(
+        """Name and declared version of one package, as looked up.
+
+        The release date is left to the table: tab-aligned columns did not
+        line up across names of different lengths.
+        """
+        return ", ".join(
             KospexDependencies._display_value(record.get(f))
-            for f in ("package_name", "package_version", "published_at")
+            for f in ("package_name", "package_version")
         )
 
     # -scope vocabulary: every package_use value, `unknown` for a NULL
