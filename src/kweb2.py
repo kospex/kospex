@@ -670,6 +670,10 @@ def osi(request: Request, id: Optional[str] = None):
                 "status": status,
                 "commentary": commentary,
                 "unsupported": unsupported,
+                **KospexWeb.osi_fix_commands(id, params.get("repo_id")),
+                "status_days": {"active": KospexUtils.DEV_STATUS_ACTIVE_DAYS,
+                                "aging": KospexUtils.DEV_STATUS_AGING_DAYS,
+                                "stale": KospexUtils.DEV_STATUS_STALE_DAYS},
             },
         )
     except HTTPException:

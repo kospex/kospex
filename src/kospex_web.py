@@ -184,6 +184,23 @@ def safe_scope_id(scope_id, placeholder="<scope>"):
     return placeholder
 
 
+def osi_fix_commands(scope_id, repo_id=None):
+    """
+    The /osi/ "To fix, run:" values: osi_cmd for the page's scope, and
+    repo_dir, where `kospex sca` must be run from -- the clone path for one
+    repo (org is decoded, so a nested group keeps its real '/'), otherwise
+    placeholders. Both are pasted into a shell, so they go through
+    safe_scope_id().
+    """
+    repo_dir = "$KOSPEX_CODE/SERVER/ORG/REPO"
+    if parsed := KospexUtils.parse_repo_id(safe_scope_id(repo_id, placeholder=None)):
+        repo_dir = f"$KOSPEX_CODE/{parsed['git_server']}/{parsed['org']}/{parsed['repo']}"
+    return {
+        "osi_cmd": f"krunner osi {safe_scope_id(scope_id)}" if scope_id else "krunner osi -all",
+        "repo_dir": repo_dir,
+    }
+
+
 def unsupported_dependency_files(dependency_files):
     """
     Summarise the dependency files kospex has no parser for yet, so their

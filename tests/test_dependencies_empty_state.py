@@ -111,7 +111,7 @@ def test_unsupported_excludes_integrity_files():
 
 
 def test_unsupported_agrees_with_osi_no_parser_commentary():
-    # Same rule as the /osi/ "no parser yet" list, so the two
+    # Same rule as the /osi/ "format not currently supported" list, so the two
     # pages report the same count. Drives osi_extraction_view, not a copy of it.
     paths = ("package.json", "build.gradle", "x/build.gradle", "yarn.lock", ".nvmrc",
              "go.sum", "requirements.txt", "Dockerfile")

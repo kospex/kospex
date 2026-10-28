@@ -615,7 +615,14 @@ def find_git_base(filename):
 
     return None
 
-def development_status(days, active_limit=90, aging_limit=180, stale_limit=365):
+# Days since the last commit at which development_status() moves to the next
+# band. Module constants so pages that explain the bands quote these numbers.
+DEV_STATUS_ACTIVE_DAYS = 90
+DEV_STATUS_AGING_DAYS = 180
+DEV_STATUS_STALE_DAYS = 365
+
+def development_status(days, active_limit=DEV_STATUS_ACTIVE_DAYS,
+                       aging_limit=DEV_STATUS_AGING_DAYS, stale_limit=DEV_STATUS_STALE_DAYS):
     """Get the development status of a repo based on the number of days since the last commit"""
 
     if days is None:
