@@ -98,22 +98,15 @@ already knows about, use `kgit pull`.
 
 ## deps
 
-The deps command queries the deps.dev API to get information about libraries in a dependency file.
+The deps command finds dependency files in a directory or repo.
 
 ```bash
-kospex deps -file requirements.txt
+kospex deps -repo PATH/TO/REPO
+kospex deps -directory PATH
 ```
 
-The output will be a table with the following columns:
-
-- `package_name`
-- `package_version`
-- `days_ago` — how many days ago this package was published
-- `published_at` — date this package was published
-- `advisories` — number of known security advisories
-- `default` — is this the default version which is installed as of today
-- `versions_behind` — how many versions behind is this version
-- `source_repo` — the git URL for this package if known
+It doesn't contact deps.dev. To assess a single dependency file, use
+[`kospex sca FILE`](#sca).
 
 ## sca
 
