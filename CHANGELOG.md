@@ -19,6 +19,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
     matched repositories and every extracted record before the lookups started.
     It now prints the `name, version` line per lookup, and both dumps are gone.
   - The CSV exports, the JSON on stdout and saved data are unchanged.
+- **`kospex sca -save` only saves from the checkout kospex synced.** The repo
+  is identified by its remote URL, so another clone or copy of a synced repo,
+  checked out at a synced commit, used to pass every check and save rows under
+  that repo's ID. `-save` now also requires the repo's path to match the one
+  recorded at sync, and the file to resolve inside it, which refuses a
+  committed symlink to a file outside the repo. A repo with no recorded path is
+  refused until it's re-synced. Without `-save`, sca still reads any file.
 
 ### Removed
 

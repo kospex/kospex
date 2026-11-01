@@ -72,7 +72,8 @@ def _git_repo(tmp_path, content=PACKAGE_JSON):
 
 def _sync(db, repo):
     """Record the repo and its HEAD the way a sync would, minimally."""
-    db.table(KospexSchema.TBL_REPOS).insert({"_repo_id": REPO_ID})
+    db.table(KospexSchema.TBL_REPOS).insert(
+        {"_repo_id": REPO_ID, "file_path": str(repo)})
     db.table(KospexSchema.TBL_COMMITS).insert(
         {"_repo_id": REPO_ID, "hash": _git(repo, "rev-parse", "HEAD")})
 
@@ -358,6 +359,74 @@ class TestSavePreconditions:
 
         assert KospexDependencies(kospex_db=db).save_preconditions(
             str(repo / "package.json")) == []
+
+
+    def test_other_checkout_of_a_synced_repo(self, tmp_path, monkeypatch):
+        """Same remote, so the same repo_id, at a synced HEAD -- but not the
+        checkout kospex knows about, so its rows must not be saved."""
+        db = _fresh_db(tmp_path, monkeypatch)
+        repo = _git_repo(tmp_path)
+        _sync(db, repo)
+        copy = tmp_path / "copy"
+        _git(tmp_path, "clone", "-q", str(repo), str(copy))
+        _git(copy, "remote", "set-url", "origin", REPO_URL)
+
+        problems = KospexDependencies(kospex_db=db).save_preconditions(
+            str(copy / "package.json"))
+
+        assert len(problems) == 1
+        assert f"is not the checkout kospex synced for {REPO_ID}" in problems[0]
+        assert str(repo) in problems[0]
+
+    def test_synced_path_reached_through_a_symlink_passes(self, tmp_path, monkeypatch):
+        db = _fresh_db(tmp_path, monkeypatch)
+        repo = _git_repo(tmp_path)
+        _sync(db, repo)
+        link = tmp_path / "link-to-demo"
+        link.symlink_to(repo)
+
+        assert KospexDependencies(kospex_db=db).save_preconditions(
+            str(link / "package.json")) == []
+
+    def test_no_recorded_checkout_path(self, tmp_path, monkeypatch):
+        db = _fresh_db(tmp_path, monkeypatch)
+        repo = _git_repo(tmp_path)
+        _sync(db, repo)
+        db.execute("UPDATE repos SET file_path = NULL WHERE _repo_id = ?", [REPO_ID])
+
+        problems = KospexDependencies(kospex_db=db).save_preconditions(
+            str(repo / "package.json"))
+
+        assert problems == [f"kospex has no checkout path recorded for {REPO_ID} "
+                            f"(re-sync it: kospex sync-directory {repo})"]
+
+    def test_tracked_symlink_to_a_file_outside_the_repo(self, tmp_path, monkeypatch):
+        db = _fresh_db(tmp_path, monkeypatch)
+        repo = _git_repo(tmp_path)
+        outside = tmp_path / "elsewhere" / "package.json"
+        outside.parent.mkdir()
+        outside.write_text(PACKAGE_JSON)
+        (repo / "linked.json").symlink_to(outside)
+        _git(repo, "add", "linked.json")
+        _git(repo, "commit", "-q", "-m", "link")
+        _sync(db, repo)
+
+        problems = KospexDependencies(kospex_db=db).save_preconditions(
+            str(repo / "linked.json"))
+
+        assert len(problems) == 1
+        assert problems[0].startswith("linked.json resolves outside the repository")
+
+    def test_scanning_another_checkout_without_save_still_works(
+            self, cli_deps, tmp_path, monkeypatch):
+        _fresh_db(tmp_path, monkeypatch)
+        repo = _git_repo(tmp_path)
+        kospex_cli, _kd = cli_deps
+
+        result = _invoke(kospex_cli, str(repo / "package.json"))
+
+        assert result.exit_code == 0, result.output
+        assert "express" in result.output
 
 
 class TestSaveWritesLikeKrunner:
