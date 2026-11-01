@@ -184,10 +184,14 @@ before looking anything up, unless:
 
 - the file is in a git repo
 - that repo, and the commit you are on, have been synced (`kospex sync-directory`)
+- the repo is the checkout kospex synced, not another clone or copy of it
+- the file resolves inside that checkout (a committed symlink to a file elsewhere
+  is refused)
 - no tracked file in the repo has been modified or staged
 - the file itself is committed
 
-Untracked files elsewhere in the repo are fine.
+Untracked files elsewhere in the repo are fine. Without `-save`, sca reads any
+file you give it.
 
 ```bash
 kospex sync-directory .

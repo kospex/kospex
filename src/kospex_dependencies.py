@@ -731,6 +731,12 @@ class KospexDependencies:
 
         * the file is inside a git repository
         * the repository is synced (in `repos`)
+        * this checkout is the one kospex synced -- `repos.file_path` for the
+          repo_id. The repo_id comes from the remote URL, so a second clone or a
+          copy elsewhere maps to the same repo_id, and a copy checked out at an
+          already-synced commit would pass every other check
+        * the file resolves inside that checkout -- a tracked symlink is tracked
+          as a link, so its target could be anywhere on disk
         * HEAD is synced (in `commits`) -- otherwise the rows hang off a hash
           nothing else in the DB refers to
         * no tracked file is modified or staged, and the file itself is
@@ -760,7 +766,7 @@ class KospexDependencies:
             )
 
         in_repos = self.kospex_db.execute(
-            f"SELECT 1 FROM {KospexSchema.TBL_REPOS} WHERE _repo_id = ? LIMIT 1",
+            f"SELECT file_path FROM {KospexSchema.TBL_REPOS} WHERE _repo_id = ? LIMIT 1",
             [repo_id],
         ).fetchone()
         if not in_repos:
@@ -769,6 +775,29 @@ class KospexDependencies:
                 f"(sync it first: kospex sync-directory {git_base})"
             )
         else:
+            # Resolved on both sides, as repo_path_conflict() does for sync: an
+            # unresolved comparison fails wherever a path crosses a symlink
+            # (macOS links /tmp to /private/tmp).
+            recorded_path = in_repos[0]
+            if not recorded_path:
+                problems.append(
+                    f"kospex has no checkout path recorded for {repo_id} "
+                    f"(re-sync it: kospex sync-directory {git_base})"
+                )
+            else:
+                checkout = os.path.realpath(recorded_path)
+                if os.path.realpath(git_base) != checkout:
+                    problems.append(
+                        f"{git_base} is not the checkout kospex synced for {repo_id} "
+                        f"({recorded_path}); save from there"
+                    )
+                else:
+                    target = os.path.realpath(abs_file_path)
+                    if os.path.commonpath([target, checkout]) != checkout:
+                        problems.append(
+                            f"{os.path.relpath(abs_file_path, git_base)} resolves "
+                            f"outside the repository ({target})"
+                        )
             in_commits = self.kospex_db.execute(
                 f"SELECT 1 FROM {KospexSchema.TBL_COMMITS} "
                 "WHERE _repo_id = ? AND hash = ? LIMIT 1",
