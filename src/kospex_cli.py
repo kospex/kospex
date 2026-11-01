@@ -664,14 +664,13 @@ def health_check(directory):
 
 @cli.command("deps")
 @click.option("-repo", type=GitRepo(), help="File path to git repo.")
-@click.option("-file", type=click.Path(exists=True), help="Package file to assess.")
 @click.option("-directory", type=click.Path(), help="Directory to search for dependency files.")
-@click.option(
-    "-dev", is_flag=True, default=False, help="Include dev/test dependencies. EXPERIMENTAL."
-)
 @click.option("-out", type=click.STRING, help="filename to write CSV results to.")
-def deps(repo, file, directory, out, dev):
-    """Find dependency files or assess a specific file."""
+def deps(repo, directory, out):
+    """Find dependency files in a directory or repo.
+
+    To assess a single manifest against deps.dev, use `kospex sca FILE`.
+    """
     kquery = KospexQuery()
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kquery)
 
@@ -751,68 +750,9 @@ def deps(repo, file, directory, out, dev):
         else:
             print("No package/dependency manager files found.")
 
-    elif file:
-        file_path = os.path.abspath(file)
-        repo_info = kospex.file_repo_details(file)
-        repo_authors = 0
-        if repo_info:
-            results = kquery.authors_by_repo(repo_info["_repo_id"])
-            if results:
-                repo_authors = len(results)
-
-        params = {}
-        params["dev_deps"] = dev
-        params["repo_info"] = repo_info
-        params["print_table"] = True
-        params["results_file"] = out
-
-        # records = kdeps.assess(file_path, results_file=out, repo_info=repo_info,
-        #                       print_table=True)
-        records = kdeps.assess(file_path, **params)
-        if records is None:
-            # assess() has already said why (unsupported or unparseable file).
-            exit(1)
-
-        # TODO - refactor this into a function
-        total = len(records)
-        resolved = 0
-        count = 0
-        author_count = 0
-        repos_observerd = []
-        for record in records:
-            # None means deps.dev could not resolve the lookup (#106): neither
-            # outdated nor current, so it is left out of the percentages
-            # rather than counted as compliant. What compliance should mean is
-            # an open question (#265).
-            versions_behind = record.get("versions_behind")
-            if isinstance(versions_behind, int):
-                resolved += 1
-                if versions_behind > 2:
-                    count += 1
-            if "authors" in record and record["authors"]:
-                if not record.get("source_repo") in repos_observerd:
-                    repos_observerd.append(record.get("source_repo"))
-                    author_count += record["authors"]
-
-        if total:
-            print(f"Total dependencies: {total} | Resolved: {resolved} | "
-                  f"Unresolved: {total - resolved} | Outdated(>2): {count}")
-            if resolved:
-                print(f"Non Compliant: {count / resolved * 100:.2f}% (of resolved)")
-                print(f"Compliant: {(resolved - count) / resolved * 100:.2f}% (of resolved)")
-            print()
-            print(f"# Dependency Authors: {author_count}")
-            if repo_authors:
-                print(f"# Repo Authors: {repo_authors}")
-            if author_count and repo_authors:
-                print(f"Dependency:Repo Author Ratio: {(repo_authors / author_count) * 100:.5f}%")
-        else:
-            print("No dependencies found.")
-
-        print()
-
     else:
-        print("Please specify either a '-repo', '-directory' or a '-file'.")
+        print("Please specify either a '-repo' or a '-directory'.")
+        print("To assess a single dependency file, use `kospex sca FILE`.")
 
 
 @cli.command("sca")

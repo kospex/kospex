@@ -21,7 +21,7 @@ Two things catch people out:
 |---|---|---|
 | Commits, authors, developer stats | `commits`, `developer_stats` | `kgit clone`, `kgit sync`, `kospex sync-directory` |
 | File metadata + panopticas tags | `file_metadata` | the above, plus `kospex sync-metadata` and `krunner file-metadata` |
-| Dependencies | `dependency_data` | `krunner osi`, `kospex deps`, `kospex sca` |
+| Dependencies | `dependency_data` | `krunner osi`, `kospex sca -save` |
 | Branch counts | `observations` | `krunner branches -save` |
 | Repo sizes | `observations` | `krunner repo-size -save` |
 
@@ -98,8 +98,7 @@ panopticas change that shipped under an unchanged version number.
 ```bash
 krunner osi -all              # every repo — regenerates OSI-all.csv
 krunner osi <repo_id>         # one repo, org or server
-kospex deps -repo PATH        # find/assess dependency files in one repo
-kospex deps -file FILE        # assess a single manifest
+kospex deps -repo PATH        # list the dependency files in one repo (no lookups, no save)
 kospex sca FILE               # one manifest, with advisory enrichment (display only)
 kospex sca -save FILE         # ...and write it, from a clean, synced checkout
 ```

@@ -20,6 +20,19 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
     It now prints the `name, version` line per lookup, and both dumps are gone.
   - The CSV exports, the JSON on stdout and saved data are unchanged.
 
+### Removed
+
+- **`kospex deps -file` and `-dev` are removed; use `kospex sca FILE`.** Both
+  ran the same deps.dev lookup, and `sca` also has `-scope` (which replaces
+  `-dev`), `-json` and `-save`. Passing `-file` or `-dev` to `kospex deps` is now
+  a usage error (exit 2).
+  - The `Compliant` / `Non Compliant` percentages and the dependency-author
+    counts that `deps -file` printed are gone too. `sca` has no equivalent.
+  - `kospex deps -repo` and `-directory` stay. They list the dependency files
+    in a repo or directory, without contacting deps.dev.
+  - `docs/refreshing-data.md` listed `kospex deps` as writing `dependency_data`.
+    It never did; only `krunner osi` and `kospex sca -save` do.
+
 ## 0.2.0 - 2026-10-25
 
 ### Highlights
