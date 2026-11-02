@@ -85,6 +85,13 @@ outcome for these files changes from `unsupported` to `extracted` / `empty` /
   quadratically on a long key line (CWE-1333). Across 300,000 random lines and
   all 49,229 real v1 key lines, the scanner accepts and returns exactly what the
   regex did.
+- `src/kospex/extractors/npmlock.py` - the tarball-URL version regex, which the
+  yarn parser reuses, is replaced by `_tarball_version()`. Searched unanchored, the
+  regex `-(\d+\.\d+\.\d+[^/]*)\.tgz$` retried its greedy tail from every `-`, so it
+  was quadratic on a long `resolved` value (CWE-1333). The helper takes the last path
+  segment, checks the extension, then does one linear search. It returns the same
+  version across 300,000 random strings and 22,841 real `resolved` URLs, from every
+  `package-lock.json` and v1 `yarn.lock`.
 - `src/kospex/extractors/registry.py` - `yarn-lock` gets `scanners=("sca", "osi")`
   and a `parse_ref`.
 - `tests/test_extractors_yarn.py` - 60 tests, every fixture synthetic.

@@ -143,10 +143,29 @@ def _name_from_resolved(url):
     return name if _is_package_name(name) else None
 
 
-#: The version in a registry tarball filename: ``…/-/<base>-<version>.tgz``.
-#: Anchored on a digit so a hyphenated package name is not mistaken for one,
-#: and greedy to the extension so a prerelease (``1.0.0-beta.1``) survives.
-_TARBALL_VERSION = re.compile(r"-(?P<version>\d+\.\d+\.\d+[^/]*)\.tgz$")
+#: Where the version starts in a registry tarball filename,
+#: ``…/-/<base>-<version>.tgz``: anchored on a digit so a hyphenated package
+#: name is not mistaken for one. See _tarball_version().
+_TARBALL_VERSION_START = re.compile(r"-\d+\.\d+\.\d+")
+
+
+def _tarball_version(url):
+    """The version in a tarball URL's filename, or None.
+
+    Everything from the first ``-<digit>.<digit>.<digit>`` to the ``.tgz``
+    extension, so a prerelease (``1.0.0-beta.1``) survives. This was the
+    single regex ``-(\\d+\\.\\d+\\.\\d+[^/]*)\\.tgz$`` -- the same result --
+    but unanchored on the left, its ``search`` retried the greedy tail from
+    every ``-`` and went quadratic on a long ``resolved`` value (CWE-1333).
+    Taking the last path segment and checking the extension first leaves one
+    linear search.
+    """
+    segment = url.rsplit("/", 1)[-1]
+    if not segment.endswith(".tgz"):
+        return None
+    stem = segment[:-len(".tgz")]
+    match = _TARBALL_VERSION_START.search(stem)
+    return stem[match.start() + 1:] if match else None
 
 
 def _identities(path_name, meta):
@@ -234,9 +253,9 @@ def _entry_versions(meta):
 
     url = meta.get("resolved")
     if isinstance(url, str) and url:
-        match = _TARBALL_VERSION.search(url)
-        if match and match.group("version") not in versions:
-            versions.append(match.group("version"))
+        tarball = _tarball_version(url)
+        if tarball and tarball not in versions:
+            versions.append(tarball)
 
     if len(versions) > 1:
         logger.warning(

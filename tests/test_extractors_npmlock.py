@@ -16,6 +16,7 @@ from kospex.extractors.npmlock import (
     UnreadableLockfile,
     extract_package_lock,
     _package_name_from_key,
+    _tarball_version,
     _template,
 )
 
@@ -469,6 +470,33 @@ class TestEveryVersionIsRecorded:
         }
         records = extract_package_lock(_write(tmp_path, doc))
         assert sorted(r["package_version"] for r in records) == ["1.2.3", "99.0.0"]
+
+
+class TestTarballVersion:
+    """_tarball_version(), shared with the yarn.lock parser."""
+
+    @pytest.mark.parametrize("url,expected", [
+        ("https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz", "4.17.21"),
+        ("https://registry.npmjs.org/@babel/core/-/core-7.22.0.tgz", "7.22.0"),
+        ("https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz", "1.3.0"),
+        ("https://registry.npmjs.org/x/-/x-1.0.0-beta.1.tgz", "1.0.0-beta.1"),
+        ("https://registry.npmjs.org/x/-/x-1.0.0.tgz?cache=1", None),
+        ("https://registry.npmjs.org/x/-/x-1.0.tgz", None),
+        ("https://example.com/1.2.3-dir/x.tgz", None),
+        ("", None),
+    ])
+    def test_version_from_the_filename(self, url, expected):
+        assert _tarball_version(url) == expected
+
+    def test_long_url_is_linear(self):
+        """CWE-1333. The single regex this replaced, searched unanchored,
+        retried its greedy tail from every `-`: quadratic, and minutes for a
+        1 MB `resolved` value. 2 MB should now take milliseconds."""
+        import time
+        url = "https://registry.npmjs.org/x/-/" + "-1.1.1" * 350_000
+        start = time.perf_counter()
+        assert _tarball_version(url) is None
+        assert time.perf_counter() - start < 1.0
 
 
 class TestAnUnusualPathCannotHideADependency:

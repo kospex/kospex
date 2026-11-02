@@ -45,11 +45,11 @@ import yaml
 
 from kospex.extractors.errors import UnreadableManifest
 from kospex.extractors.npmlock import (
-    _TARBALL_VERSION,
     _is_package_name,
     _lockfile_version,
     _looks_fetched,
     _name_from_resolved,
+    _tarball_version,
 )
 from kospex_utils import get_kospex_logger
 
@@ -245,11 +245,11 @@ def _v1_versions(fields):
     url = fields.get("resolved")
     if url:
         try:
-            match = _TARBALL_VERSION.search(urlparse(url).path or "")
+            tarball = _tarball_version(urlparse(url).path or "")
         except ValueError:
-            match = None
-        if match and match.group("version") not in versions:
-            versions.append(match.group("version"))
+            tarball = None
+        if tarball and tarball not in versions:
+            versions.append(tarball)
     if len(versions) > 1:
         logger.warning(
             "entry claims more than one version %r; recording each -- the "
