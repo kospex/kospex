@@ -46,6 +46,9 @@ FIXTURES = {
     "demo.csproj": '<Project><ItemGroup>'
                    '<PackageReference Include="Serilog" Version="3.1.1" />'
                    '</ItemGroup></Project>',
+    "yarn.lock": '# yarn lockfile v1\n\n'
+                 'lodash@^4.17.21:\n  version "4.17.21"\n'
+                 '  resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.21.tgz#679591c5"\n',
 }
 
 
@@ -83,6 +86,7 @@ def _enrich(results):
     ("package.json", "npm-packagejson", "npm"),
     ("go.mod", "go-mod", "go"),
     ("demo.csproj", "nuget-csproj", "nuget"),
+    ("yarn.lock", "yarn-lock", "npm"),
 ])
 def test_every_ecosystem_dispatches_and_yields_records(
     provider, entry_name, package_type, tmp_path

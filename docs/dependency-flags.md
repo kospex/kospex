@@ -516,6 +516,12 @@ install and are illustrative of shape, not representative proportions. The quote
 definitions are from the linked documentation; the counts are reproducible by
 parsing the files named.
 
-Not verified here: yarn (v1 and Berry), Gradle configurations, NuGet
-`PrivateAssets` / `developmentDependency`, and Composer. Each is believed to have
-its own vocabulary and none should be assumed to match a table above.
+Not verified here: Gradle configurations, NuGet `PrivateAssets` /
+`developmentDependency`, and Composer. Each is believed to have its own vocabulary
+and none should be assumed to match a table above.
+
+yarn's upstream vocabulary is not quoted here either. What its lockfile states was
+measured instead, when the parser landed: neither v1 nor Berry records a dev,
+optional or install-script flag per entry, and a Berry workspace's `dependencies`
+merges `dependencies` and `devDependencies`. So every yarn row has NULL install
+state.

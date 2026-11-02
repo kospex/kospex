@@ -41,6 +41,9 @@ FIXTURES = {
     "demo.csproj": '<Project><ItemGroup>'
                    '<PackageReference Include="Serilog" Version="3.1.1" />'
                    '</ItemGroup></Project>',
+    "yarn.lock": '# yarn lockfile v1\n\n'
+                 'lodash@^4.17.21:\n  version "4.17.21"\n'
+                 '  resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.21.tgz#679591c5"\n',
 }
 
 
@@ -110,6 +113,7 @@ class TestRegistryDispatch:
         ("pyproject.toml", "pypi", ["requests"]),
         ("go.mod", "go", ["github.com/pkg/errors", "github.com/stretchr/testify"]),
         ("demo.csproj", "nuget", ["Serilog"]),
+        ("yarn.lock", "npm", ["lodash"]),
     ])
     def test_every_ecosystem_dispatches(self, name, package_type, expected, tmp_path):
         kd = _kdeps()

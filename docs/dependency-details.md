@@ -47,7 +47,7 @@ section for that format.
 | `requirements.txt` | PEP 508 per line | 43 files |
 | `pyproject.toml` | PEP 621 `project.dependencies` / `optional-dependencies` | 131 files |
 | `package.json` | the five dependency sections | 11,486 files (mostly vendored copies) |
-| `yarn.lock` | **not parsed** — #229 | v1 ×116, Berry `__metadata.version` 10 ×39, 8 ×4, 6 ×1 |
+| `yarn.lock` | v1, Berry `__metadata.version` 6, 8, 10 | v1 ×116, Berry `__metadata.version` 10 ×39, 8 ×4, 6 ×1 |
 | `uv.lock` | `version` 1, any `revision` (1–3 measured) | `version=1` ×24 — `revision` 3 ×19, 2 ×4, 1 ×1 |
 | `build.gradle(.kts)` | **not parsed** — #229 | 68 files |
 | `pom.xml` | **not parsed** — #229 | 12 files |
@@ -145,7 +145,7 @@ project pass the gate and then match no packages.
 
 # Supported formats
 
-Eight file types have a parser, and all eight are claimed by both scan paths
+Nine file types have a parser, and all nine are claimed by both scan paths
 (`scanners=("sca", "osi")`).
 
 ## `requirements.txt` — pip
@@ -697,37 +697,152 @@ only over-lists `declared_scope` (2 of the 15 rows above); a lockfile where a
 package is reachable *only* through a conflict-excluded path would get a flag uv
 would not give it.
 
+## `yarn.lock` — Yarn
+
+| | |
+|---|---|
+| registry entry | `yarn-lock`, `Kind.PACKAGE`, `package_type="npm"` |
+| parser | `kospex.extractors.yarn:extract_yarn_lock` |
+| estate | 156 files across 21 repositories, 62,502 entries → 62,237 rows |
+
+**Two incompatible formats under one name.** v1 (Yarn Classic) is a custom,
+indentation-based format, identified by its `# yarn lockfile v1` header comment.
+Berry (Yarn 2+) is YAML with a `__metadata.version` field, and the estate carries
+versions 6, 8 and 10. The parser checks for the v1 header first, then loads YAML and
+requires `__metadata`.
+
+**Neither format has a grammar to parse against.** v1 is described on the Classic docs
+page, but not specified. Berry has no published format spec at all: the format is
+whatever Yarn's own implementation writes, and `__metadata.version` moves between Yarn
+releases with no changelog for the lockfile itself. So the parser was written against
+real files, and every gate below was measured against all 156 of them first.
+
+By repository *reach* yarn.lock is the narrowest lockfile here despite its file count:
+its files cluster in 21 repositories, so it mostly adds rows about repositories
+already covered through `package.json`.
+
+### Raises
+
+- missing file, unreadable file, a directory, not UTF-8
+- **neither the v1 header nor Berry `__metadata`**, including a 0-byte file and the
+  one comment-only test fixture on the estate. yarn always writes one or the other,
+  so nothing can be concluded from a file with neither, the same call pnpm makes for
+  a 0-byte lockfile
+- **v1: any line outside the grammar.** Every non-comment line is an entry key, a
+  two-space `field value`, a two-space `section:`, or a four-space entry inside a
+  section. Measured: all lines of all 111 v1 files fit, so a line that does not is
+  a file the parser has not understood, and skipping it could skip a package. Bad
+  JSON quoting raises too
+- **Berry: a `__metadata.version` other than 6, 8 or 10.** Only measured versions are
+  read, because with no spec an unmeasured version is a guess. The value is coerced
+  as `package-lock.json`'s `lockfileVersion` is (`"10"` reads; `true` does not)
+- Berry: invalid YAML, an entry that is not a mapping, an entry with no
+  `resolution` (all 13,273 real entries have one)
+
+### Returns `[]`
+
+A v1 file holding only its header, and a Berry file holding only `__metadata` and
+local entries. Four real Berry files are the second kind: benchmark and test
+projects whose only entries are their own workspaces or links.
+
+### Decisions and quirks
+
+- **Everything is `resolved`, and install state is NULL.** A lockfile is the install
+  set, not the declared set. v1 has no dev or optional flag at all. A Berry
+  workspace entry's `dependencies` **merges** the project's `dependencies` and
+  `devDependencies`: measured, 385 devDependencies sat in root workspace
+  `dependencies`. So `direct` would claim production for dev tooling. Reading the
+  sibling `package.json` would answer it, but an extractor reads one file.
+- **Every identity an entry asserts is recorded**, as in `package-lock.json`. That
+  means each key descriptor's name, an `npm:` alias's target, the name in a v1
+  `resolved` tarball URL, and Berry's `resolution` name. 142 entries on the estate
+  assert two names, and all 142 are aliases (`string-width-cjs@npm:string-width@…`).
+  None is a URL disagreeing with its key.
+- **Every version is recorded too.** That is v1's `version` plus the one in the
+  tarball URL, or Berry's `resolution` version plus `version`. They agree on every
+  real entry. Berry `version` is used only when YAML reads it as a string:
+  `version: 1.10` is the float `1.1`, while the resolution string is exact.
+- **`patch:` is unwrapped.** `fsevents@patch:fsevents@npm%3A2.3.3#…` is still
+  `fsevents` 2.3.3 from npm. 49 entries on the estate.
+- **Local packages produce no record.** That covers `link:`, `file:`, `workspace:`
+  and `portal:`, because a local directory has nothing for deps.dev to answer about.
+  But the protocol alone is not trusted, because then one edit to a key could hide a
+  dependency. A v1 local entry is skipped only with no fetched `resolved` URL (true
+  of all 12), and a Berry one only when `linkType: soft` (true of all 317). Anything
+  else is recorded.
+- **A mirror or tarball URL does not change identity.** 483 v1 entries resolve from a
+  public npm mirror, and two from a GitHub tarball. They are recorded by name and
+  version like any other.
+- **An unmeasured Berry protocol is recorded and logged.** None is on the estate
+  (git, http tarballs, `exec:`). Its declared `version` is recorded, which over-reports
+  where skipping would hide.
+- Integrity hashes and checksums are dropped, as everywhere.
+
+### Measured 2026-10-28
+
+Every `yarn.lock` listed in `file_metadata` (156 files, 21 repositories), read from its
+working copy. This is a different method from the summary table above, which counts
+working copies with `node_modules` excluded, hence v1 ×111 here against ×116 there.
+Entries are top-level blocks for v1 and `resolution:` lines for Berry.
+
+| format | files | repos | entries | parser result |
+|---|---|---|---|---|
+| v1 | 111 | 14 | 49,229 | 111 extracted, 49,271 rows |
+| Berry `__metadata.version` 10 | 39 | 4 | 8,758 | 40 extracted, 4 empty, 12,966 rows across all Berry files |
+| Berry 8 | 4 | 3 | 4,514 | |
+| Berry 6 | 1 | 1 | 1 | |
+| neither header | 1 | 1 | 0 | `parse_error` |
+
+A repository can carry more than one format, so the repo column sums past 21. The
+whole run takes under 5 seconds.
+
+**v1 version forms.** Every entry has an explicit `version` line (0 of 49,229 missing).
+Where the `resolved` line points:
+
+| source | entries |
+|---|---|
+| public npm registry | 48,732 |
+| a public npm mirror | 483 |
+| a GitHub tarball | 2 |
+| no `resolved` line | 12 |
+
+All 12 without `resolved` are local packages, keyed `name@link:<path>` or
+`name@file:<path>`. They have a `version` but no registry identity.
+
+**Berry `resolution` protocols.**
+
+| protocol | entries | registry identity? |
+|---|---|---|
+| `npm:` | 12,907 | yes |
+| `workspace:` | 307 | no, local code |
+| `patch:` | 49 | yes, once the wrapped `npm:` descriptor is unwrapped |
+| `link:` | 8 | no, local code |
+| `portal:` | 2 | no, local code |
+
+**Upstream docs:** [yarn.lock (v1, classic)](https://classic.yarnpkg.com/lang/en/docs/yarn-lock/)
+· [Yarn configuration](https://yarnpkg.com/configuration/yarnrc)
+
+**Drift watch:** a new `__metadata.version`. The parser raises on it, and that is the
+signal to re-run the survey over every real file before adding it to the accepted list.
+With no spec to diff, the files are the only evidence of what changed. Upstream, the
+version Yarn writes is
+[`LOCKFILE_VERSION` in `packages/yarnpkg-core/sources/Project.ts`](https://github.com/yarnpkg/berry/blob/master/packages/yarnpkg-core/sources/Project.ts)
+(10 as of 2026-10-28). It is bumped when entry fields change, so a higher value there
+means a new version is coming. Also watch for
+a Berry protocol other than `npm:` / `patch:` / local appearing on the estate, which is
+logged and recorded by declared version until someone looks at it.
+
 ---
 
 # Classified, no parser yet
 
-Three types the registry recognises and nothing reads. They report `unsupported` —
+Two types the registry recognises and nothing reads. They report `unsupported` —
 honest, and distinguishable from `empty`. Tracked as sub-project D, #229.
 
 Two rules from the parsers above are worth applying from the start rather than
 retrofitting: **an unreadable file raises**, and **record every identity the file
 asserts**. Prefer over-reporting: in a dependency inventory a false positive is visible
 and dismissible, a false negative is not.
-
-## `yarn.lock`
-
-| | |
-|---|---|
-| registry entry | `yarn-lock`, `Kind.PACKAGE`, `package_type="npm"`, `parse_ref=None` |
-| estate | 154 files across 20 repositories — v1 ×116, Berry ×44 |
-
-**Two incompatible formats under one name.** v1 is a custom (non-YAML) format and is
-famously flat: no dev/prod flags, so it yields the least per file of any format here.
-Berry (v2+) is YAML with a `__metadata.version` field — the estate carries
-`__metadata` versions 6, 8 and 10. A parser must detect which it is holding, and
-`__metadata` is the discriminator.
-
-By repository *reach* yarn.lock is last of the three despite being first by file count:
-its 154 files cluster in 20 repositories (7.7 per repo), so a parser mostly yields more
-rows about repositories already covered.
-
-**Upstream docs:** [yarn.lock (v1, classic)](https://classic.yarnpkg.com/lang/en/docs/yarn-lock/)
-· [Yarn configuration](https://yarnpkg.com/configuration/yarnrc)
 
 ## `build.gradle` / `build.gradle.kts`
 

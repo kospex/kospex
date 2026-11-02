@@ -11,7 +11,7 @@ def test_marks_extracted_and_buckets_the_rest():
     files = [
         _f("s~o~r", "requirements.txt"),                  # extracted (supported)
         _f("s~o~r", "package.json"),                      # NOT extracted, supported -> not_scanned
-        _f("s~o~r", "yarn.lock"),                         # NOT extracted, no parser (package)
+        _f("s~o~r", "build.gradle"),                      # NOT extracted, no parser (package)
         _f("s~o~r", "sub/pom.xml", "pom.xml"),            # NOT extracted, no parser (package)
         _f("s~o~r", ".github/Dockerfile", "Dockerfile"),  # NOT extracted, no parser (container)
     ]
@@ -22,10 +22,10 @@ def test_marks_extracted_and_buckets_the_rest():
     by_provider = {f["Provider"]: f["extracted"] for f in out_files}
     assert by_provider["requirements.txt"] is True
     assert by_provider["package.json"] is False
-    assert by_provider["yarn.lock"] is False
+    assert by_provider["build.gradle"] is False
 
     # friendly labels, parser-planned kinds under no_parser
-    assert commentary["no_parser"]["Package manifests"] == {"yarn.lock": 1, "pom.xml": 1}
+    assert commentary["no_parser"]["Package manifests"] == {"build.gradle": 1, "pom.xml": 1}
     assert commentary["no_parser"]["Container images"] == {"Dockerfile": 1}
     assert commentary["not_a_source"] == {}
     assert commentary["not_scanned"] == 1  # the package.json
