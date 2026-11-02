@@ -9,40 +9,28 @@
 # Only the gate uses this file. The informational scan before it still lists
 # these findings, so they stay visible in every build.
 #
-# All three findings are in copies of other packages that pip bundles inside
-# itself (pip/_vendor/). They are not separate installs, so upgrading msgpack or
-# setuptools in the environment does not change them; only a pip release that
+# Both findings are in a copy of setuptools that pip bundles inside itself
+# (pip/_vendor/). It is not a separate install, so upgrading setuptools in the
+# environment does not change it; only a pip release that
 # re-vendors does. This image gets pip from `pip install --upgrade pip`, and a
 # kospex install also gets pip, because sqlite-utils 4.x requires it.
 # kospex never runs pip.
 #
-# Re-check when pip 26.3 is released (expected around October 2026): rebuild
-# the image, delete any entry that no longer matches, and extend nothing
-# without re-reading the reasoning.
+# pip 26.3 re-vendored msgpack 1.2.4, which fixes GHSA-6v7p-g79w-8964, so that
+# entry was removed. It still vendors setuptools 70.3.0, as does pip's main
+# branch. Re-check when the next pip release ships, or before these entries
+# expire: rebuild the image, delete any entry that no longer matches, and
+# extend nothing without re-reading the reasoning.
 
 vulnerabilities:
-  # msgpack: Unpacker reuse after a caught error can read out of bounds and
-  # crash (DoS). Fixed in msgpack 1.2.1. pip's source already vendors 1.2.1
-  # (pypa/pip c75edb6a4, 2026-08-03), but no pip release includes it yet --
-  # pip 26.2.1 still ships 1.1.2.
-  - id: GHSA-6v7p-g79w-8964
-    purls:
-      - "pkg:pypi/msgpack@1.1.2"
-    expired_at: 2026-11-30
-    statement: >-
-      Bundled in pip 26.2.1 (pip/_vendor/msgpack). pip calls only one-shot
-      msgpack.dumps() and msgpack.loads(), in its HTTP cache
-      (cachecontrol/serialize.py), and never reuses a streaming Unpacker, which
-      is what the advisory needs. No released pip bundles a fixed msgpack yet.
-
   # setuptools: path traversal in PackageIndex (setuptools/package_index.py).
   - id: CVE-2025-47273
     purls:
       - "pkg:pypi/setuptools@70.3.0"
-    expired_at: 2026-11-30
+    expired_at: 2026-12-31
     statement: >-
-      pip 26.2.1 bundles only pkg_resources/__init__.py from setuptools 70.3.0,
-      not the setuptools package, so setuptools.package_index is not present.
+      pip 26.2.x and 26.3 bundle only pkg_resources/__init__.py from setuptools
+      70.3.0, not the setuptools package, so setuptools.package_index is not present.
       pip's own pip/_internal/models/index.py PackageIndex is an unrelated
       class holding index URLs. pip's source still vendors 70.3.0.
 
@@ -51,7 +39,7 @@ vulnerabilities:
   - id: CVE-2026-59890
     purls:
       - "pkg:pypi/setuptools@70.3.0"
-    expired_at: 2026-11-30
+    expired_at: 2026-12-31
     statement: >-
       Same bundled pkg_resources as above. The flaw is in setuptools' sdist
       file list, which pip does not bundle and never runs from its vendored
