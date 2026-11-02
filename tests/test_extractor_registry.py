@@ -27,7 +27,7 @@ CASES = [
     ("package-lock.json", Kind.PACKAGE, True),
     ("go.mod", Kind.PACKAGE, True),        # sca-only, but supported == any scanner
     ("Foo.csproj", Kind.PACKAGE, True),    # sca-only
-    ("yarn.lock", Kind.PACKAGE, False),
+    ("yarn.lock", Kind.PACKAGE, True),
     ("uv.lock", Kind.PACKAGE, True),
     ("build.gradle", Kind.PACKAGE, False),
     ("pom.xml", Kind.PACKAGE, False),
@@ -172,7 +172,7 @@ class TestResolveParser:
 
     def test_entry_without_a_parser_resolves_to_none(self):
         from kospex.extractors.registry import resolve_parser
-        assert resolve_parser(self._entry("yarn-lock")) is None
+        assert resolve_parser(self._entry("maven-pom")) is None
 
     def test_every_supported_entry_resolves_and_takes_a_path(self):
         """The parity guarantee: everything both scanners claim to handle must

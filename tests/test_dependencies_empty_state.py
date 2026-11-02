@@ -96,11 +96,11 @@ def test_wider_scope_suggests_osi_for_that_scope():
 # --- unsupported files ----------------------------------------------------
 
 def test_unsupported_counts_files_with_no_parser_by_name():
-    deps = _files("package.json", "a/build.gradle", "b/build.gradle", "yarn.lock", ".nvmrc")
+    deps = _files("package.json", "a/build.gradle", "b/build.gradle", "pom.xml", ".nvmrc")
     summary = KospexWeb.unsupported_dependency_files(deps)
     assert summary["total"] == 5
     assert summary["count"] == 4
-    assert summary["by_name"] == {"build.gradle": 2, "yarn.lock": 1, ".nvmrc": 1}
+    assert summary["by_name"] == {"build.gradle": 2, ".nvmrc": 1, "pom.xml": 1}
     assert list(summary["by_name"])[0] == "build.gradle"     # most common first
 
 
@@ -113,7 +113,7 @@ def test_unsupported_excludes_integrity_files():
 def test_unsupported_agrees_with_osi_no_parser_commentary():
     # Same rule as the /osi/ "format not currently supported" list, so the two
     # pages report the same count. Drives osi_extraction_view, not a copy of it.
-    paths = ("package.json", "build.gradle", "x/build.gradle", "yarn.lock", ".nvmrc",
+    paths = ("package.json", "build.gradle", "x/build.gradle", "pom.xml", ".nvmrc",
              "go.sum", "requirements.txt", "Dockerfile")
     _, commentary = KospexWeb.osi_extraction_view(_files(*paths), extracted_keys=set())
     osi_count = sum(n for names in commentary["no_parser"].values() for n in names.values())
