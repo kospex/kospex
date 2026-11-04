@@ -5,6 +5,24 @@ from typing import Optional, List, Dict, Any
 import requests
 from kospex_utils import timer
 
+
+class GitHubListingIncomplete(Exception):
+    """A paginated GitHub listing failed partway, so the result is incomplete.
+
+    Raised instead of returning what was read so far: a shorter list looks
+    exactly like a complete one, and the missing repos never show up as failed.
+    """
+
+    def __init__(self, url, page, items_read, reason):
+        self.url = url
+        self.page = page
+        self.items_read = items_read
+        self.reason = reason
+        super().__init__(
+            f"GitHub listing incomplete: page {page} of {url} failed ({reason}) "
+            f"after {items_read} items")
+
+
 class KospexGithub:
     """
     GitHub functions for common kospex queries.
@@ -113,23 +131,29 @@ class KospexGithub:
 
         Yields:
             Individual items from all pages
+
+        Raises:
+            GitHubListingIncomplete: if any page fails, including the first.
         """
-        if params is None:
-            params = {}
+        params = dict(params or {})
 
         # GitHub returns max 100 items per page
         params['per_page'] = 100
         params['page'] = 1
+        items_read = 0
 
         while True:
             data, response = self._make_request(url, params=params)
 
             if data is None:
-                break
+                # Not `break`: a partial listing must not pass as a complete one.
+                raise GitHubListingIncomplete(
+                    url, params['page'], items_read, self._failure_reason(response))
 
             # Yield all items from this page
             if isinstance(data, list):
                 for item in data:
+                    items_read += 1
                     yield item
 
                 # If we got fewer items than requested, we're done
@@ -142,6 +166,14 @@ class KospexGithub:
                 # Single object response, not paginated
                 yield data
                 break
+
+    def _failure_reason(self, response):
+        """Why a request returned no data, for error messages."""
+        if self.throttled:
+            return "rate limit exceeded"
+        if response is None:
+            return "no response"
+        return f"HTTP {response.status_code}"
 
     def _get_authenticated_user(self):
         """
@@ -276,12 +308,20 @@ class KospexGithub:
 
         Returns:
             List of repository information dictionaries
+
+        Raises:
+            GitHubListingIncomplete: if the owner lookup or any page of the
+            listing fails. An owner that doesn't exist (404) returns [].
         """
         # Get owner information to determine type
-        owner = self._get_user_info(username_or_org)
+        url = f'{self.base_url}/users/{username_or_org}'
+        owner, response = self._make_request(url)
         if not owner:
-            print(f"Could not find user or organization: {username_or_org}")
-            return []
+            if response is not None and response.status_code == 404:
+                print(f"Could not find user or organization: {username_or_org}")
+                return []
+            # Anything else (timeout, 5xx, rate limit) is not "doesn't exist".
+            raise GitHubListingIncomplete(url, 1, 0, self._failure_reason(response))
 
         owner_type = owner.get('type')
         repos = []
