@@ -402,3 +402,68 @@ def osi_extraction_view(files, extracted_keys):
 
     return files, {"no_parser": no_parser, "not_a_source": not_a_source,
                    "not_scanned": not_scanned}
+
+
+# Summary page status circles. Diameter is percentage + 40px, so the smallest
+# circle is 40px. The count label is compacted to at most four characters and
+# its font sized from the diameter so it stays inside the circle.
+SUMMARY_STATUSES = [
+    # (status key, display name, Tailwind background)
+    ("Active", "Active", "bg-green-500"),
+    ("Aging", "Aging", "bg-yellow-400"),
+    ("Stale", "Stale", "bg-orange-400"),
+    ("Unmaintained", "Dormant", "bg-gray-300"),
+]
+CIRCLE_MIN_PX = 40
+LABEL_MAX_PX = 18     # Tailwind text-lg, the size every label used before
+LABEL_MIN_PX = 12
+_BOLD_CHAR_EM = 0.62  # approx advance width of a bold digit, in em
+_LABEL_FILL = 0.85    # share of the diameter the label may span
+
+
+def compact_count(n):
+    """Format a count in at most four characters: 999, 3.3k, 66k, 1.3M."""
+    n = int(n or 0)
+    for divisor, suffix in ((1_000_000, "M"), (1_000, "k")):
+        # Threshold sits at the rounding boundary so 999_500 reads 1M, not 1000k.
+        if n >= divisor * 0.9995:
+            value = n / divisor
+            if value < 9.95:
+                text = f"{value:.1f}".removesuffix(".0")
+            else:
+                text = str(round(value))
+            return text + suffix
+    return str(n)
+
+
+def circle_label_px(label, diameter):
+    """Font size (px) that fits label across a circle of diameter px."""
+    fit = _LABEL_FILL * diameter / (_BOLD_CHAR_EM * max(len(label), 1))
+    return max(LABEL_MIN_PX, min(LABEL_MAX_PX, int(fit)))
+
+
+def status_circles(stats):
+    """One dict per summary status, in display order, for the summary circles.
+
+    stats maps status key -> count, as from KospexUtils.count_key_occurrences.
+    """
+    counts = {key: stats.get(key, 0) for key, _, _ in SUMMARY_STATUSES}
+    percentages = KospexUtils.convert_to_percentage(counts)
+    circles = []
+    for key, name, colour in SUMMARY_STATUSES:
+        count = counts[key]
+        percentage = round(percentages.get(key, 0))
+        size = percentage + CIRCLE_MIN_PX
+        label = compact_count(count)
+        circles.append({
+            "key": key,
+            "name": name,
+            "colour": colour,
+            "count": count,
+            "label": label,
+            "title": f"{count:,}",
+            "percentage": percentage,
+            "size": size,
+            "font_px": circle_label_px(label, size),
+        })
+    return circles

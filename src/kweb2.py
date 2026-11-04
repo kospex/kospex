@@ -284,38 +284,16 @@ def summary(request: Request, id: Optional[str] = None):
         logger.info(dev_load)
 
         dev_stats = KospexUtils.count_key_occurrences(devs, "status")
-        dev_percentages = KospexUtils.convert_to_percentage(dev_stats)
-
-        total = sum(dev_stats.values())
-        dev_stats["total"] = total
-
-        result = {}
-        for name, percentage in dev_percentages.items():
-            if percentage:
-                dev_stats[f"{name}_percentage"] = round(percentage)
-            result[name] = round(100 * (percentage / 100)) + 40
-
         repo_stats = KospexUtils.count_key_occurrences(repos, "status")
-
-        repo_sizes = {}
-        repo_percentages = KospexUtils.convert_to_percentage(repo_stats)
-        # Do the total after percentages are calculated
-        total = sum(repo_stats.values())
-        repo_stats["total"] = total
-
-        for name, percentage in repo_percentages.items():
-            if percentage:
-                repo_stats[f"{name}_percentage"] = round(percentage)
-            repo_sizes[name] = round(100 * (percentage / 100)) + 40
 
         return templates.TemplateResponse(
             request,
             "summary.html",
             {
-                "developers": dev_stats,
-                "data_size": result,
-                "repos": repo_stats,
-                "repo_sizes": repo_sizes,
+                "dev_total": sum(dev_stats.values()),
+                "dev_circles": KospexWeb.status_circles(dev_stats),
+                "repo_total": sum(repo_stats.values()),
+                "repo_circles": KospexWeb.status_circles(repo_stats),
                 "id": params,
             },
         )

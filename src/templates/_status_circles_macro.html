@@ -1,0 +1,43 @@
+{#
+  A row of status circles for the summary page.
+  circles: list from KospexWeb.status_circles(). Diameter is set by size and the
+  label font by font_px, so a large count stays inside a small circle; the
+  exact count is in the tooltip.
+#}
+{% macro status_row(heading, total, total_href, circles) %}
+<div class="flex justify-center gap-8 lg:gap-12">
+    <div class="flex flex-col">
+        <!-- Header aligned with first circle -->
+        <div class="flex gap-8 lg:gap-12 mb-6">
+            <div class="w-32">
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">{{ heading }}</h2>
+                <p class="text-gray-700">
+                    Total:
+                    <a href="{{ total_href }}"
+                       class="text-blue-600 hover:text-blue-800 underline font-semibold"
+                       >{{ total }}</a>
+                </p>
+            </div>
+        </div>
+
+        <!-- Circles row -->
+        <div class="flex items-end gap-8 lg:gap-12">
+            {% for c in circles %}
+            <div class="flex flex-col items-center w-32">
+                <div class="flex flex-col items-center justify-end mb-3" style="height: 180px">
+                    <div class="rounded-full {{ c.colour }} flex items-center justify-center text-black font-bold whitespace-nowrap"
+                         style="width: {{ c.size }}px; height: {{ c.size }}px; font-size: {{ c.font_px }}px; line-height: 1;"
+                         title="{{ c.title }} {{ c.name | lower }}">
+                        {{ c.label }}
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="font-semibold text-gray-900">{{ c.name }}</div>
+                    <div class="text-sm text-gray-600">{{ c.percentage }}%</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endmacro %}
