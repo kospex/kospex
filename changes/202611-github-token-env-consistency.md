@@ -154,6 +154,78 @@ KOSPEX_TEST_GITHUB_TOKEN=github_pat_... pytest tests/test_kospex_github_token_en
 Live rows (eight, each a pass/fail pair as above): each variable alone; each
 pair, with the winner valid and then the loser valid; all three set.
 
+### 4. Manual runner: the whole matrix against a real token (not CI)
+
+**Decision: no live token test in CI.** Instead,
+`tests/manual/github_token_matrix.py` runs every configuration against the real
+API on demand. The name deliberately doesn't match `test_*.py`, so plain `pytest`
+never collects it and CI never runs it.
+
+```bash
+python tests/manual/github_token_matrix.py                  # prompts for the token
+python tests/manual/github_token_matrix.py --token-file ~/.kospex-test-token
+python tests/manual/github_token_matrix.py --list           # print the rows, no network
+```
+
+**Getting the token.** It's read with `getpass` (prompt, not echoed), or from
+`--token-file`, or from `KOSPEX_TEST_GITHUB_TOKEN`. It's never taken as a
+command-line argument, because argv shows up in `ps` and shell history (CWE-214).
+It's passed to child processes **only through their environment**.
+
+**Each row** runs the real CLI, `kgit github -test-auth`, as a subprocess with a
+constructed environment:
+
+- start from `os.environ`, **remove all three** token variables, then set only
+  that row's values
+- `PYTHONPATH=<this checkout>/src`, so a worktree tests its own code rather than
+  the main checkout's editable install (see CLAUDE.md, worktree testing)
+- `GH_CONFIG_DIR` points at an empty temp dir, so a future `gh auth token`
+  fallback can't quietly pick up your real `gh` login
+
+The valid token goes in some variables and `invalid-token` in the others. That
+way each row's 200 or 401 shows which variable was used.
+
+| # | `GITHUB_AUTH_TOKEN` | `GH_TOKEN` | `GITHUB_TOKEN` | expect | source |
+|---|---|---|---|---|---|
+| 1 | valid | – | – | auth OK | `GITHUB_AUTH_TOKEN` |
+| 2 | – | valid | – | auth OK | `GH_TOKEN` |
+| 3 | – | – | valid | auth OK | `GITHUB_TOKEN` (**new**) |
+| 4 | valid | invalid | – | auth OK | `GITHUB_AUTH_TOKEN` |
+| 5 | invalid | valid | – | 401 | `GITHUB_AUTH_TOKEN` |
+| 6 | valid | – | invalid | auth OK | `GITHUB_AUTH_TOKEN` |
+| 7 | invalid | – | valid | 401 | `GITHUB_AUTH_TOKEN` |
+| 8 | – | valid | invalid | auth OK | `GH_TOKEN` |
+| 9 | – | invalid | valid | 401 | `GH_TOKEN` (**new**) |
+| 10 | valid | invalid | invalid | auth OK | `GITHUB_AUTH_TOKEN` |
+| 11 | – | – | – | not found, exit 1 | – |
+| 12 | `""` | valid | – | auth OK | `GH_TOKEN` (**bug fix**) |
+| 13 | `" valid\n"` | – | – | auth OK | `GITHUB_AUTH_TOKEN` (**fix**) |
+
+**What each row checks.** The exit code alone isn't enough, since a network
+error also gives a failure. So:
+
+- an "auth OK" row requires `Authenticated as:` in the output
+- a "401" row requires `Invalid token`; any other failure is reported as
+  **ERROR** (network, rate limit), not as a pass
+- the `Using token from <VAR>` line must name the expected source (skipped with
+  `--baseline`, see below)
+- **leak check:** the token value must not appear anywhere in stdout or stderr
+
+**Before and after.** Run it with `--baseline` against today's code first. Rows
+3, 9, 12 and 13 are expected to fail at that point, which shows the gap. Every
+other row must pass, and that's the regression baseline. After the change, every
+row passes without `--baseline`. Rows marked **new** or **fix** are the only ones
+allowed to change result between the two runs.
+
+**Then the live pytest cases.** The runner finishes by running
+`pytest tests/test_kospex_github_token_env.py -m live -rs` with
+`KOSPEX_TEST_GITHUB_TOKEN` set in the child environment, so layer 3 runs against
+the same token in the same invocation.
+
+**Output.** One table with each row's PASS / FAIL / ERROR and the variable used.
+The exit code is non-zero if any row fails. The run makes about 15 calls to
+`/user`.
+
 Manual smoke test of the real CLI, with your shell's own tokens removed:
 
 ```bash
@@ -170,6 +242,7 @@ env -u GITHUB_AUTH_TOKEN GH_TOKEN=invalid GITHUB_TOKEN=$T kgit github -test-auth
 - `src/kospex_github.py`: `TOKEN_ENV_VARS`, empty/whitespace handling, `token_source`
 - `src/kgit.py`: `-test-auth` and help text from `TOKEN_ENV_VARS`
 - `tests/test_kospex_github_token_env.py`: new (there are no `KospexGithub` tests today)
+- `tests/manual/github_token_matrix.py`: new manual live runner, not collected by pytest
 - `docs/kgit.md`, `docs/troubleshooting.md`, `CLAUDE.md`
 - `CHANGELOG.md`: note `GITHUB_TOKEN` is now read, and that empty values no longer block the next variable
 
@@ -181,8 +254,6 @@ env -u GITHUB_AUTH_TOKEN GH_TOKEN=invalid GITHUB_TOKEN=$T kgit github -test-auth
 - **GitHub Enterprise Server tokens** (`GH_ENTERPRISE_TOKEN`,
   `GITHUB_ENTERPRISE_TOKEN`): left out. `KospexGithub` hard-codes
   `api.github.com`, so they aren't relevant until GHES is supported.
-
-## Open questions
-
-1. **Run the live test in CI** with a repository secret? It would catch API-side
-   changes, but adds a secret to manage and an external dependency to the run.
+- **No live token test in CI.** The live checks run only on demand through the
+  manual runner (testing layer 4), so CI needs no secret and has no
+  dependency on the GitHub API.
