@@ -173,13 +173,16 @@ env -u GITHUB_AUTH_TOKEN GH_TOKEN=invalid GITHUB_TOKEN=$T kgit github -test-auth
 - `docs/kgit.md`, `docs/troubleshooting.md`, `CLAUDE.md`
 - `CHANGELOG.md`: note `GITHUB_TOKEN` is now read, and that empty values no longer block the next variable
 
+## Decisions
+
+- **Fallback to `gh auth token`: deferred, not in this change.** It's wanted
+  later as an opt-in. The default would use a broad-scope token the user never
+  handed to kospex.
+- **GitHub Enterprise Server tokens** (`GH_ENTERPRISE_TOKEN`,
+  `GITHUB_ENTERPRISE_TOKEN`): left out. `KospexGithub` hard-codes
+  `api.github.com`, so they aren't relevant until GHES is supported.
+
 ## Open questions
 
-1. **Fallback to `gh auth token`** when no variable is set? It makes things work
-   with no setup for anyone logged in to gh, but it shells out and returns a
-   token the user may not realise kospex is using. Lean: a separate, opt-in
-   follow-up.
-2. **GitHub Enterprise Server** (`GH_ENTERPRISE_TOKEN`): `KospexGithub` hard-codes
-   `api.github.com`, so it isn't relevant until GHES is supported.
-3. **Run the live test in CI** with a repository secret? It would catch API-side
+1. **Run the live test in CI** with a repository secret? It would catch API-side
    changes, but adds a secret to manage and an external dependency to the run.
