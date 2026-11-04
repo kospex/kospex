@@ -166,6 +166,40 @@ class TestReadToken:
             m.read_token(environ={}, prompt=lambda _: bad)
 
 
+class TestTokenShape:
+    def test_full_fine_grained(self):
+        t = "github_pat_" + "a" * 82
+        assert m.token_shape(t) == "github_pat_ prefix, 93 chars"
+
+    def test_truncated_paste_is_flagged(self):
+        assert "partly pasted" in m.token_shape("github_pat_" + "a" * 40)
+
+    def test_classic(self):
+        assert m.token_shape("ghp_" + "a" * 36) == "ghp_ prefix, 40 chars"
+
+    def test_never_includes_the_secret_part(self):
+        t = "github_pat_" + "SECRETPART" * 8 + "xy"
+        assert "SECRET" not in m.token_shape(t)
+        assert "SECRET" not in m.token_shape("SECRETPART-unknown-format")
+
+
+class TestPreflightVerdict:
+    def test_both_accept(self):
+        assert m.preflight_verdict({"Bearer": 200, "token": 200})[0] is True
+
+    def test_bad_token_stops_the_run(self):
+        ok, msg = m.preflight_verdict({"Bearer": 401, "token": 401})
+        assert ok is False and "rejects the token" in msg
+
+    def test_scheme_mismatch_points_at_kospex(self):
+        ok, msg = m.preflight_verdict({"Bearer": 200, "token": 401})
+        assert ok is True and "kospex bug" in msg
+
+    def test_network_error_stops_the_run(self):
+        ok, msg = m.preflight_verdict({"Bearer": "ConnectTimeout", "token": "ConnectTimeout"})
+        assert ok is False and "unexpected" in msg
+
+
 def fake_today(row, token, gh_config_dir, cwd):
     """kgit -test-auth as it behaves before #343, for end-to-end runs of main()."""
     env = m.build_env({}, row, token, gh_config_dir)

@@ -226,6 +226,51 @@ def where_kgit_loads(cwd):
     return proc.stdout.split()
 
 
+# Published GitHub token formats: prefix -> expected length. The prefix is a
+# public format marker, not secret, so it can be printed.
+TOKEN_FORMATS = {"github_pat_": 93, "ghp_": 40}
+
+
+def token_shape(token):
+    """A printable description of the token's format. Never includes the secret part."""
+    for prefix, length in TOKEN_FORMATS.items():
+        if token.startswith(prefix):
+            note = "" if len(token) == length else f", expected {length}: partly pasted?"
+            return f"{prefix} prefix, {len(token)} chars{note}"
+    return f"unrecognised prefix, {len(token)} chars"
+
+
+def preflight_verdict(status_by_scheme):
+    """Turn {scheme: status} from a direct /user call into (ok_to_run, message)."""
+    bearer, token = status_by_scheme.get("Bearer"), status_by_scheme.get("token")
+    if bearer == 200 and token == 200:
+        return True, "GitHub accepts the token"
+    if bearer == 200:
+        return True, (f"GitHub accepts the token as 'Bearer' but returns {token} for "
+                      "'token', the scheme kospex sends: a kospex bug, not the token")
+    if 401 in (bearer, token):
+        return False, ("GitHub itself rejects the token (401 Bad credentials): expired, "
+                       "revoked, mistyped or partly pasted. kospex isn't involved yet")
+    return False, f"unexpected response from GitHub: Bearer={bearer} token={token}"
+
+
+def preflight(token, timeout=15):
+    """Call /user directly, outside kospex, with both Authorization schemes."""
+    import requests  # kospex dependency; imported here so --list works without it
+
+    statuses = {}
+    for scheme in ("Bearer", "token"):
+        try:
+            r = requests.get("https://api.github.com/user", timeout=timeout,
+                             headers={"Authorization": f"{scheme} {token}",
+                                      "Accept": "application/vnd.github+json"})
+            statuses[scheme] = r.status_code
+        except requests.RequestException as e:
+            # The type only: an exception message can carry header values.
+            statuses[scheme] = type(e).__name__
+    return statuses
+
+
 def run_live_pytest(token, cwd):
     if not LIVE_PYTEST_FILE.exists():
         print(f"\nLive pytest: skipped, {LIVE_PYTEST_FILE.name} not present yet")
@@ -275,6 +320,17 @@ def main(argv=None, runner=run_row):
             print("kgit loads from:", *loaded, sep="\n  ")
             if not loaded or not all(Path(f).is_relative_to(SRC) for f in loaded):
                 print(f"error: kgit is not loading from {SRC}", file=sys.stderr)
+                return 2
+
+            # Separates "the token is bad" from "kospex sends it wrong" before
+            # thirteen rows of 401s make the two look the same.
+            print(f"token: {token_shape(token)}")
+            statuses = preflight(token)
+            ok, message = preflight_verdict(statuses)
+            print(f"preflight (direct GET /user): Bearer={statuses['Bearer']} "
+                  f"token={statuses['token']}: {message}")
+            if not ok:
+                print("error: stopping before the matrix", file=sys.stderr)
                 return 2
         print(f"mode: {'baseline (pre-#343)' if args.baseline else 'post-#343'}\n")
 
