@@ -348,7 +348,9 @@ affected that the corpus does not exercise.
 ### Environment Variables
 - `KOSPEX_CODE` - Base directory for git repositories (default: ~/code)
 - `KOSPEX_HOME` - Config directory (default: ~/kospex)
-- `GITHUB_TOKEN` - GitHub API token for enhanced rate limits and private repo queries
+- `GITHUB_AUTH_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` - GitHub API token, checked in that order
+  (`KospexGithub.TOKEN_ENV_VARS`); empty values are skipped and whitespace stripped. Run
+  `tests/manual/github_token_matrix.py` with a real read-only token after changing that lookup.
 - `KOSPEX_URL_CACHE_SECONDS` - TTL for cached external responses (deps.dev, PyPI), in
   seconds. Default **86400** (one day). Was effectively one hour, which is fine for a
   single full-estate sweep but wrong for a batched one — every cron tick started cold
@@ -490,7 +492,7 @@ interface no longer exists.
 - **scc not found**: Install scc binary for file type detection and complexity metrics
 - **Database errors** (`no such column: ...`, `has no column named ...`): the DB is behind. Every CLI prints an out-of-date banner in this state; run `kospex upgrade-db` for status, then `kospex upgrade-db -apply`. Newly created DBs migrate themselves, so this only affects databases created before the change landed.
 - **Permission errors**: Ensure proper file permissions in KOSPEX_CODE directory
-- **GitHub rate limits**: Use GITHUB_TOKEN environment variable for authentication
+- **GitHub rate limits**: Set `GITHUB_AUTH_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`; `kgit github -test-auth` shows which one is used
 
 ### Logging Issues
 - **Logs not appearing**: Check `kospex init --validate` to verify logging setup

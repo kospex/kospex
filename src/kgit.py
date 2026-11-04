@@ -489,7 +489,8 @@ def pull(all_flag, org, server, check, no_prompt, repo_id):
 @cli.command("github")
 @click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")
 @click.option('-sync', is_flag=True, help="Clone and sync all repos to the database.")
-@click.option('-test-auth', is_flag=True, default=False, help="Test GITHUB_AUTH_TOKEN can authenticate.")
+@click.option('-test-auth', is_flag=True, default=False,
+              help=f"Test the GitHub token ({', '.join(KospexGithub.TOKEN_ENV_VARS)}) can authenticate.")
 @click.option('-out-repo-list', type=click.Path(), help="File to write clone URLs to.")
 @click.option('-ssh-clone-url',is_flag=True, help="Write SSH clone urls to file instead of HTTPS")
 @click.argument('owner', type=click.STRING, required=False)
@@ -497,27 +498,29 @@ def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
     """
     Interact with the GitHub API.
 
-    For authenticated access, you must set either the
-    GITHUB_AUTH_TOKEN or GH_TOKEN environment variable.
-    This is a Personal Access Token (PAT) with the necessary permissions.
+    For authenticated access, set a GitHub Personal Access Token (PAT) in
+    one of these environment variables, checked in this order:
+    GITHUB_AUTH_TOKEN, GH_TOKEN, GITHUB_TOKEN. Empty values are ignored.
 
     """
     gh = KospexGithub()
     repos = []
 
     if test_auth:
+        token_vars = ", ".join(KospexGithub.TOKEN_ENV_VARS)
         found = gh.get_env_credentials()
         if found:
-            print("Found Github GITHUB_AUTH_TOKEN in the environment.")
+            # The variable's name only, never the token.
+            print(f"Using token from {gh.token_source}")
         else:
-            print("Could not find Github GITHUB_AUTH_TOKEN in the environment.")
-            print("Please set GITHUB_AUTH_TOKEN.")
+            print("Could not find a GitHub token in the environment.")
+            print(f"Set one of: {token_vars} (checked in that order).")
             exit(1)
 
         if gh.test_auth():
             print("Authentication successful.")
         else:
-            print("Authentication failed. Check your GITHUB_AUTH_TOKEN")
+            print(f"Authentication failed. Check the token in {gh.token_source}")
             exit(1)
 
         exit(0)

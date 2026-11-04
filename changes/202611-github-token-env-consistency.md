@@ -1,6 +1,19 @@
 # GitHub token environment variables — consistency
 
-Design doc. No code yet.
+## Status
+
+**Built** in two PRs: the manual runner (#345, merged first, with a baseline
+recorded against the old code), then the lookup change.
+
+One deviation from the plan below: the offline tests were not committed first
+as `xfail`. Every row asserts `token_source`, which doesn't exist before the
+change, so on the old code the unchanged rows would have failed too and
+proved nothing. The pre-change behaviour is pinned by the runner's
+`--baseline` run against the real CLI and API instead.
+
+Also fixed in the same change: the misleading `Found Github GITHUB_AUTH_TOKEN`
+message printed whichever variable held the token, and request errors now
+have the token redacted (CWE-532).
 
 kospex, its docs and the `gh` CLI disagree about which environment variable holds
 the GitHub token. One of the documented names is never read at all.

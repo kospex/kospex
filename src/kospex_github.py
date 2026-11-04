@@ -12,8 +12,13 @@ class KospexGithub:
 
     # This the original token name used by Kospex
     ENV_GITHUB_AUTH_TOKEN = "GITHUB_AUTH_TOKEN"
-    # This is the token name used by Github and the gh CLI
+    # The token names used by the gh CLI, in its order of precedence.
+    # GITHUB_TOKEN is also what GitHub Actions provides.
     ENV_GH_TOKEN = "GH_TOKEN"
+    ENV_GITHUB_TOKEN = "GITHUB_TOKEN"
+    # Order of precedence. The kospex-specific name wins, so a token set
+    # deliberately for kospex isn't overridden by a personal gh token.
+    TOKEN_ENV_VARS = (ENV_GITHUB_AUTH_TOKEN, ENV_GH_TOKEN, ENV_GITHUB_TOKEN)
 
     def __init__(self):
 
@@ -22,6 +27,7 @@ class KospexGithub:
         self.timeout = 10
         self.throttled = False
         self.authenticated = False
+        self.token_source = None  # name of the env var the token came from
         self.base_url = "https://api.github.com"
 
     def set_access_token(self, access_token):
@@ -76,14 +82,26 @@ class KospexGithub:
                 return None, response
 
         except requests.exceptions.HTTPError as err:
-            print(f"HTTP Error: {err}")
+            print(f"HTTP Error: {self._redact(err)}")
             return None, response
         except requests.exceptions.Timeout as err:
-            print(f"Timeout: {err}")
+            print(f"Timeout: {self._redact(err)}")
             return None, None
         except requests.exceptions.RequestException as err:
-            print(f"Request Error: {err}")
+            print(f"Request Error: {self._redact(err)}")
             return None, None
+
+    def _redact(self, err):
+        """The exception text with the token removed (CWE-532).
+
+        requests quotes the offending header value when it refuses a header,
+        so the message can carry the whole Authorization value.
+        """
+        text = str(err)
+        if self.access_token:
+            for part in self.access_token.split():
+                text = text.replace(part, "<redacted>")
+        return text
 
     def _paginate(self, url, params=None):
         """
@@ -213,16 +231,17 @@ class KospexGithub:
     def get_env_credentials(self):
         """Get the Github PAT / Auth token from the environment."""
 
-        access_token = os.getenv(self.ENV_GITHUB_AUTH_TOKEN)
-        if access_token is None:
-            access_token = os.getenv(self.ENV_GH_TOKEN)
-
-        if access_token:
-            self.set_access_token(access_token)
-            self.authenticated = True
-            return True
-        else:
-            return False
+        # Empty or whitespace-only counts as unset, so `export GITHUB_AUTH_TOKEN=`
+        # doesn't hide a GH_TOKEN. Surrounding whitespace (a pasted value, a
+        # CRLF .env file) would otherwise be sent and rejected.
+        for var in self.TOKEN_ENV_VARS:
+            access_token = (os.getenv(var) or "").strip()
+            if access_token:
+                self.set_access_token(access_token)
+                self.authenticated = True
+                self.token_source = var
+                return True
+        return False
 
     def github_url_to_api_url(self, github_url):
         """
@@ -371,7 +390,8 @@ class KospexGithub:
             # Successfully authenticated
             print(f"Authenticated as: {data.get('login')}")
             return True
-        elif response and response.status_code == 401:
+        # Not `elif response`: a 4xx Response is falsy, so that never matched.
+        elif response is not None and response.status_code == 401:
             print("Authentication failed: Invalid token")
             return False
         else:

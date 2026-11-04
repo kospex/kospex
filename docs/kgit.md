@@ -73,13 +73,23 @@ This can be used with the `kgit clone -filename` switch as shown above.
 
 The github function can interact with both authenticated and public orgs and users.
 
-For authenticated requests the `GITHUB_AUTH_TOKEN` must be set in the environment.
+For authenticated requests, set a GitHub Personal Access Token (PAT) in one of
+these environment variables. kgit checks them in this order and uses the first
+one that is set and not empty:
+
+1. `GITHUB_AUTH_TOKEN`: kospex's own name, so a token set for kospex wins
+2. `GH_TOKEN`: the gh CLI's name
+3. `GITHUB_TOKEN`: also read by the gh CLI, and what GitHub Actions provides
+
+Surrounding whitespace is ignored. For read-only use, a token with no scopes
+(classic) or "Public repositories (read-only)" (fine-grained) is enough.
 
 ```bash
 kgit github -test-auth
 ```
 
-This `-test-auth` flag will check if the token (GitHub PAT) works, display the status and exit.
+This `-test-auth` flag checks the token works, prints which variable it came
+from (never the token itself), and exits.
 
 To list the repos for a user:
 

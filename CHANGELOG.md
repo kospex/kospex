@@ -6,6 +6,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 
+- **The GitHub token can now be set in `GITHUB_TOKEN`**, as the gh CLI and
+  GitHub Actions use. kospex reads `GITHUB_AUTH_TOKEN`, then `GH_TOKEN`, then
+  `GITHUB_TOKEN`. The first two keep their order, so an existing setup picks
+  the same token. `docs/troubleshooting.md` already said `GITHUB_TOKEN`, which
+  kospex didn't read, so following it gave unauthenticated requests.
+  - An empty value (`export GITHUB_AUTH_TOKEN=`) no longer hides the next
+    variable, and surrounding whitespace is stripped, so a pasted or CRLF
+    value works instead of failing.
+  - `kgit github -test-auth` prints which variable the token came from (the
+    name, never the value). A rejected token is reported as `Invalid token`
+    instead of the generic failure message a timeout gets.
 - **`kospex sca` and `krunner osi` print one `name, version` line per package,
   instead of dumping records** — for example `click, <9,>=8.4.1`.
   - `kospex sca` used to print each package as tab-separated name, version and
@@ -39,6 +50,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
     in a repo or directory, without contacting deps.dev.
   - `docs/refreshing-data.md` listed `kospex deps` as writing `dependency_data`.
     It never did; only `krunner osi` and `kospex sca -save` do.
+
+### Security
+
+- **GitHub request errors no longer print the token** (CWE-532). When
+  `requests` refuses an `Authorization` header value, its exception message
+  quotes the value, and kospex printed that message. The token is now
+  redacted from every printed request error.
 
 ## 0.2.0 - 2026-10-25
 
