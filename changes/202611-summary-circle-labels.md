@@ -9,7 +9,8 @@ estate a four-digit count in a 3% circle (~43px) ran past the edge.
 
 Counts are now compacted to at most four characters (`999`, `2.8k`, `66k`,
 `1.3M`), and the font is sized from the diameter (18px max, 12px floor). The
-exact count is in the circle's tooltip. Circle sizes and percentages are
+exact count is in the circle's tooltip, and it is also printed under the status
+label (e.g. "Dormant / 66,362 / 89%"). Circle sizes and percentages are
 unchanged.
 
 ## Files changed
