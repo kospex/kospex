@@ -24,7 +24,7 @@ Most of the pieces are there. What's missing is the ability to resume.
 | piece | where | notes |
 |---|---|---|
 | List an org's repos | `KospexGithub.get_repos()` | paginated, user vs org detection, `archived` / `fork` fields |
-| Auth check | `KospexGithub.get_env_credentials()`, `test_auth()` | reads `GITHUB_AUTH_TOKEN`, then `GH_TOKEN` |
+| Auth check | `KospexGithub.get_env_credentials()`, `test_auth()` | `TOKEN_ENV_VARS`: `GITHUB_AUTH_TOKEN` → `GH_TOKEN` → `GITHUB_TOKEN`, records `token_source` (#343) |
 | Org clone + sync | `kgit github ORG -sync` | this is `sync --org`, but with no record of progress and no way to resume |
 | Clone-or-pull | `KospexGit.clone_repo()` | pulls if the directory already exists |
 | Path-conflict guard | `clone_path_conflict()` | already applied per repo in `kgit github -sync` |
@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS [org_sync_runs] (
     [run_id] TEXT,            -- UTC timestamp, as osi_runs
     [org_key] TEXT,           -- e.g. github.com~mergestat
     [provider] TEXT,          -- github (bitbucket later)
+    [owner_type] TEXT,        -- org | user
     [listed] INTEGER,         -- repos returned by the API
     [started_at] TEXT,
     [finished_at] TEXT,       -- NULL = unfinished, so resumable
@@ -146,8 +147,10 @@ repo would be retried on every resume.
 
 ## Auth
 
-- No `GITHUB_AUTH_TOKEN` / `GH_TOKEN` → stop with a message naming both variables,
-  unless `-no-auth` is passed (public repos only, 60 API req/hour).
+- No token in any of `KospexGithub.TOKEN_ENV_VARS` → stop with a message naming
+  all three, unless `-no-auth` is passed (public repos only, 60 API req/hour).
+  When a token is found, print `Using token from <VAR>`, as `kgit github -test-auth`
+  does.
 - Token present → `test_auth()` before listing, so a bad token fails in one second,
   not after a partial listing.
 - **The API token is not the git credential.** Listing private repos with a token
@@ -155,16 +158,28 @@ repo would be retried on every resume.
   credential helper or SSH. Support `-ssh` (use `ssh_url`) and `-no-prompt` (reuse
   `_pull_command`'s fail-fast env) so an unattended run fails each repo instead of
   hanging on a password prompt.
-- Docs drift to fix alongside: CLAUDE.md names `GITHUB_TOKEN`, but the code reads
-  `GITHUB_AUTH_TOKEN` / `GH_TOKEN`.
 
 ## CLI shape (proposed)
 
 ```
-kgit sync --org TARGET [-relist] [-retry-failed] [-skip-archived] [-skip-forks]
-                       [-ssh] [-no-prompt] [-no-auth] [-limit N]
+kgit sync --org TARGET  [-relist] [-retry-failed] [-skip-archived] [-skip-forks]
+kgit sync --user TARGET           [-ssh] [-no-prompt] [-no-auth] [-limit N]
 kgit sync --org TARGET -status      # show latest run's manifest, offline, no network
 ```
+
+- `--org` and `--user` are mutually exclusive. The owner type is checked with
+  `KospexGithub.get_account_type()` before listing, and a mismatch is an error,
+  not a guess:
+  ```
+  $ kgit sync --org octocat
+  Error: 'octocat' is a GitHub user, not an organisation. Use --user octocat
+  $ kgit sync --user mergestat
+  Error: 'mergestat' is a GitHub organisation, not a user. Use --org mergestat
+  ```
+  GitHub teams aren't repo owners (repos belong to the org), so there's no team mode.
+- `org_sync_runs` gets an `owner_type` column (`org` / `user`). The key
+  (`github.com~octocat`) has the same shape for both, so the rest of the manifest
+  is unchanged.
 
 - `-relist`: abandon the unfinished run (mark it finished, items left as they are)
   and take a fresh listing.
@@ -181,15 +196,42 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
 - `src/kgit.py`: replace the stub, add a target parser, keep the single-repo path as is
 - `tests/`: paginate truncation, manifest atomicity, resume after `in_progress`, conflict → skipped, drift report
 
+## Decisions (2026-11-04)
+
+1. **`kgit github ORG -sync` becomes an alias** of `kgit sync --org` / `--user`
+   (whichever the owner is), so there's one org-sync implementation. Listing
+   (`kgit github ORG`, `-out-repo-list`, `-ssh-clone-url`) is unchanged. What the
+   alias gains over today's `-sync`:
+
+   | | `kgit github ORG -sync` today | `kgit sync --org` |
+   |---|---|---|
+   | Record of which repos the org returned | none, it's only in memory | manifest in the DB |
+   | A failed page while listing | silently gives a shorter list that looks complete | listing must be complete, or nothing is saved |
+   | A clone fails | prints `ERROR` and moves on, with no record | `failed` row with the reason |
+   | `sync_repo` raises an exception | stops the whole run (it isn't wrapped in `try`) | that repo is marked `failed`, and the run continues |
+   | Crash or Ctrl-C partway | start over; every repo is pulled and synced again | resume from where it stopped |
+   | Two runs at once | nothing stops it | lock per org |
+   | Repos gone from the org | not noticed | drift report (#12) |
+
+2. **GitHub first.** The tables and resume logic are provider-neutral (the
+   `provider` column), and Bitbucket follows in its own PR.
+3. **`--user` is explicit**, with the mismatch error above.
+
+## Delivery
+
+Separate PRs, each mergeable on its own:
+
+1. `_paginate` raises on a failed page, and `get_repos()` callers handle it. This
+   is the prerequisite bug, and it fixes `kgit github` listing today.
+2. Migration `0012` plus the query layer (create a run and its items atomically,
+   next items, mark status, latest unfinished run).
+3. `kgit sync --org` / `--user`: auth, owner-type check, listing → manifest, the
+   per-repo loop, resume, lock, summary, `-status`.
+4. The `kgit github -sync` alias and the drift report.
+
 ## Open questions
 
-1. **`kgit github ORG -sync`**: make it an alias of `sync --org`, or deprecate it?
-   Two org-sync paths with different safety properties shouldn't both exist.
-2. **Bitbucket**: `kgit bitbucket -workspace` already lists repos. Do it in the
-   same PR behind a small provider interface, or GitHub first?
-3. **Retention**: prune old `org_sync_runs` / `org_sync_items`, same open question
+1. **Retention**: prune old `org_sync_runs` / `org_sync_items`, same open question
    as `osi_runs`.
-4. **#80 `sync-target`**: is a "target" a saved org with its latest run, so that
+2. **#80 `sync-target`**: is a "target" a saved org with its latest run, so that
    `sync-target` is just `sync --org` on a schedule? If so, this table is the target list.
-5. **User accounts** (`kgit sync --org someuser`): `get_repos` already handles users.
-   Allow it, or require `--user`?
