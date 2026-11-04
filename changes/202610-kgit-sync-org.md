@@ -86,8 +86,11 @@ CREATE TABLE IF NOT EXISTS [org_sync_items] (
     [run_id] TEXT,
     [_repo_id] TEXT,          -- via generate_repo_id(), never hand-built
     [clone_url] TEXT,
+    [provider_repo_id] TEXT,  -- e.g. github.com:10270250; survives renames/transfers
     [archived] INTEGER,
     [fork] INTEGER,
+    [fork_parent] TEXT,       -- full_name of the immediate parent (forks only)
+    [fork_source] TEXT,       -- full_name of the root of the fork network
     [private] INTEGER,
     [pushed_at] TEXT,         -- from the API; lets us skip unchanged repos
     [status] TEXT,            -- pending | in_progress | synced | skipped | failed
@@ -162,7 +165,7 @@ repo would be retried on every resume.
 ## CLI shape (proposed)
 
 ```
-kgit sync --org TARGET  [-relist] [-retry-failed] [-skip-archived] [-skip-forks]
+kgit sync --org TARGET  [-relist] [-retry-failed] [-skip-archived] [-include-forks]
 kgit sync --user TARGET           [-ssh] [-no-prompt] [-no-auth] [-limit N]
 kgit sync --org TARGET -status      # show latest run's manifest, offline, no network
 ```
@@ -183,8 +186,14 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
 
 - `-relist`: abandon the unfinished run (mark it finished, items left as they are)
   and take a fresh listing.
-- `-skip-archived` / `-skip-forks`: those items are still written to the manifest,
-  as `skipped` with a reason. The manifest records everything the org returned.
+- **Forks are skipped by default, but always tracked.** Each fork is a manifest
+  item with status `skipped`, reason `fork`, and its parent and source recorded.
+  `-include-forks` syncs them. `-skip-archived` works the same way for archived
+  repos. Either way, the manifest records everything the org returned.
+- The listing endpoint returns `id` and `fork` but not `parent` or `source`
+  (checked against the live API). Those need one `GET /repos/{owner}/{repo}` per
+  **fork**, and only for forks. `get_repos()` already makes that request and then
+  drops the result.
 - `-limit N`: process at most N items, for cron-sized batches (as `osi -next`).
 - `-pushed_at` shortcut (later): skip the fetch when `pushed_at <= repos.last_fetch`.
 
@@ -216,6 +225,14 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
 2. **GitHub first.** The tables and resume logic are provider-neutral (the
    `provider` column), and Bitbucket follows in its own PR.
 3. **`--user` is explicit**, with the mismatch error above.
+4. **Forks: skip by default, always track** (2026-11-04). User accounts fork a
+   lot, and a synced fork brings its parent's whole history, which inflates the
+   org's developer stats. But knowing an org holds a fork matters, especially a
+   patched one it depends on, so forks are recorded in the manifest and as
+   `fork_of` lineage rows. `-include-forks` opts in. This may change for
+   closed-source work, where an org's forks are deliberate. See
+   `changes/202611-repo-lineage.md` (#348), which also covers private copies (which
+   GitHub doesn't mark as forks) and moved repos.
 
 ## Delivery
 
