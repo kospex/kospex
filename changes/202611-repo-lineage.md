@@ -28,13 +28,28 @@ default), #12 (repos removed upstream).
 
 | shared history | what it is | GitHub flags it? |
 |---|---|---|
-| `lysine-dev/okhttp` ↔ `square/okhttp` (all 6,466 commits) | fork, no commits of its own | yes |
-| `protonmail/go-crypto` ↔ `golang` `x/crypto` | fork with its own work | yes |
+| `square/okhttp` ↔ `lysine-dev/okhttp` (all 6,466 commits) | same repo, transferred (both names return id `5152285`) | no (it's not a fork) |
+| `facebook/react` ↔ `react/react` | same repo, transferred (id `10270250`) | no (it's not a fork) |
+| `protonmail/go-crypto` ↔ `go.googlesource.com/crypto` | copy with its own work | no |
 | `eslint-plugin-n` ↔ `mysticatea/eslint-plugin-node` | fork that became the successor | yes |
 | `graphql-code-generator` ↔ `…-community` | split, history copied | no |
 | `jackc/pgx` + 5 libraries | libraries merged into pgx, keeping their histories | no |
-| `golang` `x/crypto`, `x/net`, `x/sys`, `x/tools` | the Go repos share an initial commit | no |
-| `facebook/react` ↔ `react/react` | same repo, moved | no (it's not a fork) |
+| `go.googlesource.com` `crypto`, `net`, `sys`, `tools` | the Go repos share an initial commit | no |
+
+### What the GitHub API says about the same DB (2026-11-05)
+
+All 365 github.com repos, looked up with 8 batched GraphQL queries (50 repos per
+query, **1 rate-limit point each**):
+
+- **9 forks.** Only one parent (`mysticatea/eslint-plugin-node`) is also in the DB.
+- **10 repos renamed or transferred** since they were synced. Two now exist in the
+  DB under both names (react, okhttp). The other 8 (`square/retrofit`,
+  `imdario/mergo`, `ladjs/supertest`, …) are synced under their old name only,
+  which still works because git and the API follow the redirect.
+- **0 created from a template.** That's expected for a DB of open-source
+  dependencies.
+- `protonmail/go-crypto` is not marked as a fork, so only the shared root shows
+  where it came from.
 
 ## Relations and how each is detected
 
@@ -80,6 +95,7 @@ since #335's `0012` may come first.
 ```sql
 -- Provider identity, captured when first seen.
 ALTER TABLE repos ADD COLUMN provider_repo_id TEXT;   -- e.g. github.com:10270250
+ALTER TABLE repos ADD COLUMN provider_checked_at TEXT; -- last lookup, found or not
 
 -- Root commits per repo, from `git rev-list --max-parents=0 HEAD` on the clone.
 -- Read from git, not from commits.parents: that is a count, and 109 repos in
@@ -111,33 +127,85 @@ several kinds, and from more than one source of evidence at once. A
 `repos.parent` column can't hold the pgx group, or a fork that is also
 `same_repo_as` an old name.
 
-`shares_root_with` is **symmetric and undirected**. pgx contains pgproto3's
-history, and so does pgproto3. Which one absorbed the other isn't knowable from
-roots alone. The relation records that the history is shared, nothing more.
+The `shares_root_with` row is a placeholder: how shared history should be stored,
+and when it has a direction, is still being decided. See "Shared history: shapes
+and direction" below. Root counts alone do show some direction: pgx has six
+roots, and pgproto3's only root is one of them, so pgx took in pgproto3's
+history and not the other way round.
 
 ## Where each piece is filled in
 
+Every GitHub lookup uses **one GraphQL query per 50 repos** (`databaseId`,
+`isFork`, `parent`, `templateRepository`, `nameWithOwner`), which costs 1
+rate-limit point. That's about 100 points for a 5000-repo estate. REST would
+need one `GET /repos/{owner}/{repo}` per repo for the same fields, because the
+listing endpoint doesn't include `parent`, `source` or `template_repository`.
+So fork, template and id detection are one lookup, never separate costs.
+
+Ids are captured in four places:
+
+- **`kgit clone`:** when the repo is first seen, which is the only moment a later
+  rename can't confuse. Needs a token; without one, it's left for later.
 - **`kgit sync --org` / `--user` (#335):** for each listed repo, store
-  `provider_repo_id`, plus `fork_of` (from `parent`, with `source` in `detail`) and
-  `template_from` rows. The listing endpoint doesn't include `parent`,
-  `source` or `template_repository`, so each needs a `GET /repos/{owner}/{repo}`.
-  Make that request only for forks. Template detection would mean one request per
-  repo, so only make it when asked (open question 3). Today `get_repos()` fetches
-  each fork's parent and then **drops it**, so that cost is already being paid
-  for nothing.
+  `provider_repo_id`, `fork_of` (with `source` in `detail`) and `template_from`.
+  Today `get_repos()` fetches each fork's parent and then **drops it**.
+- **`kgit lineage`:** a new command for the repos already in the DB (below).
+- **`kgit pull`:** a lazy lookup for repos without an id (below).
+
+Each lookup sets `repos.provider_checked_at`, whether or not it found anything,
+so a repo isn't asked about again unless `-refresh` says so.
+
+Everything else is offline:
+
 - **Every sync (`sync_repo`):** record the repo's root commits in `repo_roots`.
   It's cheap: one `git rev-list` on a clone that's already present.
 - **`kospex rebuild lineage`**, a new entry in the `TASKS` registry
   (`src/kospex_rebuild.py`):
   - fills in `repo_roots` for existing repos from their clones
-  - derives `shares_root_with` from `repo_roots`
+  - derives the shared-history relations from `repo_roots` and `commits`
   - derives `same_repo_as` from matching `provider_repo_id`s
 
   It makes no network calls, which keeps rebuild DB-and-disk only.
-- **Moved repos already in the DB** (the react case): detected by matching
-  `provider_repo_id`, which needs one API lookup per GitHub repo that doesn't
-  have an id yet. `sync --org` gets the ids for free for an org it lists. For
-  everything else, see open question 2.
+
+### `kgit lineage`
+
+Looks up provider identity for repos already in the DB, and reports what changed.
+
+```
+kgit lineage REPO_ID | --all | --org ORG_KEY | --server SERVER
+             [-refresh] [-check] [-no-prompt] [-limit N]
+```
+
+- Scope arguments are the same as `kgit pull`.
+- By default, only repos never looked up. `-refresh` re-checks the rest, which
+  catches renames and transfers since the last check, and forks that were
+  detached.
+- `-check`: offline report from the DB only. It shows repos without an id,
+  `same_repo_as` groups, forks with or without their parent in the DB, and
+  non-GitHub repos skipped.
+- A repo that no longer exists (deleted, or no access) is reported and gets
+  `provider_checked_at` set with no id. It isn't an error for the run.
+- Output: renamed or moved (old name → current name), duplicated in the DB (same
+  id under two `repo_id`s, with a pointer to the merge runbook), new forks, new
+  template origins.
+
+### Lazy lookup in `kgit pull`
+
+Before the pull loop, collect the in-scope GitHub repos that have no
+`provider_checked_at`, and look them up in batches of 50. It's a single
+step before the loop, not one request per repo. The gaps:
+
+- **It needs a token, and `pull` doesn't today.** Pull works over SSH or a
+  credential helper. Without a token, skip the lookup and print a count ("12
+  repos have no GitHub id; run `kgit lineage`"). Never prompt.
+- **Repos that are never pulled never get an id.** That includes archived repos,
+  and anything synced with `sync-directory` from a clone made outside kgit.
+- **`pull --check` must stay offline**, so it can only report missing ids.
+- **Renames are only caught once.** A repo with an id isn't looked up again, so
+  a later transfer goes unnoticed until `kgit lineage -refresh`. Catching it on
+  every pull would mean a lookup on every pull.
+- **A failed or rate-limited lookup must not fail the pull.** It's logged and
+  retried next time.
 
 **Merging two `repo_id`s of one repo is not automatic.** Someone has to decide
 which name survives, and data from both has to be combined. It should be a
@@ -159,10 +227,15 @@ The reasoning:
 - **Knowing an org *has* a fork is still useful**, especially a fork it has
   patched and depends on. So it's never silently dropped.
 
-This default may change. For closed-source work (a company's own repos), the
-forks an org holds are deliberate and probably worth syncing. For open-source
-surveys, they're mostly noise. If it changes, it should probably be a config
-default rather than a per-run flag (open question 1).
+The default is set per installation (decided 2026-11-05). For closed-source work,
+such as kospex installed by a company over its own repos, the forks an org holds
+are deliberate and probably worth syncing. For open-source surveys, they're
+mostly noise.
+
+- `KOSPEX_CLONE_FORKS_DEFAULT`, set in the environment or `~/kospex/kospex.env`.
+  Default `false`.
+- Per run, `-include-forks` and `-skip-forks` override it either way.
+- Either way, every fork is recorded in the manifest and as a `fork_of` row.
 
 ## Out of scope
 
@@ -172,14 +245,99 @@ default rather than a per-run flag (open question 1).
 - Bitbucket and GitLab provider ids. The schema allows them (`provider_repo_id`
   is host-prefixed); GitHub comes first.
 
+## Templates
+
+The template a repo was created from is set when the repo is created and never
+changes. So it's looked up **once per repo**, as part of the same batched query
+that gets the id and fork fields. It costs nothing extra and needs no flag.
+
+The lookup can come back with nothing when:
+
+1. **The repo wasn't created from a template.** This is the normal case.
+2. **The template is private and the token can't see it.** An example is a
+   company template in one org, used to create a repo in another org that the
+   token only has access to.
+3. **The template has since been deleted.**
+4. **The repo isn't on GitHub.** GitLab has project templates; Bitbucket has none.
+5. **The "template" was a clone and push, not GitHub's template feature.** This is
+   the re-pointed remote case. It keeps the template's history, so it shows up as
+   shared history, not here.
+
+**Not yet verified:** whether GitHub tells cases 2 and 3 apart from case 1. A
+repository you can't see is normally `null` in GraphQL, the same as "no
+template". If that's what happens, kospex can't record "created from a template
+it can't see". It would record nothing, and say so in the doc for the relation.
+To check, before building it:
+
+- create a private template in one org, and a repo from it in a second org
+- query the new repo with a token that can see only the second org, in both REST
+  (`template_repository`) and GraphQL (`templateRepository`)
+- delete the template and query again
+
+If either API distinguishes it, record `template_from` with `related_repo_id`
+NULL and `detail` saying why (`template not visible` / `template deleted`).
+
+## Shared history: shapes and direction (for discussion)
+
+Every pair of repos in the dev DB that shares a root commit, with the overlap
+measured from `commits` (`a_only` and `b_only` are commits in one repo but not
+the other):
+
+| a | b | shared | a_only | b_only | roots (a / b) |
+|---|---|---:|---:|---:|---|
+| graphql-code-generator | …-community | 7,497 | 1,325 | 1,170 | 1 / 1 |
+| lysine-dev/okhttp | square/okhttp | 6,466 | 0 | 0 | 2 / 2 |
+| protonmail/go-crypto | go `crypto` | 912 | 345 | 466 | 1 / 1 |
+| jackc/pgtype | jackc/pgx | 406 | 47 | 3,966 | 1 / 6 |
+| eslint-plugin-n | eslint-plugin-node | 390 | 394 | 1 | 1 / 1 |
+| jackc/pgconn | jackc/pgx | 350 | 24 | 4,022 | 1 / 6 |
+| jackc/pgproto3 | jackc/pgx | 81 | 6 | 4,291 | 1 / 6 |
+| jackc/chunkreader | jackc/pgx | 14 | 0 | 4,358 | 1 / 6 |
+| jackc/pgio | jackc/pgx | 8 | 0 | 4,364 | 1 / 6 |
+| go `sys` | go `tools` | 3 | 1,782 | 10,900 | 1 / 1 |
+| 10 more pairs (okio and okhttp, and the Go repos) | | 1 | | | |
+
+The pairs fall into four shapes:
+
+| shape | test | examples | direction |
+|---|---|---|---|
+| **identical** | neither side has its own commits | okhttp under both names | none: the same history. Compare provider ids to tell a move from a mirror |
+| **absorbed** | one side has other roots, and the shared root is the other side's only root | pgx has 6 roots, and each library's single root is one of them | known: pgx took in the library's history |
+| **derived** | single root each, substantial overlap, both may continue | eslint-plugin-n, go-crypto, graphql split | unknown from git alone. The newer GitHub id (or `createdAt`) is the copy |
+| **common start** | only the root, or a handful of commits | the Go repos (1 to 3 shared), okio and okhttp (1) | none, and the relation is weak |
+
+The counts, not a heuristic, decide the first two shapes, and **11 of the 20
+pairs are "common start"**. Those 11 are the pairs a plain undirected
+`shares_root_with` row describes worst.
+
+Decisions this needs:
+
+1. **Store facts or labels?** Proposed: store the measured numbers per pair
+   (`shared`, `a_only`, `b_only`, roots per side, last shared commit date) and
+   derive the shape in a query. Then the thresholds can change without a rebuild.
+   The alternative is storing only a `relation` label.
+2. **Where "common start" ends.** The data has a clean gap: at most 3 shared
+   commits for the weak pairs, then 8 or more for the real ones (and pgio's 8 are
+   all of its history). Proposed rule: "common start" when shared commits are
+   ≤ 1% of *both* repos. pgio is 100% of itself, so it stays "absorbed".
+3. **Materialise every pair, or only strong ones?** One root shared by N repos is
+   N(N−1)/2 pairs: 4 Go repos already give 6. Proposed: `repo_roots` already holds
+   the group, so store pair rows only for shapes other than "common start".
+4. **Direction for "derived"** needs the API (`createdAt`, or id order on one
+   host). Proposed: record it only when the API gives it, as a separate
+   `github_api` row, and leave the commit-history row undirected.
+5. **Mirrors across hosts.** "Identical" across two hosts (say
+   `go.googlesource.com/crypto` and `github.com/golang/crypto`) is a mirror.
+   Provider ids can't see it, because ids are per host. Proposed:
+   `mirror_of`, derived only from "identical" plus different hosts.
+6. **The numbers are a snapshot.** A "derived" pair's `a_only` / `b_only` grow as
+   both continue, so `rebuild lineage` recomputes them. A repo only enters a
+   group once its roots are recorded.
+7. **HEAD only.** `commits` holds the default branch (all-branches sync is
+   deferred), so a fork whose work is on another branch looks smaller than it is.
+
 ## Open questions
 
-1. **Fork default per engagement:** keep it a flag, or add a config setting so
-   closed-source work can sync forks by default?
-2. **Ids for repos that aren't in a listed org:** a `kgit github -lineage`
-   command, a lazy lookup in `kgit pull`, or only what `sync --org` provides?
-3. **Template detection** costs one API request per repo. Opt-in flag, or skip
-   until someone needs it?
-4. **Direction for `shares_root_with`:** the root's author date, or which repo's
-   history the shared commits make up a larger share of, could suggest a
-   direction. Worth a heuristic, or leave it undirected?
+1. **Shared-history decisions 1 to 7** above.
+2. **Template visibility** needs the private-template check above before the
+   relation is built.

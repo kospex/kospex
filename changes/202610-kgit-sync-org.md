@@ -165,7 +165,7 @@ repo would be retried on every resume.
 ## CLI shape (proposed)
 
 ```
-kgit sync --org TARGET  [-relist] [-retry-failed] [-skip-archived] [-include-forks]
+kgit sync --org TARGET  [-relist] [-retry-failed] [-skip-archived] [-include-forks | -skip-forks]
 kgit sync --user TARGET           [-ssh] [-no-prompt] [-no-auth] [-limit N]
 kgit sync --org TARGET -status      # show latest run's manifest, offline, no network
 ```
@@ -188,7 +188,9 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
   and take a fresh listing.
 - **Forks are skipped by default, but always tracked.** Each fork is a manifest
   item with status `skipped`, reason `fork`, and its parent and source recorded.
-  `-include-forks` syncs them. `-skip-archived` works the same way for archived
+  `KOSPEX_CLONE_FORKS_DEFAULT=true` (environment or `~/kospex/kospex.env`) makes
+  syncing them the default for an installation; `-include-forks` / `-skip-forks`
+  override it per run. `-skip-archived` works the same way for archived
   repos. Either way, the manifest records everything the org returned.
 - The listing endpoint returns `id` and `fork` but not `parent` or `source`
   (checked against the live API). Those need one `GET /repos/{owner}/{repo}` per
@@ -229,8 +231,9 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
    lot, and a synced fork brings its parent's whole history, which inflates the
    org's developer stats. But knowing an org holds a fork matters, especially a
    patched one it depends on, so forks are recorded in the manifest and as
-   `fork_of` lineage rows. `-include-forks` opts in. This may change for
-   closed-source work, where an org's forks are deliberate. See
+   `fork_of` lineage rows. `-include-forks` opts in. For closed-source work,
+   where an org's forks are deliberate, `KOSPEX_CLONE_FORKS_DEFAULT=true` flips
+   the default for the installation (2026-11-05). See
    `changes/202611-repo-lineage.md` (#348), which also covers private copies (which
    GitHub doesn't mark as forks) and moved repos.
 
