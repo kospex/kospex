@@ -196,7 +196,13 @@ If `kgit clone` fails, here are the most common causes and solutions:
 
   # Or add to your shell profile
   echo 'export GITHUB_TOKEN=your_token' >> ~/.bashrc
+
+  # Check it works, and which variable kgit used
+  kgit github -test-auth
   ```
+  kgit reads `GITHUB_AUTH_TOKEN`, then `GH_TOKEN`, then `GITHUB_TOKEN`, and uses
+  the first that is set and not empty. If `-test-auth` names a different
+  variable than you expected, a higher-precedence one is also set.
 
 #### Bitbucket Authentication
 - **Problem**: Bitbucket API requests (`kgit bitbucket`) fail with authentication errors
