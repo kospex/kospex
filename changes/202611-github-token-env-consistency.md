@@ -33,6 +33,15 @@ unauthenticated even though a valid `GH_TOKEN` is set. Surrounding whitespace is
 not stripped either, so a value pasted with a trailing space or a `\r` (from a
 Windows-edited `.env`) is sent as-is and fails with 401.
 
+### Bug: a 401 is reported as a generic failure
+
+`test_auth()` has a branch for 401 that prints `Invalid token`, but it is
+unreachable: `elif response and response.status_code == 401`. A `requests.Response`
+is falsy for any 4xx/5xx, so a rejected token prints `No data returned or request
+failed`, the same as a timeout. This was found by running the manual runner (layer
+4) against the real API. Fix: test `response is not None`. Until then the runner
+recognises a 401 from the `401 Client Error` line `_make_request` prints.
+
 ## Proposal
 
 Read three names. Keep the existing two in their current order, and add
@@ -195,7 +204,7 @@ way each row's 200 or 401 shows which variable was used.
 | 6 | valid | – | invalid | auth OK | `GITHUB_AUTH_TOKEN` |
 | 7 | invalid | – | valid | 401 | `GITHUB_AUTH_TOKEN` |
 | 8 | – | valid | invalid | auth OK | `GH_TOKEN` |
-| 9 | – | invalid | valid | 401 | `GH_TOKEN` (**new**) |
+| 9 | – | invalid | valid | 401 | `GH_TOKEN` |
 | 10 | valid | invalid | invalid | auth OK | `GITHUB_AUTH_TOKEN` |
 | 11 | – | – | – | not found, exit 1 | – |
 | 12 | `""` | valid | – | auth OK | `GH_TOKEN` (**bug fix**) |
@@ -212,7 +221,7 @@ error also gives a failure. So:
 - **leak check:** the token value must not appear anywhere in stdout or stderr
 
 **Before and after.** Run it with `--baseline` against today's code first. Rows
-3, 9, 12 and 13 are expected to fail at that point, which shows the gap. Every
+3, 12 and 13 are expected to fail at that point, which shows the gap. Every
 other row must pass, and that's the regression baseline. After the change, every
 row passes without `--baseline`. Rows marked **new** or **fix** are the only ones
 allowed to change result between the two runs.
