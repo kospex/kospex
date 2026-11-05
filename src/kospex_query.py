@@ -954,13 +954,16 @@ class KospexQuery:
 
         return data
 
-    def commit_history(self, repo_id: str, group_by: str = 'year'):
+    def commit_history(self, repo_id: str, group_by: str = 'year', fill_gaps: bool = False):
         """
         Get commit counts grouped by year or month for a repository.
 
         Args:
             repo_id: Repository identifier
             group_by: 'year' or 'month' for grouping (default: 'year')
+            fill_gaps: if True, include every period between the first and
+                last commit, with commit_count 0 where there were none, so a
+                chart shows quiet stretches instead of closing them up
 
         Returns:
             List of dictionaries with time period and commit count
@@ -991,7 +994,38 @@ class KospexQuery:
         for row in self.kospex_db.query(sql, [repo_id]):
             data.append(row)
 
+        if fill_gaps:
+            data = self._fill_period_gaps(data, time_field)
+
         return data
+
+    @staticmethod
+    def _fill_period_gaps(data, time_field):
+        """Insert zero-count rows for periods missing between the first and last.
+
+        Rows whose period is NULL (no parseable committer_when) are dropped,
+        since they have no place on a timeline.
+        """
+        counts = {row[time_field]: row["commit_count"] for row in data if row[time_field]}
+        if not counts:
+            return []
+
+        periods = sorted(counts)
+        filled = []
+        if time_field == 'month':
+            year, month = (int(x) for x in periods[0].split('-'))
+            end = tuple(int(x) for x in periods[-1].split('-'))
+            while (year, month) <= end:
+                key = f"{year:04d}-{month:02d}"
+                filled.append({time_field: key, "commit_count": counts.get(key, 0)})
+                month += 1
+                if month > 12:
+                    year, month = year + 1, 1
+        else:
+            for year in range(int(periods[0]), int(periods[-1]) + 1):
+                key = f"{year:04d}"
+                filled.append({time_field: key, "commit_count": counts.get(key, 0)})
+        return filled
 
     def active_devs(self, days=90, org=False, org_key=None):
         """Look for distinct developers in the last 'days'"""
