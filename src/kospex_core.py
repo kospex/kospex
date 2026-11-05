@@ -715,8 +715,8 @@ class Kospex:
         repo_id = self.git.get_repo_id()
         if repo_id:
             print("Updating developer stats...")
-            self.kospex_query.update_developer_stats(repo_id)
-            self.kospex_query.update_developer_file_stats(repo_id)
+            # Shared with `kospex rebuild developer-stats` (#352).
+            self.kospex_query.refresh_developer_stats(repo_id)
 
         self.chdir_original()
 

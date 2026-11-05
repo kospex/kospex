@@ -196,18 +196,35 @@ def test_developer_stats_rebuild_fills_the_file_level_columns(db):
         assert rows["dev1@example.com"][2:] == (10, 3, 2, 0, 0, 0)
 
 
-def test_developer_stats_rebuild_matches_what_a_sync_writes(db):
+def test_refresh_developer_stats_is_all_or_nothing(db, monkeypatch):
+    # Sync and rebuild both go through refresh_developer_stats(). If the
+    # file-level step fails, the repo keeps its previous complete rows, rather
+    # than rows re-inserted without additions / deletions / unique_files.
     _add_commit_files(db)
     kq = KospexQuery(kospex_db=db)
     repo_id = "github.com~acme~api"
-    # What sync_repo() runs at the end of every sync.
-    kq.update_developer_stats(repo_id)
-    kq.update_developer_file_stats(repo_id)
-    after_sync = _developer_rows(db, repo_id)
-    assert all(v is not None for row in after_sync for v in row)
+    kq.refresh_developer_stats(repo_id)
+    before = _developer_rows(db, repo_id)
+    assert before and all(v is not None for row in before for v in row)
 
-    KospexRebuild.TASKS["developer-stats"].run(kq, {"_repo_id": repo_id})
-    assert _developer_rows(db, repo_id) == after_sync
+    def boom(_repo_id):
+        raise RuntimeError("simulated failure in the file-level step")
+
+    monkeypatch.setattr(kq, "update_developer_file_stats", boom)
+    with pytest.raises(RuntimeError):
+        kq.refresh_developer_stats(repo_id)
+    assert not db.conn.in_transaction
+    assert _developer_rows(db, repo_id) == before
+
+
+def test_rebuild_task_uses_refresh_developer_stats(db, monkeypatch):
+    # One method for sync and rebuild, so the two can't drift apart again:
+    # #352 was the rebuild's copy of the steps losing one of them.
+    kq = KospexQuery(kospex_db=db)
+    called = []
+    monkeypatch.setattr(kq, "refresh_developer_stats", lambda repo_id: called.append(repo_id) or 2)
+    assert KospexRebuild.TASKS["developer-stats"].run(kq, {"_repo_id": "github.com~acme~api"}) == 2
+    assert called == ["github.com~acme~api"]
 
 
 def test_developer_stats_rebuild_commits_once_per_repo(db):
