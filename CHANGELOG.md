@@ -73,6 +73,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
     without their file-level columns.
   - `update_developer_file_stats()` no longer commits on every developer row,
     and no longer commits a transaction its caller has open.
+- **The commit history page (`/history/REPO_ID`) shows periods with no
+  commits.** Only months or years with commits were plotted, so the bars on
+  either side of a quiet stretch sat next to each other and the gap was
+  invisible. Every period between the first and last commit now appears, at
+  zero where nothing landed, in both the monthly and yearly views. The
+  "average per period" figure now divides by every period in that span, so it
+  is lower for a repo with gaps.
 
 ### Security
 

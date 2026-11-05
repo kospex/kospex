@@ -1694,11 +1694,11 @@ def commit_history(request: Request, repo_id: str):
         logger.info(f"Commit history page requested for repo: {repo_id}")
 
         # Get year data (always show)
-        year_data = KospexQuery().commit_history(repo_id, group_by='year')
+        year_data = KospexQuery().commit_history(repo_id, group_by='year', fill_gaps=True)
 
         # Get month data (optional, based on query param)
         show_monthly = request.query_params.get("monthly", "false") == "true"
-        month_data = KospexQuery().commit_history(repo_id, group_by='month') if show_monthly else []
+        month_data = KospexQuery().commit_history(repo_id, group_by='month', fill_gaps=True) if show_monthly else []
 
         # Get repo metadata for display
         repo_info = KospexQuery().repos(repo_id=repo_id)
