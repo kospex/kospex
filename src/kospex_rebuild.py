@@ -16,6 +16,11 @@ from dataclasses import dataclass
 from typing import Callable
 
 import kospex_schema as KospexSchema
+from kospex_utils import get_kospex_logger
+
+# The CLI's logger, so a rebuild lands in kospex.log next to the command's
+# other output.
+log = get_kospex_logger("kospex")
 
 
 @dataclass(frozen=True)
@@ -24,7 +29,9 @@ class RebuildTask:
     description: str
     writes: tuple
     needs_clone: bool
-    run: Callable  # (kospex_query, repo_row) -> optional count
+    # (kospex_query, repo_row) -> a dict of numbers to report (e.g.
+    # {"developers": 4, "commits": 969}), a row count, or None.
+    run: Callable
 
 
 @dataclass
@@ -37,7 +44,17 @@ class RepoResult:
 
 def _developer_stats(kospex_query, repo):
     # The same method sync_repo() calls, so the two can't drift apart (#352).
-    return kospex_query.refresh_developer_stats(repo["_repo_id"])
+    kospex_query.refresh_developer_stats(repo["_repo_id"])
+    return kospex_query.developer_stats_totals(repo["_repo_id"])
+
+
+def _describe(outcome):
+    """What a task returned, as text for the progress line and the log."""
+    if isinstance(outcome, dict):
+        return " ".join(f"{key}={value}" for key, value in outcome.items())
+    if isinstance(outcome, int):
+        return f"{outcome} rows"
+    return ""
 
 
 TASKS = {
@@ -68,26 +85,40 @@ def resolve_scope(kospex_query, repo_id=None, all_repos=False, org_key=None, ser
     return kospex_query.get_repos(server=server)
 
 
-def run_task(task, repos, kospex_query, on_repo=None):
+def run_task(task, repos, kospex_query, on_repo=None, scope=None):
     """Run task for each repo, isolating failures. Returns a list of RepoResult.
 
     on_repo(index, total, result) is called after each repo, for progress output.
+    scope is how the repos were chosen (e.g. "-org github.com~acme"), for the log.
+
+    Logs to kospex.log: a start line, one line per repo (INFO when it worked,
+    WARNING when skipped, ERROR with the traceback when it failed) and a summary.
     """
+    prefix = f"rebuild {task.name}"
+    log.info("%s start: scope=%s, %d repos", prefix, scope or "(not given)", len(repos))
+    started_all = time.perf_counter()
     results = []
     for i, repo in enumerate(repos, start=1):
         repo_id = repo["_repo_id"]
         path = repo.get("file_path")
         if task.needs_clone and not (path and os.path.isdir(path)):
             result = RepoResult(repo_id, "skipped", detail=f"no clone at {path}")
+            log.warning("%s %s skipped: %s", prefix, repo_id, result.detail)
         else:
             started = time.perf_counter()
             try:
-                count = task.run(kospex_query, repo)
-                detail = f"{count} rows" if isinstance(count, int) else ""
+                detail = _describe(task.run(kospex_query, repo))
                 result = RepoResult(repo_id, "ok", time.perf_counter() - started, detail)
+                log.info("%s %s ok %.2fs%s", prefix, repo_id, result.seconds,
+                         f" {detail}" if detail else "")
             except Exception as e:  # one bad repo must not stop the rest
                 result = RepoResult(repo_id, "failed", time.perf_counter() - started, str(e))
+                log.exception("%s %s failed %.2fs: %s", prefix, repo_id, result.seconds, e)
         results.append(result)
         if on_repo:
             on_repo(i, len(repos), result)
+
+    counts = {s: sum(1 for r in results if r.status == s) for s in ("ok", "skipped", "failed")}
+    log.info("%s done: %d ok, %d skipped, %d failed in %.1fs", prefix,
+             counts["ok"], counts["skipped"], counts["failed"], time.perf_counter() - started_all)
     return results

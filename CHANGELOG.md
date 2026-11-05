@@ -4,6 +4,28 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+### Added
+
+- **`kospex rebuild` now writes to `kospex.log`.** It used to print to the
+  console only, so nothing recorded afterwards that a rebuild had run, and a
+  failed repo's traceback was lost. Each run now logs:
+  - a start line with the scope as given and the number of repos
+  - one line per repo with its status and time. A failure is logged at ERROR
+    with its traceback, and a skipped repo at WARNING
+  - a summary line with the counts and the total time
+
+  For `developer-stats`, each repo's line, in the log and on the console,
+  reports `developers`, `commits` and `merges`. `commits` and `merges` are
+  counted as `kospex key-person` counts them, and add up to the repo's total.
+  For example:
+
+  ```
+  rebuild developer-stats github.com~kospex~kospex ok 0.27s developers=4 commits=975 merges=145
+  ```
+
+  A `-dry-run` is logged at DEBUG only. There is no files-changed count: on the
+  largest repo tested it would have added about 20 seconds per repo.
+
 ### Changed
 
 - **The GitHub token can now be set in `GITHUB_TOKEN`**, as the gh CLI and

@@ -8,6 +8,8 @@ dates (last_authored IS NULL). Rebuilding needs only the DB, no clones.
 The scope rule matches `kgit pull`: exactly one of REPO_ID / -all / -org /
 -server, so nothing is rebuilt estate-wide by accident.
 """
+import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -223,7 +225,7 @@ def test_rebuild_task_uses_refresh_developer_stats(db, monkeypatch):
     kq = KospexQuery(kospex_db=db)
     called = []
     monkeypatch.setattr(kq, "refresh_developer_stats", lambda repo_id: called.append(repo_id) or 2)
-    assert KospexRebuild.TASKS["developer-stats"].run(kq, {"_repo_id": "github.com~acme~api"}) == 2
+    KospexRebuild.TASKS["developer-stats"].run(kq, {"_repo_id": "github.com~acme~api"})
     assert called == ["github.com~acme~api"]
 
 
@@ -278,6 +280,89 @@ def test_every_task_is_fully_described():
         assert task.name == name and task.description and task.writes and callable(task.run)
 
 
+# --- what each repo reports, and the log ------------------------------------
+
+def _add_merge(db, repo_id="github.com~acme~api"):
+    """A clean merge by dev0: two parents, no files of its own."""
+    server, owner, repo = REPOS[repo_id]
+    db["commits"].insert({
+        "hash": "merge1", "_repo_id": repo_id, "_git_server": server, "_git_owner": owner,
+        "_git_repo": repo, "author_email": "dev0@example.com", "committer_email": "dev0@example.com",
+        "author_when": _iso(5), "committer_when": _iso(5), "parents": 2, "_files": 0,
+    })
+
+
+def _rebuild_records(caplog):
+    return [r for r in caplog.records if r.name == "kospex" and "rebuild developer-stats" in r.getMessage()]
+
+
+def test_developer_stats_task_reports_developers_commits_and_merges(db):
+    _add_merge(db)
+    kq = KospexQuery(kospex_db=db)
+    metrics = KospexRebuild.TASKS["developer-stats"].run(kq, {"_repo_id": "github.com~acme~api"})
+    # Counted as kospex key-person counts them: commits is authorship, merges
+    # are separate, and the two add up to the repo's total.
+    assert metrics == {"developers": 2, "commits": 2, "merges": 1}
+
+
+def test_progress_detail_shows_the_metrics(db):
+    _add_merge(db)
+    kq = KospexQuery(kospex_db=db)
+    [result] = KospexRebuild.run_task(KospexRebuild.TASKS["developer-stats"],
+                                      KospexRebuild.resolve_scope(kq, repo_id="github.com~acme~api"), kq)
+    assert result.detail == "developers=2 commits=2 merges=1"
+
+
+def test_a_task_returning_a_count_still_reports_rows(db):
+    task = KospexRebuild.RebuildTask("count", "test", (), False, lambda kq, repo: 4)
+    kq = KospexQuery(kospex_db=db)
+    [result] = KospexRebuild.run_task(task, KospexRebuild.resolve_scope(kq, repo_id="github.com~acme~api"), kq)
+    assert result.detail == "4 rows"
+
+
+def test_run_task_logs_start_each_repo_and_done(db, caplog):
+    caplog.set_level(logging.DEBUG, logger="kospex")
+    kq = KospexQuery(kospex_db=db)
+    repos = KospexRebuild.resolve_scope(kq, org_key="github.com~acme")
+    KospexRebuild.run_task(KospexRebuild.TASKS["developer-stats"], repos, kq, scope="-org github.com~acme")
+
+    messages = [r.getMessage() for r in _rebuild_records(caplog)]
+    assert messages[0] == "rebuild developer-stats start: scope=-org github.com~acme, 2 repos"
+    assert re.fullmatch(r"rebuild developer-stats github\.com~acme~api ok \d+\.\d\ds "
+                        r"developers=2 commits=2 merges=0", messages[1]), messages[1]
+    assert messages[2].startswith("rebuild developer-stats github.com~acme~web ok ")
+    assert re.fullmatch(r"rebuild developer-stats done: 2 ok, 0 skipped, 0 failed in \d+\.\ds",
+                        messages[3]), messages[3]
+    assert len(messages) == 4
+    assert all(r.levelno == logging.INFO for r in _rebuild_records(caplog))
+
+
+def test_a_failed_repo_is_logged_with_its_traceback(db, caplog, monkeypatch):
+    caplog.set_level(logging.DEBUG, logger="kospex")
+
+    def fail(self, repo_id):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(KospexQuery, "update_developer_stats", fail)
+    kq = KospexQuery(kospex_db=db)
+    KospexRebuild.run_task(KospexRebuild.TASKS["developer-stats"],
+                           KospexRebuild.resolve_scope(kq, repo_id="github.com~acme~api"), kq)
+
+    [failed] = [r for r in _rebuild_records(caplog) if r.levelno == logging.ERROR]
+    assert failed.getMessage().startswith("rebuild developer-stats github.com~acme~api failed ")
+    assert failed.getMessage().endswith(": disk full")
+    assert failed.exc_info and failed.exc_info[0] is RuntimeError
+
+
+def test_a_skipped_repo_is_logged_as_a_warning(db, caplog):
+    caplog.set_level(logging.DEBUG, logger="kospex")
+    task = KospexRebuild.RebuildTask("needs-clone", "test", (), True, lambda kq, repo: 1)
+    kq = KospexQuery(kospex_db=db)
+    KospexRebuild.run_task(task, KospexRebuild.resolve_scope(kq, repo_id="github.com~acme~api"), kq)
+    [skipped] = [r for r in caplog.records if r.name == "kospex" and r.levelno == logging.WARNING]
+    assert skipped.getMessage().startswith("rebuild needs-clone github.com~acme~api skipped: no clone at ")
+
+
 # --- the CLI -----------------------------------------------------------------
 
 def _cli(*args):
@@ -323,6 +408,29 @@ def test_cli_dry_run_lists_repos_and_changes_nothing(db):
     assert all(repo_id in result.output for repo_id in REPOS)
     assert "3 repo(s) would be rebuilt" in result.output
     assert list(db.query("SELECT * FROM developer_stats ORDER BY _repo_id, author_email")) == before
+
+
+@pytest.mark.parametrize("args, scope", [
+    (["-all"], "-all"),
+    (["-org", "github.com~acme"], "-org github.com~acme"),
+    (["-server", "gitlab.com"], "-server gitlab.com"),
+    (["github.com~acme~web"], "github.com~acme~web"),
+])
+def test_cli_logs_the_scope_it_was_given(db, caplog, args, scope):
+    caplog.set_level(logging.DEBUG, logger="kospex")
+    result = _cli("developer-stats", *args)
+    assert result.exit_code == 0, result.output
+    starts = [r.getMessage() for r in _rebuild_records(caplog) if " start: " in r.getMessage()]
+    assert len(starts) == 1 and starts[0].startswith(f"rebuild developer-stats start: scope={scope}, ")
+
+
+def test_cli_dry_run_logs_only_at_debug(db, caplog):
+    caplog.set_level(logging.DEBUG, logger="kospex")
+    result = _cli("developer-stats", "-all", "-dry-run")
+    assert result.exit_code == 0, result.output
+    records = _rebuild_records(caplog)
+    assert [r.getMessage() for r in records] == ["rebuild developer-stats dry run: scope=-all, 3 repos"]
+    assert records[0].levelno == logging.DEBUG
 
 
 def test_cli_unknown_repo_exits_non_zero(db):
