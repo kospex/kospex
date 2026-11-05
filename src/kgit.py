@@ -13,7 +13,7 @@ from rich.console import Console
 import kospex_utils as KospexUtils
 from kospex.db.migrator import warn_if_behind
 from kospex_git import KospexGit
-from kospex_github import KospexGithub
+from kospex_github import GitHubListingIncomplete, KospexGithub
 from kospex_bitbucket import (
     KospexBitbucket,
     MODE_TOKEN,
@@ -538,7 +538,14 @@ def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
 
     account_type = gh.get_account_type(owner)
     print(f"\nFinding repos for: {owner} ({account_type})\n")
-    repos = gh.get_repos(owner,no_auth=no_auth)
+    try:
+        repos = gh.get_repos(owner, no_auth=no_auth)
+    except GitHubListingIncomplete as e:
+        # Nothing is cloned, printed or written from a partial list: a short
+        # -out-repo-list file would silently drop repos from `kgit clone -filename`.
+        console.print(Text.assemble(("Error:", "bold red"), f" {e}"))
+        console.print("No repos were synced and no repo list was written. Re-run to retry.")
+        exit(1)
 
     if repos:
         for repo in repos:

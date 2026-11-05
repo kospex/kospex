@@ -53,12 +53,24 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **`kgit github` no longer treats a partial repo listing as complete.** A
+  timeout, server error or rate limit on any page of the listing used to end
+  it quietly, so the table, `-out-repo-list` and `-sync` worked from a shorter
+  list with nothing saying repos were missing. It now stops with an error
+  naming the page and the reason, and writes and syncs nothing. A failed lookup
+  of the org or user no longer reports `Could not find user or organization`
+  either; that message is now only for a genuine 404.
 - **`kospex rebuild developer-stats` no longer empties the file-level
   columns** of `developer_stats` (#352). It rewrote each repo's rows without
   `additions`, `deletions` and `unique_files` (all time and 90 days), which
-  stayed NULL until the repo's next sync. The rebuild now writes the same
-  columns a sync does, in one transaction per repo. To repair a DB that was
-  rebuilt before this fix, run the rebuild again, or sync the affected repos.
+  stayed NULL until the repo's next sync. To repair a DB that was rebuilt
+  before this fix, run the rebuild again, or sync the affected repos.
+  - Sync and rebuild now refresh developer stats through one method,
+    `KospexQuery.refresh_developer_stats()`, which writes every column in one
+    transaction per repo. The two used to repeat the steps separately, and the
+    rebuild's copy had lost one of them. A sync that fails partway through this
+    step now leaves the repo's previous stats in place, rather than rows
+    without their file-level columns.
   - `update_developer_file_stats()` no longer commits on every developer row,
     and no longer commits a transaction its caller has open.
 
