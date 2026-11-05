@@ -19,7 +19,7 @@ dependencies = [
     # Uncapped: nearly every environment shares packaging, so a cap causes
     # resolver conflicts. kospex only uses Requirement and Version.
     "packaging>=26.1",
-    "panopticas>=0.0.21",
+    "panopticas>=0.0.23",
     # >=1.2.2 clears GHSA-mf9w-mj56-hr94 (set_key follows symlinks). kospex
     # only calls load_dotenv, but shouldn't allow a version its own sca flags.
     "python-dotenv>=1.2.2,<2",

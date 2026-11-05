@@ -23,7 +23,7 @@ class Kind(str, Enum):
     RUNTIME = "runtime"        # a language/toolchain version (.python-version, .nvmrc)
     CONTAINER = "container"    # base image + build-time installs (Dockerfile)
     SCA_CONFIG = "sca_config"  # scan config, declares no deps itself (dependabot.yml)
-    LOCKFILE = "lockfile"      # integrity/checksum companion, not scanned alone (go.sum)
+    LOCKFILE = "lockfile"      # companion to a declaration, not scanned alone (go.sum, .pnp.cjs)
     UNKNOWN = "unknown"        # dependency-tagged file matching no registry entry
 
 
@@ -130,6 +130,11 @@ REGISTRY: tuple[Extractor, ...] = (
     Extractor("npm-lock", Kind.PACKAGE, _matcher(r"package-lock\.json"),
               ("sca", "osi"), "npm",
               "kospex.extractors.npmlock:extract_package_lock"),
+    # npm documents npm-shrinkwrap.json as the package-lock.json format under
+    # a publishable name, and the parser never reads the filename.
+    Extractor("npm-shrinkwrap", Kind.PACKAGE, _matcher(r"npm-shrinkwrap\.json"),
+              ("sca", "osi"), "npm",
+              "kospex.extractors.npmlock:extract_package_lock"),
     Extractor("go-mod", Kind.PACKAGE, _matcher(r"go\.mod"), ("sca", "osi"), "go",
               "kospex.extractors.gomod:extract_gomod"),
     Extractor("nuget-csproj", Kind.PACKAGE, _matcher(r".*\.csproj"), ("sca", "osi"), "nuget",
@@ -140,10 +145,70 @@ REGISTRY: tuple[Extractor, ...] = (
               "kospex.extractors.yarn:extract_yarn_lock"),
     # --- package: recognised but no parser yet (-> sub-project D) ---
     Extractor("gradle-build", Kind.PACKAGE, _matcher(r"build\.gradle(\.kts)?"), (), "maven", None),
+    # Tagged `dependencies` from panopticas 0.0.22 / 0.0.23. Named here so a consumer
+    # sees "no parser yet" rather than an unrecognised file. package_type is
+    # the deps.dev system a future parser would query, or None where deps.dev
+    # has no such system (Packagist, Hex, Pub, Deno's JSR).
+    # Gradle's dependency lockfiles, and the version catalog Gradle imports
+    # from gradle/. Replaced when a Gradle parser lands (#229).
+    Extractor("gradle-lockfile", Kind.PACKAGE,
+              _matcher(r"(buildscript-)?gradle\.lockfile"), (), "maven", None),
+    Extractor("gradle-version-catalog", Kind.PACKAGE, _matcher(r"libs\.versions\.toml"), (),
+              "maven", None),
+    Extractor("sbt", Kind.PACKAGE, _matcher(r".+\.sbt"), (), "maven", None),
+    Extractor("mill", Kind.PACKAGE,
+              _matcher(r"(build|package)\.mill(\.yaml)?|build\.sc"), (), "maven", None),
+    Extractor("cargo-toml", Kind.PACKAGE, _matcher(r"cargo\.toml"), (), "cargo", None),
+    Extractor("cargo-lock", Kind.PACKAGE, _matcher(r"cargo\.lock"), (), "cargo", None),
+    Extractor("gemfile", Kind.PACKAGE, _matcher(r"gemfile|gems\.rb"), (), "rubygems", None),
+    Extractor("gemfile-lock", Kind.PACKAGE, _matcher(r"gemfile\.lock|gems\.locked"), (),
+              "rubygems", None),
+    Extractor("gemspec", Kind.PACKAGE, _matcher(r".+\.gemspec"), (), "rubygems", None),
+    Extractor("composer-json", Kind.PACKAGE, _matcher(r"composer\.json"), (), None, None),
+    Extractor("composer-lock", Kind.PACKAGE, _matcher(r"composer\.lock"), (), None, None),
+    Extractor("pipfile", Kind.PACKAGE, _matcher(r"pipfile"), (), "pypi", None),
+    Extractor("pipfile-lock", Kind.PACKAGE, _matcher(r"pipfile\.lock"), (), "pypi", None),
+    Extractor("poetry-lock", Kind.PACKAGE, _matcher(r"poetry\.lock"), (), "pypi", None),
+    Extractor("pdm-lock", Kind.PACKAGE, _matcher(r"pdm\.lock"), (), "pypi", None),
+    # PEP 751: `pylock.toml` or `pylock.<name>.toml`, the name containing no
+    # dot. panopticas 0.0.22 has is_pylock in panopticas.core but does not
+    # export it from the package, so _panopticas_matcher would always return
+    # False. This is its pattern; delegate once it is exported.
+    Extractor("pylock", Kind.PACKAGE, _matcher(r"pylock\.([^.]+\.)?toml"), (), "pypi", None),
+    Extractor("mix-exs", Kind.PACKAGE, _matcher(r"mix\.exs"), (), None, None),
+    Extractor("mix-lock", Kind.PACKAGE, _matcher(r"mix\.lock"), (), None, None),
+    Extractor("pubspec", Kind.PACKAGE,
+              _matcher(r"pubspec\.yaml|pubspec_overrides\.yaml"), (), None, None),
+    Extractor("pubspec-lock", Kind.PACKAGE, _matcher(r"pubspec\.lock"), (), None, None),
+    # bun.lockb is Bun's binary lockfile, replaced by the text bun.lock in Bun 1.2.
+    Extractor("bun-lock", Kind.PACKAGE, _matcher(r"bun\.lockb?"), (), "npm", None),
+    Extractor("deno-lock", Kind.PACKAGE, _matcher(r"deno\.lock"), (), None, None),
+    # F# and VB projects use the same SDK-style PackageReference as .csproj,
+    # so extract_csproj probably reads them, but no real file was available
+    # to measure it against.
+    Extractor("nuget-fsproj-vbproj", Kind.PACKAGE, _matcher(r".+\.(fsproj|vbproj)"), (),
+              "nuget", None),
+    Extractor("nuspec", Kind.PACKAGE, _matcher(r".+\.nuspec"), (), "nuget", None),
+    # Central package management: PackageVersion items, not PackageReference.
+    Extractor("nuget-central-versions", Kind.PACKAGE, _matcher(r"directory\.packages\.props"),
+              (), "nuget", None),
+    # packages.lock.json, or packages.<project>.lock.json when projects share a
+    # directory: panopticas' is_nuget_project_lock, which it does not export.
+    Extractor("nuget-lock", Kind.PACKAGE, _matcher(r"packages(\..+)?\.lock\.json"), (),
+              "nuget", None),
+    Extractor("dotnet-tools", Kind.PACKAGE, _matcher(r"dotnet-tools\.json"), (), "nuget", None),
+    Extractor("paket", Kind.PACKAGE,
+              _matcher(r"paket\.(dependencies|lock|references)"), (), "nuget", None),
+    # Mostly workspace settings, but `catalog:` / `catalogs:` declare version
+    # ranges that package.json files refer to as `catalog:`. Measured: 4 of 48
+    # real files have catalogs, so no parser yet.
+    Extractor("pnpm-workspace", Kind.PACKAGE, _matcher(r"pnpm-workspace\.yaml"), (),
+              "npm", None),
     Extractor("maven-pom", Kind.PACKAGE, _matcher(r"pom\.xml"), (), "maven", None),
     # --- runtime ---
     Extractor("python-version", Kind.RUNTIME, _matcher(r"\.python-version"), (), None, None),
     Extractor("nvmrc", Kind.RUNTIME, _matcher(r"\.nvmrc"), (), None, None),
+    Extractor("ruby-version", Kind.RUNTIME, _matcher(r"\.ruby-version"), (), None, None),
     # --- container ---
     Extractor("dockerfile", Kind.CONTAINER,
               _matcher(r"dockerfile(\..+)?|.+\.dockerfile"), (), None, None),
@@ -153,6 +218,9 @@ REGISTRY: tuple[Extractor, ...] = (
               _matcher(r"renovate\.json|\.renovaterc(\.json)?"), (), None, None),
     # --- lockfile (integrity only) ---
     Extractor("go-sum", Kind.LOCKFILE, _matcher(r"go\.sum"), (), None, None),
+    # Yarn Plug'n'Play loaders: generated code holding the tree yarn.lock
+    # already declares, so a companion like go.sum, not a source of its own.
+    Extractor("yarn-pnp", Kind.LOCKFILE, _matcher(r"\.pnp\.(cjs|loader\.mjs)"), (), None, None),
 )
 
 
