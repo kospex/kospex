@@ -2263,13 +2263,17 @@ class KospexQuery:
                 additions_90_days = ?, deletions_90_days = ?, unique_files_90_days = ?
             WHERE _repo_id = ? AND author_email = ?
         """
-        for row in rows:
-            self.kospex_db.execute(
-                update_sql,
-                [row[1], row[2], row[3], row[4], row[5], row[6], repo_id, row[0]]
-            )
+        # One transaction, as in update_developer_stats(). This used to end with
+        # conn.commit(), which also committed any transaction a caller had open,
+        # so the function couldn't run inside one (the rebuild task needs to).
+        # Nested in a caller's atomic() this is a savepoint.
+        with self.kospex_db.atomic():
+            for row in rows:
+                self.kospex_db.execute(
+                    update_sql,
+                    [row[1], row[2], row[3], row[4], row[5], row[6], repo_id, row[0]]
+                )
 
-        self.kospex_db.conn.commit()
         return len(rows)
 
     def has_developer_stats(self, repo_id):

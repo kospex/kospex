@@ -51,6 +51,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - `docs/refreshing-data.md` listed `kospex deps` as writing `dependency_data`.
     It never did; only `krunner osi` and `kospex sca -save` do.
 
+### Fixed
+
+- **`kospex rebuild developer-stats` no longer empties the file-level
+  columns** of `developer_stats` (#352). It rewrote each repo's rows without
+  `additions`, `deletions` and `unique_files` (all time and 90 days), which
+  stayed NULL until the repo's next sync. The rebuild now writes the same
+  columns a sync does, in one transaction per repo. To repair a DB that was
+  rebuilt before this fix, run the rebuild again, or sync the affected repos.
+  - `update_developer_file_stats()` no longer commits on every developer row,
+    and no longer commits a transaction its caller has open.
+
 ### Security
 
 - **GitHub request errors no longer print the token** (CWE-532). When

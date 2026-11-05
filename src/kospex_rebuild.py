@@ -36,7 +36,16 @@ class RepoResult:
 
 
 def _developer_stats(kospex_query, repo):
-    return kospex_query.update_developer_stats(repo["_repo_id"])
+    # The same two steps sync_repo() runs. update_developer_stats() deletes and
+    # re-inserts the repo's rows without the file-level columns, so on its own
+    # it left additions / deletions / unique_files NULL until the next sync.
+    # One transaction for both: the rows are never committed without those
+    # columns, and the per-developer UPDATEs don't each commit. The inner
+    # atomic() in update_developer_stats() becomes a savepoint.
+    with kospex_query.kospex_db.atomic():
+        developers = kospex_query.update_developer_stats(repo["_repo_id"])
+        kospex_query.update_developer_file_stats(repo["_repo_id"])
+    return developers
 
 
 TASKS = {
