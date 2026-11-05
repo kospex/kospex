@@ -126,8 +126,12 @@ Two chains to handle rather than double-count:
    even if 18 itself is end of life.
 4. **panopticas tagging.** The untagged files above are raised in
    kospex/panopticas#109, pending research into each format. The existing runtime pins
-   are tagged `dependencies`. If panopticas adds a separate runtime tag, kospex's
-   dependency views would stop listing them as files with no parser.
+   are tagged `dependencies` deliberately: a library or application that needs a
+   minimum Python, Node or Ruby depends on it. That stays. What `dependencies` cannot
+   say is that the dependency is on a runtime, not a registry package, so kospex's
+   dependency views list these files as having no parser. An *additional* tag (e.g.
+   `runtime`) alongside `dependencies` would let kospex route them to runtime reading,
+   with no change for consumers that filter on `dependencies` today.
 5. **The registry's `Kind.RUNTIME`.** Today it exists so `/osi/` can name these files.
    Whether runtime reading goes through the extractor registry or a separate pass is
    part of the design.
