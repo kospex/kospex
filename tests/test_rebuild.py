@@ -296,13 +296,13 @@ def _rebuild_records(caplog):
     return [r for r in caplog.records if r.name == "kospex" and "rebuild developer-stats" in r.getMessage()]
 
 
-def test_developer_stats_task_reports_developers_commits_and_merges(db):
+def test_developer_stats_task_reports_developers_authored_and_merges(db):
     _add_merge(db)
     kq = KospexQuery(kospex_db=db)
     metrics = KospexRebuild.TASKS["developer-stats"].run(kq, {"_repo_id": "github.com~acme~api"})
-    # Counted as kospex key-person counts them: commits is authorship, merges
+    # Counted as kospex key-person counts them: authored excludes merges, merges
     # are separate, and the two add up to the repo's total.
-    assert metrics == {"developers": 2, "commits": 2, "merges": 1}
+    assert metrics == {"developers": 2, "authored": 2, "merges": 1}
 
 
 def test_progress_detail_shows_the_metrics(db):
@@ -310,7 +310,7 @@ def test_progress_detail_shows_the_metrics(db):
     kq = KospexQuery(kospex_db=db)
     [result] = KospexRebuild.run_task(KospexRebuild.TASKS["developer-stats"],
                                       KospexRebuild.resolve_scope(kq, repo_id="github.com~acme~api"), kq)
-    assert result.detail == "developers=2 commits=2 merges=1"
+    assert result.detail == "developers=2 authored=2 merges=1"
 
 
 def test_a_task_returning_a_count_still_reports_rows(db):
@@ -329,7 +329,7 @@ def test_run_task_logs_start_each_repo_and_done(db, caplog):
     messages = [r.getMessage() for r in _rebuild_records(caplog)]
     assert messages[0] == "rebuild developer-stats start: scope=-org github.com~acme, 2 repos"
     assert re.fullmatch(r"rebuild developer-stats github\.com~acme~api ok \d+\.\d\ds "
-                        r"developers=2 commits=2 merges=0", messages[1]), messages[1]
+                        r"developers=2 authored=2 merges=0", messages[1]), messages[1]
     assert messages[2].startswith("rebuild developer-stats github.com~acme~web ok ")
     assert re.fullmatch(r"rebuild developer-stats done: 2 ok, 0 skipped, 0 failed in \d+\.\ds",
                         messages[3]), messages[3]

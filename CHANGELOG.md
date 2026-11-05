@@ -15,12 +15,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - a summary line with the counts and the total time
 
   For `developer-stats`, each repo's line, in the log and on the console,
-  reports `developers`, `commits` and `merges`. `commits` and `merges` are
-  counted as `kospex key-person` counts them, and add up to the repo's total.
-  For example:
+  reports `developers`, `authored` and `merges`. `authored` excludes merges,
+  as the commits column in `kospex key-person` does, so the two add up to the
+  repo's total commits. For example, 975 + 145 = 1,120 commits:
 
   ```
-  rebuild developer-stats github.com~kospex~kospex ok 0.27s developers=4 commits=975 merges=145
+  rebuild developer-stats github.com~kospex~kospex ok 0.27s developers=4 authored=975 merges=145
   ```
 
   A `-dry-run` is logged at DEBUG only. There is no files-changed count: on the
