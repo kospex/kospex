@@ -37,6 +37,53 @@ CASES = [
     ("dependabot.yml", Kind.SCA_CONFIG, False),
     ("renovate.json", Kind.SCA_CONFIG, False),
     ("go.sum", Kind.LOCKFILE, False),
+    # Newly tagged `dependencies` in panopticas 0.0.22 / 0.0.23 (#349).
+    ("npm-shrinkwrap.json", Kind.PACKAGE, True),
+    ("gradle.lockfile", Kind.PACKAGE, False),
+    ("buildscript-gradle.lockfile", Kind.PACKAGE, False),
+    ("libs.versions.toml", Kind.PACKAGE, False),
+    ("build.sbt", Kind.PACKAGE, False),
+    ("plugins.sbt", Kind.PACKAGE, False),
+    ("build.mill", Kind.PACKAGE, False),
+    ("package.mill.yaml", Kind.PACKAGE, False),
+    ("build.sc", Kind.PACKAGE, False),
+    ("Cargo.toml", Kind.PACKAGE, False),
+    ("Cargo.lock", Kind.PACKAGE, False),
+    ("Gemfile", Kind.PACKAGE, False),
+    ("gems.rb", Kind.PACKAGE, False),
+    ("Gemfile.lock", Kind.PACKAGE, False),
+    ("gems.locked", Kind.PACKAGE, False),
+    ("red-arrow.gemspec", Kind.PACKAGE, False),
+    ("composer.json", Kind.PACKAGE, False),
+    ("composer.lock", Kind.PACKAGE, False),
+    ("Pipfile", Kind.PACKAGE, False),
+    ("Pipfile.lock", Kind.PACKAGE, False),
+    ("poetry.lock", Kind.PACKAGE, False),
+    ("pdm.lock", Kind.PACKAGE, False),
+    ("pylock.toml", Kind.PACKAGE, False),
+    ("pylock.314.toml", Kind.PACKAGE, False),
+    ("mix.exs", Kind.PACKAGE, False),
+    ("mix.lock", Kind.PACKAGE, False),
+    ("pubspec.yaml", Kind.PACKAGE, False),
+    ("pubspec_overrides.yaml", Kind.PACKAGE, False),
+    ("pubspec.lock", Kind.PACKAGE, False),
+    ("bun.lock", Kind.PACKAGE, False),
+    ("bun.lockb", Kind.PACKAGE, False),
+    ("deno.lock", Kind.PACKAGE, False),
+    ("pnpm-workspace.yaml", Kind.PACKAGE, False),
+    ("App.fsproj", Kind.PACKAGE, False),
+    ("App.vbproj", Kind.PACKAGE, False),
+    ("App.nuspec", Kind.PACKAGE, False),
+    ("Directory.Packages.props", Kind.PACKAGE, False),
+    ("packages.lock.json", Kind.PACKAGE, False),
+    ("packages.My.App.lock.json", Kind.PACKAGE, False),
+    ("dotnet-tools.json", Kind.PACKAGE, False),
+    ("paket.dependencies", Kind.PACKAGE, False),
+    ("paket.lock", Kind.PACKAGE, False),
+    ("paket.references", Kind.PACKAGE, False),
+    (".ruby-version", Kind.RUNTIME, False),
+    (".pnp.cjs", Kind.LOCKFILE, False),
+    (".pnp.loader.mjs", Kind.LOCKFILE, False),
     ("mystery.xyz", Kind.UNKNOWN, False),
 ]
 
@@ -207,3 +254,66 @@ def test_unsupported_entries_have_no_parse_ref():
     # If nothing scans it, there is no parser to point at (and vice versa).
     for e in REGISTRY:
         assert bool(e.scanners) == (e.parse_ref is not None), e.name
+
+
+def test_npm_shrinkwrap_reads_with_the_package_lock_parser(tmp_path):
+    """npm documents npm-shrinkwrap.json as the package-lock.json format under
+    a publishable name. Routing it to that parser is only right if the parser
+    does not care about the filename, so read one."""
+    from kospex.extractors.registry import resolve_parser
+    path = tmp_path / "npm-shrinkwrap.json"
+    path.write_text(
+        '{"name": "app", "lockfileVersion": 3, "packages": {'
+        '"": {"name": "app", "version": "1.0.0"},'
+        '"node_modules/lodash": {"version": "4.17.21", "resolved":'
+        ' "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz"}}}')
+    parse = resolve_parser(classify(str(path)).extractor)
+    assert [(r["package_name"], r["package_version"]) for r in parse(str(path))] == [
+        ("lodash", "4.17.21")]
+
+
+#: panopticas tags these `dependencies`, but they were tagged before #349 and
+#: each still has no registry entry. Each is listed with where it is tracked,
+#: so a NEW panopticas tag fails the test below instead of appearing on /osi/
+#: as an unrecognised file.
+KNOWN_UNREGISTERED = {
+    "setup.py": "#137",
+    "setup.cfg": "#137",
+    "packages.config": "#182",
+    "package.swift": "Swift Package Manager, not yet raised",
+    "package.resolved": "Swift Package Manager, not yet raised",
+    "podfile": "CocoaPods, not yet raised",
+    "podfile.lock": "CocoaPods, not yet raised",
+    "cartfile": "Carthage, not yet raised",
+    "cartfile.private": "Carthage, not yet raised",
+    "cartfile.resolved": "Carthage, not yet raised",
+}
+
+
+def test_every_panopticas_dependency_file_has_a_registry_entry():
+    """#349: panopticas 0.0.22 and 0.0.23 tagged 40-odd more filenames
+    `dependencies` and the registry knew none of them, so each would have
+    shown as an unrecognised dependency file. Walk panopticas' own rules so
+    the next release that adds a tag fails here instead.
+
+    An older panopticas has fewer rules, so this only gets stricter as the
+    dependency moves forward. Function rules (is_pip_requirements, ...) have
+    no fixed name to probe and are covered by CASES.
+    """
+    from panopticas.constants import METADATA_RULES
+
+    missing = []
+    for rule_set, probe in (("exact_filename_rules", lambda k: k),
+                            ("extension_rules", lambda k: "x" + k)):
+        for key, tags in METADATA_RULES.get(rule_set, {}).items():
+            if "dependencies" not in tags or key in KNOWN_UNREGISTERED:
+                continue
+            if classify(probe(key)).extractor is None:
+                missing.append(key)
+    assert not missing, f"dependency-tagged by panopticas, no registry entry: {missing}"
+
+
+def test_known_unregistered_are_still_unregistered():
+    """When one of KNOWN_UNREGISTERED gains an entry, take it off the list."""
+    stale = [name for name in KNOWN_UNREGISTERED if classify(name).extractor is not None]
+    assert not stale, f"now registered, remove from KNOWN_UNREGISTERED: {stale}"

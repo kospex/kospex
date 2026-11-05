@@ -70,8 +70,12 @@ def test_a_non_manifest_is_not_a_manifest(filename):
 
 
 def test_a_file_matching_no_registry_entry_is_unclassified():
-    """Either a real manifest kospex cannot name, or a mis-tag. Investigate."""
-    assert classify_outcome("Gemfile.lock", row_count=0) == UNCLASSIFIED
+    """Either a real manifest kospex cannot name, or a mis-tag. Investigate.
+
+    CocoaPods' lockfile, from KNOWN_UNREGISTERED in test_extractor_registry.
+    Gemfile.lock was the example until #349 registered it.
+    """
+    assert classify_outcome("Podfile.lock", row_count=0) == UNCLASSIFIED
 
 
 def test_a_raising_parser_is_a_parse_error():

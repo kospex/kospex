@@ -41,6 +41,7 @@ section for that format.
 | file | versions the parser reads | seen on the estate (count of files) |
 |---|---|---|
 | `package-lock.json` | `lockfileVersion` 1, 2, 3 | 3 ×98, 2 ×13, 1 ×9 |
+| `npm-shrinkwrap.json` | as `package-lock.json` (same parser) | 1 file, a test fixture |
 | `pnpm-lock.yaml` | `lockfileVersion` major 5, 6, 9 | 9.0 ×25 (**6 of them two-document**), 6.0 ×2, 5.3 ×1, one 0-byte file |
 | `go.mod` | no version field; grammar is stable | 188 files |
 | `*.csproj` | SDK-style `PackageReference` | 9 files |
@@ -836,7 +837,7 @@ logged and recorded by declared version until someone looks at it.
 
 # Classified, no parser yet
 
-Two types the registry recognises and nothing reads. They report `unsupported` —
+Types the registry recognises and nothing reads. They report `unsupported` —
 honest, and distinguishable from `empty`. Tracked as sub-project D, #229.
 
 Two rules from the parsers above are worth applying from the start rather than
@@ -862,6 +863,99 @@ in for coverage, and where a file-by-file check against real projects matters mo
 
 **Upstream docs:** [Declaring dependencies](https://docs.gradle.org/current/userguide/declaring_dependencies.html)
 
+## Tagged by panopticas 0.0.22 and 0.0.23 — #349
+
+panopticas 0.0.22 and 0.0.23 tagged about 40 more filenames `dependencies`, and the
+registry knew none of them, so each showed as an unrecognised dependency file. They now
+have entries, so they report `unsupported` (no parser yet) rather than `unclassified`.
+`package_type` records the deps.dev system a future parser would query, or `None` where
+deps.dev has none (Packagist, Hex, Pub, JSR).
+
+`tests/test_extractor_registry.py::test_every_panopticas_dependency_file_has_a_registry_entry`
+walks panopticas' own `METADATA_RULES`, so the next release that tags a new file fails
+the suite instead. Files tagged before #349 that still have no entry are listed there in
+`KNOWN_UNREGISTERED`, each with where it is tracked.
+
+Measured 2026-11-06 on the development estate. The counts are files in `file_metadata`,
+`node_modules` excluded. Several of the single-file entries are test fixtures in one
+repository, not real use.
+
+| entry | files | `package_type` | notes |
+|---|---|---|---|
+| `cargo-toml` `Cargo.toml` | 126 | `cargo` | one per workspace member; parser #359 |
+| `pnpm-workspace` `pnpm-workspace.yaml` | 48 | `npm` | see below |
+| `sbt` `*.sbt` | 32 | `maven` | any `*.sbt` is build definition, not only `build.sbt` |
+| `gradle-version-catalog` `libs.versions.toml` | 19 | `maven` | Gradle imports it from `gradle/`; replaced when a Gradle parser lands (#229) |
+| `cargo-lock` `Cargo.lock` | 15 | `cargo` | parser #359 |
+| `gemfile` `Gemfile`, `gems.rb` | 15 | `rubygems` | Ruby code, so a parser reads a subset; #360 |
+| `gemspec` `*.gemspec` | 9 | `rubygems` | Ruby code building a `Gem::Specification`; #360 |
+| `composer-json` / `composer-lock` | 5 / 1 | `None` | |
+| `mill` `build.mill`, `package.mill`, `*.mill.yaml`, `build.sc` | 4 | `maven` | `build.sc` is the pre-0.12 name |
+| `gemfile-lock` `Gemfile.lock`, `gems.locked` | 3 | `rubygems` | parser #360 |
+| `bun-lock` `bun.lock`, `bun.lockb` | 3 | `npm` | `bun.lockb` is binary, replaced by text `bun.lock` in Bun 1.2 |
+| `pipfile` / `pipfile-lock` | 2 / 1 | `pypi` | |
+| `poetry-lock`, `pdm-lock` | 2, 0 | `pypi` | |
+| `pylock` `pylock.toml`, `pylock.<name>.toml` | 4 | `pypi` | PEP 751; local pattern, see below |
+| `gradle-lockfile` `gradle.lockfile`, `buildscript-gradle.lockfile` | 1 | `maven` | replaced when a Gradle parser lands (#229) |
+| `mix-exs`, `mix-lock` | 1, 1 | `None` | Elixir; umbrella projects have a `mix.exs` per app |
+| `pubspec` `pubspec.yaml`, `pubspec_overrides.yaml` / `pubspec-lock` | 1 / 0 | `None` | Dart |
+| `deno-lock` `deno.lock` | 1 | `None` | mixes JSR and npm specifiers |
+| `nuspec` `*.nuspec` | 2 | `nuget` | |
+| `nuget-fsproj-vbproj` `*.fsproj`, `*.vbproj` | 0 | `nuget` | see below |
+| `nuget-central-versions` `Directory.Packages.props` | 0 | `nuget` | central package management: `PackageVersion`, not `PackageReference` |
+| `nuget-lock` `packages.lock.json`, `packages.<project>.lock.json` | 0 | `nuget` | local pattern, see below |
+| `dotnet-tools` `dotnet-tools.json` | 0 | `nuget` | local .NET tools, which are NuGet packages |
+| `paket` `paket.dependencies`, `.lock`, `.references` | 0 | `nuget` | |
+
+**`pnpm-workspace.yaml` is mostly configuration.** Its top-level keys on the estate are
+`packages`, `allowBuilds`, `minimumReleaseAge` and other settings, and pnpm 11 moved its
+settings here. But `catalog:` / `catalogs:` declare version ranges that `package.json`
+files refer to as `catalog:`, so a `package.json` dependency on `catalog:` has no version
+unless this file is read. Measured: 4 of 48 files have catalogs, 53 entries in all. A
+parser is worth it once catalogs are common.
+
+**`*.fsproj` and `*.vbproj` use the same SDK-style `PackageReference` as `*.csproj`,** so
+`extract_csproj` probably reads them unchanged. No real file was on the estate to
+measure that against, so they have no parser yet. Pointing them at it is a one-line
+change after a measurement.
+
+**Two local patterns copy a panopticas predicate.** `is_pylock` and
+`is_nuget_project_lock` exist in `panopticas.core`, but the package does not export
+them, and `_panopticas_matcher` looks names up on the package, so it would always
+return False. The patterns are panopticas' own. Delegate once
+[kospex/panopticas#110](https://github.com/kospex/panopticas/issues/110) exports them.
+
+**Upstream docs:** [Gradle dependency locking](https://docs.gradle.org/current/userguide/dependency_locking.html)
+· [Gradle version catalogs](https://docs.gradle.org/current/userguide/version_catalogs.html)
+· [sbt library dependencies](https://www.scala-sbt.org/1.x/docs/Library-Dependencies.html)
+· [Mill](https://mill-build.org/)
+· [Cargo manifest](https://doc.rust-lang.org/cargo/reference/manifest.html)
+· [Cargo.toml vs Cargo.lock](https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html)
+· [Bundler Gemfile](https://bundler.io/guides/gemfile.html)
+· [gemspec reference](https://guides.rubygems.org/specification-reference/)
+· [composer.json schema](https://getcomposer.org/doc/04-schema.md)
+· [Composer basic usage](https://getcomposer.org/doc/01-basic-usage.md)
+· [Pipfile](https://pipenv.pypa.io/en/latest/pipfile.html)
+· [Poetry basic usage](https://python-poetry.org/docs/basic-usage/)
+· [PDM lockfile](https://pdm-project.org/en/latest/usage/lockfile/)
+· [pylock.toml specification](https://packaging.python.org/en/latest/specifications/pylock-toml/)
+· [Mix.Project](https://mix.hexdocs.pm/Mix.Project.html)
+· [pubspec](https://dart.dev/tools/pub/pubspec)
+· [Dart dependencies](https://dart.dev/tools/pub/dependencies)
+· [Bun lockfile](https://bun.sh/docs/pm/lockfile)
+· [Deno modules](https://docs.deno.com/runtime/fundamentals/modules/)
+· [pnpm settings](https://pnpm.io/settings)
+· [pnpm catalogs](https://pnpm.io/catalogs)
+· [NuGet central package management](https://learn.microsoft.com/en-us/nuget/consume-packages/central-package-management)
+· [PackageReference and lock files](https://learn.microsoft.com/en-us/nuget/consume-packages/package-references-in-project-files)
+· [.nuspec reference](https://learn.microsoft.com/en-us/nuget/reference/nuspec)
+· [.NET local tools](https://learn.microsoft.com/en-us/dotnet/core/tools/local-tools-how-to-use)
+· [Paket](https://fsprojects.github.io/Paket/)
+
+**Drift watch:** each panopticas release. `test_every_panopticas_dependency_file_has_a_registry_entry`
+catches a new `dependencies` tag. Also re-run the catalog count on `pnpm-workspace.yaml`
+before deciding on a parser.
+
 ## `pom.xml` — Maven
 
 | | |
@@ -886,14 +980,16 @@ These have registry entries so that kospex can say *what they are* rather than
 reporting `unclassified`. None should grow a package parser; a few could grow a
 different kind of reader.
 
-## `.python-version`, `.nvmrc` — `Kind.RUNTIME`
+## `.python-version`, `.nvmrc`, `.ruby-version` — `Kind.RUNTIME`
 
 A language or toolchain version, not a library dependency. Worth reading eventually as
 a *runtime* fact — "this repo pins Python 3.8" is an end-of-life question, not an
-advisory question — which is a different table, not `dependency_data`.
+advisory question — which is a different table, not `dependency_data`. Recording
+runtime versions is #351. `.ruby-version` gained its entry in #349.
 
 **Upstream docs:** [uv Python versions](https://docs.astral.sh/uv/concepts/python-versions/)
 · [pyenv](https://github.com/pyenv/pyenv) · [nvm](https://github.com/nvm-sh/nvm)
+· [rbenv](https://github.com/rbenv/rbenv)
 
 ## `Dockerfile` — `Kind.CONTAINER`
 
@@ -922,6 +1018,15 @@ The registry's `Kind` distinction is what prevents that, and it is worth keeping
 explicit as sub-project D grows sub-issues.
 
 **Upstream docs:** [go.sum files](https://go.dev/ref/mod#go-sum-files)
+
+## `.pnp.cjs`, `.pnp.loader.mjs` — `Kind.LOCKFILE`
+
+Yarn Plug'n'Play loaders: generated JavaScript holding the dependency tree that
+`yarn.lock` already declares, and `yarn.lock` has a parser. Like `go.sum`, a companion
+rather than a source of its own, so they are not reported as lacking a parser.
+Registered in #349. None on the estate.
+
+**Upstream docs:** [Yarn Plug'n'Play](https://yarnpkg.com/features/pnp)
 
 ---
 
@@ -956,6 +1061,14 @@ Note the trap in the names: they look like `requirements*.txt` but are not, and
 pip requirements files would be wrong anyway — they are fully-resolved lockfiles.
 
 **Upstream docs:** [Rye](https://rye.astral.sh/)
+
+## Swift, CocoaPods, Carthage — not yet raised
+
+`Package.swift` / `Package.resolved`, `Podfile` / `Podfile.lock` and `Cartfile` /
+`Cartfile.private` / `Cartfile.resolved`. panopticas tagged these `dependencies` before
+#349, and none has a registry entry or an issue. They are listed in `KNOWN_UNREGISTERED`
+in `tests/test_extractor_registry.py`, so they do not fail the panopticas coverage test.
+None is on the estate.
 
 ---
 
