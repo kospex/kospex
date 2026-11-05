@@ -36,7 +36,8 @@ class RepoResult:
 
 
 def _developer_stats(kospex_query, repo):
-    return kospex_query.update_developer_stats(repo["_repo_id"])
+    # The same method sync_repo() calls, so the two can't drift apart (#352).
+    return kospex_query.refresh_developer_stats(repo["_repo_id"])
 
 
 TASKS = {

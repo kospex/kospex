@@ -2263,14 +2263,36 @@ class KospexQuery:
                 additions_90_days = ?, deletions_90_days = ?, unique_files_90_days = ?
             WHERE _repo_id = ? AND author_email = ?
         """
-        for row in rows:
-            self.kospex_db.execute(
-                update_sql,
-                [row[1], row[2], row[3], row[4], row[5], row[6], repo_id, row[0]]
-            )
+        # One transaction, as in update_developer_stats(). This used to end with
+        # conn.commit(), which also committed any transaction a caller had open,
+        # so the function couldn't run inside one (the rebuild task needs to).
+        # Nested in a caller's atomic() this is a savepoint.
+        with self.kospex_db.atomic():
+            for row in rows:
+                self.kospex_db.execute(
+                    update_sql,
+                    [row[1], row[2], row[3], row[4], row[5], row[6], repo_id, row[0]]
+                )
 
-        self.kospex_db.conn.commit()
         return len(rows)
+
+    def refresh_developer_stats(self, repo_id):
+        """Rebuild a repo's developer_stats rows, every column, in one transaction.
+
+        The single entry point for sync (Kospex.sync_repo) and
+        `kospex rebuild developer-stats`. update_developer_stats() deletes and
+        re-inserts the rows without the file-level columns, which only
+        update_developer_file_stats() writes. The rebuild used to repeat these
+        steps itself and lost the second one (#352).
+
+        One transaction: the rows are never committed without their file-level
+        columns, and if either step fails the repo keeps its previous rows.
+        Returns the number of developers written.
+        """
+        with self.kospex_db.atomic():
+            developers = self.update_developer_stats(repo_id)
+            self.update_developer_file_stats(repo_id)
+        return developers
 
     def has_developer_stats(self, repo_id):
         """Check if developer_stats exist for a given repo."""

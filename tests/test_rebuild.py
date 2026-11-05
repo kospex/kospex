@@ -159,6 +159,109 @@ def test_developer_stats_rebuild_is_atomic_per_repo(db, monkeypatch):
     assert list(db.query("SELECT * FROM developer_stats WHERE _repo_id = 'github.com~acme~api'")) == before
 
 
+FILE_COLUMNS = ("additions", "deletions", "unique_files",
+                "additions_90_days", "deletions_90_days", "unique_files_90_days")
+
+
+def _add_commit_files(db):
+    """Two files per commit, so every developer has file-level stats to compute."""
+    for c in db.query("SELECT hash, _repo_id, _git_server, _git_owner, _git_repo, committer_when FROM commits"):
+        for j, (added, deleted) in enumerate([(7, 2), (3, 1)]):
+            db["commit_files"].insert({**c, "file_path": f"src/f{j}.py", "_ext": "py",
+                                       "additions": added, "deletions": deleted})
+
+
+def _developer_rows(db, repo_id):
+    return sorted(
+        (r["author_email"], r["total_commits"], *(r[c] for c in FILE_COLUMNS))
+        for r in db.query("SELECT * FROM developer_stats WHERE _repo_id = ?", [repo_id])
+    )
+
+
+def test_developer_stats_rebuild_fills_the_file_level_columns(db):
+    # The task used to call update_developer_stats() alone. That deletes and
+    # re-inserts the repo's rows without the file-level columns, which only
+    # update_developer_file_stats() writes, so a rebuild left them NULL.
+    _add_commit_files(db)
+    kq = KospexQuery(kospex_db=db)
+    repos = KospexRebuild.resolve_scope(kq, all_repos=True)
+    results = KospexRebuild.run_task(KospexRebuild.TASKS["developer-stats"], repos, kq)
+    assert [r.status for r in results] == ["ok"] * 3
+
+    for repo_id in REPOS:
+        rows = {r[0]: r for r in _developer_rows(db, repo_id)}
+        assert set(rows) == {"dev0@example.com", "dev1@example.com"}
+        # dev0 committed 10 days ago (inside 90 days), dev1 400 days ago.
+        assert rows["dev0@example.com"][2:] == (10, 3, 2, 10, 3, 2)
+        assert rows["dev1@example.com"][2:] == (10, 3, 2, 0, 0, 0)
+
+
+def test_refresh_developer_stats_is_all_or_nothing(db, monkeypatch):
+    # Sync and rebuild both go through refresh_developer_stats(). If the
+    # file-level step fails, the repo keeps its previous complete rows, rather
+    # than rows re-inserted without additions / deletions / unique_files.
+    _add_commit_files(db)
+    kq = KospexQuery(kospex_db=db)
+    repo_id = "github.com~acme~api"
+    kq.refresh_developer_stats(repo_id)
+    before = _developer_rows(db, repo_id)
+    assert before and all(v is not None for row in before for v in row)
+
+    def boom(_repo_id):
+        raise RuntimeError("simulated failure in the file-level step")
+
+    monkeypatch.setattr(kq, "update_developer_file_stats", boom)
+    with pytest.raises(RuntimeError):
+        kq.refresh_developer_stats(repo_id)
+    assert not db.conn.in_transaction
+    assert _developer_rows(db, repo_id) == before
+
+
+def test_rebuild_task_uses_refresh_developer_stats(db, monkeypatch):
+    # One method for sync and rebuild, so the two can't drift apart again:
+    # #352 was the rebuild's copy of the steps losing one of them.
+    kq = KospexQuery(kospex_db=db)
+    called = []
+    monkeypatch.setattr(kq, "refresh_developer_stats", lambda repo_id: called.append(repo_id) or 2)
+    assert KospexRebuild.TASKS["developer-stats"].run(kq, {"_repo_id": "github.com~acme~api"}) == 2
+    assert called == ["github.com~acme~api"]
+
+
+def test_developer_stats_rebuild_commits_once_per_repo(db):
+    # Both steps run in one transaction, so a repo's rows are never visible
+    # without their file-level columns, and the per-developer UPDATEs don't
+    # each commit on their own.
+    _add_commit_files(db)
+    kq = KospexQuery(kospex_db=db)
+    sent = []
+    db.conn.set_trace_callback(sent.append)
+    try:
+        KospexRebuild.TASKS["developer-stats"].run(kq, {"_repo_id": "github.com~acme~api"})
+    finally:
+        db.conn.set_trace_callback(None)
+    assert sum(1 for s in sent if s.strip().upper() == "COMMIT") == 1, sent
+
+
+def test_developer_file_stats_commits_once_and_leaves_a_callers_transaction_open(db):
+    # It used to end with conn.commit(), which committed whatever transaction
+    # the caller had open, and each per-developer UPDATE committed on its own.
+    _add_commit_files(db)
+    kq = KospexQuery(kospex_db=db)
+    kq.update_developer_stats("github.com~acme~api")
+
+    sent = []
+    db.conn.set_trace_callback(sent.append)
+    try:
+        kq.update_developer_file_stats("github.com~acme~api")
+    finally:
+        db.conn.set_trace_callback(None)
+    assert sum(1 for s in sent if s.strip().upper() == "COMMIT") == 1, sent
+
+    with db.atomic():
+        kq.update_developer_file_stats("github.com~acme~api")
+        assert db.conn.in_transaction
+
+
 def test_developer_stats_commits_once_per_repo(db):
     kq = KospexQuery(kospex_db=db)
     sent = []
