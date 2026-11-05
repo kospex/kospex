@@ -51,6 +51,16 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - `docs/refreshing-data.md` listed `kospex deps` as writing `dependency_data`.
     It never did; only `krunner osi` and `kospex sca -save` do.
 
+### Fixed
+
+- **`kgit github` no longer treats a partial repo listing as complete.** A
+  timeout, server error or rate limit on any page of the listing used to end
+  it quietly, so the table, `-out-repo-list` and `-sync` worked from a shorter
+  list with nothing saying repos were missing. It now stops with an error
+  naming the page and the reason, and writes and syncs nothing. A failed lookup
+  of the org or user no longer reports `Could not find user or organization`
+  either; that message is now only for a genuine 404.
+
 ### Security
 
 - **GitHub request errors no longer print the token** (CWE-532). When
