@@ -8,8 +8,8 @@ CI previously ran a single job on Python 3.12 only. kospex needs to run on Ubunt
 ## Files changed
 
 - `.github/workflows/python-app.yml`
-  - `build` job: matrix over Python `3.12` (the `requires-python` floor) and `3.14`,
-    via `actions/setup-python`.
+  - `build` job: matrix over Python `3.12` (the `requires-python` floor), `3.13`
+    and `3.14`, via `actions/setup-python`. (`3.13` was added in a follow-up PR.)
   - New `ubuntu-system-python` job: runs in an `ubuntu:26.04` container and uses
     the distro's own `python3` and SQLite, installed into a venv. This is how a user
     on that OS installs kospex: the system interpreter is externally managed

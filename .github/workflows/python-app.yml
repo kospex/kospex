@@ -20,8 +20,9 @@ jobs:
       fail-fast: false
       matrix:
         # 3.12 is the floor in pyproject.toml (requires-python); 3.14 is the
-        # newest release and the system Python on Ubuntu 26.04.
-        python-version: ["3.12", "3.14"]
+        # newest release and the system Python on Ubuntu 26.04. Every
+        # release in between is tested too.
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
