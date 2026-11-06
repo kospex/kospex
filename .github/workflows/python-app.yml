@@ -78,6 +78,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Trust the checkout for git
+        # The container runs as root but the workspace is owned by the runner
+        # user, so git refuses it ("dubious ownership") and tests that run git
+        # against this repo fail. actions/checkout's own safe.directory entry
+        # does not persist into later steps.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install kospex into a venv
         run: |
           python3 -m venv /opt/venv
