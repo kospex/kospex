@@ -93,7 +93,8 @@ Three pieces. Every table and column goes in a migration only, never in
 since #335's `0012` may come first.
 
 ```sql
--- Provider identity, captured when first seen.
+-- Provider identity, captured when first seen. These two columns land early,
+-- in #335's migration 0012.
 ALTER TABLE repos ADD COLUMN provider_repo_id TEXT;   -- e.g. github.com:10270250
 ALTER TABLE repos ADD COLUMN provider_checked_at TEXT; -- last lookup, found or not
 

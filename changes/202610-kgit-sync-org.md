@@ -108,6 +108,14 @@ The run row and every item row are written **in one transaction, and only after
 the listing is complete**. A failed listing leaves nothing behind, so there's no
 half-saved manifest to resume from.
 
+`0012` also adds the two lineage columns from #348, so that `sync --org` stores
+GitHub ids from its first release (decided 2026-11-06):
+
+```sql
+ALTER TABLE repos ADD COLUMN provider_repo_id TEXT;    -- e.g. github.com:10270250
+ALTER TABLE repos ADD COLUMN provider_checked_at TEXT; -- last lookup, found or not
+```
+
 Per CLAUDE.md: these go in the migration only, not in `kospex_schema.py`. Expect to
 bump the migration counts in `test_db_health.py`, `test_kospex_utils.py` and
 `test_kospex_schema.py`. Keep the SQL portable to SQLite 3.26.
@@ -166,7 +174,9 @@ repo would be retried on every resume.
 
 ```
 kgit sync --org TARGET  [-relist] [-retry-failed] [-skip-archived] [-include-forks | -skip-forks]
-kgit sync --user TARGET           [-ssh] [-no-prompt] [-no-auth] [-limit N]
+kgit sync --user TARGET           [-ssh] [-no-prompt] [-no-auth] [-next N]
+kgit sync --org TARGET -list-only   # list and record the org's repos; clone nothing
+kgit sync --org TARGET -next 10     # sync the next 10 repos of the run, then stop
 kgit sync --org TARGET -status      # show latest run's manifest, offline, no network
 ```
 
@@ -196,7 +206,30 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
   (checked against the live API). Those need one `GET /repos/{owner}/{repo}` per
   **fork**, and only for forks. `get_repos()` already makes that request and then
   drops the result.
-- `-limit N`: process at most N items, for cron-sized batches (as `osi -next`).
+- `-list-only`: steps 1–3 of the flow and nothing else. It lists the org, saves
+  the manifest with every item `pending`, and prints what the org has, without
+  cloning or syncing anything:
+
+  ```
+  $ kgit sync --org acme -list-only
+  Listed 1,042 repos for github.com~acme (run 20261106T031500Z)
+    active        961     archived     58     forks      23 (skipped by default)
+    in kospex     212     not yet     749     changed since last fetch   87
+    in kospex but gone from the org: 4    (see -status)
+  Nothing cloned. Run `kgit sync --org acme -next 10` to start syncing.
+  ```
+
+  "In kospex" means the repo is already in `repos`. "Changed since last fetch"
+  compares the API's `pushed_at` with `repos.last_fetch`. "Gone from the org" is
+  the #12 drift report. The listing needs only the API token, not git
+  credentials, so this works before cloning is set up. If an unfinished run
+  already exists, `-list-only` reports against a fresh listing but replaces the
+  run only with `-relist`, so a run that's partway through isn't lost.
+- `-next N`: sync at most N items from the unfinished run, then stop with the run
+  still open. Same name and meaning as `krunner osi -next`. With no unfinished
+  run, it lists first (as `-list-only`) and then syncs N. A 1,000-repo org at
+  `-next 10` per cron tick takes 100 ticks. Items are taken most recently pushed
+  first, so active repos land first. Combine with `-no-prompt` for cron.
 - `-pushed_at` shortcut (later): skip the fetch when `pushed_at <= repos.last_fetch`.
 
 ## Files
@@ -236,6 +269,12 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
    the default for the installation (2026-11-05). See
    `changes/202611-repo-lineage.md` (#348), which also covers private copies (which
    GitHub doesn't mark as forks) and moved repos.
+5. **`-list-only` and `-next N`** (2026-11-06). `-list-only` records the org's
+   repos and reports them against the DB without cloning. `-next N` syncs a
+   slice per run, for large orgs on a schedule. It replaces the earlier `-limit
+   N` so the name matches `krunner osi -next`.
+6. **`0012` includes `repos.provider_repo_id` and `provider_checked_at`**
+   (2026-11-06), rather than waiting for the #348 migration.
 
 ## Delivery
 
@@ -243,11 +282,13 @@ Separate PRs, each mergeable on its own:
 
 1. `_paginate` raises on a failed page, and `get_repos()` callers handle it. This
    is the prerequisite bug, and it fixes `kgit github` listing today.
-2. Migration `0012` plus the query layer (create a run and its items atomically,
+2. Migration `0012` (the two manifest tables, plus `repos.provider_repo_id` and
+   `provider_checked_at`) plus the query layer (create a run and its items atomically,
    next items, mark status, latest unfinished run).
 3. `kgit sync --org` / `--user`: auth, owner-type check, listing → manifest, the
-   per-repo loop, resume, lock, summary, `-status`.
-4. The `kgit github -sync` alias and the drift report.
+   per-repo loop, resume, lock, summary, `-status`, `-list-only` (with the drift
+   count), `-next N`.
+4. The `kgit github -sync` alias.
 
 ## Open questions
 
