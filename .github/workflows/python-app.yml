@@ -1,4 +1,4 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# This workflow installs kospex, lints it and runs the tests.
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
 name: Python application
@@ -16,14 +16,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.12 is the floor in pyproject.toml (requires-python); 3.14 is the
+        # newest release and the system Python on Ubuntu 26.04.
+        python-version: ["3.12", "3.14"]
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Set up Python 3.12
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -49,4 +56,41 @@ jobs:
           #kospex init -create
           #kospex
           #kospex summary
+          ./test-cli.sh
+
+  # The distro's own Python, as a user on Ubuntu 26.04 (including WSL) gets
+  # it: system python3 (3.14), the distro's SQLite, and a venv because the
+  # system interpreter is externally managed (PEP 668). setup-python above
+  # uses a separately built interpreter, so it does not cover this.
+  ubuntu-system-python:
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+
+    steps:
+      - name: Install system Python and git
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3 python3-venv git ca-certificates
+          python3 -VV
+          python3 -c "import sqlite3; print('SQLite', sqlite3.sqlite_version)"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install kospex into a venv
+        run: |
+          python3 -m venv /opt/venv
+          /opt/venv/bin/pip install --upgrade pip
+          /opt/venv/bin/pip install ".[test]"
+      - name: Test with pytest
+        env:
+          CI: true
+          SKIP_WEB_TESTS: true
+        run: |
+          . /opt/venv/bin/activate
+          pytest -v -m "not web"
+      - name: Run CLI tests
+        run: |
+          . /opt/venv/bin/activate
           ./test-cli.sh
