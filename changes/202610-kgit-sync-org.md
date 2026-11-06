@@ -326,7 +326,25 @@ Separate PRs, each mergeable on its own:
    - `last_fetch` is stamped on the `repo_id` the sync wrote (from the clone's
      remote), which differs from the listing's only if the remote is rewritten.
    - The drift list ("in kospex but not in this listing") is in `-status`.
-4. The `kgit github -sync` alias.
+4. `kgit github`: the `-sync` alias, a switch for what a user listing includes,
+   and its docs.
+   - **`-sync` becomes the alias** of `kgit sync --org` / `--user`. That also
+     fixes a bug: today `kgit github octocat -sync` clones and syncs every repo
+     the listing returns, including 195 that octocat doesn't own (below).
+   - **A documented switch for what a user listing includes.** `kgit github
+     USER` asks GitHub for `type=all`, so it includes repos the user is only a
+     member of. GitHub's default is `owner`. Live, octocat: no `type` or `owner`
+     gives 8, `member` 195, `all` 203. For your own account it lists
+     `/user/repos` with `affiliation=owner,collaborator,organization_member`,
+     which brings in your organisations' repos too. Add a switch that chooses
+     between the repos the user owns and everything the listing returns, for
+     both the table and `-out-repo-list`. Its name, and which way is the
+     default, are decided in that PR. `kgit sync --user` already keeps only the
+     owner's repos.
+   - **`docs/kgit.md`'s `github` section:** it documents `kgit github -user
+     USERNAME` / `-org ORG`, but the command takes the owner as an argument
+     (`kgit github OWNER`). Fix the examples, and document the new switch and
+     what a user listing includes.
 
 ## Open questions
 
