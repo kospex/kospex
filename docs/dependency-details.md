@@ -918,7 +918,12 @@ After tiers 1 and 2: **38 resolved, 13 blank, 0 unresolved `${...}`.**
 - **BOM imports are rows** (`requirements_type="bom"`, `package_use="bom"`,
   `declared_scope="import"`, `is_dev` NULL): they are where the missing versions come
   from. They are not `direct`: a BOM puts nothing on the classpath, so counting it
-  would overstate direct dependencies (jsoup would show 7, not 6). Other
+  would overstate direct dependencies (jsoup would show 7, not 6). A BOM import is
+  `<scope>import</scope>` **and** `<type>pom</type>` inside `<dependencyManagement>`;
+  the name (`-bom`) is only a habit (`spring-boot-dependencies` is one too). An
+  `import` entry of any other type is logged and not recorded: Maven warns ("must be
+  'pom' to import the managed dependencies") and does not import it, leaving an
+  ordinary management entry. None on the estate. Other
   `<dependencyManagement>` entries are not — they pin versions, they do not make the
   project depend on anything.
 - **Not read:** `<build><plugins>` dependencies (8 on the estate; the build tool's

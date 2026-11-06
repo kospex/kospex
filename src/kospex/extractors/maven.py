@@ -422,6 +422,12 @@ def extract_pom(path):
         if _text(dependency, "scope") != "import":
             continue
         key = _key(dependency, properties)
+        # Maven imports only `type=pom`; any other type gets a model warning
+        # and stays an ordinary management entry, which is not a row.
+        if key[2] != "pom":
+            logger.warning("%s: %s:%s has scope import but type %s, not pom; "
+                           "Maven does not import it", path, key[0], key[1], key[2])
+            continue
         version = _interpolate(_text(dependency, "version") or "", properties)
         record = _record(f"{key[0]}:{key[1]}", version, "import")
         record["requirements_type"] = "bom"

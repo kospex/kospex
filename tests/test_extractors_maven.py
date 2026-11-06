@@ -191,6 +191,19 @@ class TestBomImports:
         assert records[0]["declared_scope"] == "import"
         assert records[0]["is_dev"] is None
 
+    def test_import_without_type_pom_is_not_a_bom(self, tmp_path):
+        """Maven imports only type=pom; without it (type defaults to jar) the
+        entry is an ordinary management entry, and those are not rows."""
+        path = _write(tmp_path, _pom(
+            "<dependencyManagement>" + _deps(
+                _dep("io.netty", "netty-bom", "4.2.18.Final", scope="import"),
+                _dep("com.example", "lib-bom", "1.0", scope="import",
+                     extra="<type>jar</type>"),
+            ) + "</dependencyManagement>"
+        ))
+
+        assert extract_pom(path) == []
+
     def test_bom_version_range_is_kept_verbatim(self, tmp_path):
         """Both okhttp copies on the estate import their BOM with a range."""
         path = _write(tmp_path, _pom(
