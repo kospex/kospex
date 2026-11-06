@@ -88,6 +88,67 @@ def test_is_concrete_version(v, expected):
     assert KospexDependencies().is_concrete_version(v) is expected
 
 
+class TestMavenVersions:
+    """Maven writes some release qualifiers after a dot, and builds snapshots
+    no registry publishes. changes/202611-maven-version-lookup.md has the
+    rationale."""
+
+    @pytest.mark.parametrize("v", [
+        "4.2.18.Final",      # netty, hibernate: a production release
+        "5.3.0.RELEASE",     # older spring
+        "1.0.0.CR1",         # a release candidate, published to Central
+        "3.1.Final",
+        "2.0.0.Final-redhat-00001",
+    ])
+    def test_dot_qualified_release_is_concrete(self, v):
+        """Each failed the concrete check and was recorded `unresolved_spec`
+        without deps.dev being asked; deps.dev has netty 4.2.18.Final."""
+        assert KospexDependencies().is_concrete_version(v, "maven") is True
+
+    @pytest.mark.parametrize("v", ["1.2.x", "4.2.18.Final"])
+    def test_dot_qualifier_is_maven_only(self, v):
+        """npm's `1.2.x` is a wildcard, so the dot rule must not leak."""
+        assert KospexDependencies().is_concrete_version(v, "npm") is False
+
+    @pytest.mark.parametrize("v", [
+        "2.14.1-SNAPSHOT",
+        "1.0-snapshot",                 # Maven compares ignoring case
+        "1.0-20261101.123456-3",        # a timestamped snapshot build
+    ])
+    def test_snapshot_is_not_concrete(self, v):
+        """Follows Maven's ArtifactUtils.isSnapshot. A snapshot is never on
+        Maven Central, so the lookup can only 404."""
+        assert KospexDependencies().is_concrete_version(v, "maven") is False
+
+    def test_maven_release_versions_still_concrete(self):
+        kd = KospexDependencies()
+        for v in ("4.13.2", "33.0.0-jre", "1.0.0.Beta1", "2.14.0"):
+            assert kd.is_concrete_version(v, "maven") is True, v
+
+    def test_snapshot_is_unresolved_not_yanked(self):
+        """It was recorded `version_yanked`: deps.dev 404s on the version and
+        the package exists. Nothing was withdrawn — it was never published.
+        Both stubbed lookups would answer, so this also proves neither is made."""
+        rec = _deps(version_result=(None, 404),
+                    package_result=('{"versions": []}', 200)).depsdev_record(
+            "maven", "com.google.code.gson:gson", "2.14.1-SNAPSHOT")
+        assert rec["resolution"] == "unresolved_spec"
+        assert rec["versions_behind"] is None
+
+    def test_dot_qualified_release_is_looked_up(self):
+        asked = []
+
+        class _Query(_StubQuery):
+            def url_request_with_status(self, url, **kw):
+                asked.append(url)
+                return super().url_request_with_status(url, **kw)
+
+        kd = KospexDependencies(kospex_query=_Query((None, 404), (None, 404)))
+        kd.depsdev_record("maven", "io.netty:netty-bom", "4.2.18.Final")
+
+        assert any(url.endswith("/versions/4.2.18.Final") for url in asked)
+
+
 class _StubQuery:
     """Stub KospexQuery: url_request_with_status returns queued (content, status)
     for the exact-version lookup (deps_dev_status). url_request (bare content on
