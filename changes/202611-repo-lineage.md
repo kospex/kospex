@@ -337,8 +337,72 @@ Decisions this needs:
 7. **HEAD only.** `commits` holds the default branch (all-branches sync is
    deferred), so a fork whose work is on another branch looks smaller than it is.
 
+## Gone repos (for discussion)
+
+A repo kospex has synced can disappear from GitHub. GitHub keeps no public record
+of a deleted repo, and a deleted repo looks the same as one the token can't see.
+kospex often holds more than GitHub does: the clone has the full history, and the
+DB has the commits and the run in which the repo was last listed. Related: #12
+(repos removed upstream).
+
+### What GitHub gives you
+
+From GitHub's documentation. Not yet tested here; the deletion cases need a
+throwaway repo.
+
+- **The repo API answers 404**, by name (`/repos/{owner}/{repo}`) or by numeric
+  id (`/repositories/{id}`). That's the same answer as for a private repo the
+  token can't read, so a 404 alone can't say the repo was deleted.
+- **A rename or transfer is different.** The old name redirects, and a lookup by
+  numeric id returns the new owner and name. That's the okhttp case above: same
+  id, new owner.
+- **Restore:** the owner can restore a deleted repo for 90 days from the account
+  or org settings. As far as I know there's no public API to list deleted repos.
+- **The org audit log** records `repo.destroy`, with who deleted it and when. Org
+  owners can see it in the web UI; the audit log API is Enterprise Cloud only.
+- **Webhooks:** an org webhook receives a `repository` event with action
+  `deleted`, but only if the hook existed before the deletion.
+- **Forks:**
+  - Deleting a public repo leaves its forks, and the fork network gets a new root.
+  - Deleting a private repo deletes its private forks too.
+  - So a deleted public repo's history may still be on GitHub through its forks.
+
+### What kospex can work out
+
+`kgit sync --org` / `--user` already lists repos that are in kospex but no longer
+in the listing (`-inventory` and `-status`). Once a repo has its
+`provider_repo_id`, looking up the id sorts them:
+
+| What happened | How to tell |
+|---|---|
+| Renamed in the same org | the id is in the new listing under a different name |
+| Transferred to another owner | the lookup by id returns the new owner |
+| Deleted, or the token lost access | the lookup by id returns 404 |
+| Made private and the token lost access | the same 404, so it can't be told apart |
+
+So "deleted" is something kospex can only infer: a 404 by id, ideally seen
+across more than one run. Only the audit log can confirm it, where that's
+available.
+
+### Decisions
+
+1. **What it's called.** Suggest `gone (404)` rather than `deleted`, with the
+   date it was last seen in a listing.
+2. **What happens to the kospex data.** Suggest keeping the commits: a deleted
+   repo's history is often exactly what someone wants to know about. Mark the
+   repo as gone rather than deleting anything; if anything is ever deleted,
+   `kreaper` does it on request.
+3. **The local clone.** `kgit pull` will start failing on it. Should it skip the
+   clone, or report it once and stop retrying?
+4. **Repos with no `provider_repo_id`.** Ones synced before `0012` can only be
+   matched by name, so a rename looks like a deletion until the id is filled in.
+5. **The audit log.** Should kospex read `repo.destroy` where it's available, or
+   leave that to the user?
+
 ## Open questions
 
 1. **Shared-history decisions 1 to 7** above.
 2. **Template visibility** needs the private-template check above before the
    relation is built.
+3. **Gone repos:** decisions 1 to 5 above, and a live check of what GitHub
+   returns for a deleted repo, by name and by id, using a throwaway account.
