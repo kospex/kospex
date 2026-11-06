@@ -114,6 +114,7 @@ class TestScopeExists:
     @pytest.mark.parametrize("params", [
         {"repo_id": "github.com~acme~nope"},
         {"org_key": "github.com~nope"},
+        {"org_key": "not-an-org-key"},     # malformed: no match, not an error
         {"server": "gitlab.example.com"},
     ])
     def test_unknown_scope(self, db, params):

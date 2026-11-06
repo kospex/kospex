@@ -81,6 +81,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   this repository.` (or organisation, server, developer) for a known scope
   with no commits. An id that isn't in the database (a typo or stale link)
   returns 404, naming the id.
+- **kweb pages return 404 for a repository, organisation or server id that
+  isn't in the database**, instead of an empty page with HTTP 200 that looked
+  the same as a real one with no data. For example `No repository with ID
+  'github.com~acme~nope' in the kospex database. Check it for a typo.` This
+  covers `/repo/`, `/org/`, `/orgs/`, `/repos/`, `/summary/`, `/summary2/`,
+  `/developers/`, `/developers/active/`, `/key-person/`, `/commits/`,
+  `/history/`, `/hotspots/`, `/files/repo/`, `/landscape/`, `/osi/`,
+  `/orphans/`, `/metadata/repos/`, `/bubble/`, `/treemap/`, `/graph/`,
+  `/collab/graph/` and `/file-collab/`. `/commit/` also returns 404 for a
+  commit hash that isn't in the repository. `/dependencies/` is unchanged: it
+  already explains that the repository isn't synced and what to run.
 - **`kgit github` no longer treats a partial repo listing as complete.** A
   timeout, server error or rate limit on any page of the listing used to end
   it quietly, so the table, `-out-repo-list` and `-sync` worked from a shorter
