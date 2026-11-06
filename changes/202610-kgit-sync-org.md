@@ -175,7 +175,7 @@ repo would be retried on every resume.
 ```
 kgit sync --org TARGET  [-relist] [-retry-failed] [-skip-archived] [-include-forks | -skip-forks]
 kgit sync --user TARGET           [-ssh] [-no-prompt] [-no-auth] [-next N]
-kgit sync --org TARGET -list-only   # list and record the org's repos; clone nothing
+kgit sync --org TARGET -inventory   # list the org's repos and SAVE them as a run; clone nothing
 kgit sync --org TARGET -next 10     # sync the next 10 repos of the run, then stop
 kgit sync --org TARGET -status      # show latest run's manifest, offline, no network
 ```
@@ -206,13 +206,15 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
   (checked against the live API). Those need one `GET /repos/{owner}/{repo}` per
   **fork**, and only for forks. `get_repos()` already makes that request and then
   drops the result.
-- `-list-only`: steps 1–3 of the flow and nothing else. It lists the org, saves
-  the manifest with every item `pending`, and prints what the org has, without
-  cloning or syncing anything:
+- `-inventory`: take stock of the org and **save it**, without cloning or
+  syncing anything. It runs steps 1–3 of the flow: list every repo, save the
+  listing to the DB as a new run with every repo `pending`, and print a summary
+  against what kospex already has. The saved run is what `-next N` and
+  `-status` then work from.
 
   ```
-  $ kgit sync --org acme -list-only
-  Listed 1,042 repos for github.com~acme (run 20261106T031500Z)
+  $ kgit sync --org acme -inventory
+  Listed 1,042 repos for github.com~acme, saved as run 20261106T031500Z
     active        961     archived     58     forks      23 (skipped by default)
     in kospex     212     not yet     749     changed since last fetch   87
     in kospex but gone from the org: 4    (see -status)
@@ -222,13 +224,24 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
   "In kospex" means the repo is already in `repos`. "Changed since last fetch"
   compares the API's `pushed_at` with `repos.last_fetch`. "Gone from the org" is
   the #12 drift report. The listing needs only the API token, not git
-  credentials, so this works before cloning is set up. If an unfinished run
-  already exists, `-list-only` reports against a fresh listing but replaces the
-  run only with `-relist`, so a run that's partway through isn't lost.
+  credentials, so this works before cloning is set up.
+
+  **The one case where it doesn't save:** if the org already has an unfinished
+  run, `-inventory` lists the org and prints the summary, but keeps the existing
+  run and says so. A run partway through a sync isn't thrown away by a check.
+  `-inventory -relist` closes the old run and saves the new listing.
+
+  ```
+  $ kgit sync --org acme -inventory
+  Listed 1,047 repos for github.com~acme (not saved)
+  Run 20261106T031500Z is unfinished: 310 synced, 2 failed, 730 pending.
+    5 repos are new since that run, 0 are gone. Kept the unfinished run.
+  To replace it with this listing: kgit sync --org acme -inventory -relist
+  ```
 - `-next N`: sync at most N items from the unfinished run, then stop with the run
   still open. Same name and meaning as `krunner osi -next`. With no unfinished
-  run, it lists first (as `-list-only`) and then syncs N. A 1,000-repo org at
-  `-next 10` per cron tick takes 100 ticks. Items are taken most recently pushed
+  run, it takes an inventory first (saved, as `-inventory`) and then syncs N. A
+  1,000-repo org at `-next 10` per cron tick takes 100 ticks. Items are taken most recently pushed
   first, so active repos land first. Combine with `-no-prompt` for cron.
 - `-pushed_at` shortcut (later): skip the fetch when `pushed_at <= repos.last_fetch`.
 
@@ -269,8 +282,10 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
    the default for the installation (2026-11-05). See
    `changes/202611-repo-lineage.md` (#348), which also covers private copies (which
    GitHub doesn't mark as forks) and moved repos.
-5. **`-list-only` and `-next N`** (2026-11-06). `-list-only` records the org's
-   repos and reports them against the DB without cloning. `-next N` syncs a
+5. **`-inventory` and `-next N`** (2026-11-06). `-inventory` lists the org's
+   repos, saves them as a run, and reports them against the DB without cloning.
+   Named `-inventory` rather than `-list-only`, which sounded like it saved
+   nothing. `-next N` syncs a
    slice per run, for large orgs on a schedule. It replaces the earlier `-limit
    N` so the name matches `krunner osi -next`.
 6. **`0012` includes `repos.provider_repo_id` and `provider_checked_at`**
@@ -286,7 +301,7 @@ Separate PRs, each mergeable on its own:
    `provider_checked_at`) plus the query layer (create a run and its items atomically,
    next items, mark status, latest unfinished run).
 3. `kgit sync --org` / `--user`: auth, owner-type check, listing → manifest, the
-   per-repo loop, resume, lock, summary, `-status`, `-list-only` (with the drift
+   per-repo loop, resume, lock, summary, `-status`, `-inventory` (with the drift
    count), `-next N`.
 4. The `kgit github -sync` alias.
 
