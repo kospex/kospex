@@ -27,6 +27,12 @@
                 <div class="p-6">
                     <h2 class="text-2xl font-bold text-gray-900 mb-6">Basic Statistics</h2>
 
+                    {% if no_commits_message %}
+                    <div class="bg-orange-100 border border-orange-200 rounded-lg p-4 mb-6">
+                        <p class="text-sm font-medium text-orange-800">{{ no_commits_message }}</p>
+                    </div>
+                    {% endif %}
+
                     <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                         <p class="text-gray-700 leading-relaxed">
                             There have been <strong class="text-blue-600">{{ data.get("developers","Unknown") }}</strong> developers
