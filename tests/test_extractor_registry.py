@@ -280,13 +280,13 @@ KNOWN_UNREGISTERED = {
     "setup.py": "#137",
     "setup.cfg": "#137",
     "packages.config": "#182",
-    "package.swift": "Swift Package Manager, not yet raised",
-    "package.resolved": "Swift Package Manager, not yet raised",
-    "podfile": "CocoaPods, not yet raised",
-    "podfile.lock": "CocoaPods, not yet raised",
-    "cartfile": "Carthage, not yet raised",
-    "cartfile.private": "Carthage, not yet raised",
-    "cartfile.resolved": "Carthage, not yet raised",
+    "package.swift": "#363",
+    "package.resolved": "#363",
+    "podfile": "#363",
+    "podfile.lock": "#363",
+    "cartfile": "#363",
+    "cartfile.private": "#363",
+    "cartfile.resolved": "#363",
 }
 
 

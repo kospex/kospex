@@ -1062,13 +1062,24 @@ pip requirements files would be wrong anyway — they are fully-resolved lockfil
 
 **Upstream docs:** [Rye](https://rye.astral.sh/)
 
-## Swift, CocoaPods, Carthage — not yet raised
+## Swift, CocoaPods, Carthage — #363
 
 `Package.swift` / `Package.resolved`, `Podfile` / `Podfile.lock` and `Cartfile` /
 `Cartfile.private` / `Cartfile.resolved`. panopticas tagged these `dependencies` before
-#349, and none has a registry entry or an issue. They are listed in `KNOWN_UNREGISTERED`
-in `tests/test_extractor_registry.py`, so they do not fail the panopticas coverage test.
-None is on the estate.
+#349, and none has a registry entry yet. They are listed in `KNOWN_UNREGISTERED` in
+`tests/test_extractor_registry.py`, so they do not fail the panopticas coverage test.
+
+On the development estate: `Package.resolved` 8, `Podfile` 6, `Package.swift` 5,
+`Podfile.lock` 4, `Cartfile` 3, `Cartfile.resolved` 3, `Cartfile.private` 2.
+
+#363 registers them first, with `package_type` None since deps.dev has no system for
+any of the three, then parses the lockfiles. `Package.resolved` is JSON, `Podfile.lock`
+YAML and `Cartfile.resolved` a line format. `Package.swift` and `Podfile` are code and
+can only be read in part, without evaluating them.
+
+**Upstream docs:** [Package.resolved](https://github.com/swiftlang/swift-package-manager/blob/main/Sources/PackageManagerDocs/Documentation.docc/ResolvingPackageVersions.md)
+· [Podfile.lock](https://guides.cocoapods.org/using/using-cocoapods.html)
+· [Carthage artifacts](https://github.com/Carthage/Carthage/blob/master/Documentation/Artifacts.md)
 
 ---
 
