@@ -75,6 +75,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **The `/tenure/` page no longer returns HTTP 500 when there are no commits**
+  (#206). That included the unscoped page on a fresh install, before anything
+  was synced. It now shows `No commits synced yet.`, or `No commits synced for
+  this repository.` (or organisation, server, developer) for a known scope
+  with no commits. An id that isn't in the database (a typo or stale link)
+  returns 404, naming the id.
 - **`kgit github` no longer treats a partial repo listing as complete.** A
   timeout, server error or rate limit on any page of the listing used to end
   it quietly, so the table, `-out-repo-list` and `-sync` worked from a shorter

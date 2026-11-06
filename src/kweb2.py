@@ -1202,6 +1202,15 @@ def org_graph(request: Request, org_key: Optional[str] = None, focus: Optional[s
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# Scope keys from KospexWeb.get_id_params, with the word the user sees.
+_SCOPE_KINDS = {
+    "repo_id": "repository",
+    "org_key": "organisation",
+    "server": "server",
+    "author_email": "developer",
+}
+
+
 @app.get("/tenure/", response_class=HTMLResponse)
 @app.get("/tenure/{id}", response_class=HTMLResponse)
 def tenure(request: Request, id: Optional[str] = None):
@@ -1213,6 +1222,17 @@ def tenure(request: Request, id: Optional[str] = None):
 
         # TODO - CHECK THIS FOR SECURITY
         params = KospexWeb.get_id_params(id)
+
+        # An id we have never synced is most likely a typo or a stale link:
+        # say so with a 404 rather than render an empty page. (#206)
+        if not KospexQuery().scope_exists(params):
+            kind = next(name for key, name in _SCOPE_KINDS.items() if params.get(key))
+            return templates.TemplateResponse(
+                request, "404.html",
+                {"error": f"No {kind} with ID '{id}'. Check it for a typo."},
+                status_code=404,
+            )
+
         developers = KospexQuery().developers(**params)
         active_devs = []
         dev_leavers = []
@@ -1249,6 +1269,13 @@ def tenure(request: Request, id: Optional[str] = None):
         data["repos"] = commit_stats.get("repos")
         data["commits"] = commit_stats.get("commits")
 
+        no_commits_message = None
+        if not data["commits"]:
+            kind = next((name for key, name in _SCOPE_KINDS.items() if params.get(key)), None)
+            no_commits_message = (
+                f"No commits synced for this {kind}." if kind else "No commits synced yet."
+            )
+
         data |= KospexStats.tenure_stats(days_values)
 
         # Holds the active stats
@@ -1266,6 +1293,7 @@ def tenure(request: Request, id: Optional[str] = None):
                 "developers": developers,
                 "active_distribution": active_d,
                 "leavers": leavers,
+                "no_commits_message": no_commits_message,
                 **KospexWeb.scope_context(params, "Tenure"),
             },
         )

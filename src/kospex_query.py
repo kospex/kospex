@@ -1183,12 +1183,35 @@ class KospexQuery:
 
         if kresults:
             data = kresults[0]
-            data["days_active"] = KospexUtils.days_between_datetimes(
-                data["first_commit"], data["last_commit"], min_one=True
-            )
-            data["years_active"] = round(data["days_active"] / 365, 2)
+            # An aggregate returns one row even when nothing matches, with
+            # commits = 0 and NULL first/last commit, so guard on the count,
+            # not on the row. (#206)
+            if data["commits"]:
+                data["days_active"] = KospexUtils.days_between_datetimes(
+                    data["first_commit"], data["last_commit"], min_one=True
+                )
+                data["years_active"] = round(data["days_active"] / 365, 2)
+            else:
+                data["days_active"] = 0
+                data["years_active"] = 0
 
         return data
+
+    def scope_exists(self, params=None):
+        """
+        True if the repo_id, org_key or server in params has at least one row
+        in the repos table. No scope ("all repositories") always exists, as does
+        an author_email scope, which is not a repos-table key.
+        """
+        params = params or {}
+        if not any(params.get(key) for key in ("repo_id", "org_key", "server")):
+            return True
+
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_REPOS)
+        kd.select_as("count(*)", "repos")
+        kd.set_params_by_id(params)
+        return bool(kd.execute()[0]["repos"])
 
     @KospexUtils.timer(logger=log)
     def authors(self, days=None, org_key=None, request_id=None):
