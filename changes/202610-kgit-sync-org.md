@@ -254,7 +254,7 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
 ## Files
 
 - `src/kospex_github.py`: `_paginate` raises on a failed page (done, #347)
-- `src/kospex/db/migrations/0012_org_sync.sql`: two tables
+- `src/kospex/db/migrations/0012_org_sync.sql`: two tables (done, #370)
 - `src/kospex_query.py`: create run + items (atomic), next items, mark status, latest unfinished run
 - `src/kgit.py`: replace the stub, add a target parser, keep the single-repo path as is
 - `tests/`: paginate truncation, manifest atomicity, resume after `in_progress`, conflict → skipped, drift report
@@ -304,9 +304,11 @@ Separate PRs, each mergeable on its own:
 1. ~~`_paginate` raises on a failed page, and `get_repos()` callers handle it.~~
    **Done:** #347, merged 2026-11-05. The prerequisite bug; it also fixed `kgit
    github` listing.
-2. Migration `0012` (the two manifest tables, plus `repos.provider_repo_id` and
-   `provider_checked_at`) plus the query layer (create a run and its items atomically,
-   next items, mark status, latest unfinished run).
+2. ~~Migration `0012` (the two manifest tables, plus `repos.provider_repo_id` and
+   `provider_checked_at`) plus the query layer.~~ **Done:** #370, merged
+   2026-11-07. The query layer is `src/kospex/org_sync_manifest.py`
+   (`save_listing`, `next_items`, `mark`, `close_run_if_done`, `inventory`,
+   `record_provider_ids`). The items table also has `ssh_url`, for `-ssh`.
 3. `kgit sync --org` / `--user`: auth, owner-type check, listing → manifest, the
    per-repo loop, resume, lock, summary, `-status`, `-inventory` (with the drift
    count), `-next N`.
