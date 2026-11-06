@@ -143,6 +143,8 @@ REGISTRY: tuple[Extractor, ...] = (
               "kospex.extractors.uvlock:extract_uv_lock"),
     Extractor("yarn-lock", Kind.PACKAGE, _matcher(r"yarn\.lock"), ("sca", "osi"), "npm",
               "kospex.extractors.yarn:extract_yarn_lock"),
+    Extractor("maven-pom", Kind.PACKAGE, _matcher(r"pom\.xml"), ("sca", "osi"), "maven",
+              "kospex.extractors.maven:extract_pom"),
     # --- package: recognised but no parser yet (-> sub-project D) ---
     Extractor("gradle-build", Kind.PACKAGE, _matcher(r"build\.gradle(\.kts)?"), (), "maven", None),
     # Tagged `dependencies` from panopticas 0.0.22 / 0.0.23. Named here so a consumer
@@ -204,7 +206,6 @@ REGISTRY: tuple[Extractor, ...] = (
     # real files have catalogs, so no parser yet.
     Extractor("pnpm-workspace", Kind.PACKAGE, _matcher(r"pnpm-workspace\.yaml"), (),
               "npm", None),
-    Extractor("maven-pom", Kind.PACKAGE, _matcher(r"pom\.xml"), (), "maven", None),
     # --- runtime ---
     Extractor("python-version", Kind.RUNTIME, _matcher(r"\.python-version"), (), None, None),
     Extractor("nvmrc", Kind.RUNTIME, _matcher(r"\.nvmrc"), (), None, None),

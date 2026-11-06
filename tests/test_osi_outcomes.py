@@ -30,13 +30,13 @@ from kospex.osi_outcomes import (
 
 @pytest.mark.parametrize("filename", [
     "requirements.txt", "pyproject.toml", "package.json", "go.mod", "app.csproj",
-    "pnpm-lock.yaml", "package-lock.json", "uv.lock",
+    "pnpm-lock.yaml", "package-lock.json", "uv.lock", "pom.xml",
 ])
 def test_a_parsed_file_with_rows_is_extracted(filename):
     assert classify_outcome(filename, row_count=3) == EXTRACTED
 
 
-@pytest.mark.parametrize("filename", ["pyproject.toml", "package.json", "uv.lock"])
+@pytest.mark.parametrize("filename", ["pyproject.toml", "package.json", "uv.lock", "pom.xml"])
 def test_a_parsed_file_with_no_rows_is_empty(filename):
     """Textualize/rich's pyproject.toml has no [project] dependencies table.
 
@@ -48,7 +48,6 @@ def test_a_parsed_file_with_no_rows_is_empty(filename):
 
 @pytest.mark.parametrize("filename", [
     "build.gradle", "build.gradle.kts",
-    "pom.xml",
 ])
 def test_a_recognised_manifest_with_no_parser_is_unsupported(filename):
     """Real manifests kospex can name but cannot yet read — sub-project D."""

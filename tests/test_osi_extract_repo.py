@@ -106,13 +106,13 @@ def test_an_unparseable_manifest_does_not_stop_the_other_files(tmp_path):
 
 
 def test_unsupported_and_non_manifest_files_are_distinguished(tmp_path):
-    (tmp_path / "pom.xml").write_text("<project/>\n")
+    (tmp_path / "Cargo.toml").write_text("[package]\n")
     (tmp_path / "dependabot.yml").write_text("version: 2\n")
-    kq = _query_db(tmp_path, ["pom.xml", "dependabot.yml"])
+    kq = _query_db(tmp_path, ["Cargo.toml", "dependabot.yml"])
 
     rows, outcomes = extract_repo(REPO_ID, kq, _kdeps())
 
-    assert outcomes == {"pom.xml": UNSUPPORTED,
+    assert outcomes == {"Cargo.toml": UNSUPPORTED,
                         "dependabot.yml": NOT_A_MANIFEST}
     assert rows == []
 

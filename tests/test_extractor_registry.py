@@ -30,7 +30,7 @@ CASES = [
     ("yarn.lock", Kind.PACKAGE, True),
     ("uv.lock", Kind.PACKAGE, True),
     ("build.gradle", Kind.PACKAGE, False),
-    ("pom.xml", Kind.PACKAGE, False),
+    ("pom.xml", Kind.PACKAGE, True),
     (".python-version", Kind.RUNTIME, False),
     (".nvmrc", Kind.RUNTIME, False),
     ("Dockerfile", Kind.CONTAINER, False),
@@ -219,7 +219,7 @@ class TestResolveParser:
 
     def test_entry_without_a_parser_resolves_to_none(self):
         from kospex.extractors.registry import resolve_parser
-        assert resolve_parser(self._entry("maven-pom")) is None
+        assert resolve_parser(self._entry("cargo-toml")) is None
 
     def test_every_supported_entry_resolves_and_takes_a_path(self):
         """The parity guarantee: everything both scanners claim to handle must

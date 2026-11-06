@@ -154,7 +154,12 @@ def classify_constraint(declared_version, package_type=None):
     # pattern matches — and ungated it returned ("pinned", ""), an open floor
     # reported as a pin with the operator erased. That is the exact defect
     # this module exists to prevent.
-    if ecosystem == "nuget":
+    #
+    # Maven shares the notation -- NuGet adopted Maven's range syntax. A
+    # bare Maven version stays `pinned`: Maven calls it a "soft requirement",
+    # replaceable by dependency mediation, which is neither a floor nor quite
+    # an equality, and the declaration itself names one version.
+    if ecosystem in ("nuget", "maven"):
         interval = _NUGET_INTERVAL.match(text)
         if interval:
             return _classify_interval(interval, text)

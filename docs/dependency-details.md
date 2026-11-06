@@ -51,7 +51,7 @@ section for that format.
 | `yarn.lock` | v1, Berry `__metadata.version` 6, 8, 10 | v1 ×116, Berry `__metadata.version` 10 ×39, 8 ×4, 6 ×1 |
 | `uv.lock` | `version` 1, any `revision` (1–3 measured) | `version=1` ×24 — `revision` 3 ×19, 2 ×4, 1 ×1 |
 | `build.gradle(.kts)` | **not parsed** — #229 | 68 files |
-| `pom.xml` | **not parsed** — #229 | 12 files |
+| `pom.xml` | POM model 4.0.0 | 14 files, all `modelVersion` 4.0.0 |
 
 The *versions seen* column comes from reading the working copies directly, with
 `node_modules` excluded; the *estate* file counts quoted in each section below come
@@ -833,6 +833,110 @@ means a new version is coming. Also watch for
 a Berry protocol other than `npm:` / `patch:` / local appearing on the estate, which is
 logged and recorded by declared version until someone looks at it.
 
+## `pom.xml` — Maven
+
+| | |
+|---|---|
+| registry entry | `maven-pom`, `Kind.PACKAGE`, `package_type="maven"` |
+| parser | `kospex.extractors.maven:extract_pom` |
+| estate | 14 files across 7 repositories on disk (12 files across 5 in `file_metadata`) |
+
+One record per `<dependency>` in the project's own `<dependencies>`, named
+`groupId:artifactId` (deps.dev's name for a Maven package), plus one per BOM imported
+in its `<dependencyManagement>`.
+
+### Raises
+
+- missing or unreadable file, or not UTF-8 (UTF-16 is refused, as everywhere)
+- not well-formed XML
+- **a `<!DOCTYPE` declaration** — CWE-776, the same refusal and placement as
+  `.csproj`; no `pom.xml` on the estate carries one
+- **a root element that is not `<project>`** — all 14 on the estate have one
+- **a `<dependency>` with no `groupId` or `artifactId`** — Maven refuses such a pom,
+  and skipping the entry would report fewer dependencies than the file declares
+
+A **parent** pom that cannot be read never raises. The file being scanned was read; a
+broken parent costs only the versions it would have supplied, and is logged.
+
+### Returns `[]`
+
+A readable pom with no `<dependencies>` and no BOM import. The gson root pom is one: a
+parent whose `<dependencyManagement>` pins versions for its modules but which depends
+on nothing itself.
+
+### Where a version comes from
+
+The main problem with this format. **24 of 51** direct dependencies on the estate have
+no `<version>`. Maven refuses to build a pom whose unversioned dependency nothing
+manages, so each is a real declaration whose version lives in another POM:
+
+| source | on the estate | read by kospex |
+|---|---|---|
+| the file's own `<properties>`, `${project.version}`, `${project.parent.version}` | 7 `${...}` versions | **yes** — tier 1 |
+| a parent pom inside the same repository (`<relativePath>`, default `../pom.xml`) | 11 missing versions, all gson modules | **yes** — tier 2 |
+| an imported BOM (`<scope>import</scope>`) | 10 — jsoup ← `netty-bom`, okhttp ×2 ← `okhttp-bom`, gson graal test ← `junit-bom` | no |
+| a parent only in a Maven repository | 3 — jackson-core ← `tools.jackson:jackson-base:3.3.0-SNAPSHOT` | no |
+| build-time `-Drevision=`, `.mvn/maven.config`, `${env.*}`, `settings.xml` | none | no |
+
+After tiers 1 and 2: **38 resolved, 13 blank, 0 unresolved `${...}`.**
+
+- **A version kospex cannot find is recorded as `""`**, as `.csproj` does under Central
+  Package Management. Enrichment reports it as `no_version`. Nothing marks *why* it is
+  missing, and for Maven nothing needs to: a blank version always means "managed by a
+  BOM or a parent kospex did not read".
+- **An unresolvable `${...}` is kept verbatim**, not blanked, so enrichment reports
+  `unresolved_spec` and the row still names the property it was waiting on.
+- **Interpolation happens after inheritance**, as in Maven: `${project.version}` in a
+  parent's `<dependencyManagement>` means the *child's* version. Nearer declarations
+  win — child over parent over grandparent — and an explicit `<version>` wins over
+  management.
+- **Property expansion is capped** (10 passes, 1024 characters). `<p1>${p0}${p0}</p1>`
+  doubles at each level — CWE-776's mechanism without a DTD — and the input comes from
+  cloned repositories. Past the cap the declared text is kept.
+- **A parent is followed only inside the repository.** The boundary is the nearest
+  enclosing directory holding `.git`; the path is resolved through symlinks before the
+  check, since `<relativePath>` is third-party input. With no `.git` above the file, no
+  parent is read at all. `<relativePath/>` (empty) means "repository only" and is
+  honoured. The file found must carry the `groupId:artifactId` (and version, when the
+  child names one) that `<parent>` asks for — Maven falls back to a repository when it
+  does not, and so does this. Cycles and chains deeper than 10 stop.
+- **Management is keyed as Maven keys it**: `groupId`, `artifactId`, `type` (default
+  `jar`) and `classifier`.
+
+### Decisions and quirks
+
+- **`declared_scope` is the raw `<scope>`; absent stays NULL.** Maven reads an absent
+  scope as `compile`, but the file did not say `compile`. `is_dev` is true for `test`
+  only — see [`dependency-flags.md`](dependency-flags.md) for why `provided` and
+  `runtime` are not "dev". A scope supplied by a parent's management is not read.
+- **`<optional>true</optional>` is not `is_optional`.** In Maven it means "not passed on
+  to consumers", not "may not install". `is_optional` and `runs_install_script` are NULL.
+- **BOM imports are rows** (`requirements_type="bom"`, `declared_scope="import"`,
+  `is_dev` NULL): they are where the missing versions come from. Other
+  `<dependencyManagement>` entries are not — they pin versions, they do not make the
+  project depend on anything.
+- **Not read:** `<build><plugins>` dependencies (8 on the estate; the build tool's
+  classpath) and `<profiles>` (none on the estate; they apply only when active).
+- **Version ranges** use the bracket notation NuGet adopted from Maven, so
+  `constraints.py` reads intervals for `maven` too. Both okhttp copies import their BOM
+  with `[5.2.0-SNAPSHOT,6.0.0-SNAPSHOT)` (`bounded`). A bare Maven version is a "soft
+  requirement" that mediation can replace, and is classified `pinned`. A multi-range
+  set such as `(,1.0],[1.2,)` is not recognised and classifies `none`.
+- **Elements are matched by local name.** Every pom on the estate declares the Maven
+  namespace; it is optional, and matching one spelling only would report the other as
+  declaring nothing.
+
+**Upstream docs:** [POM reference](https://maven.apache.org/pom.html)
+· [Introduction to the Dependency Mechanism](https://maven.apache.org/guides/introduction/introduction-to-dependency-mechanism.html)
+· [Version range specification](https://maven.apache.org/enforcer/enforcer-rules/versionRanges.html)
+· [CI-friendly versions](https://maven.apache.org/guides/mini/guide-maven-ci-friendly.html)
+
+**Drift watch:** POM model version 4.1.0 (Maven 4), which changes inheritance and
+adds `<subprojects>`. A pom in a non-UTF-8 encoding with non-ASCII bytes, which Maven
+reads and this raises on (none on the estate). `${revision}` CI-friendly versions,
+which will surface as `unresolved_spec`. BOM and external-parent resolution, if it is
+ever added, belongs in enrichment, not here: it needs the network.
+
 ---
 
 # Classified, no parser yet
@@ -955,22 +1059,6 @@ return False. The patterns are panopticas' own. Delegate once
 **Drift watch:** each panopticas release. `test_every_panopticas_dependency_file_has_a_registry_entry`
 catches a new `dependencies` tag. Also re-run the catalog count on `pnpm-workspace.yaml`
 before deciding on a parser.
-
-## `pom.xml` — Maven
-
-| | |
-|---|---|
-| registry entry | `maven-pom`, `Kind.PACKAGE`, `package_type="maven"`, `parse_ref=None` |
-| estate | 12 files across 5 repositories |
-
-Gained its registry entry in #221, so it moved from `unclassified` to `unsupported`.
-
-XML, and therefore subject to the same entity-expansion consideration as `.csproj`
-(CWE-776) — a `pom.xml` parser should carry the DOCTYPE refusal from the start. Unlike
-`.csproj`, `pom.xml` legitimately uses parent POMs and property interpolation
-(`${project.version}`), so a declared version may not be a literal.
-
-**Upstream docs:** [POM reference](https://maven.apache.org/pom.html)
 
 ---
 
@@ -1146,6 +1234,7 @@ Each row below was checked against the actual tool, not inferred:
 | `pnpm-lock.yaml` | the YAML spec permits a BOM | tolerant | reads it (PyYAML consumes it) |
 | `uv.lock` | uv **reads** it — `uv export --frozen` (uv 0.11.11) exports the locked closure | tolerant | **reads it** (`utf-8-sig`) |
 | `*.csproj` | the XML spec permits a BOM | tolerant | reads it (ElementTree consumes it) |
+| `pom.xml` | the XML spec permits a BOM; Maven itself not checked | tolerant | reads it (ElementTree consumes it) |
 | `requirements.txt` | — | tolerant | reads it, via `detect_encoding` |
 | `pyproject.toml` | **pip refuses it** — `pip install .` dies in `pip/_internal/pyproject.py` at `tomllib.loads` | refuses | **raises, naming the BOM** |
 | `go.mod` | **Go refuses it** — `golang.org/x/mod/modfile` has no BOM handling, and `ModulePath` tests `bytes.HasPrefix(line, moduleStr)` | refuses | **raises, naming the BOM** |

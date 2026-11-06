@@ -96,11 +96,11 @@ def test_wider_scope_suggests_osi_for_that_scope():
 # --- unsupported files ----------------------------------------------------
 
 def test_unsupported_counts_files_with_no_parser_by_name():
-    deps = _files("package.json", "a/build.gradle", "b/build.gradle", "pom.xml", ".nvmrc")
+    deps = _files("package.json", "a/build.gradle", "b/build.gradle", "Cargo.toml", ".nvmrc")
     summary = KospexWeb.unsupported_dependency_files(deps)
     assert summary["total"] == 5
     assert summary["count"] == 4
-    assert summary["by_name"] == {"build.gradle": 2, ".nvmrc": 1, "pom.xml": 1}
+    assert summary["by_name"] == {"build.gradle": 2, ".nvmrc": 1, "Cargo.toml": 1}
     assert list(summary["by_name"])[0] == "build.gradle"     # most common first
 
 

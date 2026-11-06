@@ -235,6 +235,20 @@ class TestNuGetBracketNotation:
     def test_bracket_ranges(self, declared, kind):
         assert classify_constraint(declared, "nuget")[0] == kind
 
+    @pytest.mark.parametrize("declared,kind", [
+        ("[3.1.1]", "pinned"),
+        ("[1.0,)", "gte"),
+        ("[1.0,2.0)", "bounded"),
+        ("(,2.0]", "bounded"),
+        # Both okhttp maven-tests poms on the development estate import
+        # their BOM with this.
+        ("[5.2.0-SNAPSHOT,6.0.0-SNAPSHOT)", "bounded"),
+    ])
+    def test_maven_uses_the_same_bracket_notation(self, declared, kind):
+        """Maven's version range syntax is the one NuGet adopted. Before
+        maven was added to the gate, every range here classified `none`."""
+        assert classify_constraint(declared, "maven")[0] == kind
+
 
 class TestEcosystemRulesDoNotLeak:
     """A rule added for one ecosystem must not fire in another.
