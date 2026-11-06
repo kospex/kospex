@@ -37,14 +37,20 @@ then `kgit clone -filename x.txt`, and re-run that clone command after a crash. 
 works, but nothing records which repos failed or why, so a re-run pulls and
 re-syncs every repo again.
 
-### Prerequisite bug: a failed page silently truncates the list
+### Prerequisite bug: a failed page silently truncated the list (fixed in #347)
 
-`KospexGithub._paginate()` does `if data is None: break`. A timeout, 5xx or rate
-limit on page 3 of 5 ends the loop, and the caller gets a **shorter list that looks
-complete**. For a manifest this is the worst failure, because the repos that were
-dropped never show up as failed. They simply aren't in the list. `_paginate` must
-raise on a failed page (or return a completeness flag), and `sync --org` must
-refuse to save a manifest from an incomplete listing. Fix this first, with a test.
+**Fixed** in [#347](https://github.com/kospex/kospex/pull/347) (merged 2026-11-05,
+`761795c`), under this issue rather than one of its own.
+
+`KospexGithub._paginate()` did `if data is None: break`. A timeout, 5xx or rate
+limit on page 3 of 5 ended the loop, and the caller got a **shorter list that
+looked complete**. For a manifest this is the worst failure, because the repos
+that were dropped never show up as failed. They simply aren't in the list.
+
+`_paginate` now raises `GitHubListingIncomplete(url, page, items_read, reason)` on
+any failed page, and `kgit github` exits 1 without printing, writing
+`-out-repo-list` or syncing. `sync --org` relies on the same exception: an
+incomplete listing saves no manifest.
 
 ## Where to keep the list: database, not a file
 
@@ -247,7 +253,7 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
 
 ## Files
 
-- `src/kospex_github.py`: `_paginate` raises on a failed page
+- `src/kospex_github.py`: `_paginate` raises on a failed page (done, #347)
 - `src/kospex/db/migrations/0012_org_sync.sql`: two tables
 - `src/kospex_query.py`: create run + items (atomic), next items, mark status, latest unfinished run
 - `src/kgit.py`: replace the stub, add a target parser, keep the single-repo path as is
@@ -295,8 +301,9 @@ kgit sync --org TARGET -status      # show latest run's manifest, offline, no ne
 
 Separate PRs, each mergeable on its own:
 
-1. `_paginate` raises on a failed page, and `get_repos()` callers handle it. This
-   is the prerequisite bug, and it fixes `kgit github` listing today.
+1. ~~`_paginate` raises on a failed page, and `get_repos()` callers handle it.~~
+   **Done:** #347, merged 2026-11-05. The prerequisite bug; it also fixed `kgit
+   github` listing.
 2. Migration `0012` (the two manifest tables, plus `repos.provider_repo_id` and
    `provider_checked_at`) plus the query layer (create a run and its items atomically,
    next items, mark status, latest unfinished run).
