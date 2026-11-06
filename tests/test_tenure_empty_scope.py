@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 import kospex_schema as KospexSchema
+import kospex_utils as KospexUtils
 import kweb2
 from kospex_query import KospexQuery
 
@@ -150,3 +151,11 @@ class TestTenurePage:
         assert status == 404
         assert f"No {kind} with ID" in body
         assert id in body
+
+    def test_developer_id_is_404_pointing_at_the_developer_page(self, db):
+        # get_id_params decodes a base64 id to author_email, which
+        # developers() does not accept: this was a 500.
+        dev_id = KospexUtils.encode_base64("dev@example.com")
+        status, body = _tenure(dev_id)
+        assert status == 404
+        assert "/developers/" in body
