@@ -345,6 +345,80 @@ kospex often holds more than GitHub does: the clone has the full history, and th
 DB has the commits and the run in which the repo was last listed. Related: #12
 (repos removed upstream).
 
+### Requirement (2026-11-07)
+
+**Once kospex has seen a repo in a listing, it keeps the record that it saw it,
+even after the repo is deleted.** The latest listing says what's on GitHub now;
+the record says what used to be there. So someone can ask "which repos appear to
+have been deleted?", for example: the org was synced a month ago, and three of
+its repos have gone since.
+
+### What the 0012 tables already answer
+
+Every `kgit sync --org` / `--user` run saves everything the owner listed, skipped
+forks and archived repos included (`org_sync_items`). So "seen" is the union of an
+org's runs, "now" is its latest run, and a repo seen but not now is gone, unless
+its `provider_repo_id` is in the latest run under another name, which makes it a
+rename. Tested against the real `0012` schema with three listings of `acme`:
+`api` renamed to `api-server`, `old-tool` and `demo` deleted.
+
+```
+github.com~acme~api        first 2026-10-01  last 2026-10-15  x2  renamed -> github.com~acme~api-server
+github.com~acme~demo       first 2026-10-01  last 2026-10-15  x2  not listed (deleted, or no access)
+github.com~acme~old-tool   first 2026-10-01  last 2026-10-15  x2  not listed (deleted, or no access)
+```
+
+```sql
+WITH runs AS (
+  SELECT run_id, started_at FROM org_sync_runs WHERE org_key = :org
+),
+latest AS (
+  SELECT run_id FROM runs ORDER BY started_at DESC LIMIT 1
+),
+now_listed AS (
+  SELECT _repo_id, provider_repo_id FROM org_sync_items
+  WHERE run_id = (SELECT run_id FROM latest)
+),
+seen AS (
+  SELECT i._repo_id, i.provider_repo_id,
+         MIN(r.started_at) AS first_listed, MAX(r.started_at) AS last_listed,
+         COUNT(*) AS times_listed
+  FROM org_sync_items i JOIN runs r USING (run_id)
+  GROUP BY i._repo_id
+)
+SELECT s._repo_id, s.first_listed, s.last_listed, s.times_listed,
+       (SELECT n._repo_id FROM now_listed n
+         WHERE n.provider_repo_id = s.provider_repo_id) AS now_named
+FROM seen s
+WHERE s._repo_id NOT IN (SELECT _repo_id FROM now_listed)
+ORDER BY s.last_listed DESC, s._repo_id
+```
+
+The latest run counts even if its syncing isn't finished: a run is saved only
+from a complete listing (#347), so its items are the whole org at that time.
+
+### What's missing for the requirement
+
+1. **The "seen" record must survive pruning.** Today it exists only as run
+   history, and retention of `org_sync_runs` / `org_sync_items` is an open
+   question; pruning would erase it. Proposed: a small permanent table keyed by
+   `provider_repo_id` (first listed, last listed, the `_repo_id` it was last
+   listed as, the owner it was listed under, its state, and when the state was
+   last checked). Each listing updates it. Then the question is a lookup, runs
+   can be pruned safely, and the per-id lookup result has somewhere to live.
+2. **A run doesn't record what the token could see.** A `-no-auth` run lists
+   only public repos, so every private repo would look gone. A run with a
+   different token, with less access, does the same. Each run should record
+   whether it was authenticated and as which GitHub login (a login is not a
+   secret), and gone-detection should compare only runs with the same access.
+   This needs a migration (`0013`) on `org_sync_runs` and is the one piece that
+   affects `kgit sync --org` as shipped; until it lands, one `-no-auth` run makes
+   the result misleading.
+3. **"Not listed" is not "deleted".** The per-id lookup below sorts not-listed
+   repos into transferred (the id has a new owner) and appears deleted (404).
+4. **Repos never listed.** A repo added with `kgit clone`, outside `sync --org`,
+   has no listing history. Only the per-id check (`kgit lineage -check`) covers it.
+
 ### What GitHub gives you
 
 From GitHub's documentation. Not yet tested here; the deletion cases need a
@@ -357,7 +431,7 @@ throwaway repo.
   numeric id returns the new owner and name. That's the okhttp case above: same
   id, new owner.
 - **Restore:** the owner can restore a deleted repo for 90 days from the account
-  or org settings. As far as I know there's no public API to list deleted repos.
+  or org settings. There appears to be no public API to list deleted repos.
 - **The org audit log** records `repo.destroy`, with who deleted it and when. Org
   owners can see it in the web UI; the audit log API is Enterprise Cloud only.
 - **Webhooks:** an org webhook receives a `repository` event with action
@@ -398,11 +472,15 @@ available.
    matched by name, so a rename looks like a deletion until the id is filled in.
 5. **The audit log.** Should kospex read `repo.destroy` where it's available, or
    leave that to the user?
+6. **Where "seen" lives.** The permanent table above, or keep every run's items
+   forever? Suggest the table.
+7. **Recording the token's access on a run** (`0013`): its own PR soon after
+   `kgit sync --org` ships, or with the table in 6?
 
 ## Open questions
 
 1. **Shared-history decisions 1 to 7** above.
 2. **Template visibility** needs the private-template check above before the
    relation is built.
-3. **Gone repos:** decisions 1 to 5 above, and a live check of what GitHub
+3. **Gone repos:** decisions 1 to 7 above, and a live check of what GitHub
    returns for a deleted repo, by name and by id, using a throwaway account.
