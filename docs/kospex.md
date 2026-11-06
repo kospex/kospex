@@ -156,8 +156,8 @@ kospex sca -scope direct,dev package.json
 kospex sca -scope all pnpm-lock.yaml
 ```
 
-The scopes are `direct`, `dev`, `peer`, `optional`, `transitive`, `unknown` (the file
-did not say) and `all`. `-scope` only changes what is shown. Every package is still
+The scopes are `direct`, `dev`, `peer`, `optional`, `transitive`, `bom` (a Maven
+bill of materials), `unknown` (the file did not say) and `all`. `-scope` only changes what is shown. Every package is still
 looked up, and all of them are saved with `-save`.
 
 **JSON output**

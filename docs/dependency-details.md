@@ -892,7 +892,11 @@ After tiers 1 and 2: **38 resolved, 13 blank, 0 unresolved `${...}`.**
   management.
 - **Property expansion is capped** (10 passes, 1024 characters). `<p1>${p0}${p0}</p1>`
   doubles at each level — CWE-776's mechanism without a DTD — and the input comes from
-  cloned repositories. Past the cap the declared text is kept.
+  cloned repositories. Past the cap the declared text is kept. The length is
+  checked while each pass is built, not after: one pass substituting a large
+  property into many references is a blow-up of its own, and a check after
+  `re.sub` let it allocate first (250 references to a 200 KB property peaked at
+  50 MB). A declared value already longer than the cap is not expanded at all.
 - **A parent is followed only inside the repository.** The boundary is the nearest
   enclosing directory holding `.git`; the path is resolved through symlinks before the
   check, since `<relativePath>` is third-party input. With no `.git` above the file, no
@@ -911,8 +915,10 @@ After tiers 1 and 2: **38 resolved, 13 blank, 0 unresolved `${...}`.**
   `runtime` are not "dev". A scope supplied by a parent's management is not read.
 - **`<optional>true</optional>` is not `is_optional`.** In Maven it means "not passed on
   to consumers", not "may not install". `is_optional` and `runs_install_script` are NULL.
-- **BOM imports are rows** (`requirements_type="bom"`, `declared_scope="import"`,
-  `is_dev` NULL): they are where the missing versions come from. Other
+- **BOM imports are rows** (`requirements_type="bom"`, `package_use="bom"`,
+  `declared_scope="import"`, `is_dev` NULL): they are where the missing versions come
+  from. They are not `direct`: a BOM puts nothing on the classpath, so counting it
+  would overstate direct dependencies (jsoup would show 7, not 6). Other
   `<dependencyManagement>` entries are not — they pin versions, they do not make the
   project depend on anything.
 - **Not read:** `<build><plugins>` dependencies (8 on the estate; the build tool's

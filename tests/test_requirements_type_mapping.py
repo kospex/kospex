@@ -34,15 +34,23 @@ import kospex_schema as KospexSchema
 
 SRC = pathlib.Path(__file__).resolve().parent.parent / "src"
 
+def _registered_parser_sources():
+    """The source file of every module the extractor registry dispatches to.
+
+    Read from the registry rather than listed by hand. The hand-written list
+    stopped at five modules while uvlock, yarn and maven were registered after
+    it, so maven's "bom" reached the database as a NULL package_use with
+    nothing failing -- the defect this file exists to catch.
+    """
+    from kospex.extractors.registry import REGISTRY
+
+    modules = {e.parse_ref.split(":")[0] for e in REGISTRY if e.parse_ref}
+    return tuple(sorted(SRC / (module.replace(".", "/") + ".py") for module in modules))
+
+
 # Every module that parses a manifest into records. The two scan paths dispatch
 # here via the extractor registry.
-PARSER_SOURCES = (
-    SRC / "kospex_dependencies.py",
-    SRC / "kospex" / "extractors" / "npmlock.py",
-    SRC / "kospex" / "extractors" / "pnpm.py",
-    SRC / "kospex" / "extractors" / "gomod.py",
-    SRC / "kospex" / "extractors" / "nuget.py",
-)
+PARSER_SOURCES = _registered_parser_sources()
 
 
 def _emitted_requirements_types(path):
@@ -135,10 +143,16 @@ class TestMappingIsTotal:
         what the source says; this proves the scan is actually finding things,
         so a scan that silently returned an empty set could not pass both.
         """
-        for req_type in ("direct", "dev", "resolved", "indirect", "peer", "optional"):
+        for req_type in ("direct", "dev", "resolved", "indirect", "peer", "optional", "bom"):
             assert req_type in KospexSchema.REQ_TO_PACKAGE_USE, (
                 f"{req_type!r} is emitted by a parser but is not mapped"
             )
+
+    def test_every_registered_parser_is_scanned(self):
+        """The list is derived, so check it is not vacuously short."""
+        names = {path.name for path in PARSER_SOURCES}
+        assert {"kospex_dependencies.py", "maven.py", "uvlock.py", "yarn.py"} <= names
+        assert all(path.is_file() for path in PARSER_SOURCES)
 
     def test_scan_actually_finds_the_values(self):
         """The ast helper is not vacuously returning an empty set.
@@ -214,6 +228,20 @@ class TestPeerAndOptionalAreNotDirect:
             KospexSchema.REQ_TO_PACKAGE_USE["optional"]
             != KospexSchema.PACKAGE_USE_DIRECT
         )
+
+
+class TestBomIsNotDirect:
+    """A Maven BOM import only supplies versions; nothing from it ships."""
+
+    def test_bom_maps_to_bom(self):
+        assert KospexSchema.REQ_TO_PACKAGE_USE["bom"] == KospexSchema.PACKAGE_USE_BOM
+
+    def test_bom_is_not_recorded_as_direct(self):
+        assert KospexSchema.REQ_TO_PACKAGE_USE["bom"] != KospexSchema.PACKAGE_USE_DIRECT
+
+    def test_maven_parser_emits_bom(self):
+        found = _emitted_requirements_types(SRC / "kospex" / "extractors" / "maven.py")
+        assert {"direct", "bom"} <= found
 
 
 class TestUnknownIsUnknown:

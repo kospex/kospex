@@ -32,7 +32,9 @@ and the drift watch. This file records the decisions and where they came from.
   `<optional>` is not `is_optional`: in Maven it means "not passed on to
   consumers".
 - **Imported BOMs are rows** (`requirements_type="bom"`), because they are where
-  missing versions come from. Other `<dependencyManagement>` entries, plugin
+  missing versions come from. They get a new `package_use` value, `bom`, not
+  `direct`: a bill of materials puts nothing on the classpath, so counting it would
+  overstate direct dependencies. `kospex sca` hides them unless `-scope bom` or `all`. Other `<dependencyManagement>` entries, plugin
   dependencies and profiles are not rows.
 - **Maven version ranges** (`[1.0,2.0)`) go through the NuGet interval rule in
   `constraints.py`. It is the same notation.

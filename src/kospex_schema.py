@@ -36,11 +36,14 @@ PACKAGE_USE_DEV        = "dev"
 PACKAGE_USE_PEER       = "peer"
 PACKAGE_USE_OPTIONAL   = "optional"
 PACKAGE_USE_TRANSITIVE = "transitive"
+# A Maven bill of materials (`<scope>import</scope>`): it supplies versions to
+# other dependencies and puts nothing on the classpath, so it is not `direct`.
+PACKAGE_USE_BOM        = "bom"
 
 PACKAGE_USE_VALUES = frozenset({
     PACKAGE_USE_DIRECT, PACKAGE_USE_DEV,
     PACKAGE_USE_PEER, PACKAGE_USE_OPTIONAL,
-    PACKAGE_USE_TRANSITIVE,
+    PACKAGE_USE_TRANSITIVE, PACKAGE_USE_BOM,
 })
 
 # What to store when no mapping applies. NULL means *unknown*, the same rule
@@ -76,6 +79,9 @@ REQ_TO_PACKAGE_USE = {
     # (installed only when requested). Both are "not unconditionally installed",
     # which is what this value means; `declared_scope` keeps which one it was.
     "optional": PACKAGE_USE_OPTIONAL,
+    # pom.xml BOM imports. Counting one as `direct` would add a dependency
+    # whose code is never used or shipped.
+    "bom": PACKAGE_USE_BOM,
 }
 
 # Mapping of table name to create statement is below the create statement definitions in:

@@ -381,7 +381,7 @@ class KospexDependencies:
         order = [
             KospexSchema.PACKAGE_USE_DIRECT, KospexSchema.PACKAGE_USE_DEV,
             KospexSchema.PACKAGE_USE_PEER, KospexSchema.PACKAGE_USE_OPTIONAL,
-            KospexSchema.PACKAGE_USE_TRANSITIVE,
+            KospexSchema.PACKAGE_USE_TRANSITIVE, KospexSchema.PACKAGE_USE_BOM,
         ]
         # A new package_use value must not be silently unselectable.
         order += sorted(KospexSchema.PACKAGE_USE_VALUES - set(order))

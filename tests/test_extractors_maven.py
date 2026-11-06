@@ -281,6 +281,38 @@ class TestTier1Interpolation:
 
         assert _versions(extract_pom(path)) == {"g:a": "${p30}"}
 
+    def test_a_single_wide_pass_is_refused_before_it_is_built(self, tmp_path):
+        """The cap must bound memory, not just the result. One pass that
+        substitutes a large property into many references is a blow-up of
+        its own: 250 references to a 200 KB property is 50 MB, built before
+        a length check that runs afterwards. Peak allocation stays far below."""
+        import tracemalloc
+
+        big = "x" * 200_000
+        refs = "${a}" * 250
+        path = _write(tmp_path, _pom(
+            f"<properties><a>{big}</a><refs>{refs}</refs></properties>"
+            + _deps(_dep("g", "a", "${refs}"))
+        ))
+
+        tracemalloc.start()
+        try:
+            versions = _versions(extract_pom(path))
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        assert versions == {"g:a": "${refs}"}
+        assert peak < 10_000_000
+
+    def test_an_oversized_declared_value_is_kept_verbatim(self, tmp_path):
+        long_version = "${a}" * 300  # 1200 characters, past the cap as written
+        path = _write(tmp_path, _pom(
+            "<properties><a>1</a></properties>" + _deps(_dep("g", "a", long_version))
+        ))
+
+        assert _versions(extract_pom(path)) == {"g:a": long_version}
+
 
 class TestTier2ParentInRepo:
     PARENT = _pom(

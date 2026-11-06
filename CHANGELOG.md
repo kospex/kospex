@@ -38,7 +38,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   (`test` sets `is_dev`). Versions are filled in from the file's own properties
   and from parent poms inside the same repository. A version that only an
   imported BOM or an external parent supplies is recorded as blank, and reported
-  as `no_version`. Imported BOMs get their own row (`requirements_type` `bom`).
+  as `no_version`. Imported BOMs get their own row, with a new `package_use` value `bom`
+  (`kospex sca -scope bom`), so they are not counted as direct dependencies.
   A pom carrying a DOCTYPE is refused (CWE-776), and so is property expansion
   past a fixed size. A parent is never read from outside the repository,
   including through a symlink.

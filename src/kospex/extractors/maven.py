@@ -283,17 +283,44 @@ def _properties(root, ancestors):
     return properties
 
 
+def _expand_once(text, properties):
+    """One substitution pass, or None once it would pass the length cap.
+
+    The running length is checked before each piece is appended, so the cap
+    bounds memory as well as the result. Checking after a `re.sub` let a
+    single pass -- many references to one large property -- allocate the
+    whole expansion first.
+    """
+    pieces, length, position = [], 0, 0
+    for match in _PROPERTY.finditer(text):
+        replacement = properties.get(match.group(1), match.group(0))
+        length += (match.start() - position) + len(replacement)
+        if length > _MAX_INTERPOLATED_LENGTH:
+            return None
+        pieces.append(text[position:match.start()])
+        pieces.append(replacement)
+        position = match.end()
+    length += len(text) - position
+    if length > _MAX_INTERPOLATED_LENGTH:
+        return None
+    pieces.append(text[position:])
+    return "".join(pieces)
+
+
 def _interpolate(value, properties):
     """Expand ${...} references; an unknown one is left as written."""
     if not value or "${" not in value:
         return value
+    if len(value) > _MAX_INTERPOLATED_LENGTH:
+        logger.warning("Declared value of %d characters exceeds %d; not "
+                       "expanding it", len(value), _MAX_INTERPOLATED_LENGTH)
+        return value
     result = value
     for _ in range(_MAX_INTERPOLATION_PASSES):
-        expanded = _PROPERTY.sub(
-            lambda match: properties.get(match.group(1), match.group(0)), result)
-        if len(expanded) > _MAX_INTERPOLATED_LENGTH:
+        expanded = _expand_once(result, properties)
+        if expanded is None:
             logger.warning("Property expansion of %r exceeds %d characters; "
-                           "keeping the declared text", value,
+                           "keeping the declared text", value[:80],
                            _MAX_INTERPOLATED_LENGTH)
             return value
         if expanded == result:
@@ -337,12 +364,14 @@ def _dependencies(path, section):
     return entries
 
 
-def _record(name, version, req_type, scope):
+def _record(name, version, scope):
+    """A record without requirements_type, which each caller assigns as a
+    literal: tests/test_requirements_type_mapping.py finds the values a parser
+    emits by reading its source, and cannot see one passed through a variable."""
     record = _template()
     record["package_name"] = name
     record["package_version"] = version
     record["ecosystem"] = "maven"
-    record["requirements_type"] = req_type
     # Raw, per migration 0009. Absent stays None even though Maven reads it as
     # compile: the file did not say `compile`.
     record["declared_scope"] = scope
@@ -377,7 +406,8 @@ def extract_pom(path):
             version = managed.get(key, "")
         scope = _text(dependency, "scope") or None
 
-        record = _record(f"{key[0]}:{key[1]}", version, "direct", scope)
+        record = _record(f"{key[0]}:{key[1]}", version, scope)
+        record["requirements_type"] = "direct"
         # Only `test` keeps a dependency out of what ships; see
         # docs/dependency-flags.md for why provided/runtime are not "dev".
         # <optional> is not is_optional: in Maven it means "not passed on to
@@ -393,6 +423,8 @@ def extract_pom(path):
             continue
         key = _key(dependency, properties)
         version = _interpolate(_text(dependency, "version") or "", properties)
-        records.append(_record(f"{key[0]}:{key[1]}", version, "bom", "import"))
+        record = _record(f"{key[0]}:{key[1]}", version, "import")
+        record["requirements_type"] = "bom"
+        records.append(record)
 
     return records
