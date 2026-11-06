@@ -85,6 +85,10 @@ def cli_deps(monkeypatch):
 
     kd = _stub_depsdev(KospexDependencies())
     monkeypatch.setattr(kospex_cli.kospex, "dependencies", kd)
+    # kospex_cli is bound to the developer's own DB. If that DB is behind (any
+    # branch that adds a migration), the "DB is behind" banner joins the output
+    # and becomes its last line. These tests are about sca's output, not that.
+    monkeypatch.setattr(kospex_cli, "warn_if_behind", lambda *a, **kw: 0)
     return kospex_cli, kd
 
 
