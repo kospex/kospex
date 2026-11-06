@@ -25,6 +25,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
   A `-dry-run` is logged at DEBUG only. There is no files-changed count: on the
   largest repo tested it would have added about 20 seconds per repo.
+- **DB migration `0012`: groundwork for `kgit sync --org`** (#335). Two new
+  tables record an org sync: `org_sync_runs` (one row per listing of an
+  organisation or user) and `org_sync_items` (one row per repository in it,
+  with its sync status). With them, a sync can be stopped and resumed, or run
+  a few repositories at a time. `repos` gains `provider_repo_id`, the
+  provider's own id for a repository, which survives renames and transfers
+  (#348), and `provider_checked_at`. Nothing uses them yet. An existing DB
+  needs `kospex upgrade-db -apply`; a new one migrates itself.
 
 ### Changed
 
