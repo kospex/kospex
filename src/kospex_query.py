@@ -1207,6 +1207,11 @@ class KospexQuery:
         if not any(params.get(key) for key in ("repo_id", "org_key", "server")):
             return True
 
+        # where_org_key raises on a malformed org_key; it can't match a repo.
+        org_key = params.get("org_key")
+        if org_key and not KospexUtils.parse_org_key(org_key):
+            return False
+
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_REPOS)
         kd.select_as("count(*)", "repos")

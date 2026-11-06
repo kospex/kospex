@@ -210,6 +210,34 @@ def download_csv_fastapi(dict_data, filename=None):
     )
 
 
+# Scope keys from KospexWeb.get_id_params, with the word the user sees.
+_SCOPE_KINDS = {
+    "repo_id": "repository",
+    "org_key": "organisation",
+    "server": "server",
+    "author_email": "developer",
+}
+
+
+def _require_known_scope(params, id):
+    """
+    Raise a 404 if id names a repository, organisation or server that has no
+    row in the repos table. Without this a page rendered empty with HTTP 200,
+    which looks the same as a real scope with no data; an unknown id is most
+    likely a typo or a stale link. (#206)
+
+    params: KospexWeb.get_id_params(id), or the route's own {key: id}.
+    No id (the all-repositories page) and developer ids are not checked.
+    """
+    if not id or KospexQuery().scope_exists(params):
+        return
+    kind = next(name for key, name in _SCOPE_KINDS.items() if params.get(key))
+    raise HTTPException(
+        status_code=404,
+        detail=f"No {kind} with ID '{id}' in the kospex database. Check it for a typo.",
+    )
+
+
 # Custom 404 handler
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, exc: HTTPException):
@@ -277,6 +305,7 @@ def summary(request: Request, id: Optional[str] = None):
                 status_code=404,
                 detail="Summary pages are per repo, org or server. See /developers/ for a developer.",
             )
+        _require_known_scope(params, id)
 
         with KospexTimer("Load developers") as dev_load:
             devs, repos = summary_rows(params)
@@ -315,6 +344,7 @@ def summary2(request: Request, id: Optional[str] = None):
         logger.info(f"Summary2 page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
+        _require_known_scope(params, id)
 
         with KospexTimer("Load developers") as dev_load:
             devs = cached_query(
@@ -402,6 +432,7 @@ def active_developers(request: Request, repo_id: str):
     """Developer info page."""
     try:
         logger.info(f"Active developers page requested for repo: {repo_id}")
+        _require_known_scope({"repo_id": repo_id}, repo_id)
 
         data = KospexQuery().summary(days=90, repo_id=repo_id)
         results = KospexQuery().active_devs_by_repo(repo_id)
@@ -512,6 +543,7 @@ def metadata_repos(request: Request, id: Optional[str] = None):
     """
     try:
         logger.info(f"Metadata repos page requested with id: {id}")
+        _require_known_scope(KospexWeb.get_id_params(id), id)
 
         kquery = KospexQuery()
         repos = kquery.get_repos()
@@ -544,6 +576,7 @@ def orphans(request: Request, id: Optional[str] = None):
         logger.info(f"Orphans page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
+        _require_known_scope(params, id)
         data = KospexQuery().get_orphans(id=params)
 
         return templates.TemplateResponse(request, "orphans.html", {"data": data})
@@ -584,6 +617,7 @@ def bubble_treemap(request: Request, id: str):
         # Determine template type from the path
         template = "bubble" if "/bubble/" in str(request.url) else "treemap"
         logger.info(f"{template.title()} chart requested for id: {id}")
+        _require_known_scope(KospexWeb.get_id_params(id), id)
 
         link_url = ""
 
@@ -618,6 +652,7 @@ def osi(request: Request, id: Optional[str] = None):
         logger.info(f"OSI page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
+        _require_known_scope(params, id)
         try:
             deps = KospexQuery().get_dependency_files(request_id=params)
         except ValueError as exc:
@@ -703,6 +738,7 @@ def collab_graph(request: Request, repo_id: str):
     """Display network graph visualization of repository collaboration"""
     try:
         logger.info(f"Collaboration graph page requested for repo: {repo_id}")
+        _require_known_scope({"repo_id": repo_id}, repo_id)
 
         return templates.TemplateResponse(
             request, "collab_graph.html", {"repo_id": repo_id}
@@ -742,6 +778,7 @@ def file_collaboration(request: Request, repo_id: str):
     """Display file collaboration information"""
     try:
         logger.info(f"File collaboration page requested for repo: {repo_id}")
+        _require_known_scope({"repo_id": repo_id}, repo_id)
 
         file_path = request.query_params.get("file_path")
 
@@ -777,6 +814,7 @@ def orgs(request: Request, server: Optional[str] = None):
     """Display organization information"""
     try:
         logger.info(f"Organizations page requested with server: {server}")
+        _require_known_scope({"server": server}, server)
 
         org = request.query_params.get("org")
         params = KospexWeb.get_id_params(server)
@@ -832,6 +870,7 @@ def repos(request: Request, id: Optional[str] = None):
         logger.info(f"Repositories page requested with id: {id}")
 
         params = KospexWeb.get_id_params(id)
+        _require_known_scope(params, id)
         repo_id = request.query_params.get("repo_id") or params.get("repo_id")
         org_key = request.query_params.get("org_key") or params.get("org_key")
         server = request.query_params.get("server") or params.get("server")
@@ -913,6 +952,7 @@ def repo(request: Request, repo_id: str):
         parsed = KospexUtils.parse_repo_id(repo_id)
         if not parsed:
             raise HTTPException(status_code=404, detail="Repository not found")
+        _require_known_scope({"repo_id": repo_id}, repo_id)
 
         kospex = KospexQuery()
         commit_ranges = kospex.commit_ranges(repo_id)
@@ -968,6 +1008,7 @@ def org_view(request: Request, org_key: str):
         parsed = KospexUtils.parse_org_key(org_key)
         if not parsed:
             raise HTTPException(status_code=404, detail="Organisation not found")
+        _require_known_scope({"org_key": org_key}, org_key)
 
         kospex = KospexQuery()
         commit_ranges = kospex.commit_ranges(org_key=org_key)
@@ -1019,6 +1060,7 @@ def key_person(request: Request, repo_id: str):
     """Display key person analysis for a repository"""
     try:
         logger.info(f"Key person view requested for repo: {repo_id}")
+        _require_known_scope({"repo_id": repo_id}, repo_id)
 
         kospex = KospexQuery()
 
@@ -1061,6 +1103,7 @@ def landscape(request: Request, id: Optional[str] = None):
         kospex = KospexQuery()
 
         params = KospexWeb.get_id_params(id)
+        _require_known_scope(params, id)
         repo_id = request.query_params.get("repo_id") or params.get("repo_id")
         org_key = request.query_params.get("org_key") or params.get("org_key")
         data = kospex.tech_landscape(org_key=org_key, repo_id=repo_id)
@@ -1091,6 +1134,7 @@ def developers(request: Request, id: Optional[str] = None):
     """Developer info page"""
     try:
         logger.info("Developers page requested")
+        _require_known_scope(KospexWeb.get_id_params(id), id)
 
         author_email = request.query_params.get("author_email")
         download = request.query_params.get("download")
@@ -1155,6 +1199,7 @@ def graph(request: Request, org_key: Optional[str] = None):
     """Force directed graphs for data in the Kospex DB."""
     try:
         logger.info(f"Graph page requested with org_key: {org_key}")
+        _require_known_scope({"org_key": org_key}, org_key)
         focus = None
 
         author_email = request.query_params.get("author_email")
@@ -1202,15 +1247,6 @@ def org_graph(request: Request, org_key: Optional[str] = None, focus: Optional[s
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-# Scope keys from KospexWeb.get_id_params, with the word the user sees.
-_SCOPE_KINDS = {
-    "repo_id": "repository",
-    "org_key": "organisation",
-    "server": "server",
-    "author_email": "developer",
-}
-
-
 @app.get("/tenure/", response_class=HTMLResponse)
 @app.get("/tenure/{id}", response_class=HTMLResponse)
 def tenure(request: Request, id: Optional[str] = None):
@@ -1223,15 +1259,7 @@ def tenure(request: Request, id: Optional[str] = None):
         # TODO - CHECK THIS FOR SECURITY
         params = KospexWeb.get_id_params(id)
 
-        # An id we have never synced is most likely a typo or a stale link:
-        # say so with a 404 rather than render an empty page. (#206)
-        if not KospexQuery().scope_exists(params):
-            kind = next(name for key, name in _SCOPE_KINDS.items() if params.get(key))
-            return templates.TemplateResponse(
-                request, "404.html",
-                {"error": f"No {kind} with ID '{id}'. Check it for a typo."},
-                status_code=404,
-            )
+        _require_known_scope(params, id)
 
         developers = KospexQuery().developers(**params)
         active_devs = []
@@ -1685,6 +1713,7 @@ def commits(request: Request, repo_id: Optional[str] = None):
     """
     try:
         logger.info("Commits page requested")
+        _require_known_scope({"repo_id": repo_id}, repo_id)
         if repo_id is None:
             # If no repo_id is provided, use the query parameter
             # This allows for filtering by author or committer email
@@ -1720,6 +1749,7 @@ def commit_history(request: Request, repo_id: str):
     """Display commit history chart for a repository"""
     try:
         logger.info(f"Commit history page requested for repo: {repo_id}")
+        _require_known_scope({"repo_id": repo_id}, repo_id)
 
         # Get year data (always show)
         year_data = KospexQuery().commit_history(repo_id, group_by='year', fill_gaps=True)
@@ -1838,7 +1868,14 @@ def commit(request: Request, repo_id: str, commit_hash: str):
     try:
         logger.info(f"Commit page requested for repo: {repo_id}, hash: {commit_hash}")
 
+        _require_known_scope({"repo_id": repo_id}, repo_id)
+
         data = KospexQuery().commit(repo_id=repo_id, commit_hash=commit_hash)
+        if data is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No commit '{commit_hash}' in repository '{repo_id}' in the kospex database.",
+            )
 
         files = KospexQuery().commit_files(repo_id=repo_id, commit_hash=commit_hash)
 
@@ -2018,6 +2055,7 @@ def hotspots(request: Request, repo_id: str):
     """Display code hotspots analysis for a repository"""
     try:
         logger.info(f"Hotspots page requested for repo: {repo_id}")
+        _require_known_scope({"repo_id": repo_id}, repo_id)
 
         data = KospexQuery().hotspots(repo_id=repo_id)
 
@@ -2038,6 +2076,7 @@ def repo_files(request: Request, repo_id: Optional[str] = None):
     """Show file metadata for a repository"""
     try:
         logger.info(f"Repository files page requested for repo: {repo_id}")
+        _require_known_scope({"repo_id": repo_id}, repo_id)
 
         data = None
         if repo_id:
