@@ -1259,6 +1259,14 @@ def tenure(request: Request, id: Optional[str] = None):
         # TODO - CHECK THIS FOR SECURITY
         params = KospexWeb.get_id_params(id)
 
+        # get_id_params also decodes a base64 author_email id, which
+        # developers() does not take: this was a 500. Tenure is per repo, org
+        # or server, as the summary page is.
+        if params.get("author_email"):
+            raise HTTPException(
+                status_code=404,
+                detail="Tenure pages are per repo, org or server. See /developers/ for a developer.",
+            )
         _require_known_scope(params, id)
 
         developers = KospexQuery().developers(**params)

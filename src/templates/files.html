@@ -164,7 +164,7 @@
                                             </div>
                                             <div class="ml-3">
                                                 <a
-                                                    href="/repo/{{ row['Provider'] }}"
+                                                    href="/file-collab/{{ row['_repo_id'] }}/?file_path={{ row['Provider'] | urlencode }}"
                                                     class="text-blue-600 hover:text-blue-800 underline font-medium"
                                                 >
                                                     {{ row['Provider'] }}
