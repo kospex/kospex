@@ -25,13 +25,29 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
   A `-dry-run` is logged at DEBUG only. There is no files-changed count: on the
   largest repo tested it would have added about 20 seconds per repo.
+- **`kgit sync --org` and `kgit sync --user`** (#335). They list a GitHub
+  organisation's or user's repositories, then clone or pull and sync each one.
+  The command printed "not yet implemented" before.
+  - The listing is saved as a run, with a status per repository, so an
+    interrupted sync carries on where it stopped, and a repository that
+    fails is recorded and doesn't stop the rest.
+  - `-inventory` saves the listing and compares it with what kospex holds,
+    without cloning. `-next N` syncs N repositories, most recently pushed
+    first, for schedules. `-status` shows progress and failures from the
+    database only.
+  - Forks are skipped but recorded, with their parent. `-include-forks`, or
+    `KOSPEX_CLONE_FORKS_DEFAULT=true` for an installation, syncs them.
+  - Giving a user to `--org`, or an organisation to `--user`, is an error
+    that names the right flag.
+  - Each synced repository gets `repos.provider_repo_id`, GitHub's id for it.
+  - See `docs/kgit.md`.
 - **DB migration `0012`: groundwork for `kgit sync --org`** (#335). Two new
   tables record an org sync: `org_sync_runs` (one row per listing of an
   organisation or user) and `org_sync_items` (one row per repository in it,
   with its sync status). With them, a sync can be stopped and resumed, or run
   a few repositories at a time. `repos` gains `provider_repo_id`, the
   provider's own id for a repository, which survives renames and transfers
-  (#348), and `provider_checked_at`. Nothing uses them yet. An existing DB
+  (#348), and `provider_checked_at`. An existing DB
   needs `kospex upgrade-db -apply`; a new one migrates itself.
 
 ### Changed

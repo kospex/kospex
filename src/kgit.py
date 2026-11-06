@@ -14,6 +14,10 @@ import kospex_utils as KospexUtils
 from kospex.db.migrator import warn_if_behind
 from kospex_git import KospexGit
 from kospex_github import GitHubListingIncomplete, KospexGithub
+import kospex.org_sync as OrgSync
+import kospex.org_sync_manifest as OrgSyncManifest
+from kospex.habitat_config import HabitatConfig
+from kospex.osi_lock import LockBusy, OsiLock
 from kospex_bitbucket import (
     KospexBitbucket,
     MODE_TOKEN,
@@ -344,47 +348,341 @@ def clone(ctx, sync, filename, force, repo):
 
 
 @cli.command("sync")
-@click.option('--org', is_flag=True, default=False, help="Sync all repositories from an organization (URL should not include specific repo)")
+@click.option('--org', 'org', is_flag=True, default=False,
+              help="TARGET is a GitHub organisation: list its repos and sync them all.")
+@click.option('--user', 'user', is_flag=True, default=False,
+              help="TARGET is a GitHub user: list the repos they own and sync them all.")
+@click.option('-inventory', is_flag=True, default=False,
+              help="List the owner's repos and save them as a run, without cloning or syncing.")
+@click.option('-next', 'next_', type=click.INT, default=None,
+              help="Sync at most N repos from the run, then stop. For schedules.")
+@click.option('-status', is_flag=True, default=False,
+              help="Show the latest run from the DB. No network.")
+@click.option('-relist', is_flag=True, default=False,
+              help="Close the unfinished run and start again from a fresh listing.")
+@click.option('-retry-failed', is_flag=True, default=False,
+              help="Also retry repos that failed earlier in the unfinished run.")
+@click.option('-include-forks', is_flag=True, default=False,
+              help="Sync forks. They're skipped (but recorded) by default.")
+@click.option('-skip-forks', is_flag=True, default=False,
+              help="Skip forks even if KOSPEX_CLONE_FORKS_DEFAULT is true.")
+@click.option('-skip-archived', is_flag=True, default=False,
+              help="Skip archived repos (recorded as skipped).")
+@click.option('-ssh', is_flag=True, default=False, help="Clone with SSH URLs instead of HTTPS.")
+@click.option('-no-prompt', is_flag=True, default=False,
+              help="Make git fail instead of asking for credentials. For unattended runs.")
+@click.option('-no-auth', is_flag=True, default=False,
+              help="No GitHub token: public repos only, 60 API requests an hour.")
 @click.option('-sync-db', is_flag=True, default=True, help="Sync the repositories to the database (Default)")
-@click.argument('url', type=click.STRING, required=True)
-def sync(org, sync_db, url):
+@click.argument('url', metavar="URL|TARGET", type=click.STRING, required=True)
+def sync(org, user, inventory, next_, status, relist, retry_failed, include_forks,
+         skip_forks, skip_archived, ssh, no_prompt, no_auth, sync_db, url):
     """
-    Sync repositories from a URL.
+    Sync one repository, or every repository of a GitHub organisation or user.
 
-    Examples:
-    kgit sync https://github.com/owner/repo (sync single repo)
-    kgit sync --org https://github.com/owner (sync all repos from organization)
+    \b
+    kgit sync https://github.com/owner/repo      one repository
+    kgit sync --org acme                         every repo in an organisation
+    kgit sync --user octocat                     every repo a user owns
+    kgit sync --org acme -inventory              list and save the repos, clone nothing
+    kgit sync --org acme -next 10                sync the next 10, then stop
+    kgit sync --org acme -status                 progress so far, from the DB
+
+    An org sync saves the listing as a run in the DB and records each repo's
+    progress, so an interrupted sync resumes where it stopped. Forks are
+    recorded but skipped unless -include-forks or KOSPEX_CLONE_FORKS_DEFAULT=true.
+    TARGET can be `acme`, `github.com/acme`, `https://github.com/acme` or
+    `github.com~acme`.
     """
-    log.info(f"Starting sync operation for URL: {url}, org mode: {org}")
+    log.info(f"Starting sync operation for URL: {url}, org: {org}, user: {user}")
 
-    if org:
-        # Organization sync - URL should be like https://github.com/orgname
-        log.info(f"Organization sync mode for: {url}")
-        print(f"Starting organization sync for: {url}")
+    if org or user:
+        _sync_owner(
+            owner_kind="org" if org else "user", both=org and user, target=url,
+            inventory=inventory, next_=next_, status=status, relist=relist,
+            retry_failed=retry_failed, include_forks=include_forks,
+            skip_forks=skip_forks, skip_archived=skip_archived, ssh=ssh,
+            no_prompt=no_prompt, no_auth=no_auth)
+        return
 
-        # TODO: Implement organization sync logic
-        # This should:
-        # 1. Parse the URL to extract git provider and org name
-        # 2. Use appropriate API (GitHub, BitBucket, etc.) to list all repos
-        # 3. Clone each repo that doesn't exist locally
-        # 4. Pull updates for repos that already exist
-        # 5. Optionally sync to database
+    owner_only = [name for name, value in (
+        ("-inventory", inventory), ("-next", next_ is not None), ("-status", status),
+        ("-relist", relist), ("-retry-failed", retry_failed),
+        ("-include-forks", include_forks), ("-skip-forks", skip_forks),
+        ("-skip-archived", skip_archived), ("-ssh", ssh), ("-no-prompt", no_prompt),
+        ("-no-auth", no_auth)) if value]
+    if owner_only:
+        raise click.UsageError(f"{', '.join(owner_only)} only apply with --org or --user.")
 
-        print("Organization sync is not yet implemented")
-        log.warning("Organization sync functionality is stubbed - not yet implemented")
+    # Single repository sync - URL should be complete repo URL
+    log.info(f"Single repository sync mode for: {url}")
+    console.log(f"Starting single repository sync for: {url}")
 
+    repo_path = kgit.clone_repo(url)
+    if not repo_path:
+        console.print(Text.assemble(("Error:", "bold red"), f" Failed to clone {url}"))
+        return
+    log.info(f"Syncing repository {url} to path: {repo_path}")
+    commits = kospex.sync_repo(repo_path)
+    console.print(f"Synced {len(commits)} commits")
+
+
+def _error(message):
+    console.print(Text.assemble(("Error:", "bold red"), f" {message}"))
+    exit(1)
+
+
+def _sync_owner(owner_kind, both, target, inventory, next_, status, relist,
+                retry_failed, include_forks, skip_forks, skip_archived, ssh,
+                no_prompt, no_auth):
+    """`kgit sync --org` / `--user`. See changes/202610-kgit-sync-org.md."""
+    if both:
+        raise click.UsageError("Use --org or --user, not both.")
+    if sum([inventory, next_ is not None, status]) > 1:
+        raise click.UsageError("Use one of -inventory, -next and -status.")
+    if next_ is not None and next_ < 1:
+        raise click.UsageError("-next needs a positive number of repositories.")
+    if include_forks and skip_forks:
+        raise click.UsageError("Use -include-forks or -skip-forks, not both.")
+
+    try:
+        host, owner = OrgSync.parse_target(target)
+        forks = OrgSync.forks_default()
+    except ValueError as e:
+        raise click.UsageError(str(e))
+    forks = (forks or include_forks) and not skip_forks
+    key = OrgSync.org_key(host, owner)
+    flag = f"--{owner_kind}"
+    db = kospex.kospex_db
+
+    if status:
+        _print_status(db, key, owner, flag)
+        return
+
+    gh = KospexGithub()
+    if no_auth:
+        console.print("No token: public repositories only, 60 API requests an hour.",
+                      style="yellow")
     else:
-        # Single repository sync - URL should be complete repo URL
-        log.info(f"Single repository sync mode for: {url}")
-        console.log(f"Starting single repository sync for: {url}")
+        if not gh.get_env_credentials():
+            _error("Could not find a GitHub token in the environment.\n"
+                   f"Set one of: {', '.join(KospexGithub.TOKEN_ENV_VARS)} "
+                   "(checked in that order), or use -no-auth for public repos only.")
+        # The variable's name only, never the token.
+        console.print(f"Using token from {gh.token_source}")
+        if not gh.test_auth():
+            _error(f"GitHub rejected the token in {gh.token_source}.")
 
-        repo_path = kgit.clone_repo(url)
-        if not repo_path:
-            console.print(Text.assemble(("Error:", "bold red"), f" Failed to clone {url}"))
+    _check_owner_type(gh, owner, owner_kind)
+
+    lock = OsiLock(path=OrgSync.lock_path(HabitatConfig.get_instance().home, key),
+                   name=f"kgit sync {flag} {owner}")
+    try:
+        lock.acquire()
+    except LockBusy as busy:
+        # Overlapping scheduled runs are normal, not an error (as osi -next).
+        console.print(f"{busy}. Nothing to do.", style="yellow")
+        return
+
+    try:
+        _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
+                           relist, retry_failed, forks, skip_archived, ssh,
+                           no_prompt, no_auth)
+    finally:
+        lock.release()
+
+
+def _check_owner_type(gh, owner, owner_kind):
+    """Stop unless `owner` is the kind of account the flag says it is."""
+    url = f"{gh.base_url}/users/{owner}"
+    data, response = gh._make_request(url)
+    if not data:
+        if response is not None and response.status_code == 404:
+            _error(f"No GitHub organisation or user called {owner!r}.")
+        _error(f"Couldn't look up {owner!r} on GitHub ({gh._failure_reason(response)}).")
+
+    kind = data.get("type")
+    if owner_kind == "org" and kind == OrgSync.GITHUB_USER:
+        _error(f"{owner!r} is a GitHub user, not an organisation. "
+               f"Use: kgit sync --user {owner}")
+    if owner_kind == "user" and kind == OrgSync.GITHUB_ORG:
+        _error(f"{owner!r} is a GitHub organisation, not a user. "
+               f"Use: kgit sync --org {owner}")
+    if kind not in (OrgSync.GITHUB_ORG, OrgSync.GITHUB_USER):
+        _error(f"{owner!r} is a GitHub {kind}, which kgit sync can't list.")
+
+
+def _list_items(gh, owner, forks, skip_archived, no_auth):
+    """List the owner's repos as manifest items. Stops on an incomplete listing."""
+    try:
+        repos = gh.get_repos(owner, no_auth=no_auth)
+    except GitHubListingIncomplete as e:
+        _error(f"{e}\nNothing was saved or synced. Re-run to retry.")
+    items, others = OrgSync.build_items(repos, owner, include_forks=forks,
+                                        skip_archived=skip_archived)
+    if others:
+        console.print(f"Left out {others} repos owned by other accounts "
+                      "(ones this account collaborates on or is a member of).")
+    return items
+
+
+def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
+                       relist, retry_failed, forks, skip_archived, ssh,
+                       no_prompt, no_auth):
+    run = OrgSyncManifest.unfinished_run(db, key)
+
+    if inventory:
+        items = _list_items(gh, owner, forks, skip_archived, no_auth)
+        if run and not relist:
+            new, gone = OrgSync.compare_with_run(db, run["run_id"], items)
+            counts = OrgSyncManifest.run_counts(db, run["run_id"])
+            console.print(f"Listed {len(items):,} repos for {key} (not saved)")
+            console.print(
+                f"Run {run['run_id']} is unfinished: {counts['synced']} synced, "
+                f"{counts['failed']} failed, "
+                f"{counts['pending'] + counts['in_progress']} pending.")
+            console.print(f"  {len(new)} repos are new since that run, {len(gone)} are gone. "
+                          "Kept the unfinished run.")
+            console.print(f"To replace it with this listing: "
+                          f"kgit sync {flag} {owner} -inventory -relist")
             return
-        log.info(f"Syncing repository {url} to path: {repo_path}")
-        commits = kospex.sync_repo(repo_path)
-        console.print(f"Synced {len(commits)} commits")
+        run_id = OrgSyncManifest.save_listing(db, key, items, owner_type=owner_kind,
+                                              replace=bool(run))
+        _print_inventory(db, run_id, key, saved=True)
+        console.print(f"Nothing cloned. Run `kgit sync {flag} {owner} -next 10` "
+                      "to start syncing.")
+        return
+
+    if run and not relist:
+        run_id = run["run_id"]
+        counts = OrgSyncManifest.run_counts(db, run_id)
+        console.print(
+            f"Resuming run {run_id} for {key}: {counts['synced']} synced, "
+            f"{counts['skipped']} skipped, {counts['failed']} failed, "
+            f"{counts['pending'] + counts['in_progress']} to do.")
+    else:
+        items = _list_items(gh, owner, forks, skip_archived, no_auth)
+        run_id = OrgSyncManifest.save_listing(db, key, items, owner_type=owner_kind,
+                                              replace=bool(run))
+        _print_inventory(db, run_id, key, saved=True)
+
+    todo = OrgSyncManifest.next_items(db, run_id, n=next_, retry_failed=retry_failed)
+    if not todo:
+        console.print("Nothing to sync in this run.")
+    else:
+        console.print(f"\nSyncing {len(todo)} repos\n")
+
+    no_prompt_env = OrgSync.no_prompt_env() if no_prompt else {}
+    saved_env = {name: os.environ.get(name) for name in no_prompt_env}
+
+    def clone(url):
+        return kgit.clone_repo(url)
+
+    def sync_one(path, repo_id):
+        kospex.sync_repo(path)
+        # Stamp the id the sync wrote, which comes from the clone's remote, as
+        # `kgit clone` does. It matches the listing's id unless the remote was
+        # rewritten (insteadOf) or the clone predates a rename.
+        synced_id = kospex.git.get_repo_id() or repo_id
+        if synced_id != repo_id:
+            log.warning(f"{repo_id} synced as {synced_id}: the clone's remote differs")
+        kospex.kospex_query.set_repo_last_fetch(synced_id)
+
+    def conflict(url):
+        return clone_path_conflict(kospex, url)
+
+    def on_item(item, item_status, detail):
+        style = {"synced": "green", "skipped": "yellow", "failed": "red"}[item_status]
+        line = f"{item_status.upper():8} {item['_repo_id']}"
+        console.print(line + (f": {detail}" if detail else ""), style=style)
+
+    # clone_repo builds its own git command, so -no-prompt goes through the
+    # environment, and only for this loop.
+    os.environ.update(no_prompt_env)
+    try:
+        done = OrgSync.sync_items(db, run_id, todo, clone=clone, sync=sync_one,
+                                  conflict=conflict, use_ssh=ssh, on_item=on_item)
+    except KeyboardInterrupt:
+        console.print(f"\nInterrupted. Resume with: kgit sync {flag} {owner}",
+                      style="yellow")
+        raise SystemExit(130)
+    finally:
+        for name, value in saved_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    closed = OrgSyncManifest.close_run_if_done(db, run_id)
+    counts = OrgSyncManifest.run_counts(db, run_id)
+    remaining = counts["pending"] + counts["in_progress"]
+    console.print(
+        f"\nThis run: synced {done['synced']}, skipped {done['skipped']}, "
+        f"failed {done['failed']}.")
+    if closed:
+        console.print(f"Run {run_id} is finished: {counts['synced']} synced, "
+                      f"{counts['skipped']} skipped, {counts['failed']} failed.")
+    else:
+        more = f" -next {next_}" if next_ else ""
+        console.print(f"{remaining} repos still to do. Continue with: "
+                      f"kgit sync {flag} {owner}{more}")
+    if counts["failed"]:
+        console.print(f"See the failures with: kgit sync {flag} {owner} -status")
+
+
+def _print_inventory(db, run_id, key, saved):
+    inv = OrgSyncManifest.inventory(db, run_id)
+    console.print(f"Listed {inv['listed']:,} repos for {key}"
+                  + (f", saved as run {run_id}" if saved else ""))
+    console.print(f"  active {inv['active']:>9,}     archived {inv['archived']:>7,}     "
+                  f"forks {inv['forks']:>7,}")
+    console.print(f"  in kospex {inv['in_kospex']:>6,}     not yet {inv['not_in_kospex']:>8,}     "
+                  f"changed since last fetch {inv['changed_since_fetch']:,}")
+    if inv["gone"]:
+        console.print(f"  in kospex but not in this listing: {len(inv['gone'])}    (see -status)")
+
+
+def _print_status(db, key, owner, flag):
+    """The latest run, from the DB only."""
+    run = OrgSyncManifest.latest_run(db, key)
+    if not run:
+        console.print(f"No sync runs for {key}. Start one with: "
+                      f"kgit sync {flag} {owner} -inventory")
+        return
+    run_id = run["run_id"]
+    counts = OrgSyncManifest.run_counts(db, run_id)
+    state = f"finished {run['finished_at']}" if run["finished_at"] else "unfinished"
+    console.print(f"Run {run_id} for {key} ({run['owner_type']}), "
+                  f"started {run['started_at']}, {state}")
+    console.print(f"  synced {counts['synced']}, skipped {counts['skipped']}, "
+                  f"failed {counts['failed']}, pending {counts['pending']}, "
+                  f"in progress {counts['in_progress']}")
+    _print_inventory(db, run_id, key, saved=False)
+
+    skipped = list(db.query(
+        f"SELECT detail, COUNT(*) AS n FROM {OrgSyncManifest.TBL_ORG_SYNC_ITEMS} "
+        "WHERE run_id = ? AND status = ? GROUP BY detail ORDER BY n DESC",
+        [run_id, OrgSyncManifest.SKIPPED]))
+    if skipped:
+        console.print("  skipped: " + ", ".join(f"{r['detail']} {r['n']}" for r in skipped))
+
+    failed = list(db.query(
+        f"SELECT _repo_id, detail FROM {OrgSyncManifest.TBL_ORG_SYNC_ITEMS} "
+        "WHERE run_id = ? AND status = ? ORDER BY _repo_id",
+        [run_id, OrgSyncManifest.FAILED]))
+    if failed:
+        table = Table(title=f"Failed in run {run_id}")
+        table.add_column("repo_id", style="cyan", no_wrap=True)
+        table.add_column("detail")
+        for row in failed:
+            table.add_row(row["_repo_id"], row["detail"] or "")
+        KospexUtils.print_table(table, console)
+
+    gone = OrgSyncManifest.inventory(db, run_id)["gone"]
+    if gone:
+        console.print(f"In kospex but not in this listing ({len(gone)}):")
+        for repo_id in gone:
+            console.print(f"  {repo_id}")
 
 
 def _git_pull(path, no_prompt=False):

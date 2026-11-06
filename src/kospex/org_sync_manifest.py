@@ -286,8 +286,9 @@ def close_run(db, run_id):
 def close_run_if_done(db, run_id):
     """Close the run if nothing is pending or in progress. Returns True if closed.
 
-    Failed items don't keep a run open: they are retried with `-retry-failed`,
-    which works on the latest run whether or not it's finished.
+    Failed items don't keep a run open, or one broken repository would keep
+    it open forever. They're retried within an unfinished run with
+    `-retry-failed`, and on the next listing, where they start as pending again.
     """
     marks = ", ".join("?" for _ in OPEN_STATUSES)
     with db.atomic():

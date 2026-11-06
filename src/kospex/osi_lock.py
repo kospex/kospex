@@ -17,6 +17,9 @@ Three deliberate behaviours:
 Scope: this guards concurrent `-next` runs on one host writing one database. It is
 advisory, not a mutex -- two machines sharing a database over a network filesystem
 are out of scope, as is kospex generally.
+
+`kgit sync --org` uses the same lock with its own file per org (`path`) and its
+own `name` in messages, so two syncs of one org can't run at once but two orgs can.
 """
 import json
 import os
@@ -39,12 +42,12 @@ DEFAULT_STALE_AFTER_SECONDS = 6 * 60 * 60
 class LockBusy(Exception):
     """Raised when a live lock is held by another run."""
 
-    def __init__(self, pid=None, started_at=None, age_seconds=None):
+    def __init__(self, pid=None, started_at=None, age_seconds=None, name="osi -next"):
         self.pid = pid
         self.started_at = started_at
         self.age_seconds = age_seconds
         super().__init__(
-            f"another osi -next run is in progress (pid {pid}, started {started_at})"
+            f"another {name} run is in progress (pid {pid}, started {started_at})"
         )
 
 
@@ -54,13 +57,13 @@ def lock_path() -> Path:
     return Path(HabitatConfig.get_instance().home) / LOCK_FILENAME
 
 
-def read_lock() -> Optional[dict]:
+def read_lock(path=None) -> Optional[dict]:
     """The current lock's contents, or None if not held or unreadable.
 
     Returns None for a corrupt lock as well as a missing one: both mean "no
     usable lock", and the caller's next step is the same.
     """
-    path = lock_path()
+    path = path or lock_path()
     try:
         return json.loads(path.read_text())
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -74,12 +77,14 @@ class OsiLock:
     `stale_after_seconds`, or one that cannot be parsed.
     """
 
-    def __init__(self, stale_after_seconds=DEFAULT_STALE_AFTER_SECONDS):
+    def __init__(self, stale_after_seconds=DEFAULT_STALE_AFTER_SECONDS,
+                 path=None, name="osi -next"):
         self.stale_after_seconds = stale_after_seconds
-        self.path = lock_path()
+        self.path = Path(path) if path else lock_path()
+        self.name = name
 
     def acquire(self):
-        existing = read_lock()
+        existing = read_lock(self.path)
 
         if existing is not None:
             age = self._age_seconds(existing.get("started_at"))
@@ -87,23 +92,24 @@ class OsiLock:
                 # Parseable JSON but no usable start time, so it cannot be aged.
                 # Treating it as live would block every tick with no recovery but
                 # manual deletion -- the failure the staleness window exists for.
-                log.warning("osi -next lock has no usable start time, taking it over")
+                log.warning("%s lock has no usable start time, taking it over", self.name)
             elif age < self.stale_after_seconds:
                 raise LockBusy(
                     pid=existing.get("pid"),
                     started_at=existing.get("started_at"),
                     age_seconds=age,
+                    name=self.name,
                 )
             else:
                 log.warning(
-                    "osi -next lock is stale (pid %s, started %s, %.0fs old > %.0fs) "
+                    "%s lock is stale (pid %s, started %s, %.0fs old > %.0fs) "
                     "-- taking it over",
-                    existing.get("pid"), existing.get("started_at"),
+                    self.name, existing.get("pid"), existing.get("started_at"),
                     age, self.stale_after_seconds,
                 )
         elif self.path.exists():
             # Present but unreadable: same reasoning as above.
-            log.warning("osi -next lock is unreadable, taking it over")
+            log.warning("%s lock is unreadable, taking it over", self.name)
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps({
@@ -125,7 +131,7 @@ class OsiLock:
         except FileNotFoundError:
             pass
         except OSError as e:
-            log.warning("could not remove osi -next lock at %s: %s", self.path, e)
+            log.warning("could not remove %s lock at %s: %s", self.name, self.path, e)
 
     def _age_seconds(self, started_at):
         """Age of a lock in seconds, or None if its start time is unusable."""

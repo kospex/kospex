@@ -149,7 +149,9 @@ kgit sync --org mergestat
 ```
 
 \* `failed` is retried only with `-retry-failed`. Otherwise one permanently broken
-repo would be retried on every resume.
+repo would be retried on every resume. Failed items don't keep a run open, so
+once the rest are done the run finishes, and the next invocation takes a fresh
+listing in which the failed repo starts as `pending` again.
 
 ### Why it's safe to resume
 
@@ -159,8 +161,10 @@ repo would be retried on every resume.
   is incremental from `last_sync_hash`. Re-running the repo that was interrupted is
   the whole cost.
 - Known gap: a `git clone` killed mid-transfer can leave a directory with a broken
-  `.git`. On resume, if the path exists but `git rev-parse HEAD` fails, mark it
-  `failed` with a clear detail. Don't delete it automatically.
+  `.git`. As built, `clone_repo` finds the directory, tries `git pull`, which
+  fails, and the repo is marked `failed` ("clone or pull failed"). It's never
+  deleted automatically. A more specific detail (`git rev-parse HEAD` failing)
+  is left for later.
 
 ## Auth
 
@@ -309,9 +313,19 @@ Separate PRs, each mergeable on its own:
    2026-11-07. The query layer is `src/kospex/org_sync_manifest.py`
    (`save_listing`, `next_items`, `mark`, `close_run_if_done`, `inventory`,
    `record_provider_ids`). The items table also has `ssh_url`, for `-ssh`.
-3. `kgit sync --org` / `--user`: auth, owner-type check, listing → manifest, the
+3. ~~`kgit sync --org` / `--user`: auth, owner-type check, listing → manifest, the
    per-repo loop, resume, lock, summary, `-status`, `-inventory` (with the drift
-   count), `-next N`.
+   count), `-next N`.~~ **Done** (2026-11-07). The logic is in
+   `src/kospex/org_sync.py` and the command in `src/kgit.py`. Notes from building it:
+   - The lock is `OsiLock` with its own file per org (`org-sync-<org_key>.lock`).
+   - `-no-prompt` sets `GIT_TERMINAL_PROMPT=0` and `credential.interactive=false`
+     through the environment, for the loop only, because `clone_repo` builds its
+     own git command.
+   - `--user` drops repos owned by other accounts. Live, `--user octocat` listed
+     8 of its own and 195 it's a member of.
+   - `last_fetch` is stamped on the `repo_id` the sync wrote (from the clone's
+     remote), which differs from the listing's only if the remote is rewritten.
+   - The drift list ("in kospex but not in this listing") is in `-status`.
 4. The `kgit github -sync` alias.
 
 ## Open questions
