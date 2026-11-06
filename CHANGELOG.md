@@ -33,6 +33,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   provider's own id for a repository, which survives renames and transfers
   (#348), and `provider_checked_at`. Nothing uses them yet. An existing DB
   needs `kospex upgrade-db -apply`; a new one migrates itself.
+- **`pom.xml` is parsed**, by both `kospex sca` and `krunner osi`. Packages are
+  named `groupId:artifactId`, and `<scope>` is recorded in `declared_scope`
+  (`test` sets `is_dev`). Versions are filled in from the file's own properties
+  and from parent poms inside the same repository. A version that only an
+  imported BOM or an external parent supplies is recorded as blank, and reported
+  as `no_version`. Imported BOMs get their own row (`requirements_type` `bom`).
+  A pom carrying a DOCTYPE is refused (CWE-776), and so is property expansion
+  past a fixed size. A parent is never read from outside the repository,
+  including through a symlink.
+- **Maven version ranges** such as `[1.0,2.0)` are now classified like NuGet's,
+  instead of as `none`.
 
 ### Changed
 
@@ -100,6 +111,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `/collab/graph/` and `/file-collab/`. `/commit/` also returns 404 for a
   commit hash that isn't in the repository. `/dependencies/` is unchanged: it
   already explains that the repository isn't synced and what to run.
+- **Maven `.Final` and `.RELEASE` versions are looked up on deps.dev.** Versions
+  like netty's `4.2.18.Final` were recorded as `unresolved_spec` without
+  deps.dev being asked, so these production releases had no advisory count.
+- **A Maven `-SNAPSHOT` version is no longer reported as yanked.** A snapshot is
+  never published to Maven Central, so deps.dev answered 404, and kospex read
+  that as a withdrawn version. Snapshots are now `unresolved_spec`, and no
+  lookup is made.
 - **`kgit github` no longer treats a partial repo listing as complete.** A
   timeout, server error or rate limit on any page of the listing used to end
   it quietly, so the table, `-out-repo-list` and `-sync` worked from a shorter

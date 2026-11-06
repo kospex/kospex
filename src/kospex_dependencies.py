@@ -76,6 +76,10 @@ class KospexDependencies:
     # Markers that make a version string a range/spec/reference, not a concrete version.
     _SPEC_MARKERS = ("^", "~", ">", "<", "=", "*", "|", " - ", "://", "workspace:",
                      "file:", "link:", "git+", "portal:")
+    # Maven `4.2.18.Final`, `5.3.0.RELEASE`, `2.0.0.Final-redhat-00001`.
+    _MAVEN_DOT_QUALIFIED = re.compile(r"^\d+(\.\d+){0,3}\.[A-Za-z][0-9A-Za-z.-]*$")
+    # Artifact.VERSION_FILE_PATTERN: `1.0-20261101.123456-3`.
+    _MAVEN_TIMESTAMPED_SNAPSHOT = re.compile(r"^.*-\d{8}\.\d{6}-\d+$")
 
     def __init__(self, kospex_db=None, kospex_query=None):
         # Initialize the kospex environment
@@ -86,10 +90,13 @@ class KospexDependencies:
         # The following will be the results from the list of dependencies from the assess command
         self.dependencies = []
 
-    def is_concrete_version(self, version):
+    def is_concrete_version(self, version, package_type=None):
         """True if `version` is a single concrete version (e.g. 1.2.3), not a
         range/spec/URL/keyword. Used to skip deps.dev calls that would 404 on a
-        spec and to categorise them as unresolved_spec."""
+        spec and to categorise them as unresolved_spec.
+
+        `package_type` matters for Maven only; see
+        changes/202611-maven-version-lookup.md."""
         if not version or not isinstance(version, str):
             return False
         v = version.strip()
@@ -97,6 +104,18 @@ class KospexDependencies:
             return False
         if any(m in v for m in self._SPEC_MARKERS):
             return False
+        if str(package_type or "").lower() == "maven":
+            # Maven's own rule (ArtifactUtils.isSnapshot): a snapshot is never
+            # published to Maven Central, so a lookup can only 404, which was
+            # then recorded as a yanked version. It is a moving target, so a
+            # spec. Checked first: `1.0-SNAPSHOT` also matches the pattern below.
+            if v.upper().endswith("SNAPSHOT") or self._MAVEN_TIMESTAMPED_SNAPSHOT.match(v):
+                return False
+            # A release qualifier after a dot (4.2.18.Final, 5.3.0.RELEASE)
+            # is neither PEP 440 nor the `-`/`+` suffix below. Maven only:
+            # npm's `1.2.x` is a wildcard of exactly this shape.
+            if self._MAVEN_DOT_QUALIFIED.match(v):
+                return True
         try:
             Version(v)
             return True
@@ -989,7 +1008,7 @@ class KospexDependencies:
             log.info(f"deps.dev unresolved [{details['resolution']}] {package_type} "
                      f"{package_name} {package_version!r}")
             return details
-        if not self.is_concrete_version(package_version):
+        if not self.is_concrete_version(package_version, package_type):
             details["resolution"] = "unresolved_spec"
             log.info(f"deps.dev unresolved [{details['resolution']}] {package_type} "
                      f"{package_name} {package_version!r}")
