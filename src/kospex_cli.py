@@ -1043,7 +1043,11 @@ def _rebuild_command(task):
             console.print("No repos in scope.")
             raise SystemExit(1)
 
+        # How the repos were chosen, as typed, for the log.
+        scope = repo_id or ("-all" if all_repos else f"-org {org_key}" if org_key else f"-server {server}")
+
         if dry_run:
+            log.debug("rebuild %s dry run: scope=%s, %d repos", task.name, scope, len(repos))
             for repo in repos:
                 console.print(repo["_repo_id"])
             console.print(f"\n{len(repos)} repo(s) would be rebuilt by '{task.name}'.")
@@ -1054,7 +1058,7 @@ def _rebuild_command(task):
             console.print(f"{line}  {result.detail}" if result.detail else line)
 
         started = time.perf_counter()
-        results = KospexRebuild.run_task(task, repos, kquery, on_repo=progress)
+        results = KospexRebuild.run_task(task, repos, kquery, on_repo=progress, scope=scope)
         counts = {s: sum(1 for r in results if r.status == s) for s in ("ok", "skipped", "failed")}
         console.print(f"\n{task.name}: {counts['ok']} rebuilt, {counts['skipped']} skipped, "
                       f"{counts['failed']} failed in {time.perf_counter() - started:.1f}s")

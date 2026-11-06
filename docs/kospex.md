@@ -259,6 +259,16 @@ once after upgrading to a release whose upgrade notes ask for it.
 Each repo is rebuilt on its own. If one fails, the error is shown, the rest
 carry on, and the command exits with status 1.
 
+Every run is logged to `kospex.log`: a start line with the scope, one line per
+repo with its status and time, and a summary. A failed repo is logged with its
+full traceback. For `developer-stats`, each repo's line also gives
+`developers`, `authored` (commits that aren't merges) and `merges`, which add up
+to the repo's total commits:
+
+```
+rebuild developer-stats github.com~kospex~kospex ok 0.27s developers=4 authored=975 merges=145
+```
+
 ## list-repos
 
 This command either lists all the known repos that have been synced to the database, or

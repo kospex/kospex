@@ -2328,6 +2328,28 @@ class KospexQuery:
             self.update_developer_file_stats(repo_id)
         return developers
 
+    def developer_stats_totals(self, repo_id):
+        """A repo's developer and commit totals, for logging a refresh.
+
+        ``authored`` and ``merges`` are counted as commit_stats() /
+        `kospex key-person` count them, by the same AUTHORSHIP_COMMIT test:
+        authored excludes merges, and the two add up to the repo's total
+        commits. Named ``authored`` rather than ``commits`` so a log line
+        cannot be read as the total. (developer_stats.total_commits still includes merges; see
+        #354.) ``developers`` is the number of developer_stats rows.
+
+        Deliberately no distinct-files count: commit_files has no index led by
+        _repo_id, and COUNT(DISTINCT file_path) took ~20s on a 267k-commit repo.
+        """
+        developers = self.kospex_db.execute(
+            f"SELECT COUNT(*) FROM {KospexSchema.TBL_DEVELOPER_STATS} "
+            "WHERE _repo_id = ? AND stat_type = 'ALL_TIME'", [repo_id]).fetchone()[0]
+        authored, merges = self.kospex_db.execute(
+            f"SELECT COALESCE(SUM(CASE WHEN {AUTHORSHIP_COMMIT} THEN 1 ELSE 0 END), 0), "
+            f"COALESCE(SUM(CASE WHEN {AUTHORSHIP_COMMIT} THEN 0 ELSE 1 END), 0) "
+            f"FROM {KospexSchema.TBL_COMMITS} WHERE _repo_id = ?", [repo_id]).fetchone()
+        return {"developers": developers, "authored": authored, "merges": merges}
+
     def has_developer_stats(self, repo_id):
         """Check if developer_stats exist for a given repo."""
         sql = f"SELECT COUNT(*) FROM {KospexSchema.TBL_DEVELOPER_STATS} WHERE _repo_id = ?"
