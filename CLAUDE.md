@@ -282,21 +282,27 @@ by hand.
 
 #### A green `pytest` does not cover the web layer
 
-**74 of the ~75 skips are web tests that never run.** `test_web_endpoints.py` skips
-**all 67** of its tests unless a live `kweb` is listening on `localhost:8000`; three
+**Most of the skips are web tests that never run.** `test_web_endpoints.py` skips
+**all 68** of its tests unless a live `kweb` is listening on `localhost:8000`; three
 other suites `importorskip("httpx")` and skip a further 7. Nothing fails, so this is
 invisible unless you look at the skip reasons (`pytest -rs`).
 
-**Start a local `kweb` before committing or raising a PR**, so those 67 actually run:
+**Start a local `kweb` before committing or raising a PR**, so those 68 actually run:
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/   # expect 200
 kweb    # if not running (or: python run_fastapi.py)
 ```
 
-The difference is visible in the totals — **1034 passed / 8 skipped** with a server up,
-**~967 passed / 75 skipped** without. Quote the skip count when reporting a run: it is
-the only signal that the web layer was exercised.
+The difference is visible in the totals: the skip count drops by 68 with a server up
+(**2294 passed / 23 skipped** as of Nov 2026). Quote the skip count when reporting a
+run: it is the only signal that the web layer was exercised.
+
+For a wider check, `python tests/manual/web_crawl.py` crawls a running kweb from the
+default DB, following links and every ID-based route for a repo, org, server,
+nested-group repo and base64 developer. It fails on any 5xx or timeout and lists 4xx
+for review. `--help` shows the options (`--base-url`, `--per-route`, `--max-urls`). It
+is manual, not part of `pytest`, because it needs a populated DB.
 
 This is not theoretical. The regression fixed in #205 — `parse_org_key` relaxed until it
 accepted every `repo_id`, so eight routes were scoped as orgs and seven returned 200 with
@@ -305,7 +311,7 @@ empty data — was caught by exactly these tests against a live server, and by n
 Two limits to keep in mind even when they do run. `test_web_endpoints.py` asserts only
 `status_code == 200` plus an HTML content type, so it catches a 500 or a missing template
 but not a wrong value — it is not behavioural coverage. And for a small handler, calling it
-directly and asserting on the `JSONResponse` is better than adding a 68th test that skips;
+directly and asserting on the `JSONResponse` is better than adding a 69th test that skips;
 `tests/test_generate_repo_id_endpoint.py` does this, because starlette's `TestClient` needs
 `httpx2`, which is not installed here.
 
