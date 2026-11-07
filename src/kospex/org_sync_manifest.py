@@ -286,8 +286,9 @@ def close_run(db, run_id):
 def close_run_if_done(db, run_id):
     """Close the run if nothing is pending or in progress. Returns True if closed.
 
-    Failed items don't keep a run open: they are retried with `-retry-failed`,
-    which works on the latest run whether or not it's finished.
+    Failed items don't keep a run open, or one broken repository would keep
+    it open forever. They're retried within an unfinished run with
+    `-retry-failed`, and on the next listing, where they start as pending again.
     """
     marks = ", ".join("?" for _ in OPEN_STATUSES)
     with db.atomic():
@@ -346,19 +347,18 @@ def inventory(db, run_id):
          WHERE i.run_id = ?
     """, [run_id])))
 
-    # Repo ids are lowercase (generate_repo_id), org keys may not be. Compare
-    # the prefix rather than LIKE, where `_` is a wildcard. The rest of the id
-    # must be just a repo name: a `~` there means a nested group under this
-    # org (`~~`), which this listing doesn't cover.
-    prefix = run["org_key"].lower() + "~"
-    gone = [row["_repo_id"] for row in db.query(f"""
+    # The org's repos by their parsed columns, as KospexQuery.where_org_key
+    # scopes an org, not by slicing _repo_id. A nested group under this org has
+    # a different _git_owner (`acme/sub`), so it isn't counted: this listing
+    # doesn't cover it. Lowercased on both sides, for rows from before #147.
+    parsed = KospexUtils.parse_org_key(run["org_key"])
+    gone = [] if parsed is None else [row["_repo_id"] for row in db.query(f"""
         SELECT r._repo_id FROM {TBL_REPOS} r
-         WHERE substr(lower(r._repo_id), 1, ?) = ?
-           AND instr(substr(r._repo_id, ? + 1), '~') = 0
+         WHERE lower(r._git_server) = ? AND lower(r._git_owner) = ?
            AND r._repo_id NOT IN (
                SELECT _repo_id FROM {TBL_ORG_SYNC_ITEMS} WHERE run_id = ?)
          ORDER BY r._repo_id
-    """, [len(prefix), prefix, len(prefix), run_id])]
+    """, [parsed["git_server"].lower(), parsed["org"].lower(), run_id])]
 
     result = dict(totals)
     result["not_in_kospex"] = result["listed"] - result["in_kospex"]

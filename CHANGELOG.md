@@ -25,13 +25,30 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
   A `-dry-run` is logged at DEBUG only. There is no files-changed count: on the
   largest repo tested it would have added about 20 seconds per repo.
+- **`kgit sync --org` and `kgit sync --user`** (#335). They list a GitHub
+  organisation's or user's repositories, then clone or pull and sync each one.
+  The command printed "not yet implemented" before.
+  - The listing is saved as a run, with a status per repository, so an
+    interrupted sync carries on where it stopped, and a repository that
+    fails is recorded and doesn't stop the rest.
+  - `-inventory` saves the listing and compares it with what kospex holds,
+    without cloning. `-next N` syncs N repositories, most recently pushed
+    first, for schedules. `-status` shows progress and failures from the
+    database only.
+  - Forks are skipped but recorded, with their parent. `-include-forks`, or
+    `KOSPEX_CLONE_FORKS_DEFAULT=true` for an installation, syncs them.
+  - Giving a user to `--org`, or an organisation to `--user`, is an error
+    that names the right flag.
+  - Each synced repository gets `repos.provider_repo_id`, GitHub's id for it.
+  - Only one sync of an organisation runs at a time; a second one exits 0.
+  - See `docs/kgit.md`.
 - **DB migration `0012`: groundwork for `kgit sync --org`** (#335). Two new
   tables record an org sync: `org_sync_runs` (one row per listing of an
   organisation or user) and `org_sync_items` (one row per repository in it,
   with its sync status). With them, a sync can be stopped and resumed, or run
   a few repositories at a time. `repos` gains `provider_repo_id`, the
   provider's own id for a repository, which survives renames and transfers
-  (#348), and `provider_checked_at`. Nothing uses them yet. An existing DB
+  (#348), and `provider_checked_at`. An existing DB
   needs `kospex upgrade-db -apply`; a new one migrates itself.
 - **`pom.xml` is parsed**, by both `kospex sca` and `krunner osi`. Packages are
   named `groupId:artifactId`, and `<scope>` is recorded in `declared_scope`
@@ -48,6 +65,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 
+- **The `krunner osi -next` lock takes over a crashed run's lock at once.** It
+  now records the host as well as the PID, and if that process is no longer
+  running on this host, the next run takes the lock straight away instead of
+  waiting out the six-hour bound. Taking the lock is atomic, and a run no longer
+  removes a lock another run has taken over. The mechanism is now
+  `kospex.run_lock.RunLock`, shared with `kgit sync --org`.
 - **The GitHub token can now be set in `GITHUB_TOKEN`**, as the gh CLI and
   GitHub Actions use. kospex reads `GITHUB_AUTH_TOKEN`, then `GH_TOKEN`, then
   `GITHUB_TOKEN`. The first two keep their order, so an existing setup picks

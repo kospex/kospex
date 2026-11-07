@@ -130,3 +130,4 @@ def test_a_corrupt_lock_file_is_treated_as_stale(lock_dir):
 
     with OsiLock():                       # must not raise
         assert read_lock()["pid"] == os.getpid()
+

@@ -358,6 +358,8 @@ class KospexGithub:
 
         for repo in repos:
             record = {
+                # The provider's own id survives renames and transfers (#348).
+                'id': repo.get('id'),
                 'name': repo.get('full_name'),
                 'visibility': repo.get('visibility'),
                 'type': owner_type,
@@ -374,15 +376,17 @@ class KospexGithub:
 
             # Check if the repository is a fork and get parent info
             if repo.get('fork'):
-                # The repo data from list endpoint includes parent info
-                parent = repo.get('parent')
+                # The listing endpoint doesn't include parent or source (checked
+                # against the live API), so this is normally one request per fork.
+                full_repo = repo if repo.get('parent') else \
+                    self._get_repo_details(username_or_org, repo.get('name'))
+                parent = (full_repo or {}).get('parent') or {}
+                source = (full_repo or {}).get('source') or {}
                 if parent:
                     record['parent_url'] = parent.get('html_url')
-                else:
-                    # If parent not in list data, fetch full repo details
-                    full_repo = self._get_repo_details(username_or_org, repo.get('name'))
-                    if full_repo and full_repo.get('parent'):
-                        record['parent_url'] = full_repo['parent'].get('html_url')
+                # Full names: the immediate parent, and the root of the fork network.
+                record['fork_parent'] = parent.get('full_name')
+                record['fork_source'] = source.get('full_name')
 
             repo_list.append(record)
 

@@ -36,6 +36,78 @@ https://github.com/kospex/kospex
 https://github.com/mergestat/mergestat-lite
 ```
 
+## sync
+
+`kgit sync --org` clones (or pulls) and syncs every repository in a GitHub
+organisation. `kgit sync --user` does the same for the repositories a user owns.
+
+```bash
+kgit sync --org acme
+kgit sync --user octocat
+```
+
+The owner can be given as `acme`, `github.com/acme`, `https://github.com/acme`
+or `github.com~acme`. Giving an organisation to `--user`, or a user to `--org`,
+is an error that tells you which flag to use. GitHub only, for now.
+
+It needs a GitHub token, from the same variables as [`kgit github`](#github), and
+prints which variable it used. `-no-auth` lists public repositories without one,
+within GitHub's 60 requests an hour.
+
+### Resuming, and syncing a few at a time
+
+The listing is saved in the kospex database as a **run**, with a status for each
+repository: `pending`, `in_progress`, `synced`, `skipped` or `failed`. If a sync is
+interrupted, or one repository fails, run the same command again and it carries on
+from the saved run rather than listing and syncing everything again.
+
+```bash
+kgit sync --org acme -inventory   # list and save the repos; clone nothing
+kgit sync --org acme -next 10     # sync the next 10, then stop
+kgit sync --org acme -status      # progress so far, from the database only
+```
+
+- **`-inventory`** saves the listing and prints what the organisation has, compared
+  with what kospex already holds: active, archived, forks, already in kospex,
+  changed since kospex last fetched, and in kospex but no longer listed. It needs
+  only the token, not git credentials. If a run is already partway through, it
+  prints the comparison but keeps that run; add `-relist` to replace it.
+- **`-next N`** syncs the next N repositories, most recently pushed first, so a
+  large organisation can be synced from a schedule. A 1,000-repo organisation at
+  `-next 10` takes 100 runs. Once every repository is done, the next run lists the
+  organisation again.
+- **`-status`** shows the latest run: counts, the failures with their reasons, and
+  repositories kospex has that the listing didn't include. No network.
+- **`-relist`** closes the unfinished run and starts from a fresh listing.
+- **`-retry-failed`** retries repositories that failed earlier in the unfinished
+  run. Without it, a failure is retried on the next listing.
+
+Only one sync of an organisation runs at a time. A second one finds the lock,
+says so, and exits 0, so overlapping scheduled runs are harmless. A sync is
+never interrupted for taking a long time. If a sync crashes, the next one
+notices its process has gone and takes over the lock. The lock file is
+`org-sync-<org>.lock` in `~/kospex`.
+
+### Forks, archived repositories and other options
+
+- **Forks are skipped, but recorded** with their parent and the root of their fork
+  network. `-include-forks` syncs them. To sync forks by default, for example
+  when kospex is installed for a company's own repositories, set
+  `KOSPEX_CLONE_FORKS_DEFAULT=true` in the environment or `~/kospex/kospex.env`.
+  `-skip-forks` overrides that for one run.
+- **Archived repositories are synced** unless `-skip-archived`.
+- **`--user`** leaves out repositories owned by other accounts. GitHub lists the
+  ones a user collaborates on or is a member of alongside their own.
+- **`-ssh`** clones with SSH URLs instead of HTTPS.
+- **`-no-prompt`** makes git fail instead of asking for credentials, for
+  unattended runs. The failure is recorded and the run moves on.
+
+For example, from cron, with a token set in cron's environment:
+
+```
+*/30 * * * * kgit sync --org acme -next 10 -no-prompt
+```
+
 ## bitbucket
 
 All bitbucket commands require Atlassian credentials in the environment. The following

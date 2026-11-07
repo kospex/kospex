@@ -103,6 +103,7 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - `kgit clone https://github.com/owner/repo` - Clone with kospex structure (syncs by default)
 - `kgit pull REPO_ID|--all|--org ORG_KEY|--server SERVER` - git pull (ff-only) + re-sync known local clones
 - `kgit pull --check [scope]` - offline staleness report (last_fetch / last_sync / fetch_age); no network
+- `kgit sync --org ORG|--user USER [-inventory|-next N|-status]` - list a GitHub owner's repos, save them as a run (`org_sync_runs` / `org_sync_items`), clone and sync them; resumable. Logic in `src/kospex/org_sync.py`, manifest in `src/kospex/org_sync_manifest.py`
 - `kgit pull --no-prompt [scope]` - non-interactive auth (fail fast) for unattended runs
 - **`kgit sync-repo` and `kospex init-duckdb` are commented out**, along with the `duckdb`
   dependency in `pyproject.toml`. They were a DuckDB proof of concept, parked while its
@@ -357,6 +358,7 @@ affected that the corpus does not exercise.
 - `GITHUB_AUTH_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` - GitHub API token, checked in that order
   (`KospexGithub.TOKEN_ENV_VARS`); empty values are skipped and whitespace stripped. Run
   `tests/manual/github_token_matrix.py` with a real read-only token after changing that lookup.
+- `KOSPEX_CLONE_FORKS_DEFAULT` - `true` makes `kgit sync --org` / `--user` sync forks by default (default `false`: forks are recorded as skipped). A value that isn't true or false is an error, not a guess.
 - `KOSPEX_URL_CACHE_SECONDS` - TTL for cached external responses (deps.dev, PyPI), in
   seconds. Default **86400** (one day). Was effectively one hour, which is fine for a
   single full-estate sweep but wrong for a batched one — every cron tick started cold

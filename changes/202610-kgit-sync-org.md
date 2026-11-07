@@ -149,7 +149,9 @@ kgit sync --org mergestat
 ```
 
 \* `failed` is retried only with `-retry-failed`. Otherwise one permanently broken
-repo would be retried on every resume.
+repo would be retried on every resume. Failed items don't keep a run open, so
+once the rest are done the run finishes, and the next invocation takes a fresh
+listing in which the failed repo starts as `pending` again.
 
 ### Why it's safe to resume
 
@@ -159,8 +161,10 @@ repo would be retried on every resume.
   is incremental from `last_sync_hash`. Re-running the repo that was interrupted is
   the whole cost.
 - Known gap: a `git clone` killed mid-transfer can leave a directory with a broken
-  `.git`. On resume, if the path exists but `git rev-parse HEAD` fails, mark it
-  `failed` with a clear detail. Don't delete it automatically.
+  `.git`. As built, `clone_repo` finds the directory, tries `git pull`, which
+  fails, and the repo is marked `failed` ("clone or pull failed"). It's never
+  deleted automatically. A more specific detail (`git rev-parse HEAD` failing)
+  is left for later.
 
 ## Auth
 
@@ -309,10 +313,83 @@ Separate PRs, each mergeable on its own:
    2026-11-07. The query layer is `src/kospex/org_sync_manifest.py`
    (`save_listing`, `next_items`, `mark`, `close_run_if_done`, `inventory`,
    `record_provider_ids`). The items table also has `ssh_url`, for `-ssh`.
-3. `kgit sync --org` / `--user`: auth, owner-type check, listing → manifest, the
+3. ~~`kgit sync --org` / `--user`: auth, owner-type check, listing → manifest, the
    per-repo loop, resume, lock, summary, `-status`, `-inventory` (with the drift
-   count), `-next N`.
-4. The `kgit github -sync` alias.
+   count), `-next N`.~~ **Done** (2026-11-07). The logic is in
+   `src/kospex/org_sync.py` and the command in `src/kgit.py`. Notes from building it:
+   - The lock is `kospex.run_lock.RunLock`, the mechanism generalised out of
+     `krunner osi -next`'s `OsiLock`, with its own file per org
+     (`org-sync-<org_key>.lock`). osi's lock judged staleness by age alone, with
+     a six-hour bound chosen for deps.dev-bound batches. A full sync of a large
+     org can run longer, so a second sync would have taken over a live one.
+     `RunLock` checks whether the holder's PID is still running on this host: a
+     dead one is taken over at once, a live one only past a 7-day bound
+     (`org_sync.LOCK_STALE_AFTER_SECONDS`, a backstop for a reused PID). It also
+     creates the file atomically, re-reads before a takeover, and logs to the
+     caller's logger (`kgit.log`, not `krunner.log`).
+   - `-no-prompt` sets `GIT_TERMINAL_PROMPT=0` and `credential.interactive=false`
+     through the environment, for the loop only, because `clone_repo` builds its
+     own git command.
+   - `--user` drops repos owned by other accounts. Live, `--user octocat` listed
+     8 of its own and 195 it's a member of.
+   - `last_fetch` is stamped on the `repo_id` the sync wrote (from the clone's
+     remote), which differs from the listing's only if the remote is rewritten.
+   - The drift list ("in kospex but not in this listing") is in `-status`.
+4. `kgit github`: the `-sync` alias, a switch for what a user listing includes,
+   and its docs. Also `kgit pull --org` accepting the same owner forms as
+   `kgit sync --org`.
+   - **`-sync` becomes the alias** of `kgit sync --org` / `--user`. That also
+     fixes a bug: today `kgit github octocat -sync` clones and syncs every repo
+     the listing returns, including 195 that octocat doesn't own (below).
+   - **A documented switch for what a user listing includes.** `kgit github
+     USER` asks GitHub for `type=all`, so it includes repos the user is only a
+     member of. GitHub's default is `owner`. Live, octocat: no `type` or `owner`
+     gives 8, `member` 195, `all` 203. For your own account it lists
+     `/user/repos` with `affiliation=owner,collaborator,organization_member`,
+     which brings in your organisations' repos too. Add a switch that chooses
+     between the repos the user owns and everything the listing returns, for
+     both the table and `-out-repo-list`. Its name, and which way is the
+     default, are decided in that PR. `kgit sync --user` already keeps only the
+     owner's repos.
+   - **`docs/kgit.md`'s `github` section:** it documents `kgit github -user
+     USERNAME` / `-org ORG`, but the command takes the owner as an argument
+     (`kgit github OWNER`). Fix the examples, and document the new switch and
+     what a user listing includes.
+   - **`kgit pull --org` takes a bare name and URL forms** (2026-11-07), so the
+     value that worked for `kgit sync --org` works for `kgit pull --org`. Today
+     it takes only an org key. Checked offline with `kgit pull --org X --check`:
+
+     | `--org` value | Today |
+     |---|---|
+     | `kospex`, `https://github.com/kospex` | exit 2, "org_key must be of the form <server>~<owner>" |
+     | `github.com~kospex` | works |
+     | `GitHub.com~Kospex` | exit 0, "No matching repos in the kospex DB." (case-sensitive match, silent) |
+
+     **`pull` resolves against the DB, not against GitHub.** `sync` talks to the
+     GitHub API, so a bare name meaning github.com is right there. `pull` works on
+     whatever is in the DB (GitLab, Bitbucket, self-hosted, `go.googlesource.com`),
+     so it must not assume GitHub. The rule:
+     1. A value containing `~` is an org key, matched case-insensitively.
+     2. Anything else (`acme`, `host/owner`, a URL) is parsed into a host (if
+        any) and an owner, then matched against the org keys in the DB.
+     3. Exactly one match: use it and print `Using org github.com~acme`.
+     4. None, or more than one: an error listing the candidates. Never pick one.
+
+     | Ambiguity | Example | Handling |
+     |---|---|---|
+     | Same owner on two servers | `github.com~acme`, `gitlab.com~acme` | error listing both keys |
+     | Not GitHub | `bitbucket.org/acme` | accepted; share the parsing with `sync`, not its GitHub-only check |
+     | GitLab nested groups | `gitlab.com/group/subgroup` | org or repo? the DB decides: an org key `gitlab.com~group~~subgroup` is used; a repo id is an error pointing to `kgit pull REPO_ID`. Keys with `~~` pass through unchanged |
+     | Host with no owner | `go.googlesource.com` (its repos have an empty owner) | error suggesting `--server` |
+     | Bare name with a dot | `acme.io` | an owner if the DB has one by that name, otherwise an error suggesting `--server` |
+     | Case | `GitHub.com~Kospex` | case-insensitive, fixing the silent miss above |
+     | Not in kospex | `--org newco` | error: no such org in kospex; suggest `kgit sync --org newco` first |
+     | The positional | `kgit pull acme` | unchanged: the positional stays `REPO_ID` only, never read as an org |
+
+     **Documented clearly:** the `--org` help text, the `kgit pull` section of
+     `docs/kgit.md` (the accepted forms, the resolution rule, and how it differs
+     from `kgit sync --org`), and the CLAUDE.md command line. Tests cover every
+     row of the ambiguity table.
 
 ## Open questions
 
