@@ -176,6 +176,85 @@ class KospexDependencies:
         """True if the package (any version) is known to deps.dev."""
         return bool(self.deps_dev_package(package_type, package_name))
 
+    def maven_bom_versions(self, records):
+        """The version an imported BOM supplies to each blank-version Maven row.
+
+        Returns {index in records: version}. The pom parser leaves a version
+        blank when only an imported BOM sets it; deps.dev's `:requirements` for
+        that BOM lists its managed versions already resolved, so nothing of
+        Maven's model is reimplemented here. A BOM applies only to the pom that
+        imports it, and the first declared import wins, as in Maven.
+
+        Any failure (a snapshot or range BOM, 404, network error, an artifact
+        the BOM does not list) leaves the row out: it stays `no_version`, and
+        the reason is logged rather than stored, because a failed request is
+        not a fact about the dependency.
+        See changes/202611-maven-bom-version-resolution.md.
+        """
+        by_file = {}
+        for index, rec in enumerate(records):
+            if str(rec.get("package_type") or "").lower() != "maven":
+                continue
+            key = (rec.get("_repo_id"), rec.get("file_path"))
+            by_file.setdefault(key, []).append(index)
+
+        fetched = {}
+        found = {}
+        for (_repo_id, file_path), indexes in by_file.items():
+            boms = [records[i] for i in indexes
+                    if records[i].get("requirements_type") == "bom"]
+            blank = [i for i in indexes
+                     if records[i].get("requirements_type") != "bom"
+                     and not records[i].get("package_version")]
+            if not boms or not blank:
+                continue
+
+            managed = {}
+            for bom in boms:
+                name, version = bom.get("package_name"), bom.get("package_version")
+                if not self.is_concrete_version(version, "maven"):
+                    log.info("maven BOM %s %r in %s is not a concrete version; "
+                             "its managed versions are not looked up",
+                             name, version, file_path)
+                    continue
+                if (name, version) not in fetched:
+                    fetched[(name, version)] = self._bom_managed_versions(name, version)
+                for artifact, managed_version in fetched[(name, version)].items():
+                    managed.setdefault(artifact, managed_version)
+
+            for i in blank:
+                name = records[i].get("package_name")
+                if name in managed:
+                    found[i] = managed[name]
+                else:
+                    log.info("maven %s in %s: no imported BOM supplies a version",
+                             name, file_path)
+        return found
+
+    def _bom_managed_versions(self, name, version):
+        """{groupId:artifactId: resolvedVersion} from a BOM's deps.dev requirements."""
+        if not self.kospex_query:
+            return {}
+        url = ("https://api.deps.dev/v3alpha/systems/maven/packages/"
+               f"{urllib.parse.quote(name, safe='')}/versions/"
+               f"{urllib.parse.quote(version, safe='')}:requirements")
+        content, status = self.kospex_query.url_request_with_status(url)
+        if not content:
+            log.info("maven BOM %s %s: deps.dev requirements unavailable (status %s)",
+                     name, version, status)
+            return {}
+        try:
+            entries = json.loads(content)["maven"]["dependencyManagement"]
+        except (ValueError, KeyError, TypeError) as e:
+            log.warning("maven BOM %s %s: unreadable deps.dev requirements: %s",
+                        name, version, e)
+            return {}
+        return {
+            entry["name"]: entry["resolvedVersion"]
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("name") and entry.get("resolvedVersion")
+        }
+
     def _classify_lookup_miss(self, package_type, package_name, status):
         """Category for a failed exact-version lookup given its HTTP status."""
         if status == 404:
@@ -528,8 +607,11 @@ class KospexDependencies:
         """
         package_type = extractor.package_type
         enriched = []
+        # Versions an imported Maven BOM supplies to blank-version rows (tier 3).
+        bom_versions = self.maven_bom_versions(
+            [{**rec, "package_type": package_type} for rec in records])
 
-        for rec in records:
+        for index, rec in enumerate(records):
             out = dict(rec)
             declared_version = out.get("package_version", "")
             req_type = out.get("requirements_type") or "direct"
@@ -554,7 +636,7 @@ class KospexDependencies:
             # looking: depsdev_record already short-circuits a version it cannot
             # resolve, so a `workspace:*` entry still costs no round trip, and
             # making the lookups themselves faster is #226.
-            lookup_version = self.clean_version_spec(
+            lookup_version = bom_versions.get(index) or self.clean_version_spec(
                 declared_version or "", package_type
             )
             out.update(

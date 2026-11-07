@@ -6,6 +6,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 
+- **Maven versions set by an imported BOM are now looked up.** A pom dependency
+  with no `<version>` whose version comes from an imported BOM (for example
+  netty-handler under `netty-bom`) was reported as `no_version`, with no
+  advisories. kospex now asks deps.dev which versions that BOM sets and looks
+  the dependency up at that version. The pom's declaration stays blank; the
+  version used is in `resolved_version`. A BOM deps.dev can't answer for, such
+  as a snapshot, leaves the row `no_version` as before.
 - **`kospex rebuild` now writes to `kospex.log`.** It used to print to the
   console only, so nothing recorded afterwards that a rebuild had run, and a
   failed repo's traceback was lost. Each run now logs:

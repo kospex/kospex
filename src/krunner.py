@@ -161,8 +161,13 @@ def enrich_dependency_records(results, kdeps, echo=None, progress=None):
     if total:
         _say(f"enriching {total} package{'' if total == 1 else 's'} from deps.dev")
 
+    # Versions an imported Maven BOM supplies to blank-version rows (tier 3).
+    # package_version keeps the declared blank; resolved_version records this.
+    bom_versions = kdeps.maven_bom_versions(results)
+
     for position, d in enumerate(results, start=1):
-        cleaned_version = kdeps.clean_version_spec(d["package_version"], d["package_type"])
+        cleaned_version = bom_versions.get(position - 1) or kdeps.clean_version_spec(
+            d["package_version"], d["package_type"])
         deps_rec = kdeps.depsdev_record(
             d["package_type"],
             d["package_name"],
