@@ -406,14 +406,22 @@ from a complete listing (#347), so its items are the whole org at that time.
    listed as, the owner it was listed under, its state, and when the state was
    last checked). Each listing updates it. Then the question is a lookup, runs
    can be pruned safely, and the per-id lookup result has somewhere to live.
-2. **A run doesn't record what the token could see.** A `-no-auth` run lists
-   only public repos, so every private repo would look gone. A run with a
-   different token, with less access, does the same. Each run should record
-   whether it was authenticated and as which GitHub login (a login is not a
-   secret), and gone-detection should compare only runs with the same access.
-   This needs a migration (`0013`) on `org_sync_runs` and is the one piece that
-   affects `kgit sync --org` as shipped; until it lands, one `-no-auth` run makes
-   the result misleading.
+2. **A run doesn't record what the token could see.** What a listing includes
+   depends on the login, not just on whether there was a token: an org member
+   sees its private repos, while a `-no-auth` run, or a token of someone outside
+   the org, sees only the public ones. So a single run without a member's
+   token makes every private repo look gone. For a public org it makes no
+   difference: a non-member's token and `-no-auth` list the same repos.
+   - **Record the login on each run**, empty for `-no-auth` (a login is not a
+     secret). This needs a migration (`0013`) on `org_sync_runs`.
+   - **Use `org_sync_items.private`, which 0012 already records.** If the
+     latest run has no login, or a different one from the run that last saw
+     the repo, a repo last seen as private is reported as **not visible to
+     this run**, not as gone. A public repo that vanishes is gone whatever the
+     login.
+   - This is the one piece that affects `kgit sync --org` as shipped: until it
+     lands, one run without a member's token makes the private repos look
+     deleted.
 3. **"Not listed" is not "deleted".** The per-id lookup below sorts not-listed
    repos into transferred (the id has a new owner) and appears deleted (404).
 4. **Repos never listed.** A repo added with `kgit clone`, outside `sync --org`,
@@ -474,7 +482,7 @@ available.
    leave that to the user?
 6. **Where "seen" lives.** The permanent table above, or keep every run's items
    forever? Suggest the table.
-7. **Recording the token's access on a run** (`0013`): its own PR soon after
+7. **Recording the login on a run** (`0013`): its own PR soon after
    `kgit sync --org` ships, or with the table in 6?
 
 ## Open questions
