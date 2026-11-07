@@ -12,7 +12,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   advisories. kospex now asks deps.dev which versions that BOM sets and looks
   the dependency up at that version. The pom's declaration stays blank; the
   version used is in `resolved_version`. A BOM deps.dev can't answer for, such
-  as a snapshot, leaves the row `no_version` as before.
+  as a snapshot, leaves the row `no_version` as before. On the kweb
+  `/dependencies/` page such a version is shown greyed, marked `via BOM`, so it
+  isn't read as one the pom states.
 - **`kospex rebuild` now writes to `kospex.log`.** It used to print to the
   console only, so nothing recorded afterwards that a rebuild had run, and a
   failed repo's traceback was lost. Each run now logs:
