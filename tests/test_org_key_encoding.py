@@ -82,3 +82,24 @@ def test_org_key_round_trips_back_to_the_owner():
     orgs = _orgs(_db())
     decoded = {KospexUtils.parse_org_key(k)["org"] for k in orgs}
     assert decoded == {"group/subgroup", "acme"}
+
+
+@pytest.mark.parametrize("remote, org, repo", [
+    ("github.com", "Acme", "App"),
+    ("GitLab.com", "Group/SubGroup", "App"),
+    ("dev.azure.com", "org/project", "repo"),
+])
+def test_generate_org_key_is_the_front_of_its_repos_ids(remote, org, repo):
+    """One rule for both builders: an org key is a repo id minus `~repo`.
+
+    `kgit sync --org` once built its own key without the '/' encoding, so a
+    nested org's key would not have matched its repos' ids.
+    """
+    from kospex_git import KospexGit
+    key = KospexGit.generate_org_key(remote, org)
+    repo_id = KospexGit.generate_repo_id(remote, org, repo)
+    parsed = KospexUtils.parse_repo_id(repo_id)
+    assert parsed is not None
+    assert key == parsed["org_key"]
+    assert repo_id == f"{key}~{repo.lower()}"
+    assert KospexUtils.parse_org_key(key)["org"] == org.lower()

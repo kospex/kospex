@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from kospex_git import KospexGit
+import kospex_utils as KospexUtils
 import kospex.org_sync_manifest as manifest
 
 GITHUB_HOST = "github.com"
@@ -45,8 +46,13 @@ def parse_target(target):
         raise ValueError("No organisation or user given.")
 
     if "~" in raw:
-        host, _, owner = raw.partition("~")
+        # An org key. parse_org_key returns None for a repo id, which is refused
+        # below like any other target naming a repository.
+        parsed = KospexUtils.parse_org_key(raw)
+        host, owner = (parsed["git_server"], parsed["org"]) if parsed else (GITHUB_HOST, raw)
     elif "://" in raw:
+        # Not parse_git_remote: it parses repository URLs and returns None for an
+        # owner's URL, which is all this accepts.
         url = urlparse(raw)
         host, owner = url.hostname or "", url.path.strip("/")
     elif "/" in raw:
@@ -67,11 +73,6 @@ def parse_target(target):
     if not _OWNER_RE.match(owner):
         raise ValueError(f"{owner!r} isn't a valid GitHub organisation or user name.")
     return host, owner
-
-
-def org_key(host, owner):
-    """The org key, as repo ids spell it: lowercase (`github.com~acme`)."""
-    return f"{host.lower()}~{owner.lower()}"
 
 
 def forks_default(environ=None):

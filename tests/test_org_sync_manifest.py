@@ -13,6 +13,7 @@ import pytest
 import sqlite_utils
 
 import kospex_schema as KospexSchema
+import kospex_utils as KospexUtils
 from kospex.org_sync_manifest import (
     FAILED,
     IN_PROGRESS,
@@ -354,15 +355,30 @@ def test_a_repo_synced_later_gets_its_id_from_the_run():
 
 # --- inventory ---------------------------------------------------------------
 
+def _repo_row(row):
+    """A repos row with the _git_* columns sync_repo writes, from its _repo_id."""
+    parts = KospexUtils.parse_repo_id(row["_repo_id"])
+    return {**row, "_git_server": parts["git_server"], "_git_owner": parts["org"],
+            "_git_repo": parts["repo"]}
+
+
+def test_inventory_finds_a_gone_repo_from_before_ids_were_lowercased():
+    """Rows synced before #147 can be mixed case; the org is still matched."""
+    db = _db()
+    db["repos"].insert({"_repo_id": "github.com~Acme~Old", "_git_server": "github.com",
+                        "_git_owner": "Acme", "_git_repo": "Old"}, pk="_repo_id")
+    run_id = save_listing(db, ORG, [_item(A)])
+    assert inventory(db, run_id)["gone"] == ["github.com~Acme~Old"]
+
 def test_inventory_compares_the_listing_with_kospex():
     db = _db()
-    db["repos"].insert_all([
+    db["repos"].insert_all([_repo_row(r) for r in [
         {"_repo_id": A, "last_fetch": "2026-11-02T00:00:00+00:00"},  # fetched after the push
         {"_repo_id": B, "last_fetch": "2026-10-01T00:00:00+00:00"},  # pushed since
         {"_repo_id": "github.com~acme~deleted"},                     # gone from the org
         {"_repo_id": "github.com~acme~~sub~nested"},                 # a nested group, not this org's
         {"_repo_id": "github.com~acmeco~x"},                         # a different org, same prefix
-    ], pk="_repo_id")
+    ]], pk="_repo_id")
     run_id = save_listing(db, ORG, [
         _item(A), _item(B),
         _item(C, archived=True, private=True),

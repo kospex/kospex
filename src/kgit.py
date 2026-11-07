@@ -451,7 +451,7 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, relist,
     except ValueError as e:
         raise click.UsageError(str(e))
     forks = (forks or include_forks) and not skip_forks
-    key = OrgSync.org_key(host, owner)
+    key = KospexGit.generate_org_key(host, owner)
     flag = f"--{owner_kind}"
     db = kospex.kospex_db
 

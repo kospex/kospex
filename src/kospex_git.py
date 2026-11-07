@@ -571,11 +571,18 @@ class KospexGit:
         # arriving with different URL casing must not mint two ids (#147).
         # The guarantee lives on the builder as well as on parse_git_remote
         # because consumers call this directly.
-        repo_id = f"{remote.lower()}~"
-        repo_id += org.lower().replace("/", "~~")
-        repo_id += f"~{repo.lower()}"
+        return f"{KospexGit.generate_org_key(remote, org)}~{repo.lower()}"
 
-        return repo_id
+    @staticmethod
+    def generate_org_key(remote, org):
+        """The org_key for an org: `remote~org`, lowercased, with a '/' in a
+        nested org (GitLab group/subgroup) encoded as '~~'.
+
+        The same rule as the front of a repo_id, so an org_key is always the
+        repo_id of any of its repos minus `~repo`. Parse one with
+        KospexUtils.parse_org_key.
+        """
+        return f"{remote.lower()}~{org.lower().replace('/', '~~')}"
 
     def set_remote_url(self, remote_url):
         """

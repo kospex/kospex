@@ -41,6 +41,7 @@ def _repo(full_name, **kw):
 @pytest.mark.parametrize("target", [
     "acme", "Acme", "github.com/acme", "https://github.com/acme",
     "https://github.com/acme/", "github.com~acme", "GitHub.com/acme",
+    "GitHub.com~Acme",
 ])
 def test_every_target_form_names_the_owner(target):
     host, owner = OrgSync.parse_target(target)
@@ -56,6 +57,8 @@ def test_every_target_form_names_the_owner(target):
     ("acme/app", "looks like a repository"),
     ("https://github.com/acme/app", "looks like a repository"),
     ("github.com~acme~app", "looks like a repository"),
+    ("GitHub.com~Acme~App", "looks like a repository"),
+    ("gitlab.com~group~~sub", "Only GitHub"),
     ("-acme", "isn't a valid"),
     ("ac me", "isn't a valid"),
 ])
@@ -64,8 +67,6 @@ def test_targets_that_are_not_a_github_owner_are_refused(target, message):
         OrgSync.parse_target(target)
 
 
-def test_org_key_is_lowercase_like_repo_ids():
-    assert OrgSync.org_key("github.com", "Acme") == "github.com~acme"
 
 
 # --- forks_default -----------------------------------------------------------

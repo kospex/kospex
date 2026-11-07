@@ -109,7 +109,9 @@ def env(tmp_path, monkeypatch):
     def sync_repo(path, **kw):
         repo_id = "github.com~acme~" + path.rsplit("/", 1)[-1].removesuffix(".git").lower()
         calls["synced"].append(repo_id)
-        db["repos"].upsert({"_repo_id": repo_id}, pk="_repo_id")
+        name = repo_id.rsplit("~", 1)[-1]
+        db["repos"].upsert({"_repo_id": repo_id, "_git_server": "github.com",
+                            "_git_owner": "acme", "_git_repo": name}, pk="_repo_id")
 
     monkeypatch.setattr(kgit_module.kgit, "clone_repo", clone_repo)
     monkeypatch.setattr(kospex, "sync_repo", sync_repo)
@@ -384,7 +386,8 @@ def test_status_is_offline(env, monkeypatch):
         def __init__(self):
             raise AssertionError("-status must not touch GitHub")
     monkeypatch.setattr(kgit_module, "KospexGithub", NoNetwork)
-    env["db"]["repos"].insert({"_repo_id": "github.com~acme~deleted"}, pk="_repo_id")
+    env["db"]["repos"].insert({"_repo_id": "github.com~acme~deleted", "_git_server": "github.com",
+                               "_git_owner": "acme", "_git_repo": "deleted"}, pk="_repo_id")
 
     result = run("--org", "acme", "-status")
     assert result.exit_code == 0, result.output
