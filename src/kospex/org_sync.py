@@ -143,6 +143,13 @@ def compare_with_run(db, run_id, items):
     return sorted(listed - in_run), sorted(in_run - listed)
 
 
+# Only the backstop for a reused PID: a lock whose process has died on this host
+# is taken over at once, and one whose process is running is never taken over
+# for being slow. A full sync of a large org can run for days, so this is set
+# well past that rather than at a guess of a run's length.
+LOCK_STALE_AFTER_SECONDS = 7 * 24 * 60 * 60
+
+
 def lock_path(home, key):
     """One lock file per org, under KOSPEX_HOME, so two orgs can sync at once."""
     safe = re.sub(r"[^A-Za-z0-9._~-]", "_", key)

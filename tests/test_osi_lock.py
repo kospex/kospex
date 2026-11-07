@@ -131,21 +131,3 @@ def test_a_corrupt_lock_file_is_treated_as_stale(lock_dir):
     with OsiLock():                       # must not raise
         assert read_lock()["pid"] == os.getpid()
 
-
-# --- a lock at another path (kgit sync --org) --------------------------------
-
-def test_a_lock_at_its_own_path_names_itself_and_leaves_the_osi_lock_alone(lock_dir):
-    path = lock_dir / "org-sync-github.com~acme.lock"
-    with OsiLock(path=path, name="kgit sync --org acme"):
-        assert path.exists()
-        assert not (lock_dir / LOCK_FILENAME).exists()
-        assert read_lock(path)["pid"] == os.getpid()
-        with pytest.raises(LockBusy, match="another kgit sync --org acme run"):
-            with OsiLock(path=path, name="kgit sync --org acme"):
-                pass
-        # The osi lock and another org's lock are separate.
-        with OsiLock():
-            pass
-        with OsiLock(path=lock_dir / "org-sync-github.com~other.lock"):
-            pass
-    assert not path.exists()

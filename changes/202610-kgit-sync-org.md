@@ -317,7 +317,16 @@ Separate PRs, each mergeable on its own:
    per-repo loop, resume, lock, summary, `-status`, `-inventory` (with the drift
    count), `-next N`.~~ **Done** (2026-11-07). The logic is in
    `src/kospex/org_sync.py` and the command in `src/kgit.py`. Notes from building it:
-   - The lock is `OsiLock` with its own file per org (`org-sync-<org_key>.lock`).
+   - The lock is `kospex.run_lock.RunLock`, the mechanism generalised out of
+     `krunner osi -next`'s `OsiLock`, with its own file per org
+     (`org-sync-<org_key>.lock`). osi's lock judged staleness by age alone, with
+     a six-hour bound chosen for deps.dev-bound batches. A full sync of a large
+     org can run longer, so a second sync would have taken over a live one.
+     `RunLock` checks whether the holder's PID is still running on this host: a
+     dead one is taken over at once, a live one only past a 7-day bound
+     (`org_sync.LOCK_STALE_AFTER_SECONDS`, a backstop for a reused PID). It also
+     creates the file atomically, re-reads before a takeover, and logs to the
+     caller's logger (`kgit.log`, not `krunner.log`).
    - `-no-prompt` sets `GIT_TERMINAL_PROMPT=0` and `credential.interactive=false`
      through the environment, for the loop only, because `clone_repo` builds its
      own git command.

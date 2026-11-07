@@ -40,6 +40,7 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   - Giving a user to `--org`, or an organisation to `--user`, is an error
     that names the right flag.
   - Each synced repository gets `repos.provider_repo_id`, GitHub's id for it.
+  - Only one sync of an organisation runs at a time; a second one exits 0.
   - See `docs/kgit.md`.
 - **DB migration `0012`: groundwork for `kgit sync --org`** (#335). Two new
   tables record an org sync: `org_sync_runs` (one row per listing of an
@@ -52,6 +53,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 
+- **The `krunner osi -next` lock takes over a crashed run's lock at once.** It
+  now records the host as well as the PID, and if that process is no longer
+  running on this host, the next run takes the lock straight away instead of
+  waiting out the six-hour bound. Taking the lock is atomic, and a run no longer
+  removes a lock another run has taken over. The mechanism is now
+  `kospex.run_lock.RunLock`, shared with `kgit sync --org`.
 - **The GitHub token can now be set in `GITHUB_TOKEN`**, as the gh CLI and
   GitHub Actions use. kospex reads `GITHUB_AUTH_TOKEN`, then `GH_TOKEN`, then
   `GITHUB_TOKEN`. The first two keep their order, so an existing setup picks

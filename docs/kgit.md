@@ -83,7 +83,10 @@ kgit sync --org acme -status      # progress so far, from the database only
   run. Without it, a failure is retried on the next listing.
 
 Only one sync of an organisation runs at a time. A second one finds the lock,
-says so, and exits 0, so overlapping scheduled runs are harmless.
+says so, and exits 0, so overlapping scheduled runs are harmless. A sync is
+never interrupted for taking a long time. If a sync crashes, the next one
+notices its process has gone and takes over the lock. The lock file is
+`org-sync-<org>.lock` in `~/kospex`.
 
 ### Forks, archived repositories and other options
 

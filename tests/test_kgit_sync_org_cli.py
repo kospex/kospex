@@ -201,14 +201,42 @@ def test_an_incomplete_listing_saves_nothing(env):
 
 
 def test_a_held_lock_means_nothing_to_do_not_an_error(env):
+    import logging
     import kospex.org_sync as OrgSync
-    from kospex.osi_lock import OsiLock
+    from kospex.run_lock import RunLock
     FakeGitHub.listing = [_repo("a")]
-    with OsiLock(path=OrgSync.lock_path(env["home"], ORG), name="x"):
+    with RunLock(OrgSync.lock_path(env["home"], ORG), "x", 60, logging.getLogger("t")):
         result = run("--org", "acme")
     assert result.exit_code == 0
     assert "Nothing to do" in result.output
     assert env["calls"]["cloned"] == []
+
+
+def test_a_long_running_sync_is_not_taken_over_after_six_hours(env):
+    """osi's six-hour bound let a second sync take over a slow but live one."""
+    import json
+    import socket
+    import subprocess
+    import sys
+    import kospex.org_sync as OrgSync
+    FakeGitHub.listing = [_repo("a")]
+    live = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        OrgSync.lock_path(env["home"], ORG).write_text(json.dumps({
+            "pid": live.pid, "host": socket.gethostname(),
+            "started_at": _hours_ago(10)}))
+        result = run("--org", "acme")
+    finally:
+        live.kill()
+        live.wait()
+    assert result.exit_code == 0
+    assert "Nothing to do" in result.output
+    assert env["calls"]["cloned"] == []
+
+
+def _hours_ago(hours):
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # --- -inventory --------------------------------------------------------------

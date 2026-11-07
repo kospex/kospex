@@ -17,7 +17,7 @@ from kospex_github import GitHubListingIncomplete, KospexGithub
 import kospex.org_sync as OrgSync
 import kospex.org_sync_manifest as OrgSyncManifest
 from kospex.habitat_config import HabitatConfig
-from kospex.osi_lock import LockBusy, OsiLock
+from kospex.run_lock import LockBusy, RunLock
 from kospex_bitbucket import (
     KospexBitbucket,
     MODE_TOKEN,
@@ -475,8 +475,8 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, relist,
 
     _check_owner_type(gh, owner, owner_kind)
 
-    lock = OsiLock(path=OrgSync.lock_path(HabitatConfig.get_instance().home, key),
-                   name=f"kgit sync {flag} {owner}")
+    lock = RunLock(OrgSync.lock_path(HabitatConfig.get_instance().home, key),
+                   f"kgit sync {flag} {owner}", OrgSync.LOCK_STALE_AFTER_SECONDS, log)
     try:
         lock.acquire()
     except LockBusy as busy:
