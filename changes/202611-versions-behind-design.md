@@ -197,14 +197,33 @@ with pre-releases removed is the safe fallback. Same-timestamp releases (netty 4
 4.1.140 on 2026-11-03) make the date walk order-dependent, so a stable tie-break
 (version order) is needed regardless.
 
-### 4. Related, not part of this fix: npm/cargo short floors are recorded as yanked
+### 4. Related, not part of this fix: npm/cargo short floors are recorded as yanked (#379)
 
 `clean_version_spec("^19")` returns `19`. In PyPI that is a valid version (`19.0.0`), but
 deps.dev 404s `19` for npm and cargo, and `_classify_lookup_miss()` reads a 404 for an
 existing package as **`version_yanked`**. On the estate **1,227 of the 1,417 current npm
 `version_yanked` rows** are this — `^19`, `^1`, `^3`, `^1.9`, … — none of them yanked.
-The fix belongs in floor derivation: semver zero-fills a partial version in a range
-(`^19` → `>=19.0.0 <20.0.0-0`), so the floor is `19.0.0`. Track separately.
+
+**What the floor should be.** semver zero-fills a partial version; it never shifts it
+right, so `^19` is `>=19.0.0 <20.0.0-0`, not `0.0.19`. node-semver 7.6.3 `minVersion`:
+`^19`, `19`, `~19`, `19.x` → `19.0.0`; `^1.9` → `1.9.0`; `^0.9` → `0.9.0` (range
+`<0.10.0-0`). Cargo follows the same rule (`"1"` is `^1`).
+
+**Zero-fill alone fixes about 70%.** Checked against each package's deps.dev release list:
+
+| outcome | rows |
+|---|---:|
+| zero-filled floor (`19.0.0`) is published | 867 |
+| zero-filled floor never published (`@playwright/test ^1`: no `1.0.0`, first 1.x is `1.12.0`) | 348 |
+| npm alias (`npm:prettier@^2`): the version belongs to another package | 8 |
+| nothing satisfies: sentinels like `react: 1000000000000000000` | 4 |
+
+So the floor should be the **lowest published stable version that satisfies the range**
+(node-semver `minSatisfying` semantics), taken from the package version list that
+`get_versions_behind()` already fetches. That covers all 1,215 non-alias rows with a
+satisfying release, and is what `resolved_version` is for: the worst case the constraint
+permits. Strip `npm:<name>@` and look up `<name>` for aliases; record a distinct resolution
+(e.g. `no_satisfying_version`) rather than `version_yanked` when nothing satisfies.
 
 ## Suggested order
 
