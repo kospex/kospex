@@ -28,7 +28,10 @@ Four things distort that number:
 4. **A pre-release can be the default.** deps.dev marks e.g. `duckdb@2.0.1.dev…`,
    `httpx@1.0.0.dev6`, `protobuf-java@4.37.0-RC1` as `isDefault`, which moves the
    anchor of the count. About 0.7% of cached packages (npm 72 of ~11k, PyPI 16 of
-   ~860, Maven 4 of 20).
+   ~860, Maven 4 of 20). It can push the anchor *below* the version in use:
+   `io.netty:netty-handler`'s default is `5.0.0.Alpha2`, published 2015-03-03, so a
+   project on `4.2.18.Final` (2026-09-09) is never reached after the default and reads
+   **0** behind instead of 2.
 
 ## Measurements
 
