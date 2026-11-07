@@ -30,6 +30,9 @@ class _Kdeps:
     def clean_version_spec(self, version, package_type):
         return version
 
+    def maven_bom_versions(self, records):
+        return {}
+
     def depsdev_record(self, package_type, name, version):
         self.lookups += 1
         return {"package_name": name, "package_version": version,

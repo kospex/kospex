@@ -874,7 +874,7 @@ manages, so each is a real declaration whose version lives in another POM:
 |---|---|---|
 | the file's own `<properties>`, `${project.version}`, `${project.parent.version}` | 7 `${...}` versions | **yes** — tier 1 |
 | a parent pom inside the same repository (`<relativePath>`, default `../pom.xml`) | 11 missing versions, all gson modules | **yes** — tier 2 |
-| an imported BOM (`<scope>import</scope>`) | 10 — jsoup ← `netty-bom`, okhttp ×2 ← `okhttp-bom`, gson graal test ← `junit-bom` | no |
+| an imported BOM (`<scope>import</scope>`) | 10 — jsoup ← `netty-bom`, okhttp ×2 ← `okhttp-bom`, gson graal test ← `junit-bom` | **at enrichment** — tier 3, deps.dev; 4 of the 10 (okhttp's BOM is a snapshot range) |
 | a parent only in a Maven repository | 3 — jackson-core ← `tools.jackson:jackson-base:3.3.0-SNAPSHOT` | no |
 | build-time `-Drevision=`, `.mvn/maven.config`, `${env.*}`, `settings.xml` | none | no |
 
@@ -884,6 +884,16 @@ After tiers 1 and 2: **38 resolved, 13 blank, 0 unresolved `${...}`.**
   Package Management. Enrichment reports it as `no_version`. Nothing marks *why* it is
   missing, and for Maven nothing needs to: a blank version always means "managed by a
   BOM or a parent kospex did not read".
+- **Tier 3 runs in enrichment, not the parser** (`KospexDependencies.maven_bom_versions`,
+  called by both `sca` and `osi`). For a blank row in a pom that imports a BOM, it
+  asks deps.dev for that BOM's `:requirements`, which lists the managed versions
+  already resolved, and looks the row up at that version. `package_version` stays
+  blank (what the file says) and the version used goes in `resolved_version`, so
+  "declared nothing, looked one up" identifies a BOM-supplied version. The first
+  declared BOM wins, as in Maven. A snapshot or range BOM, a 404, a network error or
+  an artifact the BOM does not list leaves the row `no_version`, and the reason is
+  logged only (`kospex_dependencies.log`). A BOM imported by an in-repo *parent* is
+  not applied to its children. See `changes/202611-maven-bom-version-resolution.md`.
 - **An unresolvable `${...}` is kept verbatim**, not blanked, so enrichment reports
   `unresolved_spec` and the row still names the property it was waiting on.
 - **Interpolation happens after inheritance**, as in Maven: `${project.version}` in a
@@ -945,8 +955,10 @@ After tiers 1 and 2: **38 resolved, 13 blank, 0 unresolved `${...}`.**
 **Drift watch:** POM model version 4.1.0 (Maven 4), which changes inheritance and
 adds `<subprojects>`. A pom in a non-UTF-8 encoding with non-ASCII bytes, which Maven
 reads and this raises on (none on the estate). `${revision}` CI-friendly versions,
-which will surface as `unresolved_spec`. BOM and external-parent resolution, if it is
-ever added, belongs in enrichment, not here: it needs the network.
+which will surface as `unresolved_spec`. BOM resolution lives in enrichment, not
+here, because it needs the network; external-parent resolution would go there too.
+deps.dev's `:requirements` response shape (`maven.dependencyManagement[].resolvedVersion`)
+is v3alpha and may change.
 
 ---
 
