@@ -88,3 +88,44 @@ def test_no_self_link_when_already_narrowed_to_a_file():
     tmpl = kweb2.templates.get_template("dependencies.html")
     html = tmpl.render({"data": [_FILE_ROW], "request": None, "file_path": "docs/requirements.txt"})
     assert "?file_path=" not in html
+
+
+class TestVersionNotStatedInTheFile:
+    """A version the file does not state, but kospex looked up (Maven tier 3).
+
+    The declaration is blank and resolved_version holds the version a BOM
+    supplied. A blank next to a `resolved` status reads as a contradiction;
+    showing resolved_version unmarked would claim the file states it. So it is
+    shown, marked as not from the file.
+    """
+
+    _BOM_ROW = {"package_name": "io.netty:netty-handler", "package_type": "maven",
+                "package_version": "", "resolved_version": "4.2.18.Final",
+                "resolution": "resolved", "versions_behind": 0, "advisories": 0}
+
+    def test_blank_declaration_shows_the_looked_up_version_marked(self):
+        html = _render([self._BOM_ROW])
+        assert "4.2.18.Final" in html
+        assert "via BOM" in html
+
+    def test_declared_version_is_shown_unmarked(self):
+        html = _render([dict(self._BOM_ROW, package_version="4.2.18.Final")])
+        assert "4.2.18.Final" in html
+        assert "via BOM" not in html
+
+    def test_range_floor_does_not_replace_the_declared_range(self):
+        """resolved_version is also a range's floor; the range is what the
+        file says, so it is what is shown."""
+        row = {"package_name": "left-pad", "package_type": "npm",
+               "package_version": "^1.3.0", "resolved_version": "1.3.0",
+               "resolution": "resolved", "versions_behind": 0, "advisories": 0}
+        html = _render([row])
+        assert "^1.3.0" in html
+        assert ">1.3.0<" not in html
+
+    def test_blank_with_nothing_looked_up_stays_blank(self):
+        row = dict(self._BOM_ROW, resolved_version="", resolution="no_version",
+                   versions_behind=None, advisories=None)
+        html = _render([row])
+        assert "via BOM" not in html
+        assert "no version" in html
