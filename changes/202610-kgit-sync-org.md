@@ -327,7 +327,8 @@ Separate PRs, each mergeable on its own:
      remote), which differs from the listing's only if the remote is rewritten.
    - The drift list ("in kospex but not in this listing") is in `-status`.
 4. `kgit github`: the `-sync` alias, a switch for what a user listing includes,
-   and its docs.
+   and its docs. Also `kgit pull --org` accepting the same owner forms as
+   `kgit sync --org`.
    - **`-sync` becomes the alias** of `kgit sync --org` / `--user`. That also
      fixes a bug: today `kgit github octocat -sync` clones and syncs every repo
      the listing returns, including 195 that octocat doesn't own (below).
@@ -345,6 +346,41 @@ Separate PRs, each mergeable on its own:
      USERNAME` / `-org ORG`, but the command takes the owner as an argument
      (`kgit github OWNER`). Fix the examples, and document the new switch and
      what a user listing includes.
+   - **`kgit pull --org` takes a bare name and URL forms** (2026-11-07), so the
+     value that worked for `kgit sync --org` works for `kgit pull --org`. Today
+     it takes only an org key. Checked offline with `kgit pull --org X --check`:
+
+     | `--org` value | Today |
+     |---|---|
+     | `kospex`, `https://github.com/kospex` | exit 2, "org_key must be of the form <server>~<owner>" |
+     | `github.com~kospex` | works |
+     | `GitHub.com~Kospex` | exit 0, "No matching repos in the kospex DB." (case-sensitive match, silent) |
+
+     **`pull` resolves against the DB, not against GitHub.** `sync` talks to the
+     GitHub API, so a bare name meaning github.com is right there. `pull` works on
+     whatever is in the DB (GitLab, Bitbucket, self-hosted, `go.googlesource.com`),
+     so it must not assume GitHub. The rule:
+     1. A value containing `~` is an org key, matched case-insensitively.
+     2. Anything else (`acme`, `host/owner`, a URL) is parsed into a host (if
+        any) and an owner, then matched against the org keys in the DB.
+     3. Exactly one match: use it and print `Using org github.com~acme`.
+     4. None, or more than one: an error listing the candidates. Never pick one.
+
+     | Ambiguity | Example | Handling |
+     |---|---|---|
+     | Same owner on two servers | `github.com~acme`, `gitlab.com~acme` | error listing both keys |
+     | Not GitHub | `bitbucket.org/acme` | accepted; share the parsing with `sync`, not its GitHub-only check |
+     | GitLab nested groups | `gitlab.com/group/subgroup` | org or repo? the DB decides: an org key `gitlab.com~group~~subgroup` is used; a repo id is an error pointing to `kgit pull REPO_ID`. Keys with `~~` pass through unchanged |
+     | Host with no owner | `go.googlesource.com` (its repos have an empty owner) | error suggesting `--server` |
+     | Bare name with a dot | `acme.io` | an owner if the DB has one by that name, otherwise an error suggesting `--server` |
+     | Case | `GitHub.com~Kospex` | case-insensitive, fixing the silent miss above |
+     | Not in kospex | `--org newco` | error: no such org in kospex; suggest `kgit sync --org newco` first |
+     | The positional | `kgit pull acme` | unchanged: the positional stays `REPO_ID` only, never read as an org |
+
+     **Documented clearly:** the `--org` help text, the `kgit pull` section of
+     `docs/kgit.md` (the accepted forms, the resolution rule, and how it differs
+     from `kgit sync --org`), and the CLAUDE.md command line. Tests cover every
+     row of the ambiguity table.
 
 ## Open questions
 
