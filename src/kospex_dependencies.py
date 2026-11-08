@@ -1119,7 +1119,12 @@ class KospexDependencies:
         # a little dirty with actual Git urls and not https to Github
         details["source_repo"] = KospexUtils.extract_git_url(self.get_source_repo_info(deps_info))
         details["advisories"] = self.get_advisories_count(deps_info)
-        days_info = self.get_versions_behind(package_type, package_name, package_version)
+        # deps.dev's canonical spelling of the version just resolved. It has
+        # applied the ecosystem's own equality rules (PyPI `9` -> `9.0.0`,
+        # `2026.3.post1` -> `2026.3.0.post1`; NuGet `13.0.1.0` -> `13.0.1`), so
+        # the version list can be matched exactly rather than guessed at (#378).
+        canonical = (deps_info.get("versionKey") or {}).get("version") or package_version
+        days_info = self.get_versions_behind(package_type, package_name, canonical)
         versions_behind = days_info.get("versions_behind")
         details["versions_behind"] = versions_behind if isinstance(versions_behind, int) else None
         details["authors"] = None
@@ -1561,33 +1566,15 @@ class KospexDependencies:
         data = response.json()
         return data
 
-    def version_fuzzy_match(self, from_config, from_depsdev):
-        """Compare two version strings and return True if they are a match, False otherwise."""
-
-        # If the versions are exactly the same, return True
-        if from_config == from_depsdev:
-            return True
-
-        # change the version strings to lists of integers to remove 0 padding,
-        # which doesn't always match properly e.g. 2022.07.13 != 2022.7.13
-        parts = from_config.split(".")
-        # parts = [str(int(part)) for part in parts]
-        cleaned_parts = [part.lstrip("0") for part in parts]
-        ver_string = ".".join(cleaned_parts)
-
-        if ver_string == from_depsdev:
-            return True
-
-        if len(parts) == 2:
-            # Only 1 period like 3.4 we might need a .0 on the end to make it 3.4.0
-            ver_string = ".".join([ver_string, "0"])
-            if ver_string == from_depsdev:
-                return True
-
-        return False
-
     def get_versions_behind(self, package_manager, package_name, version):
-        """Use Deps.Dev API to get the versions behing the used version"""
+        """Count the releases between deps.dev's default version and `version`.
+
+        `version` must be spelled as deps.dev lists it: depsdev_record() passes
+        the canonical `versionKey.version` from its exact-version lookup, and the
+        dependency-graph caller passes versions deps.dev itself returned. The
+        match is exact. If `version` is not in the list, versions_behind is
+        None (unknown) -- never a count to the end of the list (#378).
+        """
         # Define the base URL for deps.dev API
         base_url = "https://api.deps.dev/v3alpha/systems"
         encoded_name = urllib.parse.quote(package_name, safe="")
@@ -1651,14 +1638,17 @@ class KospexDependencies:
         keys_before_default = 0
         versions_behind = 0
         found_default = False
+        found_version = False
 
         for release in sorted_list:
             if release["isDefault"]:
-                # print(f"default {release['versionKey']['version']}")
                 found_default = True
 
-            if self.version_fuzzy_match(version, release["versionKey"]["version"]):
-                # print(f"Found version {version}")
+            # Exact: `version` is deps.dev's own spelling (see docstring). The
+            # fuzzy match this replaced missed `3.0` vs `3.0.0`, `6` and
+            # `2026.3.post1` vs `2026.3.0.post1`.
+            if release["versionKey"]["version"] == version:
+                found_version = True
                 break
 
             if not found_default:
@@ -1666,8 +1656,17 @@ class KospexDependencies:
             else:
                 versions_behind += 1
 
-        # print(f"Keys before default: {keys_before_default}")
-        # print(f"Versions between: {versions_behind}")
+        if not found_version:
+            # Walking off the end would report every release older than the
+            # default -- the package's whole history -- as "behind". The
+            # position is unknown, and NULL is how versions_behind says that.
+            log.info("version %s of %s %s is not in deps.dev's version list "
+                     "-- versions_behind unknown", version, package_manager,
+                     package_name)
+            details["versions_before_default"] = None
+            details["versions_behind"] = None
+            return details
+
         details["versions_before_default"] = keys_before_default
         details["versions_behind"] = versions_behind
 
