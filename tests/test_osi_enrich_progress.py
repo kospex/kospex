@@ -40,6 +40,12 @@ class _Kdeps:
                 "advisories": 0, "resolution": "resolved",
                 "published_at": "2026-01-01T00:00:00Z"}
 
+    def lookup_dependency(self, package_type, name, declared_version, bom_version=None):
+        # krunner's entry point since #379; the version handling it adds is
+        # tested in test_npm_range_floor.py, not here.
+        version = bom_version or self.clean_version_spec(declared_version, package_type)
+        return self.depsdev_record(package_type, name, version), version
+
 
 def _records(n):
     return [{"package_name": f"p{i}", "package_version": "1.0.0",
