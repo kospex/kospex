@@ -4,6 +4,14 @@ Pure: no I/O. A port of node-semver 7's range desugaring (`^`, `~`, x-ranges,
 hyphen ranges, `||`), checked against node-semver itself by
 tests/test_npm_range.py over a corpus of real npm declarations.
 
+Upstream: node-semver, https://github.com/npm/node-semver (ISC licence).
+Ported from v7.6.3, the version the golden file was built with:
+https://github.com/npm/node-semver/blob/v7.6.3/classes/range.js (the
+replaceCaret / replaceTilde / replaceXRange / hyphenReplace rules) and
+https://github.com/npm/node-semver/blob/v7.6.3/internal/re.js (the version
+grammar). When node-semver changes these, rebuild the golden file with
+tests/manual/build_npm_range_golden.py and port the difference.
+
 Deliberately narrow. kospex asks one question -- which *published stable*
 versions does a declared range permit? -- so:
 
