@@ -34,8 +34,17 @@
             <!-- Repository Files -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
+                    {% if git_server %}{% include '_breadcrumb.html' %}{% endif %}
                     <h1 class="text-3xl font-bold text-gray-900 mb-6">Repository Files</h1>
-                    
+                    {% if tech %}
+                    <h3 data-file-filter class="text-xl font-semibold text-gray-700 mb-2">{{ tech_kind | default('Technology') }}: {{ tech }}</h3>
+                    {% include '_retired_tag_note.html' %}
+                    <p class="text-gray-700 mb-4">
+                        Files in this repository with this {{ (tech_kind | default('Technology')) | lower }}.
+                        {% if tech_url %}<a href="{{ tech_url }}" class="text-blue-600 hover:text-blue-800 underline">All repositories with this {{ (tech_kind | default('Technology')) | lower }}</a>{% endif %}
+                    </p>
+                    {% endif %}
+
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200" id="myTable">
                             <thead class="bg-gray-50">

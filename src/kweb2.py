@@ -1459,6 +1459,10 @@ def repo_with_tech(request: Request, tech: str):
                 status_code=404,
                 detail=f"{tech} is an unknown Technology or Language.")
 
+        # Breadcrumb for the per-repository drill-down: server / org / repo / page.
+        crumbs = (KospexWeb.scope_context({"repo_id": repo_id}, f"Technology: {tech}")
+                  if repo_id else {"page": {}})
+
         return templates.TemplateResponse(
             request, template,
             {"data": repos_with_tech, "tech": tech, "tech_kind": "Technology",
@@ -1470,7 +1474,7 @@ def repo_with_tech(request: Request, tech: str):
              "absent_count": absent_count,
              "absent_url": f"/tech/{quote(tech, safe='')}?absent=true",
              "universe_count": universe,
-             "page": {}},
+             **crumbs},
         )
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any
@@ -1567,6 +1571,9 @@ def repo_with_tag(request: Request, tag: str):
                 status_code=404, detail=f"{tag} is an unknown Tag.")
 
         retired, replacement = retired_tag_replacement(tag)
+        # Breadcrumb for the per-repository drill-down: server / org / repo / page.
+        crumbs = (KospexWeb.scope_context({"repo_id": repo_id}, f"Tag: {tag}")
+                  if repo_id else {"page": {}})
 
         return templates.TemplateResponse(
             request, template,
@@ -1578,7 +1585,7 @@ def repo_with_tag(request: Request, tag: str):
              "absent_count": absent_count,
              "absent_url": f"/tag/{quote(tag, safe='')}?absent=true",
              "universe_count": universe,
-             "page": {}},
+             **crumbs},
         )
     except HTTPException:
         raise

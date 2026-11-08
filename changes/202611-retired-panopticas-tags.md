@@ -19,9 +19,20 @@ available, so nothing upstream is outstanding.
 - `where_tag()` accepts a retired tag, case-insensitively, as it does a current one.
   Anything else is still rejected.
 - `/tag/{tag}` for a retired tag lists its repositories as usual, under a note:
-  "panopticas no longer assigns this tag; it now uses Claude. These files were
-  recorded with the old tag." The replacement is a link. A dropped tag gets the
-  note without one.
+  "panopticas no longer assigns this tag; it now uses Claude. This page shows only
+  files still tagged Claude Code, recorded before the change. For files tagged
+  Claude, see Claude." The last `Claude` is a link. A dropped tag gets the first two
+  sentences only. The listing otherwise looks like any tag page, so the note says
+  which files it covers.
+- The "See Files" drill-down (`/tag/{tag}?repo_id=...`) carries the same note. It
+  previously said only "Repository Files", with no filter or repository, and that
+  applied to `/tech/{tech}?repo_id=...` too, since both use `repo_files.html`. Both
+  now carry the repository pages' breadcrumb,
+  `github.com / facebook / react / Tag: Claude Code`, built by
+  `KospexWeb.scope_context()` like the others, so a nested GitLab group keeps its
+  subgroup. Under it, a heading names the filter ("Tag: Claude Code"; the
+  repository is already in the breadcrumb), and a link goes back to the listing
+  across all repositories.
 - `/tags/` ends with a "Retired tags" section listing each one beside its
   replacement, or "(dropped)". Today that is `Claude Code → Claude` and
   `Gemini CLI → Gemini`.
@@ -45,9 +56,13 @@ available, so nothing upstream is outstanding.
 - `src/kospex_query.py` - `retired_tags()` and `retired_tag_replacement()`, and
   `where_tag()` accepts retired tags.
 - `src/kweb2.py` - `/tags/` passes the retired list; `/tag/{tag}` passes whether the
-  tag is retired and its replacement.
+  tag is retired and its replacement; `/tag/` and `/tech/` pass the breadcrumb context
+  to the drill-down.
+- `src/templates/_retired_tag_note.html` (new) - the note, shared by both `/tag/` pages.
 - `src/templates/tags.html`, `src/templates/repos-tech.html` - the retired section and
   the note.
+- `src/templates/repo_files.html` - the breadcrumb; names its filter and repository,
+  links back to the listing, and includes the note.
 - `tests/test_where_tag_binding.py` - the test that pinned the rejection is replaced
   by tests that a renamed or dropped tag is accepted, a typo still is not, stored rows
   are found, and recasings are left out.
@@ -57,7 +72,7 @@ available, so nothing upstream is outstanding.
 
 ## Testing
 
-Full suite: 2,537 passed, 23 skipped, 1 xfailed, on panopticas 0.0.23. The live web
+Full suite: 2,546 passed, 23 skipped, 1 xfailed, on panopticas 0.0.23. The live web
 tests ran against the kweb on `:8000`, which serves `main`, not this branch. A kweb
 started from the branch on a separate port, against the development database,
 served `/tags/` with the retired section and `/tag/Claude Code` with 6 repositories
