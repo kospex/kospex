@@ -97,8 +97,8 @@ def test_clone_repo_pulls_when_the_repo_already_exists(code_dir, captured_runs):
     result = kg.clone_repo("git@github.com:company-org/dashboard.git")
 
     assert result == str(repo_dir)
-    assert captured_runs[0]["cmd"] == ["git", "pull"]
-    assert captured_runs[0]["cwd"] == repo_dir
+    assert captured_runs[0]["cmd"] == [
+        "git", "-C", str(repo_dir), "pull", "--ff-only", "--no-rebase"]
 
 
 def test_clone_repo_refuses_destination_outside_the_code_directory(code_dir, captured_runs):

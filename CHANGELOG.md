@@ -127,6 +127,20 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **Every kospex pull is now fast-forward only.** `kgit clone` and `kgit sync`
+  (one repo, `--org` or `--user`), `kgit github -sync`, `krunner git-pull` and
+  `kospex-agent` ran a plain `git pull` on an existing clone, which follows your
+  `pull.rebase` / `pull.ff` settings. When the remote's history had been
+  rewritten (a force-push, or a repo deleted and recreated at the same URL),
+  `pull.rebase=true` rebased the clone, dropping the old commits from the
+  branch, and `pull.rebase=false` added a merge commit the remote never had.
+  The sync that followed recorded the result. They now all run
+  `git pull --ff-only --no-rebase`, as `kgit pull` already did, so the clone is
+  either fast-forwarded or left as it was. With neither setting, recent git
+  already refused these pulls, but older git merges. A clone that can't be
+  fast-forwarded is no longer synced: `krunner git-pull` lists it as
+  `GIT_ERROR`, and `kospex-agent` logs a warning and doesn't prompt for
+  credentials.
 - **The `/tenure/` page no longer returns HTTP 500 when there are no commits**
   (#206). That included the unscoped page on a fresh install, before anything
   was synced. It now shows `No commits synced yet.`, or `No commits synced for

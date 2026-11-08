@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Kospex Agent - Continuous repository monitoring and synchronization tool."""
 import os
+import subprocess
 import time
 import signal
 import sys
@@ -10,6 +11,7 @@ import threading
 from datetime import datetime, timezone, timedelta
 import click
 from kospex_core import Kospex
+from kospex_git import KospexGit
 import kospex_utils as KospexUtils
 from kospex_query import KospexQuery
 
@@ -192,18 +194,24 @@ class KospexAgent:
                 # TODO: Implement the actual update logic
                 # This could call existing kospex sync methods:
                 # self.kospex.sync_repo(repo)
-                current = os.getcwd()
                 git_base = KospexUtils.find_git_base(repo.get("file_path"))
                 if git_base:
-                    os.chdir(git_base)
-                    os.system("git pull")
-                    log.info("Syncing repository to kospex database...")
-                    self.kospex.sync_repo(git_base)
-                    os.chdir(current)
+                    # Fast-forward only, and never prompt: nobody is watching a
+                    # background agent. A failed pull leaves the clone as it was
+                    # and skips the sync.
+                    argv, env = KospexGit.pull_command(git_base, no_prompt=True)
+                    pull = subprocess.run(argv, env={**os.environ, **env},
+                                          capture_output=True, text=True, check=False)
+                    if pull.returncode != 0:
+                        detail = (pull.stderr or pull.stdout).strip().splitlines()
+                        log.warning(f"git pull --ff-only failed for {git_base}, not synced: "
+                                    f"{detail[-1] if detail else 'unknown error'}")
+                    else:
+                        log.info("Syncing repository to kospex database...")
+                        self.kospex.sync_repo(git_base)
+                        log.info(f"Successfully updated repository: {repo.get('_repo_id', 'Unknown repo_id')}")
                 else:
                     log.warning(f"Repository path {repo.get('file_path')} does not appear to be in a git repo")
-
-                log.info(f"Successfully updated repository: {repo.get('_repo_id', 'Unknown repo_id')}")
 
             except Exception as e:
                 log.error(f"Failed to update repository {repo.get('_repo_id', 'Unknown repo_id')}: {e}")

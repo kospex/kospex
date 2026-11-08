@@ -900,6 +900,29 @@ class KospexGit:
         file_path = row.get("file_path")
         return Path(file_path) if file_path else None
 
+    @staticmethod
+    def pull_command(path, no_prompt=False):
+        """Build (argv, env_overrides) for a fast-forward-only pull of `path`.
+
+        A kospex clone is a mirror of its remote: a pull either fast-forwards it
+        or fails and leaves it as it was. A plain `git pull` follows the user's
+        pull.rebase / pull.ff config, so when the remote's history was rewritten
+        (a force-push, or a repo deleted and recreated at the same URL) it can
+        rebase - dropping the old commits from the branch - or add a merge commit
+        the remote never had. `--no-rebase` overrides pull.rebase explicitly
+        rather than relying on `--ff-only` taking precedence over it.
+
+        no_prompt: make git non-interactive (fail fast) instead of invoking the
+        credential helper - for unattended runs.
+        """
+        argv = ["git", "-C", str(path)]
+        env = {}
+        if no_prompt:
+            argv += ["-c", "credential.interactive=false"]
+            env["GIT_TERMINAL_PROMPT"] = "0"
+        argv += ["pull", "--ff-only", "--no-rebase"]
+        return argv, env
+
     def clone_repo(self, repo_url):
         """Clone a repo into the kospex code directory.
 
@@ -935,9 +958,11 @@ class KospexGit:
         org_dir = repo_path.parent
         org_dir.mkdir(parents=True, exist_ok=True)
 
-        if repo_path.is_dir():
+        pulled = repo_path.is_dir()
+        if pulled:
             print(f"Repo exists, pulling latest changes: {repo_path}")
-            result = subprocess.run(["git", "pull"], cwd=repo_path, check=False)
+            argv, _ = KospexGit.pull_command(repo_path)
+            result = subprocess.run(argv, check=False)
         else:
             print(f"Cloning repo: {repo_url}")
             # List form (no shell) and an explicit destination: the URL cannot
@@ -947,7 +972,11 @@ class KospexGit:
                 cwd=org_dir, check=False)
 
         if result.returncode != 0:
-            print(f"Error cloning or pulling repo: {repo_url}")
+            if pulled:
+                print(f"Error pulling repo, clone left as it was "
+                      f"(kospex only fast-forwards): {repo_url}")
+            else:
+                print(f"Error cloning repo: {repo_url}")
             return None
 
         # str, not Path: kgit.py:264 concatenates this with a str.
