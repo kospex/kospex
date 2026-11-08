@@ -68,6 +68,29 @@ The helper:
    matching `groupId:artifactId` from the **first** BOM that lists it. When
    two imports manage the same artifact, Maven uses the first declared.
 
+### Match on `resolvedName`, not `name` (2026-11-08)
+
+An entry the BOM inherits, from a BOM it imports itself or from its parent,
+has a blank `name`. The artifact is only in `resolvedName`. The first version
+of this helper keyed on `name` and so dropped all of them: for
+`spring-boot-dependencies` 3.5.7, 1,157 of its 1,607 entries. netty-bom,
+junit-bom and jackson-bom import nothing, which is why the netty and junit
+checks above did not show it. The response for spring-boot-dependencies 3.5.7
+contains, in this order:
+
+| entries | `name` | `resolvedName` | `origin` | what it is |
+|---|---|---|---|---|
+| 0–43 | blank | set | `import` | the nested BOMs' own coordinates: skipped, not managed versions |
+| 44–405 | set | set | `management` | versions the BOM declares |
+| 406–1562 | blank | set | `management` | versions inherited from its imports |
+| 1563–1606 | set | blank | `management` | the `scope=import` declarations, unresolved: no `resolvedVersion`, skipped |
+
+Where both are set, `name` and `resolvedName` are equal (0 differ). An artifact
+listed more than once keeps its first entry, so a declared version beats an
+inherited one. In this response, repeats never disagree. Result: 1,478 managed
+artifacts, up from 356, and no artifact the old keying found changed version.
+netty-bom, junit-bom and jackson-bom are unchanged.
+
 ## Decisions (2026-11-07)
 
 **1. A filled-in version is stored in `resolved_version`; the declaration stays blank.**
@@ -102,12 +125,13 @@ rule `versions_behind` follows when deps.dev doesn't answer.
 - **A BOM imported by an in-repo parent** is not applied to the child modules.
   `bom` rows come only from the file's own `<dependencyManagement>`. None of the
   measured poms do this. Adding it means the parser carrying the ancestors' BOM
-  imports.
+  imports. Tracked in #382.
 - **Matching is on `groupId:artifactId` only.** A BOM that manages the same
   artifact under two classifiers or types gives the first one's version.
 - **External parents** (`<parent>` outside the repository) are not fetched.
   deps.dev's `:requirements` for a *released* parent would cover them the same
-  way; all three measured are snapshots, so it isn't worth doing yet.
+  way; all three measured are snapshots, so it isn't worth doing yet. Tracked
+  in #383.
 
 ## Monitoring
 

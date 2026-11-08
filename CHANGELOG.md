@@ -12,7 +12,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   advisories. kospex now asks deps.dev which versions that BOM sets and looks
   the dependency up at that version. The pom's declaration stays blank; the
   version used is in `resolved_version`. A BOM deps.dev can't answer for, such
-  as a snapshot, leaves the row `no_version` as before. On the kweb
+  as a snapshot, leaves the row `no_version` as before. Versions a BOM takes
+  from BOMs it imports itself are included, which for `spring-boot-dependencies`
+  3.5.7 is 1,478 managed artifacts rather than 356. On the kweb
   `/dependencies/` page such a version is shown greyed, marked `via BOM`, so it
   isn't read as one the pom states.
 - **`kospex rebuild` now writes to `kospex.log`.** It used to print to the

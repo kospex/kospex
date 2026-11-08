@@ -249,11 +249,16 @@ class KospexDependencies:
             log.warning("maven BOM %s %s: unreadable deps.dev requirements: %s",
                         name, version, e)
             return {}
-        return {
-            entry["name"]: entry["resolvedVersion"]
-            for entry in entries
-            if isinstance(entry, dict) and entry.get("name") and entry.get("resolvedVersion")
-        }
+        # resolvedName, not name: an entry the BOM inherits (from a BOM it
+        # imports, or its parent) has a blank name. origin=import entries are
+        # those imported BOMs' own coordinates, not versions they manage.
+        managed = {}
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("origin") == "import":
+                continue
+            if entry.get("resolvedName") and entry.get("resolvedVersion"):
+                managed.setdefault(entry["resolvedName"], entry["resolvedVersion"])
+        return managed
 
     def _classify_lookup_miss(self, package_type, package_name, status):
         """Category for a failed exact-version lookup given its HTTP status."""

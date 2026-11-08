@@ -957,8 +957,10 @@ adds `<subprojects>`. A pom in a non-UTF-8 encoding with non-ASCII bytes, which 
 reads and this raises on (none on the estate). `${revision}` CI-friendly versions,
 which will surface as `unresolved_spec`. BOM resolution lives in enrichment, not
 here, because it needs the network; external-parent resolution would go there too.
-deps.dev's `:requirements` response shape (`maven.dependencyManagement[].resolvedVersion`)
-is v3alpha and may change.
+deps.dev's `:requirements` response shape (`maven.dependencyManagement[].resolvedName`
+and `.resolvedVersion`, skipping `origin: "import"`) is v3alpha and may change. Match on
+`resolvedName`: an entry a BOM inherits from its own imports or parent has a blank
+`name` (1,157 of 1,607 for `spring-boot-dependencies` 3.5.7).
 
 ---
 
