@@ -77,6 +77,18 @@ class TestMinSatisfying:
         assert parse_range("9007199254740991") is None    # upper bound overflows
         assert parse_range("9007199254740990") is not None
 
+    def test_an_oversized_range_is_rejected_before_any_regex_runs(self):
+        """Manifests are untrusted input. A long whitespace run made the
+        operator / hyphen regexes quadratic (8,000 spaces: 110 ms, doubling to
+        4x per doubling), so ~100k spaces in a version string cost seconds per
+        row. The longest real npm range on a development estate is 104 chars;
+        anything over the cap is not a range anyone wrote."""
+        assert parse_range("1" + " " * 100_000 + "2") is None
+
+    def test_whitespace_runs_are_collapsed(self):
+        assert min_satisfying(["1.5.0", "2.1.0"], "^1   ||    ^2") == "1.5.0"
+        assert parse_range(">=   1.2") is not None
+
     def test_nothing_satisfies(self):
         assert min_satisfying(["18.2.0", "19.0.0"], "1000000000000000000") is None
 

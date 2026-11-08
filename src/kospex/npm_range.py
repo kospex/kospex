@@ -24,6 +24,14 @@ import re
 
 MAX_SAFE_INTEGER = 2**53 - 1
 
+# Declared versions come from manifests in repositories kospex scans, so they
+# are untrusted. Several patterns below put a whitespace quantifier next to
+# another (`\s+-\s+` beside `[v=\s]*`), which backtracks quadratically over a
+# long whitespace run (CWE-1333). Whitespace runs are collapsed and input is
+# capped before any of them runs. The longest real npm range seen on a
+# development estate was 104 characters.
+MAX_RANGE_LENGTH = 1024
+
 _NUM = r"0|[1-9]\d*"
 _XID = rf"{_NUM}|x|X|\*"
 _PRE_ID = r"(?:0|[1-9]\d*|\d*[a-zA-Z-][a-zA-Z0-9-]*)"
@@ -195,10 +203,13 @@ def parse_range(text):
     The result is opaque; pass it to satisfies(). An empty alternative means
     "any version", as in node-semver (`*`, `x`, `""`, `1.2.3 || `).
     """
-    if text is None:
+    if not isinstance(text, str) or len(text) > MAX_RANGE_LENGTH:
         return None
+    # Collapse whitespace runs first (see MAX_RANGE_LENGTH), then split on a
+    # literal `||` -- no regex sees a run longer than one space.
+    text = " ".join(text.split())
     try:
-        return [_parse_alternative(alt) for alt in re.split(r"\s*\|\|\s*", text.strip())]
+        return [_parse_alternative(alt.strip()) for alt in text.split("||")]
     except _Invalid:
         return None
 
