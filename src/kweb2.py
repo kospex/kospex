@@ -1910,6 +1910,7 @@ def commit(request: Request, repo_id: str, commit_hash: str):
 UNRESOLVED_STATUS_LABELS = {
     "unresolved_spec": "Unresolved spec",
     "version_yanked": "Yanked",
+    "no_satisfying_version": "No matching version",
     "package_not_found": "Not found",
     "no_version": "No version",
     "lookup_error": "Lookup error",
