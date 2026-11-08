@@ -158,6 +158,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
   Both fixes apply as repos are re-enriched (`krunner osi`, `kospex sca -save`);
   stored rows keep their old values until then.
+- **A tag panopticas has retired can be queried again** (#317). `/tag/Claude Code`
+  returned 404 "unknown Tag", although files recorded before panopticas renamed
+  it to `Claude` still carry it. It now lists those repositories, with a note
+  that the tag is retired and a link to its replacement. `/tags/` lists retired
+  tags in their own section. A change of case alone (`eslint` to `ESLint`) is
+  not listed: both spellings already worked.
+- **The "See Files" page for a tag or technology says what it is filtered to.**
+  `/tag/{tag}?repo_id=...` and `/tech/{tech}?repo_id=...` were headed only
+  "Repository Files". They now have the same server / org / repo breadcrumb
+  as the repository pages, name the tag or technology, and link back to the
+  listing across all repositories.
 - **The `/tenure/` page no longer returns HTTP 500 when there are no commits**
   (#206). That included the unscoped page on a fresh install, before anything
   was synced. It now shows `No commits synced yet.`, or `No commits synced for

@@ -1141,3 +1141,163 @@ class TestVocabulary:
     @pytest.mark.parametrize("tag", ["AI", "Git", "GitHub"])
     def test_the_tags_used_here_are_ones_panopticas_defines(self, tag):
         assert tag in panopticas.get_tags()
+
+
+class TestRetiredTagPage:
+    """A retired tag's page says it is retired and links its replacement (#317).
+
+    where_tag() accepts the tag, so the page lists real rows; without the note
+    it would read as a current tag that few files have.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _deprecations(self, monkeypatch):
+        monkeypatch.setattr(panopticas, "get_deprecated_tags",
+                            lambda: {"Claude Code": "Claude", "Gone": None})
+
+    def test_the_context_names_the_replacement(self, fake_query):
+        fake_query()
+
+        context = kweb2.repo_with_tag(_request(), tag="Claude Code").context
+
+        assert context["tag_retired"] is True
+        assert context["tag_replacement"] == "Claude"
+
+    def test_the_page_links_the_replacement(self, fake_query):
+        fake_query()
+
+        body = kweb2.repo_with_tag(_request(), tag="Claude Code").body.decode()
+
+        assert "data-retired-tag" in body
+        assert 'href="/tag/Claude"' in body
+        assert "panopticas no longer assigns this tag" in _visible(body)
+
+    def test_the_note_says_only_old_tag_files_are_shown(self, fake_query):
+        """The listing looks like any tag page, so without this a reader could
+        take it for every Claude file rather than the ones left on the old tag."""
+        fake_query()
+
+        body = _visible(
+            kweb2.repo_with_tag(_request(), tag="Claude Code").body.decode())
+
+        assert "This page shows only files still tagged Claude Code" in body
+        assert "For files tagged Claude, see Claude." in body
+
+    def test_a_dropped_tag_has_the_note_without_a_link(self, fake_query):
+        fake_query()
+
+        body = kweb2.repo_with_tag(_request(), tag="Gone").body.decode()
+
+        assert "panopticas no longer assigns this tag." in _visible(body)
+        assert "This page shows only files still tagged Gone" in _visible(body)
+        assert "now uses" not in body
+        assert "For files tagged" not in body
+
+    def test_a_current_tag_has_no_note(self, fake_query):
+        fake_query()
+
+        response = kweb2.repo_with_tag(_request(), tag="AI")
+
+        assert response.context["tag_retired"] is False
+        assert "data-retired-tag" not in response.body.decode()
+
+    def test_the_file_drill_down_has_the_note_too(self, fake_query):
+        fake_query()
+
+        body = _visible(kweb2.repo_with_tag(
+            _request(b"repo_id=github.com~acme~one"),
+            tag="Claude Code").body.decode())
+
+        assert "This page shows only files still tagged Claude Code" in body
+
+
+class TestFileDrillDownNamesItsFilter:
+    """The per-repository file list said only "Repository Files", so a reader
+    arriving from "See Files" could not tell which tag or technology it was
+    filtered to. The repository is in the breadcrumb, not the heading."""
+
+    @staticmethod
+    def _heading(body):
+        return _visible(re.search(r"<h3 data-file-filter.*?</h3>", body, re.S).group(0))
+
+    def test_a_tag_drill_down_names_the_tag(self, fake_query):
+        fake_query()
+
+        body = kweb2.repo_with_tag(
+            _request(b"repo_id=github.com~acme~one"), tag="AI").body.decode()
+
+        assert self._heading(body) == "Tag: AI"
+        assert 'href="/tag/AI"' in body
+
+    def test_a_current_tag_drill_down_has_no_retired_note(self, fake_query):
+        fake_query()
+
+        body = kweb2.repo_with_tag(
+            _request(b"repo_id=github.com~acme~one"), tag="AI").body.decode()
+
+        assert "data-retired-tag" not in body
+
+    def test_a_technology_drill_down_names_the_technology(self, fake_query):
+        fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tech/Python",
+            "headers": [], "query_string": b"repo_id=github.com~acme~one",
+            "app": kweb2.app,
+        })
+
+        body = kweb2.repo_with_tech(request, tech="Python").body.decode()
+
+        assert self._heading(body) == "Technology: Python"
+        assert 'href="/tech/Python"' in body
+
+
+class TestFileDrillDownBreadcrumb:
+    """The drill-down carries the same server / org / repo breadcrumb as the
+    repository pages, ending in the filter."""
+
+    @staticmethod
+    def _crumb(body):
+        return re.search(r'<nav[^>]*aria-label="Breadcrumb".*?</nav>', body, re.S).group(0)
+
+    def test_a_tag_drill_down_has_a_breadcrumb(self, fake_query):
+        fake_query()
+
+        body = kweb2.repo_with_tag(
+            _request(b"repo_id=github.com~acme~one"), tag="Claude Code").body.decode()
+        crumb = self._crumb(body)
+
+        assert 'href="/orgs/github.com"' in crumb
+        assert 'href="/org/github.com~acme"' in crumb
+        assert 'href="/repo/github.com~acme~one"' in crumb
+        assert "Tag: Claude Code" in _visible(crumb)
+
+    def test_a_technology_drill_down_has_a_breadcrumb(self, fake_query):
+        fake_query()
+        request = Request({
+            "type": "http", "method": "GET", "path": "/tech/Python",
+            "headers": [], "query_string": b"repo_id=github.com~acme~one",
+            "app": kweb2.app,
+        })
+
+        crumb = self._crumb(kweb2.repo_with_tech(request, tech="Python").body.decode())
+
+        assert 'href="/repo/github.com~acme~one"' in crumb
+        assert "Technology: Python" in _visible(crumb)
+
+    def test_a_nested_group_repo_id_keeps_its_subgroup(self, fake_query):
+        """`~~` encodes a `/` in the owner, so the org crumb is group/subgroup."""
+        fake_query()
+
+        crumb = self._crumb(kweb2.repo_with_tag(
+            _request(b"repo_id=gitlab.com~group~~sub~app"), tag="AI").body.decode())
+
+        assert 'href="/org/gitlab.com~group~~sub"' in crumb
+        assert 'href="/repo/gitlab.com~group~~sub~app"' in crumb
+
+    def test_the_listing_across_repositories_has_none(self, fake_query):
+        """repos-tech.html has its own heading, and no repository to crumb to."""
+        fake_query()
+
+        body = kweb2.repo_with_tag(_request(), tag="AI").body.decode()
+
+        assert 'aria-label="Breadcrumb"' not in body
