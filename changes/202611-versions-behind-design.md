@@ -1,6 +1,7 @@
 # versions_behind: what to count, and how to find the version in use
 
-Status: **design / measured, no code changed.** Pulls together #276 (pre-releases),
+Status: **#378 and #379 implemented** (see "Implemented" below); #276 and #377 still
+design only. Pulls together #276 (pre-releases),
 #377 (older maintenance lines) and the `version_fuzzy_match` bug (#378), because all three
 are fixed in the same ~80 lines of `KospexDependencies.get_versions_behind()` and
 the fixes interact.
@@ -227,6 +228,44 @@ So the floor should be the **lowest published stable version that satisfies the 
 satisfying release, and is what `resolved_version` is for: the worst case the constraint
 permits. Strip `npm:<name>@` and look up `<name>` for aliases; record a distinct resolution
 (e.g. `no_satisfying_version`) rather than `version_yanked` when nothing satisfies.
+
+## Implemented: #378 and #379
+
+**#378.** `depsdev_record()` passes deps.dev's canonical `versionKey.version` from
+its exact-version lookup to `get_versions_behind()`, which matches it exactly and
+returns `versions_behind = None` when the version is not listed.
+`version_fuzzy_match()` is removed. `tests/test_versions_behind_canonical.py`.
+
+**#379.** Both scan paths now call one helper,
+`KospexDependencies.lookup_dependency(type, name, declared, bom_version=None)`,
+which returns the deps.dev record and the version sent (`resolved_version`):
+
+1. a Maven BOM version, when there is one — already concrete, never re-floored;
+2. else `resolve_lookup_version()`: `clean_version_spec()`'s floor, except that for
+   an **npm range** (`caret`, `tilde`, `gte`, `bounded`) whose floor is not a
+   published version, the lowest published stable version the range permits;
+3. a 404 for an npm range is recorded as `no_satisfying_version`, not
+   `version_yanked`.
+
+Range evaluation is `src/kospex/npm_range.py`, a ~150-line port of node-semver 7's
+desugaring for stable versions only. It is not a dependency because the one Python
+port of node-semver had a three-year release gap. It is checked against node-semver's
+own verdicts (`tests/data/npm_range_golden.json`, 278 real declarations, one or two
+per syntactic shape, none containing `:` or `/`); rebuild with
+`tests/manual/build_npm_range_golden.py`. A mutation pass confirmed the golden
+catches a caret/tilde mix-up (81 cases), the 0.x caret rule (21), undesugared
+operator x-ranges (23) and stable/pre-release ordering (242); the 2**53 limit,
+which no corpus range exercises, has its own test.
+
+Left alone on purpose:
+
+* **A floor that is published is kept**, even where a range evaluator would pick
+  differently — `^19.0.0-rc.1` stays `19.0.0-rc.1`. So no currently resolving row
+  changes.
+* **A full-version ceiling** (`<4.0.0` alone) is still looked up at `4.0.0`, the
+  ceiling, because `4.0.0` is published. 2 npm rows on the estate.
+* **npm aliases** (#350) and **Cargo**, whose range syntax differs (bare `1` is
+  `^1`, comma is AND). No Cargo short floors on the estate.
 
 ## Suggested order
 

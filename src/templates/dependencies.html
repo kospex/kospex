@@ -143,7 +143,7 @@
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
                                         {% set _res = row['resolution'] %}
-                                        {% set _labels = {'unresolved_spec': 'unresolved spec', 'version_yanked': 'yanked', 'package_not_found': 'not found', 'no_version': 'no version', 'lookup_error': 'lookup error'} %}
+                                        {% set _labels = {'unresolved_spec': 'unresolved spec', 'version_yanked': 'yanked', 'no_satisfying_version': 'no matching version', 'package_not_found': 'not found', 'no_version': 'no version', 'lookup_error': 'lookup error'} %}
                                         {% if _res in _labels %}
                                             <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-700">
                                                 {{ _labels[_res] }}

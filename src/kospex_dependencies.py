@@ -25,6 +25,7 @@ import kospex_schema as KospexSchema
 from kospex.extractors.constraints import classify_constraint
 from kospex.extractors.errors import UnreadableManifest
 from kospex.extractors.registry import classify, resolve_parser
+from kospex.npm_range import min_satisfying
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 
@@ -266,6 +267,67 @@ class KospexDependencies:
             return "version_yanked" if self._package_exists(package_type, package_name) \
                 else "package_not_found"
         return "lookup_error"
+
+    # npm constraint kinds that permit more than one version. A pin, an alias
+    # (#350) and a resolution mechanism (workspace:, link:) are not ranges.
+    _NPM_RANGE_KINDS = ("caret", "tilde", "gte", "bounded")
+
+    def _is_npm_range(self, package_type, declared_version):
+        if (package_type or "").lower() != "npm" or not declared_version:
+            return False
+        kind, _operator = classify_constraint(declared_version, package_type)
+        return kind in self._NPM_RANGE_KINDS
+
+    def resolve_lookup_version(self, package_type, package_name, declared_version):
+        """The version to look up on deps.dev for a declaration (#379).
+
+        `clean_version_spec()` reads a floor off the declared text. For an npm
+        range that floor need not be a version: `^19` gives `19` and `<4` gives
+        `4` (the ceiling), both of which deps.dev 404s, and `^1`'s zero-filled
+        `1.0.0` is often never published. So when the floor is not a published
+        version, an npm range is looked up at the lowest published stable
+        version it permits, from the package's deps.dev version list -- the
+        same cached URL get_versions_behind() reads.
+
+        Unchanged: every other ecosystem, npm pins, and an npm floor that is
+        published. If no version satisfies, or the list is unavailable, the
+        floor is returned and the lookup fails as before; lookup_dependency()
+        then records `no_satisfying_version` rather than `version_yanked`.
+        """
+        cleaned = self.clean_version_spec(declared_version or "", package_type)
+        if not self._is_npm_range(package_type, declared_version) or not self.kospex_query:
+            return cleaned
+        url = ("https://api.deps.dev/v3alpha/systems/"
+               f"{package_type}/packages/{urllib.parse.quote(package_name, safe='')}")
+        content, _status = self.kospex_query.url_request_with_status(url)
+        try:
+            versions = [v["versionKey"]["version"]
+                        for v in json.loads(content).get("versions", [])]
+        except (TypeError, ValueError, KeyError, AttributeError):
+            return cleaned
+        if cleaned in versions:
+            return cleaned
+        return min_satisfying(versions, declared_version) or cleaned
+
+    def lookup_dependency(self, package_type, package_name, declared_version,
+                          bom_version=None):
+        """deps.dev record for one declaration, and the version sent to deps.dev.
+
+        Shared by both scan paths (`kospex sca` and `krunner osi`) so they
+        cannot drift. A version an imported Maven BOM supplies comes first: it
+        is already concrete and is never re-floored. The returned version is
+        what `resolved_version` records.
+        """
+        lookup_version = bom_version or self.resolve_lookup_version(
+            package_type, package_name, declared_version)
+        record = self.depsdev_record(package_type, package_name, lookup_version)
+        if (record.get("resolution") == "version_yanked"
+                and self._is_npm_range(package_type, declared_version)):
+            # A range was asked for, and resolve_lookup_version() found no
+            # published version it permits. deps.dev's 404 says nothing was
+            # yanked, and a range cannot be: say what actually happened.
+            record = dict(record, resolution="no_satisfying_version")
+        return record, lookup_version
 
     def deps_dev_package(self, package_type, package_name):
         """
@@ -641,12 +703,10 @@ class KospexDependencies:
             # looking: depsdev_record already short-circuits a version it cannot
             # resolve, so a `workspace:*` entry still costs no round trip, and
             # making the lookups themselves faster is #226.
-            lookup_version = bom_versions.get(index) or self.clean_version_spec(
-                declared_version or "", package_type
-            )
-            out.update(
-                self.depsdev_record(package_type, out.get("package_name"), lookup_version)
-            )
+            record, lookup_version = self.lookup_dependency(
+                package_type, out.get("package_name"), declared_version or "",
+                bom_version=bom_versions.get(index))
+            out.update(record)
             # depsdev_record echoes back the version it was given; restore
             # the declared text so the primary key matches the manifest.
             out["package_version"] = declared_version

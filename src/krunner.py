@@ -166,13 +166,11 @@ def enrich_dependency_records(results, kdeps, echo=None, progress=None):
     bom_versions = kdeps.maven_bom_versions(results)
 
     for position, d in enumerate(results, start=1):
-        cleaned_version = bom_versions.get(position - 1) or kdeps.clean_version_spec(
-            d["package_version"], d["package_type"])
-        deps_rec = kdeps.depsdev_record(
-            d["package_type"],
-            d["package_name"],
-            cleaned_version,
-        )
+        # The BOM version first, then the declared range's floor (#379); the
+        # same helper as `kospex sca`, so the two scan paths cannot drift.
+        deps_rec, cleaned_version = kdeps.lookup_dependency(
+            d["package_type"], d["package_name"], d["package_version"],
+            bom_version=bom_versions.get(position - 1))
         if echo:
             echo(KospexDependencies.summary_line(d))
         d["versions_behind"] = deps_rec.get("versions_behind")   # int or None, no "Unknown"

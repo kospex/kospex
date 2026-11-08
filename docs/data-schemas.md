@@ -232,7 +232,7 @@ Software composition analysis (SCA) data.
 | `versions_behind` | INTEGER | How many versions behind latest |
 | `source_repo` | TEXT | Source repository URL |
 | `default` | TEXT | If this is the default version |
-| `resolution` | TEXT | Why a deps.dev version lookup resolved or failed: `resolved`, `no_version`, `unresolved_spec`, `version_yanked`, `package_not_found`, `lookup_error`; NULL for legacy unclassified rows _(migration 0005)_ |
+| `resolution` | TEXT | Why a deps.dev version lookup resolved or failed: `resolved`, `no_version`, `unresolved_spec`, `version_yanked`, `no_satisfying_version`, `package_not_found`, `lookup_error`; NULL for legacy unclassified rows _(migration 0005)_. `version_yanked` means deps.dev 404'd a version of a package it knows — never published or removed; deps.dev does not say which. `no_satisfying_version` is an npm range that no published stable version satisfies (#379) |
 | `source` | TEXT | Tool used to get metadata |
 | `latest` | INTEGER | 1 if latest entry, 0 otherwise |
 | `created_at` | TIMESTAMP | When record was created |

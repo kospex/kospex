@@ -129,6 +129,24 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **npm ranges are no longer reported as yanked** (#379). A partial range such
+  as `^19`, `^1.9` or `<4` was looked up on deps.dev as `19`, `1.9` or `4`,
+  which aren't npm versions, and the 404 was recorded as `version_yanked`. In
+  one 9,000-package estate that was 1,227 of 1,417 npm "yanked" rows, none of
+  them yanked. An npm range is now looked up at the lowest published stable
+  version it permits (`^1` → `1.12.0` for `@playwright/test`, which never
+  published `1.0.0`), and that version is in `resolved_version`. A range no
+  published version satisfies is the new `no_satisfying_version`. Pins, npm
+  floors that are published, and other ecosystems are unchanged.
+- **`versions_behind` no longer counts a package's whole history when the
+  version is spelled differently** (#378). `3.0` vs `3.0.0`, a bare `6`, and
+  PEP 440's `2026.3.post1` vs `2026.3.0.post1` never matched, so the count ran
+  to the end of the release list: `sphinx>=9` reported 347 behind instead of 7.
+  kospex now matches deps.dev's own spelling of the version, and reports
+  `versions_behind` as unknown, not maximal, if a version still isn't listed.
+
+  Both fixes apply as repos are re-enriched (`krunner osi`, `kospex sca -save`);
+  stored rows keep their old values until then.
 - **The `/tenure/` page no longer returns HTTP 500 when there are no commits**
   (#206). That included the unscoped page on a fresh install, before anything
   was synced. It now shows `No commits synced yet.`, or `No commits synced for
