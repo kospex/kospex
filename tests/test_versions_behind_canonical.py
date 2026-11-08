@@ -169,10 +169,13 @@ class TestResolvedVersionIsDepsDevsSpelling:
 
     @pytest.mark.parametrize("scan", ["_osi", "_sca"])
     def test_unresolved_lookup_records_what_was_sent(self, scan):
-        """A 404: deps.dev gave no spelling, so the sent version stands."""
+        """A 404: deps.dev gave no spelling, so the sent version stands.
+
+        A pin to an unpublished version: since #388 a *range* with an
+        unpublished floor is looked up at its lowest allowed version instead."""
         kd = _kdeps("pypi", "sphinx", "9", "9.0.0")
 
-        row = getattr(self, scan)(kd, self._row("pypi", "sphinx", ">=8.9"))
+        row = getattr(self, scan)(kd, self._row("pypi", "sphinx", "==8.9.9"))
 
         assert row["resolution"] != "resolved"
-        assert row["resolved_version"] == "8.9"
+        assert row["resolved_version"] == "8.9.9"

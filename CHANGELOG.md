@@ -76,6 +76,18 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 
+- **`kospex sca` shows which version it checked, and why a row is blank.** The
+  table has two new columns:
+  - `checked at` is the version looked up on deps.dev, which the numbers
+    describe. For a range it isn't the declared text: `==8.*` is checked at
+    `8.0.0`, and `^1` at the first published 1.x.
+  - `resolution` says why a row's numbers are blank, such as
+    `no_satisfying_version`.
+
+  `-json` and `-out` gain the same two fields as `resolved_version` and
+  `resolution`, the `dependency_data` column names. No existing field is
+  renamed or moved, but code that reads those outputs by position will see
+  the new columns.
 - **The `krunner osi -next` lock takes over a crashed run's lock at once.** It
   now records the host as well as the PID, and if that process is no longer
   running on this host, the next run takes the lock straight away instead of
@@ -129,6 +141,21 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **PyPI ranges are looked up at a version they allow** (#388). kospex used
+  the floor as written, which pip doesn't:
+  - `click==8.*` was never looked up, so it had no advisory data. It is now
+    checked at `8.0.0`.
+  - `tqdm>4` and `cffi<2` were checked at `4` and `2`, which those ranges
+    exclude. They are now checked at `4.1.0` and `0.1.0`.
+  - `setuptools>=77.0` was recorded as yanked, because `77.0` was never
+    released. It is now checked at `77.0.1`.
+
+  A range now uses the lowest version in deps.dev's list that pip's own
+  specifier logic accepts, and a published floor the range allows is kept as
+  before. A range with only an upper bound (`<2`, `!=1.0`) is now checked at
+  the first release, the worst case it permits, so after a re-scan it can
+  show more versions behind than it did. A range nothing satisfies is
+  `no_satisfying_version`, now without a deps.dev lookup, for npm as well.
 - **npm ranges are no longer reported as yanked** (#379). A partial range such
   as `^19`, `^1.9` or `<4` was looked up on deps.dev as `19`, `1.9` or `4`,
   which aren't npm versions, and the 404 was recorded as `version_yanked`. In
