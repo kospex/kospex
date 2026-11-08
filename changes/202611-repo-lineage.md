@@ -485,6 +485,135 @@ available.
 7. **Recording the login on a run** (`0013`): its own PR soon after
    `kgit sync --org` ships, or with the table in 6?
 
+## History rewrites (for discussion)
+
+Sometimes a repo's history is rewritten and force-pushed. The commonest reason
+is removing a committed secret, using `git filter-repo` or BFG. Other reasons
+are removing a large file, correcting author emails, or undoing commits at the
+tip. Since #385, kospex's pull is fast-forward only, so a rewrite makes the
+pull fail and the clone is left as it was. That is the point to record what
+changed, before anything is replaced.
+
+**Updating after a rewrite is not a rebase.** Rebasing the clone would replay
+the old commits, secret included, on top of the cleaned history. A kospex clone
+is a mirror, so the update is to replace it with the new history.
+
+### What a secret scrub looks like (tested 2026-11-08)
+
+The test used a remote with 5 commits. Bob added `.env` with a secret in commit
+2. The remote was scrubbed with
+`git filter-repo --invert-paths --path .env`, and then the kospex clone tried to
+update. The script is in the appendix.
+
+```
+ff-only pull exit: 128              <- refused, so the clone is untouched
+old head ancestor of new: False     <- a rewrite, not new commits
+merge-base: commit 1                <- history before the secret is unchanged
+  rewritten 582ab53 -> 2b2e5d9  alice  commit 5  dates kept: True  tree differs in: .env
+  rewritten 361afef -> fdee746  alice  commit 4  dates kept: True  tree differs in: .env
+  rewritten 65f1c03 -> 9becbc5  alice  commit 3  dates kept: True  tree differs in: .env
+  REMOVED   7e949e3             bob    commit 2: .env
+secret blob still in the clone's object store: True
+```
+
+filter-repo kept each commit's author, author date, committer date and message.
+Only the tree, and therefore the hash, changed. The commit that only added
+`.env` became empty, so filter-repo dropped it.
+
+### Detecting it
+
+After the fast-forward fails:
+
+1. **`git fetch`.** This brings in the new history without moving the clone's
+   branch.
+2. **Ancestry.** If the old `HEAD` is an ancestor of the new tip, the pull failed
+   for another reason, such as auth or network. If it isn't, history was
+   rewritten. `git merge-base old new` gives the last commit the two histories
+   share. If there is none, the rewrite started at the first commit or the repo
+   was recreated.
+3. **Commit map.** Compare `old ^new` (commits only the old history has) with
+   `new ^old` (commits only the new one has). Match them on author email,
+   author date and subject. The result is:
+   - **rewritten:** old hash → new hash, plus the paths whose content differs
+     between the two trees. Here that is `.env`, the scrubbed path.
+   - **removed:** an old commit with no match. Here that is the commit that
+     added the secret, with its author and date.
+   - **added:** a new commit with no match.
+4. **GitHub's record of the push.**
+   `GET /repos/{owner}/{repo}/activity?activity_type=force_push` returns the
+   ref, `before` and `after` hashes, the actor and a timestamp. It was checked
+   against kospex/kospex and lists its force-pushes. How long GitHub keeps
+   these hasn't been checked.
+
+### Why it was rewritten
+
+kospex can't know the intent. It can record what kind of rewrite the evidence
+shows, plus the evidence itself. A person adds the reason.
+
+| Evidence | Likely kind |
+|---|---|
+| Authors, dates and messages kept; some paths changed or gone in every later commit | **content scrub**: a secret (`.env`, `*.pem`, `id_rsa`, a config file) or a large file |
+| Trees the same; author names or emails changed | identity rewrite |
+| Only commits at the tip gone; nothing else changed | force-push that undid commits |
+| No commits match | recreated repo, or a rewrite from the first commit (not yet tested) |
+
+### Updating
+
+1. **Record the rewrite and its commit map first.** This is the only moment
+   both histories are available.
+2. **Replace the clone, preferably by re-cloning.** A `reset --hard` to the new
+   tip also works, but the old objects stay in the clone until the reflog
+   expires and git garbage-collects them. The test's last line shows the
+   secret is still readable. After a secret scrub, the clone on disk is the
+   real exposure. The DB holds commit metadata, not file contents.
+3. **Re-sync the repo in full.** The rewritten commits have new hashes but keep
+   their old dates. The incremental sync reads `git log --since=<latest
+   committer date>`, so it would miss every one of them.
+4. **Keep the old commit rows, marked.** A rewritten commit is linked to its new
+   hash, and a removed one is marked removed, with the rewrite it was removed
+   in. This follows the gone-repos requirement: what kospex has seen stays
+   recorded.
+
+### Storage (proposed)
+
+- `repo_rewrites`, one row per detected rewrite. Columns:
+  - `_repo_id`
+  - `detected_at`
+  - `old_head`, `new_head`, `merge_base`
+  - `kind`
+  - the rewritten, removed and added counts
+  - the GitHub `actor` and `pushed_at`, where available
+  - `reason`, empty until a person fills it in
+- `repo_rewrite_commits`, one row per old commit. Columns:
+  - `rewrite_id`
+  - `old_hash`
+  - `new_hash` (empty when the commit was removed)
+  - `author_email`, `author_when`
+  - `changed_paths`
+
+Both tables need a migration. They are separate from `0013`, which records the
+login on each sync run.
+
+### Decisions
+
+1. **Automatic or manual.** Suggest: detect, record and stop. `kgit sync --org`
+   / `kgit pull` report the repo as `history rewritten`, and an explicit step
+   accepts the rewrite and re-clones. A secret scrub is exactly the case where
+   a person should look before kospex moves on.
+2. **Removed commits' metadata.** Rows hold hashes, authors, dates and messages,
+   not file contents, so keeping them doesn't keep the secret. The exception is
+   a secret in a commit message. Keep them, or let the accept step drop the
+   messages of removed commits?
+3. **Changed paths.** Record the paths a rewrite changed (`.env` above)? They
+   say where a secret was, not what it was.
+4. **The GitHub activity API.** Look up the force-push when a rewrite is
+   detected, or leave it to the user? It needs read access to the repo.
+5. **Untested cases.** These need a run each before the matching is relied on:
+   - a rewrite from the first commit
+   - BFG `--replace-text` (the file stays, its content changes)
+   - an identity rewrite with `.mailmap`, or filter-repo `--mailmap`
+   - a rewrite of a branch other than the default
+
 ## Open questions
 
 1. **Shared-history decisions 1 to 7** above.
@@ -492,3 +621,91 @@ available.
    relation is built.
 3. **Gone repos:** decisions 1 to 7 above, and a live check of what GitHub
    returns for a deleted repo, by name and by id, using a throwaway account.
+4. **History rewrites:** decisions 1 to 5 above.
+
+## Appendix: history rewrite test script
+
+Run with `python3 -I scrub_test.py`. It needs `git`, and uses `git filter-repo`
+if it is installed, `git filter-branch` otherwise. It writes only under a
+`scrub/` directory next to the script, and uses its own git config, so the
+user's settings don't affect it.
+
+```python
+"""What does a secret-scrubbing rewrite look like from a kospex clone?
+Remote: 5 commits, a secret file added in commit 2. The remote is scrubbed with
+filter-repo (filter-branch if filter-repo isn't installed). Then the clone
+fetches and the two histories are compared."""
+import os, shutil, subprocess
+from pathlib import Path
+
+D = Path(__file__).parent / "scrub"
+shutil.rmtree(D, ignore_errors=True); D.mkdir()
+ENV = {**os.environ, "GIT_CONFIG_GLOBAL": str(D / "gc"), "GIT_CONFIG_NOSYSTEM": "1",
+       "FILTER_BRANCH_SQUELCH_WARNING": "1"}
+(D / "gc").write_text("[user]\n\tname = Alice\n\temail = alice@example.com\n"
+                      "[init]\n\tdefaultBranch = main\n")
+
+def g(*a, cwd, ok=True, env=None):
+    p = subprocess.run(["git", *a], cwd=cwd, capture_output=True, text=True,
+                       env={**ENV, **(env or {})})
+    if ok and p.returncode:
+        raise SystemExit(f"git {a} failed: {p.stderr}")
+    return p.stdout.strip()
+
+remote = D / "remote"; remote.mkdir()
+g("init", "-q", cwd=remote)
+files = [("README.md", "hello"), (".env", "AWS_SECRET=abc123"), ("app.py", "print(1)"),
+         ("app.py", "print(2)"), ("lib.py", "x=1")]
+for i, (f, body) in enumerate(files, 1):
+    (remote / f).write_text(body + "\n")
+    g("add", f, cwd=remote)
+    who = {"GIT_AUTHOR_NAME": "Bob", "GIT_AUTHOR_EMAIL": "bob@example.com"} if i == 2 else {}
+    g("commit", "-q", "-m", f"commit {i}: {f}", cwd=remote,
+      env={**who, "GIT_AUTHOR_DATE": f"2026-01-0{i}T10:00:00Z",
+           "GIT_COMMITTER_DATE": f"2026-01-0{i}T10:00:00Z"})
+
+clone = D / "clone"
+g("clone", "-q", str(remote), str(clone), cwd=D)
+old_head = g("rev-parse", "HEAD", cwd=clone)
+
+have_fr = subprocess.run(["git", "filter-repo", "--version"], capture_output=True).returncode == 0
+if have_fr:
+    g("filter-repo", "--force", "--invert-paths", "--path", ".env", cwd=remote)
+else:
+    g("filter-branch", "-f", "--index-filter", "git rm -q --cached --ignore-unmatch .env",
+      "--prune-empty", "HEAD", cwd=remote)
+print("rewrite tool:", "filter-repo" if have_fr else "filter-branch")
+
+pull = subprocess.run(["git", "-C", str(clone), "pull", "--ff-only", "--no-rebase"],
+                      capture_output=True, env=ENV)
+print("ff-only pull exit:", pull.returncode)
+g("fetch", "-q", "origin", cwd=clone)
+new_head = g("rev-parse", "origin/main", cwd=clone)
+is_anc = subprocess.run(["git", "-C", str(clone), "merge-base", "--is-ancestor",
+                         old_head, new_head], env=ENV).returncode == 0
+mb = g("merge-base", old_head, new_head, cwd=clone, ok=False)
+print("old head ancestor of new:", is_anc, "| merge-base:", mb[:7] or "(none)")
+
+FMT = "%H%x09%ae%x09%aI%x09%cI%x09%s"
+def commits(*rng):
+    out = g("log", "--format=" + FMT, *rng, cwd=clone)
+    return [dict(zip(("hash", "ae", "ad", "cd", "subj"), line.split("\t")))
+            for line in out.splitlines() if line]
+
+only_old = commits(old_head, "^" + new_head)
+only_new = commits(new_head, "^" + old_head)
+key = lambda c: (c["ae"], c["ad"], c["subj"])
+new_by_key = {key(c): c for c in only_new}
+print(f"\nold-only commits: {len(only_old)}, new-only commits: {len(only_new)}")
+for c in only_old:
+    m = new_by_key.get(key(c))
+    if m:
+        paths = g("diff", "--name-only", c["hash"], m["hash"], cwd=clone)
+        print(f"  rewritten {c['hash'][:7]} -> {m['hash'][:7]}  {c['ae']:18} {c['subj']:22}"
+              f" committer date kept: {c['cd'] == m['cd']}  tree differs in: {paths or '-'}")
+    else:
+        print(f"  REMOVED   {c['hash'][:7]}             {c['ae']:18} {c['subj']}")
+print("secret blob still in clone's object store:",
+      subprocess.run(["git", "-C", str(clone), "cat-file", "-e", f"{old_head}:.env"],
+                     env=ENV).returncode == 0)
+```
