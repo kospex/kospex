@@ -139,6 +139,13 @@
                                             <span class="inline-flex px-2 py-1 ml-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">via BOM</span>
                                         {% else %}
                                             {{ row['package_version'] }}
+                                            {# A range's numbers are for the version looked up, not the
+                                               text (#379): say which, muted, below the range. #}
+                                            {% if row['version_kind'] in ('caret', 'tilde', 'gte', 'bounded')
+                                                  and row['resolution'] == 'resolved' and row['resolved_version'] %}
+                                                <span class="block text-xs text-gray-500 font-normal cursor-help"
+                                                      title="A range. kospex checked the oldest published version it allows. Versions behind and advisories are for that version: the worst case the range permits, not what is installed.">checked at {{ row['resolved_version'] }}</span>
+                                            {% endif %}
                                         {% endif %}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
@@ -174,6 +181,15 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+                        {% if data | selectattr('version_kind', 'in', ['caret', 'tilde', 'gte', 'bounded'])
+                                   | selectattr('resolution', 'equalto', 'resolved')
+                                   | selectattr('resolved_version') | list %}
+                        <p id="checked_at_note" class="mt-2 text-xs text-gray-500">
+                            <span class="font-medium">checked at</span>: for a range, versions behind and
+                            advisories are for the oldest published version it allows, the worst case it
+                            permits. The version installed may be newer.
+                        </p>
+                        {% endif %}
                                             </br>
                     </div>
 

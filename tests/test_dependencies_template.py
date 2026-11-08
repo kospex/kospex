@@ -129,3 +129,56 @@ class TestVersionNotStatedInTheFile:
         html = _render([row])
         assert "via BOM" not in html
         assert "no version" in html
+
+
+class TestRangeShowsTheVersionChecked:
+    """A range's numbers describe the version kospex looked up, not the text (#379).
+
+    For a range, versions_behind and advisories are for resolved_version: the
+    oldest published version the range allows (`^1` -> 1.12.0). The declared
+    text stays the main value; a muted `checked at` line says which version the
+    numbers are for, with the meaning in a tooltip and once under the table,
+    because a tooltip can't be found by scanning or read on a touch screen.
+    """
+
+    _RANGE = {"package_name": "@playwright/test", "package_type": "npm",
+              "package_version": "^1", "resolved_version": "1.12.0",
+              "version_kind": "caret", "resolution": "resolved",
+              "versions_behind": 41, "advisories": 0}
+
+    def test_range_row_shows_declared_text_and_the_version_checked(self):
+        html = _render([self._RANGE])
+        assert "^1" in html
+        assert "checked at 1.12.0" in html
+        assert "oldest published version" in html          # the tooltip
+
+    def test_each_range_kind_is_marked(self):
+        for kind in ("caret", "tilde", "gte", "bounded"):
+            html = _render([dict(self._RANGE, version_kind=kind)])
+            assert "checked at 1.12.0" in html, kind
+
+    def test_a_pin_is_not_marked(self):
+        html = _render([dict(self._RANGE, package_version="1.12.0", version_kind="pinned")])
+        assert "checked at" not in html
+
+    def test_nothing_checked_means_nothing_marked(self):
+        row = dict(self._RANGE, package_version="1000000000000000000",
+                   resolved_version="1000000000000000000", version_kind="bounded",
+                   resolution="no_satisfying_version", versions_behind=None)
+        html = _render([row])
+        assert "checked at" not in html
+        assert "no matching version" in html
+
+    def test_footnote_appears_only_with_a_marked_row(self):
+        assert 'id="checked_at_note"' in _render([self._RANGE])
+        pin = dict(self._RANGE, package_version="1.12.0", version_kind="pinned")
+        assert 'id="checked_at_note"' not in _render([pin])
+
+    def test_bom_row_is_unchanged(self):
+        bom = {"package_name": "io.netty:netty-handler", "package_type": "maven",
+               "package_version": "", "resolved_version": "4.2.18.Final",
+               "version_kind": "none", "resolution": "resolved",
+               "versions_behind": 0, "advisories": 0}
+        html = _render([bom])
+        assert "via BOM" in html
+        assert "checked at" not in html
