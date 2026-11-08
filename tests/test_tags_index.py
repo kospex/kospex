@@ -138,6 +138,15 @@ class TestLinks:
 
         assert 'href="/tag/Azure%20DevOps"' in body
 
+    def test_the_retired_links_resolve_rather_than_404(self):
+        """Retired tags are listed because where_tag() accepts them (#317)."""
+        import sqlite_utils
+        from kospex_query import KospexData
+
+        db = sqlite_utils.Database(memory=True)
+        for old, _new in _page().context["retired"]:
+            KospexData(db).where_tag(old)
+
     def test_the_links_resolve_rather_than_404(self):
         """The page is built from the same vocabulary where_tag() validates
         against, so a listed tag is never rejected as unknown."""
@@ -148,3 +157,51 @@ class TestLinks:
         for tag in _page().context["tags"]:
             # where_tag raises ValueError for a tag it does not recognise.
             KospexData(db).where_tag(tag)
+
+
+@pytest.fixture
+def deprecations(monkeypatch):
+    """Pin panopticas' retired tags, old spelling -> replacement or None."""
+    def _set(mapping):
+        monkeypatch.setattr(panopticas, "get_deprecated_tags", lambda: dict(mapping))
+    return _set
+
+
+def _retired_section(body):
+    return re.search(r"data-retired-tags.*?</ul>", body, re.S).group(0)
+
+
+class TestRetired:
+    """Retired tags are listed apart from the current ones, beside their
+    replacement (#317)."""
+
+    def test_a_renamed_tag_links_to_itself_and_its_replacement(self, deprecations):
+        deprecations({"Claude Code": "Claude"})
+
+        section = _retired_section(_page().body.decode())
+
+        assert 'href="/tag/Claude%20Code"' in section
+        assert 'href="/tag/Claude"' in section
+
+    def test_a_dropped_tag_says_so(self, deprecations):
+        deprecations({"Gone": None})
+
+        section = _retired_section(_page().body.decode())
+
+        assert "(dropped)" in _text(section)
+
+    def test_a_change_of_case_is_not_listed(self, deprecations):
+        deprecations({"eslint": "ESLint"})
+        response = _page()
+
+        assert response.context["retired"] == []
+        assert "Retired tags" not in response.body.decode()
+
+    def test_retired_tags_are_not_in_the_current_columns(self, vocabulary, deprecations):
+        vocabulary("Claude")
+        deprecations({"Claude Code": "Claude"})
+
+        columns = "".join(re.findall(
+            r"data-tag-column.*?</ul>", _page().body.decode(), re.S))
+
+        assert "Claude Code" not in columns

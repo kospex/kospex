@@ -129,6 +129,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **A tag panopticas has retired can be queried again** (#317). `/tag/Claude Code`
+  returned 404 "unknown Tag", although files recorded before panopticas renamed
+  it to `Claude` still carry it. It now lists those repositories, with a note
+  that the tag is retired and a link to its replacement. `/tags/` lists retired
+  tags in their own section. A change of case alone (`eslint` to `ESLint`) is
+  not listed: both spellings already worked.
 - **The `/tenure/` page no longer returns HTTP 500 when there are no commits**
   (#206). That included the unscoped page on a fresh install, before anything
   was synced. It now shows `No commits synced yet.`, or `No commits synced for

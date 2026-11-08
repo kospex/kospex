@@ -34,7 +34,8 @@ from kospex.db.migrator import warn_if_behind
 from kospex.osi_queue import get_outcome as get_osi_outcome
 from kospex_core import Kospex
 from kospex_git import KospexGit
-from kospex_query import KospexQuery, url_cache_seconds
+from kospex_query import (
+    KospexQuery, retired_tag_replacement, retired_tags, url_cache_seconds)
 from kospex_request_cache import RequestCache
 from kospex_utils import KospexTimer
 from kweb_graph_service import GraphService
@@ -1494,6 +1495,10 @@ def tags_index(request: Request):
     No counts. Counting repositories per tag is not a single-table lookup:
     tech_type holds several tags per row, and grouping by the stored value
     double-counts repositories.
+
+    Retired tags are listed separately, beside their replacement (#317). Files
+    recorded before a rename still carry the old tag, and where_tag() accepts
+    it, so it has a page worth reaching.
     """
     try:
         logger.info("Tag index page requested")
@@ -1501,9 +1506,11 @@ def tags_index(request: Request):
         # Case-insensitive, or every lowercase tag would file after `yarn` and
         # the page would run the alphabet twice.
         tags = sorted(Panopticas.get_tags(), key=str.lower)
+        retired = sorted(retired_tags().items(), key=lambda kv: kv[0].lower())
 
         return templates.TemplateResponse(
-            request, "tags.html", {"tags": tags, "page": {}},
+            request, "tags.html",
+            {"tags": tags, "retired": retired, "page": {}},
         )
     except HTTPException:
         raise
@@ -1559,9 +1566,12 @@ def repo_with_tag(request: Request, tag: str):
             raise HTTPException(
                 status_code=404, detail=f"{tag} is an unknown Tag.")
 
+        retired, replacement = retired_tag_replacement(tag)
+
         return templates.TemplateResponse(
             request, template,
             {"data": data, "tech": tag, "tech_kind": "Tag",
+             "tag_retired": retired, "tag_replacement": replacement,
              "tech_url": f"/tag/{quote(tag, safe='')}",
              "repo_count": None if repo_id else len(data),
              "absent_view": absent and not repo_id,

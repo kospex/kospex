@@ -1141,3 +1141,49 @@ class TestVocabulary:
     @pytest.mark.parametrize("tag", ["AI", "Git", "GitHub"])
     def test_the_tags_used_here_are_ones_panopticas_defines(self, tag):
         assert tag in panopticas.get_tags()
+
+
+class TestRetiredTagPage:
+    """A retired tag's page says it is retired and links its replacement (#317).
+
+    where_tag() accepts the tag, so the page lists real rows; without the note
+    it would read as a current tag that few files have.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _deprecations(self, monkeypatch):
+        monkeypatch.setattr(panopticas, "get_deprecated_tags",
+                            lambda: {"Claude Code": "Claude", "Gone": None})
+
+    def test_the_context_names_the_replacement(self, fake_query):
+        fake_query()
+
+        context = kweb2.repo_with_tag(_request(), tag="Claude Code").context
+
+        assert context["tag_retired"] is True
+        assert context["tag_replacement"] == "Claude"
+
+    def test_the_page_links_the_replacement(self, fake_query):
+        fake_query()
+
+        body = kweb2.repo_with_tag(_request(), tag="Claude Code").body.decode()
+
+        assert "data-retired-tag" in body
+        assert 'href="/tag/Claude"' in body
+        assert "panopticas no longer assigns this tag" in _visible(body)
+
+    def test_a_dropped_tag_has_the_note_without_a_link(self, fake_query):
+        fake_query()
+
+        body = kweb2.repo_with_tag(_request(), tag="Gone").body.decode()
+
+        assert "panopticas no longer assigns this tag." in _visible(body)
+        assert "now uses" not in body
+
+    def test_a_current_tag_has_no_note(self, fake_query):
+        fake_query()
+
+        response = kweb2.repo_with_tag(_request(), tag="AI")
+
+        assert response.context["tag_retired"] is False
+        assert "data-retired-tag" not in response.body.decode()

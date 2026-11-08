@@ -38,6 +38,13 @@
                     <h3 class="text-xl font-semibold text-gray-700 mb-4">{{ page['git_server'] }}</h3>
                     {% endif %}
                     <h3 class="text-xl font-semibold text-gray-700 mb-2"> {{ tech_kind | default('Technology') }}: {{ tech }}{% if absent_view %} is not present{% endif %} </h3>
+                    {% if tag_retired %}
+                    <p data-retired-tag class="text-gray-700 mb-2">
+                        panopticas no longer assigns this tag{% if tag_replacement %}; it now uses
+                        <a href="/tag/{{ tag_replacement | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ tag_replacement }}</a>{% endif %}.
+                        These files were recorded with the old tag.
+                    </p>
+                    {% endif %}
                     {% if repo_count is not none %}
                     <p class="text-gray-700 mb-4">
                         {%- if absent_view %}
