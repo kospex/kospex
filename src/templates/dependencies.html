@@ -7,6 +7,12 @@
         <!-- Local static assets -->
         <link rel="stylesheet" href="/static/css/tailwind.css">
         <style>
+            /* Table explanation toggle: plain CSS, so no Tailwind rebuild is
+               needed. The summary reads Show or Hide to match its state. */
+            #table_explanation > summary { list-style: none; }
+            #table_explanation > summary::-webkit-details-marker { display: none; }
+            #table_explanation[open] .when-closed,
+            #table_explanation:not([open]) .when-open { display: none; }
             /* Custom styles for DataTables with Tailwind */
             .dataTables_wrapper .dataTables_length select,
             .dataTables_wrapper .dataTables_filter input {
@@ -97,7 +103,20 @@
             <!-- Dependencies Table -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Dependency Analysis</h2>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">Dependency Analysis</h2>
+                    <details id="table_explanation" class="mb-6 text-sm">
+                        <summary class="cursor-pointer text-blue-600 hover:text-blue-800">
+                            <span class="when-closed">Show table explanation</span>
+                            <span class="when-open">Hide table explanation</span>
+                        </summary>
+                        <p class="mt-2 text-gray-600">
+                            <span class="font-medium">checked at</span>: the version deps.dev looked up,
+                            which versions behind and advisories are for. For a range, it is the oldest
+                            published version the range allows, the worst case it permits; the version
+                            installed may be newer. For a pin, it is deps.dev's spelling of the same
+                            version.
+                        </p>
+                    </details>
 
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200" id="myTable">
@@ -113,7 +132,6 @@
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                {% set _checked = namespace(any=false) %}
                                 {% for row in data %}
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -151,12 +169,10 @@
                                             {% if row['resolution'] == 'resolved' and _rv and row['package_version'] != _rv %}
                                                 {% set _written = (row['package_version'] or '') | replace('==', '') | replace('=', '')
                                                                   | replace('[', '') | replace(']', '') | trim %}
-                                                {% if row['version_kind'] in ('caret', 'tilde', 'gte', 'bounded') %}
-                                                    {% set _checked.any = true %}
+                                                {% if row['version_kind'] in ('caret', 'tilde', 'gte', 'bounded', 'excluded') %}
                                                     <span class="block text-xs text-gray-500 font-normal cursor-help"
                                                           title="A range. kospex checked the oldest published version it allows. Versions behind and advisories are for that version: the worst case the range permits, not what is installed.">checked at {{ _rv }}</span>
                                                 {% elif row['version_kind'] == 'pinned' and _written != _rv %}
-                                                    {% set _checked.any = true %}
                                                     <span class="block text-xs text-gray-500 font-normal cursor-help"
                                                           title="The same version, as deps.dev spells it. Versions behind and advisories are for this version.">checked at {{ _rv }}</span>
                                                 {% endif %}
@@ -196,15 +212,6 @@
                                 {% endfor %}
                             </tbody>
                         </table>
-                        {% if _checked.any %}
-                        <p id="checked_at_note" class="mt-2 text-xs text-gray-500">
-                            <span class="font-medium">checked at</span>: the version deps.dev looked up,
-                            which versions behind and advisories are for. For a range, it is the oldest
-                            published version the range allows, the worst case it permits; the version
-                            installed may be newer. For a pin, it is deps.dev's spelling of the same
-                            version.
-                        </p>
-                        {% endif %}
                                             </br>
                     </div>
 
