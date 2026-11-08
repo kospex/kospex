@@ -19,13 +19,14 @@ from xml.etree import ElementTree as ET
 import dateutil.parser
 import requests
 from packaging.requirements import InvalidRequirement, Requirement
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import Version, InvalidVersion
 
 import kospex_schema as KospexSchema
 from kospex.extractors.constraints import classify_constraint
 from kospex.extractors.errors import UnreadableManifest
 from kospex.extractors.registry import classify, resolve_parser
-from kospex.npm_range import min_satisfying
+from kospex.npm_range import min_satisfying, parse_range
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 
@@ -268,46 +269,119 @@ class KospexDependencies:
                 else "package_not_found"
         return "lookup_error"
 
-    # npm constraint kinds that permit more than one version. A pin, an alias
-    # (#350) and a resolution mechanism (workspace:, link:) are not ranges.
-    _NPM_RANGE_KINDS = ("caret", "tilde", "gte", "bounded")
+    # Constraint kinds that permit more than one version, per ecosystem whose
+    # ranges kospex evaluates. A pin, an alias (#350) and a resolution
+    # mechanism (workspace:, link:) are not ranges. PyPI has no caret; its
+    # `!=1.0` (`excluded`) permits every other version.
+    _RANGE_KINDS = {
+        "npm": ("caret", "tilde", "gte", "bounded"),
+        "pypi": ("tilde", "gte", "bounded", "excluded"),
+    }
 
-    def _is_npm_range(self, package_type, declared_version):
-        if (package_type or "").lower() != "npm" or not declared_version:
+    # Declared versions come from untrusted manifests, and evaluating a range
+    # checks every clause against every published version: 1,000 distinct
+    # PyPI `!=` clauses against 700 releases took 1.2 s per row, 4,000 took
+    # 18 s (CWE-400). The longest real ranges on a development estate were 46
+    # (PyPI) and 104 (npm) characters. A longer one is not evaluated; its
+    # written floor is used, as it was before ranges were evaluated.
+    _MAX_EVALUATED_RANGE_LENGTH = 256
+
+    def _is_range(self, package_type, declared_version):
+        kinds = self._RANGE_KINDS.get((package_type or "").lower())
+        if not kinds or not declared_version:
             return False
         kind, _operator = classify_constraint(declared_version, package_type)
-        return kind in self._NPM_RANGE_KINDS
+        return kind in kinds
 
-    def resolve_lookup_version(self, package_type, package_name, declared_version):
-        """The version to look up on deps.dev for a declaration (#379).
+    def _published_versions(self, package_type, package_name):
+        """deps.dev's version list for a package, or None if unavailable.
 
-        `clean_version_spec()` reads a floor off the declared text. For an npm
-        range that floor need not be a version: `^19` gives `19` and `<4` gives
-        `4` (the ceiling), both of which deps.dev 404s, and `^1`'s zero-filled
-        `1.0.0` is often never published. So when the floor is not a published
-        version, an npm range is looked up at the lowest published stable
-        version it permits, from the package's deps.dev version list -- the
-        same cached URL get_versions_behind() reads.
-
-        Unchanged: every other ecosystem, npm pins, and an npm floor that is
-        published. If no version satisfies, or the list is unavailable, the
-        floor is returned and the lookup fails as before; lookup_dependency()
-        then records `no_satisfying_version` rather than `version_yanked`.
-        """
-        cleaned = self.clean_version_spec(declared_version or "", package_type)
-        if not self._is_npm_range(package_type, declared_version) or not self.kospex_query:
-            return cleaned
+        The same cached URL get_versions_behind() reads, so for a row that
+        resolves this costs no extra request."""
         url = ("https://api.deps.dev/v3alpha/systems/"
                f"{package_type}/packages/{urllib.parse.quote(package_name, safe='')}")
         content, _status = self.kospex_query.url_request_with_status(url)
         try:
-            versions = [v["versionKey"]["version"]
-                        for v in json.loads(content).get("versions", [])]
+            return [v["versionKey"]["version"]
+                    for v in json.loads(content).get("versions", [])]
         except (TypeError, ValueError, KeyError, AttributeError):
-            return cleaned
+            return None
+
+    @staticmethod
+    def _pypi_range_floor(cleaned, versions, declared_version):
+        """PyPI half of _range_floor(), using pip's own specifier logic."""
+        try:
+            spec = SpecifierSet(declared_version.strip())
+        except InvalidSpecifier:
+            return cleaned, None
+        parsed = []
+        for text in versions:
+            try:
+                parsed.append((Version(text), text))
+            except InvalidVersion:
+                continue            # legacy uploads, e.g. 1.0.1.dev3460.win32-py2.4
+        try:
+            floor = Version(cleaned)
+        except InvalidVersion:
+            floor = None            # `8.*` from `==8.*`
+        if (floor is not None and spec.contains(floor, prereleases=True)
+                and any(v == floor for v, _ in parsed)):
+            return cleaned, True
+        # filter() applies pip's pre-release rule: none unless the specifier
+        # names one (`~=2.14.0.dev`) or nothing else matches.
+        spelling = {v: text for v, text in parsed}
+        allowed = list(spec.filter(spelling))
+        return (spelling[min(allowed)], True) if allowed else (cleaned, False)
+
+    def _range_floor(self, package_type, package_name, declared_version):
+        """(version to look up, whether any published version satisfies).
+
+        The second value is None when nothing was evaluated -- not a range, an
+        ecosystem kospex doesn't evaluate, an unreadable range, or no version
+        list -- and the version is then clean_version_spec()'s floor, as before.
+        """
+        cleaned = self.clean_version_spec(declared_version or "", package_type)
+        if not self._is_range(package_type, declared_version) or not self.kospex_query:
+            return cleaned, None
+        if len(declared_version) > self._MAX_EVALUATED_RANGE_LENGTH:
+            log.info(f"range not evaluated, {len(declared_version)} characters: "
+                     f"{package_type} {package_name}")
+            return cleaned, None
+        versions = self._published_versions(package_type, package_name)
+        if versions is None:
+            return cleaned, None
+        if package_type.lower() == "pypi":
+            return self._pypi_range_floor(cleaned, versions, declared_version)
         if cleaned in versions:
-            return cleaned
-        return min_satisfying(versions, declared_version) or cleaned
+            return cleaned, True
+        if parse_range(declared_version) is None:
+            return cleaned, None
+        chosen = min_satisfying(versions, declared_version)
+        return (chosen, True) if chosen else (cleaned, False)
+
+    def resolve_lookup_version(self, package_type, package_name, declared_version):
+        """The version to look up on deps.dev for a declaration (#379, #388).
+
+        `clean_version_spec()` reads a floor off the declared text, which for
+        a range need not be a version the range allows:
+
+        * npm `^19` gives `19` and `<4` gives `4` (the ceiling), both 404s.
+        * PyPI `==8.*` gives `8.*`, `>4` gives `4` and `<2` gives `2` -- not a
+          version, or one the range excludes.
+        * `^1`'s `1.0.0` and `>=77.0`'s `77.0` were never published.
+
+        So for an npm or PyPI range whose written floor is not a published
+        version it allows, the lookup uses the lowest published stable version
+        the range permits, from the package's deps.dev version list -- npm via
+        kospex.npm_range, PyPI via `packaging.specifiers.SpecifierSet`, pip's
+        own logic. deps.dev's list rather than the registry's, because a
+        version deps.dev lacks would only 404 (deps.dev has no numpy 1.0).
+
+        Unchanged: other ecosystems, pins, and a published floor the range
+        allows. If nothing satisfies, lookup_dependency() records
+        `no_satisfying_version` without a lookup.
+        """
+        return self._range_floor(package_type, package_name, declared_version)[0]
 
     def lookup_dependency(self, package_type, package_name, declared_version,
                           bom_version=None):
@@ -322,17 +396,30 @@ class KospexDependencies:
         lookup, that is its canonical spelling, which can differ from what was
         sent where the ecosystem defines equal spellings -- PyPI `6` is
         `6.0.0`, NuGet `13.0.1.0` is `13.0.1`. When it does not resolve,
-        nothing answered, and it is the version that was sent.
+        nothing answered, and it is the version that was sent. When a range
+        permits no published version, nothing is looked up and it is empty.
         """
-        lookup_version = bom_version or self.resolve_lookup_version(
-            package_type, package_name, declared_version)
+        if bom_version:
+            lookup_version, satisfiable = bom_version, None
+        else:
+            lookup_version, satisfiable = self._range_floor(
+                package_type, package_name, declared_version)
+        if satisfiable is False:
+            # No published version is in the range. Looking up the written
+            # floor anyway could resolve a version the range excludes --
+            # `>9999` at 9999 -- and return numbers for it.
+            log.info(f"deps.dev unresolved [no_satisfying_version] {package_type} "
+                     f"{package_name} {declared_version!r}")
+            return {"package_name": package_name, "package_version": lookup_version,
+                    "package_type": package_type, "versions_behind": None,
+                    "resolution": "no_satisfying_version"}, ""
         record = dict(self.depsdev_record(package_type, package_name, lookup_version))
         depsdev_version = record.pop("depsdev_version", None)
         if (record.get("resolution") == "version_yanked"
-                and self._is_npm_range(package_type, declared_version)):
-            # A range was asked for, and resolve_lookup_version() found no
-            # published version it permits. deps.dev's 404 says nothing was
-            # yanked, and a range cannot be: say what actually happened.
+                and self._is_range(package_type, declared_version)):
+            # A range kospex could not evaluate (npm treats a number above
+            # 2**53, a peer-dependency sentinel, as no range at all) and
+            # deps.dev 404'd its floor. A range cannot be yanked.
             record["resolution"] = "no_satisfying_version"
         if record.get("resolution") == "resolved" and depsdev_version:
             return record, depsdev_version

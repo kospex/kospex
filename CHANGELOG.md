@@ -129,6 +129,21 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **PyPI ranges are looked up at a version they allow** (#388). kospex used
+  the floor as written, which pip doesn't:
+  - `click==8.*` was never looked up, so it had no advisory data. It is now
+    checked at `8.0.0`.
+  - `tqdm>4` and `cffi<2` were checked at `4` and `2`, which those ranges
+    exclude. They are now checked at `4.1.0` and `0.1.0`.
+  - `setuptools>=77.0` was recorded as yanked, because `77.0` was never
+    released. It is now checked at `77.0.1`.
+
+  A range now uses the lowest version in deps.dev's list that pip's own
+  specifier logic accepts, and a published floor the range allows is kept as
+  before. A range with only an upper bound (`<2`, `!=1.0`) is now checked at
+  the first release, the worst case it permits, so after a re-scan it can
+  show more versions behind than it did. A range nothing satisfies is
+  `no_satisfying_version`, now without a deps.dev lookup, for npm as well.
 - **npm ranges are no longer reported as yanked** (#379). A partial range such
   as `^19`, `^1.9` or `<4` was looked up on deps.dev as `19`, `1.9` or `4`,
   which aren't npm versions, and the 404 was recorded as `version_yanked`. In

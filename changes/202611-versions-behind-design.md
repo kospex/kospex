@@ -267,6 +267,32 @@ Left alone on purpose:
 * **npm aliases** (#350) and **Cargo**, whose range syntax differs (bare `1` is
   `^1`, comma is AND). No Cargo short floors on the estate.
 
+## Implemented: #388 (PyPI ranges)
+
+The same step for PyPI, in `KospexDependencies._range_floor()`, which both
+ecosystems now share; `_RANGE_KINDS` lists each one's range kinds. PyPI uses
+`packaging.specifiers.SpecifierSet` (already a dependency), not a port:
+
+* a written floor that is a published version the specifier allows is kept,
+  as sent today (`>=6` still sends `6`);
+* otherwise the lowest version in **deps.dev's** list `SpecifierSet.filter()`
+  accepts. deps.dev's, not PyPI's: deps.dev has no numpy 1.0, so `numpy>=1`
+  is `1.3.0`. `filter()` applies pip's pre-release rule. A first cut filtered
+  every pre-release and turned 6 nightly rows (`keras-nightly~=2.14.0.dev`,
+  1,828 releases and none stable) into `no_satisfying_version`; pip installs them;
+* entries `packaging` cannot parse (`1.0.1.dev3460.win32-py2.4`) are skipped.
+
+A range nothing satisfies is now `no_satisfying_version` **without a lookup**,
+for npm too: looking up `>9999` at `9999` could resolve and return numbers for a
+version the range excludes. `resolved_version` is then empty.
+
+Offline A/B over the 580 current PyPI range rows (`url_cache`, no network):
+534 unchanged; 21 formerly `version_yanked` now resolve; 3 wildcards formerly
+`unresolved_spec` now resolve; 21 formerly resolved at a version the range
+excludes (`<2`, `!=1.0`, `>4`) move to one it allows -- for a ceiling-only
+range, the first release (`attrs!=21.1.0`: 21.1.0 → 15.0.0), so those rows can
+show more versions behind after a re-scan; 1 not evaluated (no cached list).
+
 ## Suggested order
 
 1. #378 — canonical-spelling match, `None` when not found. Small, uncontroversial, and the
