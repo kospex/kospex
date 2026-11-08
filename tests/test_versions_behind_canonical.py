@@ -103,3 +103,76 @@ def test_version_missing_from_the_list_is_unknown_not_the_whole_history():
 
     assert rec["resolution"] == "resolved"
     assert rec["versions_behind"] is None
+
+
+class TestResolvedVersionIsDepsDevsSpelling:
+    """resolved_version records the version the numbers are for.
+
+    When deps.dev resolves a lookup, that is its canonical spelling: PyPI `6`
+    is `6.0.0` (PEP 440 zero-padding), `2026.3.post1` is `2026.3.0.post1`, and
+    NuGet `13.0.1.0` is `13.0.1` (NuGet drops a zero fourth part). When it does
+    not resolve, nothing answered, so it is the version that was sent. Both
+    scan paths share lookup_dependency(), so both are driven.
+    """
+
+    @staticmethod
+    def _osi(kd, row):
+        import krunner
+        return krunner.enrich_dependency_records([row], kd)[0]
+
+    @staticmethod
+    def _sca(kd, row):
+        from kospex.extractors.registry import REGISTRY
+        extractor = next(e for e in REGISTRY if e.package_type == row["package_type"])
+        return kd._enrich_dependency_records([row], extractor)[0]
+
+    @staticmethod
+    def _row(system, name, declared):
+        return {"package_name": name, "package_version": declared, "package_type": system,
+                "requirements_type": "direct", "file_path": "requirements.txt",
+                "_repo_id": "github.com~acme~app"}
+
+    @pytest.mark.parametrize("scan", ["_osi", "_sca"])
+    @pytest.mark.parametrize("system, name, declared, sent, canonical", [
+        ("pypi", "sphinx", ">=9", "9", "9.0.0"),
+        ("pypi", "pytz", "==2026.3.post1", "2026.3.post1", "2026.3.0.post1"),
+    ])
+    def test_resolved_lookup_records_depsdev_spelling(self, scan, system, name,
+                                                      declared, sent, canonical):
+        kd = _kdeps(system, name, sent, canonical)
+
+        row = getattr(self, scan)(kd, self._row(system, name, declared))
+
+        assert row["resolution"] == "resolved"
+        assert row["resolved_version"] == canonical
+        assert row["package_version"] == declared
+
+    @pytest.mark.parametrize("scan", ["_osi", "_sca"])
+    def test_nuget_zero_fourth_part(self, scan):
+        listing = json.dumps({"versions": [
+            {"versionKey": {"system": "NUGET", "name": "Newtonsoft.Json", "version": v},
+             "publishedAt": f"2026-0{i}-01T00:00:00Z", "isDefault": v == "13.0.4"}
+            for i, v in enumerate(["13.0.1", "13.0.2", "13.0.3", "13.0.4"], start=1)]})
+        responses = {
+            _package_url("nuget", "Newtonsoft.Json"): (listing, 200),
+            f"{_package_url('nuget', 'Newtonsoft.Json')}/versions/13.0.1.0":
+                (_version_record("nuget", "Newtonsoft.Json", "13.0.1"), 200),
+        }
+        kd = KospexDependencies(kospex_query=_Query(responses))
+        row = self._row("nuget", "Newtonsoft.Json", "13.0.1.0")
+        row["file_path"] = "app.csproj"
+
+        row = getattr(self, scan)(kd, row)
+
+        assert row["resolved_version"] == "13.0.1"
+        assert row["versions_behind"] == 3
+
+    @pytest.mark.parametrize("scan", ["_osi", "_sca"])
+    def test_unresolved_lookup_records_what_was_sent(self, scan):
+        """A 404: deps.dev gave no spelling, so the sent version stands."""
+        kd = _kdeps("pypi", "sphinx", "9", "9.0.0")
+
+        row = getattr(self, scan)(kd, self._row("pypi", "sphinx", ">=8.9"))
+
+        assert row["resolution"] != "resolved"
+        assert row["resolved_version"] == "8.9"

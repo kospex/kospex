@@ -138,7 +138,11 @@ def test_an_unpublished_pin_is_still_a_lookup_miss(scan):
 
 @PATHS
 def test_other_ecosystems_are_untouched(scan):
-    """PyPI `>=9` keeps its floor `9`; deps.dev resolves that itself (PEP 440)."""
+    """PyPI `>=9` is sent as its floor `9`: the npm range logic does not apply.
+
+    (The real deps.dev resolves `9` to `9.0.0`, which resolved_version then
+    records -- tests/test_versions_behind_canonical.py. This fake answers only
+    exact listed versions, so here the lookup misses and `9` is what was sent.)"""
     row, query = scan("pypi", "sphinx", ">=9")
 
     assert query.asked == ["9"]

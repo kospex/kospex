@@ -311,22 +311,31 @@ class KospexDependencies:
 
     def lookup_dependency(self, package_type, package_name, declared_version,
                           bom_version=None):
-        """deps.dev record for one declaration, and the version sent to deps.dev.
+        """deps.dev record for one declaration, and the version it describes.
 
         Shared by both scan paths (`kospex sca` and `krunner osi`) so they
         cannot drift. A version an imported Maven BOM supplies comes first: it
-        is already concrete and is never re-floored. The returned version is
-        what `resolved_version` records.
+        is already concrete and is never re-floored.
+
+        The returned version is what `resolved_version` records: the version
+        advisories and versions_behind are for. When deps.dev resolves the
+        lookup, that is its canonical spelling, which can differ from what was
+        sent where the ecosystem defines equal spellings -- PyPI `6` is
+        `6.0.0`, NuGet `13.0.1.0` is `13.0.1`. When it does not resolve,
+        nothing answered, and it is the version that was sent.
         """
         lookup_version = bom_version or self.resolve_lookup_version(
             package_type, package_name, declared_version)
-        record = self.depsdev_record(package_type, package_name, lookup_version)
+        record = dict(self.depsdev_record(package_type, package_name, lookup_version))
+        depsdev_version = record.pop("depsdev_version", None)
         if (record.get("resolution") == "version_yanked"
                 and self._is_npm_range(package_type, declared_version)):
             # A range was asked for, and resolve_lookup_version() found no
             # published version it permits. deps.dev's 404 says nothing was
             # yanked, and a range cannot be: say what actually happened.
-            record = dict(record, resolution="no_satisfying_version")
+            record["resolution"] = "no_satisfying_version"
+        if record.get("resolution") == "resolved" and depsdev_version:
+            return record, depsdev_version
         return record, lookup_version
 
     def deps_dev_package(self, package_type, package_name):
@@ -725,8 +734,9 @@ class KospexDependencies:
             out["version_operator"] = operator
 
             # What the advisory numbers actually refer to. For a range this is
-            # the floor, so `advisories` describes the worst case the constraint
-            # permits — unreadable without recording which version was queried.
+            # its oldest permitted version, so `advisories` describes the worst
+            # case the constraint permits. deps.dev's spelling when it resolved
+            # (see lookup_dependency).
             out["resolved_version"] = lookup_version
 
             # Written on every save. NOT a column default: created_at is
@@ -1184,6 +1194,9 @@ class KospexDependencies:
         # `2026.3.post1` -> `2026.3.0.post1`; NuGet `13.0.1.0` -> `13.0.1`), so
         # the version list can be matched exactly rather than guessed at (#378).
         canonical = (deps_info.get("versionKey") or {}).get("version") or package_version
+        # Handed to lookup_dependency(), which records it as resolved_version
+        # and removes it from the record (it is not a dependency_data column).
+        details["depsdev_version"] = canonical
         days_info = self.get_versions_behind(package_type, package_name, canonical)
         versions_behind = days_info.get("versions_behind")
         details["versions_behind"] = versions_behind if isinstance(versions_behind, int) else None

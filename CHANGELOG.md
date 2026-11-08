@@ -137,11 +137,18 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   version it permits (`^1` → `1.12.0` for `@playwright/test`, which never
   published `1.0.0`), and that version is in `resolved_version`. A range no
   published version satisfies is the new `no_satisfying_version`. Pins, npm
-  floors that are published, and other ecosystems are unchanged. On the kweb
-  `/dependencies/` page, a range now shows a muted `checked at 1.12.0` under
-  the declared text, with a note under the table: a range's versions behind and
-  advisories are for the oldest version it allows, which may be older than the
-  version installed.
+  floors that are published, and other ecosystems are unchanged.
+- **`resolved_version` is now the version the numbers describe** (#379). When
+  deps.dev resolves a lookup, `resolved_version` holds deps.dev's spelling of
+  the version, not what kospex sent: PyPI `>=6` is recorded as `6.0.0`, not
+  `6`, and NuGet `13.0.1.0` as `13.0.1`. Those are the same versions under
+  each ecosystem's own rules. An unresolved lookup still records what was sent.
+  On the kweb `/dependencies/` page, the declared text stays the main value. A
+  muted `checked at …` line under it shows the version the numbers are for: on
+  every range, and on a pin only when deps.dev spells it differently. A note
+  under the table explains that a range's versions behind and advisories are
+  for the oldest version it allows, which may be older than the version
+  installed.
 - **`versions_behind` no longer counts a package's whole history when the
   version is spelled differently** (#378). `3.0` vs `3.0.0`, a bare `6`, and
   PEP 440's `2026.3.post1` vs `2026.3.0.post1` never matched, so the count ran

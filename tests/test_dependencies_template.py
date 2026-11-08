@@ -174,6 +174,35 @@ class TestRangeShowsTheVersionChecked:
         pin = dict(self._RANGE, package_version="1.12.0", version_kind="pinned")
         assert 'id="checked_at_note"' not in _render([pin])
 
+    def test_a_pin_deps_dev_respelled_is_marked(self):
+        """resolved_version is deps.dev's spelling; when it differs from the
+        pin as written, say so, or the numbers look like another version's."""
+        for declared, canonical in (("==2026.3.post1", "2026.3.0.post1"),   # PEP 440
+                                    ("13.0.1.0", "13.0.1"),                 # NuGet
+                                    ("[13.0.1.0]", "13.0.1")):              # NuGet exact
+            row = dict(self._RANGE, package_version=declared, resolved_version=canonical,
+                       version_kind="pinned")
+            html = _render([row])
+            assert f"checked at {canonical}" in html, declared
+            assert 'id="checked_at_note"' in html, declared
+
+    def test_a_pin_spelled_the_same_is_not_marked(self):
+        for declared, resolved in (("==2.0.0", "2.0.0"), ("[13.0.1]", "13.0.1"),
+                                   ("v1.10.0", "v1.10.0"), ("4.13", "4.13")):
+            row = dict(self._RANGE, package_version=declared, resolved_version=resolved,
+                       version_kind="pinned")
+            html = _render([row])
+            assert "checked at" not in html, declared
+            assert 'id="checked_at_note"' not in html, declared
+
+    def test_a_bare_go_or_nuget_minimum_is_not_marked(self):
+        """go.mod `v1.10.0` and NuGet `3.1.1` are minimums (`gte`), but the line
+        would only repeat the declared text -- 1,830 such rows on a dev estate."""
+        for system, version in (("go", "v1.10.0"), ("nuget", "3.1.1")):
+            row = dict(self._RANGE, package_type=system, package_version=version,
+                       resolved_version=version, version_kind="gte")
+            assert "checked at" not in _render([row]), system
+
     def test_bom_row_is_unchanged(self):
         bom = {"package_name": "io.netty:netty-handler", "package_type": "maven",
                "package_version": "", "resolved_version": "4.2.18.Final",

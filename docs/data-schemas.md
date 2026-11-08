@@ -233,6 +233,7 @@ Software composition analysis (SCA) data.
 | `source_repo` | TEXT | Source repository URL |
 | `default` | TEXT | If this is the default version |
 | `resolution` | TEXT | Why a deps.dev version lookup resolved or failed: `resolved`, `no_version`, `unresolved_spec`, `version_yanked`, `no_satisfying_version`, `package_not_found`, `lookup_error`; NULL for legacy unclassified rows _(migration 0005)_. `version_yanked` means deps.dev 404'd a version of a package it knows — never published or removed; deps.dev does not say which. `no_satisfying_version` is an npm range that no published stable version satisfies (#379) |
+| `resolved_version` | TEXT | The version `advisories` and `versions_behind` describe. When deps.dev resolved the lookup, its canonical spelling, which can differ from what was sent where the ecosystem defines equal spellings: PyPI `6` → `6.0.0`, `2026.3.post1` → `2026.3.0.post1`; NuGet `13.0.1.0` → `13.0.1`. Otherwise the version that was sent. For a range, the oldest version it permits, the worst case, not what is installed: for npm, the lowest published stable version satisfying the range (`^1` → `1.12.0`, `<4` → the first release); elsewhere, the floor as written. A Maven version an imported BOM sets. Empty when nothing was looked up _(migration 0006, which defined it as "the version sent to deps.dev"; changed by #379)_ |
 | `source` | TEXT | Tool used to get metadata |
 | `latest` | INTEGER | 1 if latest entry, 0 otherwise |
 | `created_at` | TIMESTAMP | When record was created |
