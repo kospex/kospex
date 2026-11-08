@@ -539,22 +539,35 @@ class KospexDependencies:
         repo only when that repo happened to be synced locally, so it read 0 or
         `-` for almost every package. `malware` is not a column: the lookup
         behind it is a deprecated service.
+
+        `resolved_version` is the version versions_behind, days_ago and
+        advisories describe -- for a range, not the declared text (`^1` is
+        checked at 1.12.0). `resolution` says why a row's numbers are blank
+        (`no_satisfying_version`, `version_yanked`, ...).
         """
         return [
             "package_name",
             "package_version",
+            "resolved_version",
             "versions_behind",
             "days_ago",
             "published_at",
             "default",
             "advisories",
+            "resolution",
             "source_repo",
         ]
 
     # Columns rendered right-aligned; everything else is left-aligned.
     _NUMERIC_TABLE_FIELDS = frozenset({
-        "package_version", "versions_behind", "days_ago", "default", "advisories",
+        "package_version", "resolved_version", "versions_behind", "days_ago",
+        "default", "advisories",
     })
+
+    # Table headers that differ from the field name. -json and -out keep the
+    # field name, which is the dependency_data column; the table says what it
+    # means, as the /dependencies/ page does.
+    _TABLE_HEADERS = {"resolved_version": "checked at"}
 
     def get_cli_table(self):
         """Return an empty rich Table with the dependency columns."""
@@ -565,7 +578,8 @@ class KospexDependencies:
             justify = "right" if name in self._NUMERIC_TABLE_FIELDS else "left"
             # fold, not the default ellipsis: a narrow terminal (or a pipe,
             # which rich renders at 80 columns) must wrap a value, not lose it.
-            table.add_column(name, justify=justify, overflow="fold")
+            table.add_column(self._TABLE_HEADERS.get(name, name),
+                             justify=justify, overflow="fold")
         return table
 
     @staticmethod

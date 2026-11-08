@@ -76,6 +76,18 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 
+- **`kospex sca` shows which version it checked, and why a row is blank.** The
+  table has two new columns:
+  - `checked at` is the version looked up on deps.dev, which the numbers
+    describe. For a range it isn't the declared text: `==8.*` is checked at
+    `8.0.0`, and `^1` at the first published 1.x.
+  - `resolution` says why a row's numbers are blank, such as
+    `no_satisfying_version`.
+
+  `-json` and `-out` gain the same two fields as `resolved_version` and
+  `resolution`, the `dependency_data` column names. No existing field is
+  renamed or moved, but code that reads those outputs by position will see
+  the new columns.
 - **The `krunner osi -next` lock takes over a crashed run's lock at once.** It
   now records the host as well as the PID, and if that process is no longer
   running on this host, the next run takes the lock straight away instead of
