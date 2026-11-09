@@ -197,6 +197,25 @@ class TestSummary:
                                        "no_properties": 1, "errors": 1}
 
 
+class TestNotes:
+    def test_org_scope_warns_listing_is_only_what_the_token_sees(self):
+        text = " ".join(GP.notes([{"properties": {"a": 1}}], org_scope=True))
+        assert "public repos only" in text
+        assert "error line, not {}" in text
+
+    def test_single_repo_has_no_listing_warning(self):
+        text = " ".join(GP.notes([{"properties": {"a": 1}}], org_scope=False))
+        assert "public repos only" not in text
+
+    def test_all_empty_says_so(self):
+        lines = [{"properties": {}}] * 37
+        assert any("None of the 37 repos" in n for n in GP.notes(lines, True))
+
+    def test_all_empty_note_skipped_when_some_errored(self):
+        lines = [{"properties": {}}, {"error": "HTTP 404"}]
+        assert not any("None of the" in n for n in GP.notes(lines, True))
+
+
 class TestCli:
     """The options: one of -org / -repo_id, -filename mandatory, nothing written on failure."""
 

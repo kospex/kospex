@@ -833,6 +833,8 @@ def _github_properties(gh, org, repo_id, filename, level):
     s = GitHubProperties.summarise(lines)
     console.print(f"Wrote {s['repos']} repos to {filename}: {s['with_properties']} with "
                   f"properties, {s['no_properties']} without, {s['errors']} errors.")
+    for note in GitHubProperties.notes(lines, org_scope=bool(org)):
+        console.print(f"Note: {note}")
 
 
 @cli.command("github")

@@ -148,6 +148,30 @@ def write_jsonl(path, lines):
         raise
 
 
+def notes(lines, org_scope):
+    """What the summary counts can't show, for the console after a run.
+
+    Measured 2026-11-09: a repo's property values are readable by anyone who can
+    read the repo (public repos even anonymously), and a repo the token can't
+    read returns 404, recorded as an error line. So `{}` really means "none set".
+    What *can* be silently missing is whole repos: both the org endpoint and the
+    org repo listing return only the repos the token can see, and for a
+    non-member that's public repos only.
+    """
+    out = []
+    if org_scope:
+        out.append("Only repos this token can see are included. If the token isn't an "
+                   "org member, that's public repos only: private and internal repos "
+                   "are left out, with no error.")
+    out.append("{} means no properties are set. A repo the token can't read is an "
+               "error line, not {}.")
+    s = summarise(lines)
+    if s["repos"] and not s["with_properties"] and not s["errors"]:
+        out.append(f"None of the {s['repos']} repos has a property set; the org may not "
+                   "use custom properties.")
+    return out
+
+
 def summarise(lines):
     errors = sum(1 for l in lines if "error" in l)
     with_props = sum(1 for l in lines if l.get("properties"))
