@@ -129,9 +129,12 @@ DB, no network, standard library only (`tomllib`, `re`). Registered for both
 **Catalog reader.** Parses a `*.versions.toml` into
 `{accessor: (group, artifact, version, version_kind)}`, expanding `version.ref`
 and bundles. Finds catalogs the way Gradle does:
-`<repo root>/gradle/libs.versions.toml` as `libs`, plus any `versionCatalogs`
-entry in the root `settings.gradle(.kts)` whose `from(files("..."))` is a literal
-path inside the repository. A catalog outside the repository, or one published
+`gradle/libs.versions.toml` next to the build's `settings.gradle(.kts)` as
+`libs`, plus any `versionCatalogs` entry in that settings file whose
+`from(files("..."))` is a literal path inside the repository. A build file's
+`libs` is the catalog of the nearest directory above it that has one, not
+always the repository root's: a repository can hold a Gradle build in a
+subdirectory (measured in phase 2, below). A catalog outside the repository, or one published
 as an artifact (`from("g:a:v")`), is not read. The settings file is matched with
 a regular expression, not evaluated.
 
@@ -241,6 +244,8 @@ repositories:
   building. It's recorded as present but unreadable, not guessed.
 - `include_groups`: from a `content { }` filter, the only case where a host is
   tied to particular dependencies.
+- `conditional: true`: declared inside an `if (...)`, so whether the build uses
+  it depends on a property or environment variable that isn't evaluated.
 
 Reading it needs one `json_each`, which SQLite 3.26 has. For example, each host
 and how many repositories declare it:
@@ -460,6 +465,70 @@ measurements are in `docs/dependency-details.md`; what building it turned up:
   firebase-android-sdk, 212 of 214 rows resolved. The two that didn't are
   versions deps.dev doesn't list, which the existing lookup-miss classification
   records as `version_yanked`.
+
+## Phase 2 measurements (2026-11-09)
+
+Before writing the build-file reader, its rules were applied by a throwaway
+script to every `build.gradle(.kts)` and `settings.gradle(.kts)` on disk.
+1,291 build files in 20 repositories. One further clone was excluded: its
+working tree was incomplete (catalog and settings file missing), so it
+measured the damage, not the rules.
+
+| What the declaration would become | Count |
+|---|---|
+| **A row** | **8,975** |
+| ↳ catalog reference, `libs.x` or `libs.bundles.x` | 5,556 |
+| ↳ literal `"g:a:v"` | 3,201 |
+| ↳ literal with `$var` filled from properties or assignments | 74 |
+| ↳ literal with `$var` not found, kept as written (`unresolved_spec`) | 27 |
+| ↳ no version, `kotlin("x")`, map notation, dynamic version | 57 |
+| First-party: `project(...)`, `projects.x`, no row | 3,695 |
+| Not a package: `files`, `fileTree`, `gradleApi`, ..., no row | 66 |
+| `platform(...)`, a `bom` row | 13 |
+| **Unreadable** | **122**, 1.3% of package declarations |
+
+- **By repository:** 9 are fully readable, 7 at 90% or more, 2 at 50–90%,
+  and 2 declare no packages. The largest, androidx, is 99.1% readable (7,606
+  rows). The lowest is kotlinx.coroutines at 62%, which builds versions with a
+  `version("x")` helper from `buildSrc`.
+- **The unreadable 122 are mostly project-specific helpers:** androidx's
+  `projectOrArtifact(...)`, `SdkHelperKt.getSdkDependency(...)`, and string
+  concatenation (`"g:a:" + composeVersion`). None is common enough to support.
+- **6 files would read nothing and so raise `UnreadableManifest`** under
+  decision 3: five in kotlinx.coroutines and one sample app.
+- **The catalog is not always at the repository root.** maplibre-native keeps
+  its Android build, catalog included, under `platform/android/`. Looking
+  only at the root left it 26% readable. Looking from the nearest directory
+  with `gradle/libs.versions.toml` makes it 100%, and is how Gradle finds it.
+  The "Catalog reader" paragraph above now says this.
+
+**Repository hosts.** 94 `mavenCentral()`, 75 `google()`, 35
+`gradlePluginPortal()`, 11 `mavenLocal()`, 4 `jcenter()` and 45 `maven { }`.
+Of the 45, 35 have a literal URL (11 distinct hosts) and 10 don't, mostly a
+`$buildDir` local directory. 8 have a `content { }` filter and 1 a credentials
+block. No URL has a `user:token@`. About 14 are declared inside an `if`, hence
+the `conditional` field.
+
+### Decisions from the measurement
+
+1. **Plugins.** `id("x")` without a version produces no row: it's a core
+   Gradle plugin or one whose version is set elsewhere (2,774 on disk). Rows
+   come from `id("x") version "y"` (44) and `alias(libs.plugins.x)` (109).
+   Only a top-level `plugins { }` applies plugins: the block of the same name
+   inside `gradlePlugin { }` defines them and is not read.
+2. **Kotlin Multiplatform.** 773 declarations are in
+   `kotlin { sourceSets { <name> { dependencies { } } } }`. `declared_scope` is
+   `<sourceSet>.<configuration>`, for example `commonMain.implementation`.
+   `is_dev` is True for source sets whose name ends in `Test`.
+3. **Configurations outside the test rule stay `is_dev=False`.** androidx has
+   890 declarations in `docs` and `kmpDocs`, and some in `lintChecks`. They
+   aren't tests, so the rule leaves them as product dependencies, which
+   raises androidx's direct count. Kept, because a per-project list of
+   configuration names would be a policy, not a parse.
+4. **`val x = property("y")` is resolved** from `gradle.properties`, the same
+   as `$var`, since it costs one more pattern.
+5. **`constraints { }` stays out of scope** (42 declarations): it only changes
+   versions. **`buildscript` classpath stays in** (20), as planned.
 
 ## Out of scope
 
