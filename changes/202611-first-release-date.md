@@ -39,7 +39,10 @@ kospex sca -package pypi:requests
 kospex sca -package maven:io.netty:netty-handler
 ```
 
-- TYPE is one of npm, pypi, go, maven, cargo, nuget, rubygems, in any case.
+- TYPE is any `package_type` in the extractor registry, in any case: today
+  cargo, go, maven, npm, nuget, pypi, rubygems. The list comes from
+  `kospex.extractors.registry.package_types()`, not a second copy in the CLI,
+  because those values already double as deps.dev system names.
 - The name is everything after the **first** colon, so a Maven
   `group:artifact` keeps its own colon.
 - Exits 1 when deps.dev has no record of the package, and 2 (a usage error) for

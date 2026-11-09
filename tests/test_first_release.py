@@ -200,6 +200,15 @@ class TestScaPackage:
         assert result.exit_code == 0, result.output
         assert run_sca.asked == [("pypi", "x")]
 
+    def test_accepts_every_registry_package_type(self, run_sca):
+        """TYPE comes from the extractor registry, not a list in the CLI."""
+        from kospex.extractors.registry import package_types
+
+        for package_type in package_types():
+            result = run_sca("-package", f"{package_type}:x", listing=_listing(
+                ("1.0.0", "2015-01-01T00:00:00Z", True)))
+            assert result.exit_code == 0, (package_type, result.output)
+
     def test_unknown_package_exits_1(self, run_sca):
         result = run_sca("-package", "npm:no-such-package")
 

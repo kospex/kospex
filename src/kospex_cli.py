@@ -25,6 +25,7 @@ import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
 from kospex.db import Migrator
 from kospex.db.migrator import warn_if_behind
+from kospex.extractors.registry import package_types
 from kospex_core import GitRepo, Kospex, RepoPathConflict
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
@@ -756,10 +757,6 @@ def deps(repo, directory, out):
         print("To assess a single dependency file, use `kospex sca FILE`.")
 
 
-# deps.dev systems -package accepts, as kospex.prerelease classifies them.
-SCA_PACKAGE_TYPES = ["npm", "pypi", "go", "maven", "cargo", "nuget", "rubygems"]
-
-
 def _sca_package(package_spec, file_path, save, out, as_json):
     """`kospex sca -package TYPE:NAME`: one package's first release (#390).
 
@@ -778,9 +775,10 @@ def _sca_package(package_spec, file_path, save, out, as_json):
 
     package_type, _, package_name = package_spec.partition(":")
     package_type = package_type.lower()
-    if not package_name or package_type not in SCA_PACKAGE_TYPES:
+    types = package_types()
+    if not package_name or package_type not in types:
         raise click.UsageError(
-            f"-package expects TYPE:NAME, with TYPE one of {', '.join(SCA_PACKAGE_TYPES)} "
+            f"-package expects TYPE:NAME, with TYPE one of {', '.join(types)} "
             f"(got {package_spec!r}).")
 
     first = kospex.dependencies.first_release(package_type, package_name)
@@ -844,8 +842,9 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, file_path):
 
     Shows direct dependencies by default; use -scope to choose others.
 
-    With -package TYPE:NAME, looks up a single package instead. TYPE is one of
-    npm, pypi, go, maven, cargo, nuget, rubygems. It shows two first releases,
+    With -package TYPE:NAME, looks up a single package instead. TYPE is an
+    ecosystem kospex reads dependency files for, such as npm, pypi or maven;
+    an unknown TYPE lists the accepted ones. It shows two first releases,
     because a package's oldest version is often a pre-release: the first
     stable release (alphas, betas, release candidates and other pre-releases
     excluded) and the first version of any kind. Versions deps.dev lists
