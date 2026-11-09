@@ -68,8 +68,9 @@ def _kdeps(system, name, asked, canonical):
 
 @pytest.mark.parametrize("asked, canonical, expected", [
     # A range floor: `sphinx>=9` is looked up as `9`, which deps.dev resolves.
-    ("9", "9.0.0", 7),
-    ("9.0", "9.0.0", 7),
+    # 5 releases; it was 7 before #276 stopped counting 9.1.0rc1/rc2.
+    ("9", "9.0.0", 5),
+    ("9.0", "9.0.0", 5),
     # PEP 440 spelling variant: the pin and deps.dev's list differ as strings.
     ("2026.3.post1", "2026.3.0.post1", 2),
 ])
@@ -85,10 +86,13 @@ def test_short_or_variant_spelling_is_found(asked, canonical, expected):
 
 
 def test_a_version_already_spelled_canonically_is_unchanged():
-    """The common case must not move: a full pin counts exactly as before."""
+    """The common case must not move: a full pin is found exactly as before.
+
+    11 releases; it was 19 before #276 stopped counting Sphinx's eight
+    release candidates (8.2.0rc1 ... 9.1.0rc2) between it and the default."""
     kd = _kdeps("pypi", "sphinx", "8.1.3", "8.1.3")
 
-    assert kd.depsdev_record("pypi", "sphinx", "8.1.3")["versions_behind"] == 19
+    assert kd.depsdev_record("pypi", "sphinx", "8.1.3")["versions_behind"] == 11
 
 
 def test_version_missing_from_the_list_is_unknown_not_the_whole_history():
