@@ -14,6 +14,7 @@ import kospex_utils as KospexUtils
 from kospex.db.migrator import warn_if_behind
 from kospex_git import KospexGit
 from kospex_github import GitHubListingIncomplete, KospexGithub
+import kospex.github_properties as GitHubProperties
 import kospex.org_sync as OrgSync
 import kospex.org_sync_manifest as OrgSyncManifest
 from kospex.habitat_config import HabitatConfig
@@ -784,6 +785,56 @@ def pull(all_flag, org, server, check, no_prompt, repo_id):
     )
 
 
+def _github_properties(gh, org, repo_id, filename, level):
+    """`kgit github --properties`: see kospex.github_properties."""
+    if not filename:
+        raise click.UsageError("--properties needs -filename.")
+    if bool(org) == bool(repo_id):
+        raise click.UsageError("--properties needs exactly one of -org or -repo_id.")
+    if repo_id and level == GitHubProperties.LEVEL_ORG:
+        raise click.UsageError("-repo_id is always repo level; drop -level org.")
+
+    if not gh.get_env_credentials():
+        token_vars = ", ".join(KospexGithub.TOKEN_ENV_VARS)
+        raise click.ClickException(f"--properties needs a GitHub token. Set one of: {token_vars}")
+
+    fetched_at = GitHubProperties.now_utc()
+    try:
+        if repo_id:
+            try:
+                target = GitHubProperties.parse_github_repo_id(repo_id)
+            except ValueError as e:
+                raise click.UsageError(str(e))
+            lines = GitHubProperties.repo_level_lines(gh, [target], fetched_at)
+        elif (level or GitHubProperties.LEVEL_ORG) == GitHubProperties.LEVEL_ORG:
+            console.print(f"Reading custom properties for {org} (org level)")
+            try:
+                lines = GitHubProperties.org_level_lines(gh, org, fetched_at)
+            except GitHubListingIncomplete as e:
+                if e.reason in ("HTTP 403", "HTTP 404"):
+                    raise click.ClickException(
+                        f"{e.reason} reading {org}'s properties at org level. Either the org "
+                        "doesn't exist or the token isn't an org member (a classic PAT also "
+                        "needs read:org). Nothing was written. Rerun with -level repo, which "
+                        "needs only read access to each repo.")
+                raise
+        else:
+            console.print(f"Listing {org}'s repos, then reading properties per repo (repo level)")
+            targets = GitHubProperties.list_org_repos(gh, org)
+            console.print(f"{len(targets)} repos")
+            lines = GitHubProperties.repo_level_lines(gh, targets, fetched_at)
+    except GitHubListingIncomplete as e:
+        raise click.ClickException(f"{e}. Nothing was written. Rerun to retry.")
+    except GitHubProperties.RateLimited as e:
+        raise click.ClickException(
+            f"GitHub rate limit hit at {e}. Nothing was written. Rerun after the limit resets.")
+
+    GitHubProperties.write_jsonl(filename, lines)
+    s = GitHubProperties.summarise(lines)
+    console.print(f"Wrote {s['repos']} repos to {filename}: {s['with_properties']} with "
+                  f"properties, {s['no_properties']} without, {s['errors']} errors.")
+
+
 @cli.command("github")
 @click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")
 @click.option('-sync', is_flag=True, help="Clone and sync all repos to the database.")
@@ -791,8 +842,21 @@ def pull(all_flag, org, server, check, no_prompt, repo_id):
               help=f"Test the GitHub token ({', '.join(KospexGithub.TOKEN_ENV_VARS)}) can authenticate.")
 @click.option('-out-repo-list', type=click.Path(), help="File to write clone URLs to.")
 @click.option('-ssh-clone-url',is_flag=True, help="Write SSH clone urls to file instead of HTTPS")
+@click.option('-properties', '--properties', 'properties', is_flag=True,
+              help="Write custom property values to -filename as JSONL, one line per repo.")
+@click.option('-org', 'prop_org', default=None,
+              help="With --properties: every repo GitHub lists for this org.")
+@click.option('-repo_id', 'prop_repo_id', default=None,
+              help="With --properties: one repo, e.g. github.com~acme~payments.")
+@click.option('-filename', 'prop_filename', type=click.Path(dir_okay=False), default=None,
+              help="With --properties: JSONL output file (overwritten). Required.")
+@click.option('-level', 'prop_level', type=click.Choice(['org', 'repo']), default=None,
+              help="With --properties: 'org' (default for -org) is one org-wide query and "
+                   "needs org membership; 'repo' is one request per repo and needs only "
+                   "read access.")
 @click.argument('owner', type=click.STRING, required=False)
-def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
+def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, properties,
+           prop_org, prop_repo_id, prop_filename, prop_level, owner):
     """
     Interact with the GitHub API.
 
@@ -800,9 +864,18 @@ def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, owner):
     one of these environment variables, checked in this order:
     GITHUB_AUTH_TOKEN, GH_TOKEN, GITHUB_TOKEN. Empty values are ignored.
 
+    \b
+    Custom properties to JSONL:
+      kgit github --properties -org acme -filename props.jsonl [-level repo]
+      kgit github --properties -repo_id github.com~acme~payments -filename props.jsonl
+
     """
     gh = KospexGithub()
     repos = []
+
+    if properties:
+        _github_properties(gh, prop_org, prop_repo_id, prop_filename, prop_level)
+        return
 
     if test_auth:
         token_vars = ", ".join(KospexGithub.TOKEN_ENV_VARS)
