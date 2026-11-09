@@ -220,9 +220,18 @@ it elects. Recording all of them is not: a package cannot be hidden, because the
 install path is always recorded, and a genuine alias target is always recorded,
 so it is checked for advisories.
 
-They almost always agree — 12,687 of the 12,689 entries carrying a tarball URL —
-so this is one row per package in practice. Across the estate it adds 32 rows out
-of 13,739.
+They almost always agree, so this is one row per package in practice. Measured
+in November 2026 on the `package-lock.json` files in a development kospex DB's
+synced repositories (78 files in 49 of 376 repositories, 34,059 rows):
+
+- the names agree on 31,987 of the 32,054 entries carrying a tarball URL
+- 78 entries give more than one name, and all 78 are genuine aliases: `name`
+  differs from the install path, and the URL agrees with `name`. No URL names
+  a different package from its key.
+- after de-duplication within a repository, those entries add 24 rows
+
+An earlier measurement on a smaller estate found 32 entries adding 10 rows out of
+13,739.
 
 **What a reader should take from this:** a row whose name is an install-path
 alias may not be a real registry package, and will show no advisory data for that

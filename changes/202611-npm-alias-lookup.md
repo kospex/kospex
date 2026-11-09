@@ -120,10 +120,11 @@ It could be reported alongside the version flags:
 - a `resolved` host that is not the registry the project uses
 - integrity hashes that look wrong for the entry
 
-It would be a quiet signal. On the development estate, every
-`package-lock.json` and `yarn.lock` entry that gives more than one name is a
-genuine alias. The extra names add 32 rows in 13,739, and no URL disagrees with
-its key. See `docs/dependency-flags.md` and `docs/dependency-details.md`.
+It would be a quiet signal. In the development DB's synced repositories, 78
+`package-lock.json` entries give more than one name, and all 78 are genuine
+aliases. No tarball URL names a different package from its key. Every `yarn.lock`
+entry giving two names is an alias too. See `docs/dependency-flags.md` and
+`docs/dependency-details.md`.
 
 ## Files changed
 
