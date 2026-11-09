@@ -32,11 +32,17 @@ from packaging.version import InvalidVersion, Version
 # version parser splits on a digit-to-letter change, so `3.2.0rc2` is rc 2.
 # `pr` is Jackson's pre-release spelling (`2.10.0.pr1`). Letters that are
 # not a pre-release qualifier stay a release: protobuf `2.4.0a`, Guava `r03`.
+#
+# The digit tail is `\d*` then separator-led groups, so a run of digits can be
+# matched only one way. An optional separator inside a repeated group
+# (`(?:[.\-_]?\d+)*`) let a run be split many ways, which backtracked
+# exponentially on a failed match: 24 digits took 1.1 s (CWE-1333). Versions
+# come from deps.dev, where anyone can publish one.
 _MAVEN_PRERELEASE = re.compile(
     r"(?:^|[.\-_]|(?<=\d))"
     r"(alpha|beta|rc|cr|milestone|snapshot|preview|pre|ea|dev|nightly|canary|incubating"
     r"|a(?=\d)|b(?=\d)|m(?=\d)|pr(?=\d))"
-    r"(?:[.\-_]?\d+)*(?=$|[.\-_+])",
+    r"\d*(?:[.\-_]\d+)*(?=$|[.\-_+])",
     re.IGNORECASE,
 )
 

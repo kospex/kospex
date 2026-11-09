@@ -83,6 +83,17 @@ def test_an_empty_version_is_not_a_release():
     assert is_prerelease("pypi", None) is True
 
 
+def test_a_long_digit_run_is_linear_not_exponential():
+    """Versions come from deps.dev, and anyone can publish one. The Maven
+    qualifier's digit tail once allowed a run of digits to be split many ways:
+    `1.0-rc` + 24 digits + `x` took 1.1 s, 4x per 2 digits (CWE-1333)."""
+    import time
+    start = time.perf_counter()
+    assert is_prerelease("maven", "1.0-rc" + "1" * 5000 + "x") is False
+    assert is_prerelease("maven", "1.0-rc" + "1" * 5000) is True
+    assert time.perf_counter() - start < 0.5
+
+
 def test_an_unknown_ecosystem_uses_the_semver_rule():
     assert is_prerelease("hex", "1.0.0") is False
     assert is_prerelease("hex", "1.0.0-rc.1") is True
