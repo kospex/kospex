@@ -113,6 +113,7 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - `kospex tech-landscape -metadata` - Show technology stack overview
 - `kospex summary` - Overview of all synced repositories
 - `kospex stats REPO_ID` - Show developer stats for a repo (key person analysis, Rich table)
+- `kospex sca -package TYPE:NAME` - Look up one package on deps.dev instead of a file; shows its first stable release and first version of any kind (TYPE from `registry.package_types()`)
 
 ### Logging Control (Global Options)
 - `kospex --debug COMMAND` - Enable debug-level logging for detailed troubleshooting

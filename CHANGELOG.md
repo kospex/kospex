@@ -6,6 +6,25 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 
+- **Gradle version catalogs (`gradle/libs.versions.toml`) are now read** (#229).
+  Each library and plugin in the catalog becomes a dependency row, looked up on
+  deps.dev for advisories and versions behind, including packages from Google's
+  Maven repository such as `androidx.*`. Rows have a new `package_use`,
+  `version-catalog` (`kospex sca -scope version-catalog`): the catalog sets the
+  version a build uses, but it isn't a direct dependency. A bare Gradle version
+  is recorded as `gte`, because Gradle can raise it during conflict resolution.
+  `build.gradle` and `build.gradle.kts` are not read yet. In an existing
+  database, run `krunner file-metadata` before `krunner osi` so catalogs synced
+  with an older panopticas are tagged and found.
+- **`kospex sca -package TYPE:NAME` looks up a single package** instead of a
+  dependency file, and shows when it was first released (#390), from deps.dev's
+  version list. It reports two dates, because the oldest version is often a
+  pre-release: the first stable release (`maven:io.netty:netty-handler`
+  4.0.0.Final, 2013) and the first version of any kind (4.0.0.Alpha1, 2012).
+  Versions deps.dev lists with no publish date are counted and reported, since
+  they can be older than the dates shown (numpy has 37). Options that only
+  apply to a file (`-save`, `-out`, `-json`, `-scope`) are refused with
+  `-package`. Nothing is stored in the database yet.
 - **Maven versions set by an imported BOM are now looked up.** A pom dependency
   with no `<version>` whose version comes from an imported BOM (for example
   netty-handler under `netty-bom`) was reported as `no_version`, with no
@@ -141,6 +160,35 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **Every kospex pull is now fast-forward only.** `kgit clone` and `kgit sync`
+  (one repo, `--org` or `--user`), `kgit github -sync`, `krunner git-pull` and
+  `kospex-agent` ran a plain `git pull` on an existing clone, which follows your
+  `pull.rebase` / `pull.ff` settings. When the remote's history had been
+  rewritten (a force-push, or a repo deleted and recreated at the same URL),
+  `pull.rebase=true` rebased the clone, dropping the old commits from the
+  branch, and `pull.rebase=false` added a merge commit the remote never had.
+  The sync that followed recorded the result. They now all run
+  `git pull --ff-only --no-rebase`, as `kgit pull` already did, so the clone is
+  either fast-forwarded or left as it was. With neither setting, recent git
+  already refused these pulls, but older git merges. A clone that can't be
+  fast-forwarded is no longer synced: `krunner git-pull` lists it as
+  `GIT_ERROR`, and `kospex-agent` logs a warning and doesn't prompt for
+  credentials.
+- **`versions_behind` counts releases, not pre-releases** (#276). deps.dev
+  lists every canary, nightly, release candidate and Go pseudo-version, with
+  no pre-release flag, and kospex counted them all. react 16.12.0 showed
+  2,730 versions behind; 43 are releases. Each ecosystem's own rule now
+  decides what's a pre-release (`kospex/prerelease.py`). Two related fixes:
+  - When deps.dev's default version is a pre-release, the count starts at
+    the newest release. netty-handler's default is a 2015 alpha, so 4.2.18
+    used to read 0 behind.
+  - A project on a pre-release now reads unknown (`-`), not a count.
+
+  In one 9,000-package estate, re-counting the same deps.dev data took
+  npm's total from 4.38M to 1.10M and Go's from 169k to 9.9k. 3,633 rows
+  improve their status on `/dependencies/` and 4 get worse; those 4 now
+  count real releases that a pre-release default used to hide. Stored rows
+  change when their repo is re-scanned.
 - **npm aliases in `package.json` are looked up as the package they install**
   (#350). `"react-17": "npm:react@^17"` installs react, but kospex asked
   deps.dev about a package called `react-17`. Most aliases came back

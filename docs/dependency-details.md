@@ -980,6 +980,86 @@ and `.resolvedVersion`, skipping `origin: "import"`) is v3alpha and may change. 
 `resolvedName`: an entry a BOM inherits from its own imports or parent has a blank
 `name` (1,157 of 1,607 for `spring-boot-dependencies` 3.5.7).
 
+## `libs.versions.toml` — Gradle version catalog
+
+| | |
+|---|---|
+| registry entry | `gradle-version-catalog`, `Kind.PACKAGE`, `package_type="maven"` |
+| parser | `kospex.extractors.gradle:extract_version_catalog` |
+| estate | 20 catalogs on disk (19 named `libs.versions.toml`), 1,237 rows; 19 in `file_metadata` |
+
+Phase 1 of the Gradle design, `changes/202611-gradle-dependency-parsing.md`. A catalog
+is where a Gradle build sets the versions its modules use. Build files decide which of
+them a module uses, and are phase 2 (see `build.gradle` below).
+
+One record per `[libraries]` entry, named `groupId:artifactId`, and one per `[plugins]`
+entry, named by its marker artifact `<id>:<id>.gradle.plugin` (deps.dev knows these, and
+Google's Maven repository: `androidx.*`, `com.google.firebase.*`). `[bundles]` only group
+libraries and give no rows. `requirements_type` is `version-catalog`, which has its own
+`package_use` of the same name: a catalog row gets advisories like any row, but it isn't
+a direct dependency, and build-file rows will be. Library rows have `is_dev` and
+`declared_scope` None, because a catalog doesn't say whether a library is for tests.
+Plugin rows have `declared_scope="plugin"` and `is_dev=True`, since they are build tooling.
+
+**`ecosystem` is `gradle`, `package_type` stays `maven`.** A bare Gradle version is a
+`require` version, which conflict resolution can raise, so it's classified `gte`, where
+Maven's is `pinned`. `classify_constraint` is given `gradle` from the record's
+`ecosystem` on both write paths (`KospexDependencies._constraint_system`), because
+`package_type` can't tell the two apart.
+
+### Raises
+
+- missing or unreadable file, not UTF-8, or not valid TOML
+- `[versions]`, `[libraries]` or `[plugins]` that isn't a table
+- **an entry Gradle refuses**, which makes Gradle reject the whole catalog: a library
+  that isn't `group:artifact` (string, `module`, or `group` + `name`), a plugin with no
+  `id`, a `version.ref` naming no `[versions]` key, or a version that is neither a string
+  nor a rich version table
+
+### Returns `[]`
+
+A catalog with no `[libraries]` or `[plugins]` entry, or an empty file. None on disk:
+the smallest, androidx's `bench-flame-diff`, has one plugin and so one row.
+
+### Quirks and decisions
+
+- **The version recorded is the one Gradle requires**: `strictly`, else `require`, else
+  `prefer`. A rich version with only `reject` records "". `strictly` is recorded as its
+  plain value, so it's classified `gte`, not `pinned`. Gradle's `!!` shorthand would
+  classify correctly, but `clean_version_spec` passes `1.2.3!!` to deps.dev unchanged and
+  the lookup fails. Two entries on disk use `strictly`.
+- **No version → ""**: 22 libraries leave the version to a `platform(...)` in a build
+  file, which phase 2 reads. Enrichment reports them `no_version`.
+- **refreshVersions `_` → ""**: lottie-android's 63 libraries all use the placeholder
+  `_`, whose version is in `versions.properties`, not read. Logged, reported
+  `no_version`.
+- **Exact duplicates are one row.** Two aliases for the same artifact at the same version
+  would collide on the primary key; at two versions they're two rows.
+- **Only the name `libs.versions.toml` is matched.** Gradle imports it from `gradle/`
+  automatically. A catalog with another name is declared in `settings.gradle(.kts)`
+  (`importMaven.versions.toml` in androidx, 9 libraries, unused by the build) and is not
+  read.
+- **An existing database needs the files re-tagged first.** panopticas tags
+  `libs.versions.toml` as `dependencies` from 0.0.22/0.0.23 (#349), and `krunner osi` only reads tagged
+  files. A repo synced with an older panopticas shows nothing until
+  `krunner file-metadata` re-tags it (see `docs/refreshing-data.md`). Measured on the
+  development database: timber, synced with 0.0.19, had its catalog untagged.
+- **Measured against deps.dev** (sca path, timber, retrofit, firebase-android-sdk): 212
+  of 214 rows resolve. The two that don't are versions deps.dev doesn't list
+  (`androidx.appcompat:appcompat` 1.7.1, the Crashlytics plugin 3.0.4), recorded as
+  `version_yanked` by the existing lookup-miss classification.
+- **`versions_behind` inherits #377.** deps.dev's default version for the Android Gradle
+  plugin (`com.android.tools.build:gradle`) is 2.3.0 from 2017, so a current version
+  reads 0 behind.
+
+**Upstream docs:** [Version catalogs](https://docs.gradle.org/current/userguide/version_catalogs.html),
+[Declaring rich versions](https://docs.gradle.org/current/userguide/dependency_versions.html)
+
+**Drift watch:** the catalog `[metadata] format.version` (1.1 today), new rich-version
+keys, and Gradle supporting a catalog location other than `gradle/` by default. A
+panopticas release that stops tagging `libs.versions.toml`, which would hide every catalog
+from `osi`.
+
 ---
 
 # Classified, no parser yet
@@ -1008,6 +1088,9 @@ most files and report the rest as absent.
 That makes it the format where the registry's `supported` flag is least able to stand
 in for coverage, and where a file-by-file check against real projects matters most.
 
+The design, measured on 1,495 build files, is `changes/202611-gradle-dependency-parsing.md`.
+Its phase 1, the version catalog, has a parser (above); build files are phase 2.
+
 **Upstream docs:** [Declaring dependencies](https://docs.gradle.org/current/userguide/declaring_dependencies.html)
 
 ## Tagged by panopticas 0.0.22 and 0.0.23 — #349
@@ -1032,7 +1115,7 @@ repository, not real use.
 | `cargo-toml` `Cargo.toml` | 126 | `cargo` | one per workspace member; parser #359 |
 | `pnpm-workspace` `pnpm-workspace.yaml` | 48 | `npm` | see below |
 | `sbt` `*.sbt` | 32 | `maven` | any `*.sbt` is build definition, not only `build.sbt` |
-| `gradle-version-catalog` `libs.versions.toml` | 19 | `maven` | Gradle imports it from `gradle/`; replaced when a Gradle parser lands (#229) |
+| `gradle-version-catalog` `libs.versions.toml` | 19 | `maven` | Gradle imports it from `gradle/`; has a parser now, see its section above |
 | `cargo-lock` `Cargo.lock` | 15 | `cargo` | parser #359 |
 | `gemfile` `Gemfile`, `gems.rb` | 15 | `rubygems` | Ruby code, so a parser reads a subset; #360 |
 | `gemspec` `*.gemspec` | 9 | `rubygems` | Ruby code building a `Gem::Specification`; #360 |

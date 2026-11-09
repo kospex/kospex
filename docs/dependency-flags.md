@@ -533,6 +533,11 @@ Not verified here: Gradle configurations, NuGet `PrivateAssets` /
 `developmentDependency`, and Composer. Each is believed to have its own vocabulary
 and none should be assumed to match a table above.
 
+A Gradle version catalog (`libs.versions.toml`) states none of these flags. It names
+libraries and their versions, and a build file's configuration (`testImplementation`,
+`implementation`, ...) decides how each is used, so catalog rows leave `is_dev` unset.
+See [Version catalogs](https://docs.gradle.org/current/userguide/version_catalogs.html).
+
 yarn's upstream vocabulary is not quoted here either. What its lockfile states was
 measured instead, when the parser landed: neither v1 nor Berry records a dev,
 optional or install-script flag per entry, and a Berry workspace's `dependencies`

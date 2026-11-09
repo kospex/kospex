@@ -128,7 +128,10 @@ The following methods are implemented as stubs, ready for you to add your specif
 
 1. **`_check_repos_need_update()`**: Main method to check which repositories need updating
 2. **`_repo_needs_update(repo_info)`**: Check if a specific repository needs updating  
-3. **`_update_repositories(repos)`**: Update the specified repositories
+3. **`_update_repositories(repos)`**: Update the specified repositories. Each is
+   pulled fast-forward only, without prompting for credentials, and synced only if
+   the pull succeeded. A clone that can't be fast-forwarded is left as it was and
+   logged as a warning.
 
 ### Extensibility
 

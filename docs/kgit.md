@@ -41,6 +41,11 @@ https://github.com/mergestat/mergestat-lite
 `kgit sync --org` clones (or pulls) and syncs every repository in a GitHub
 organisation. `kgit sync --user` does the same for the repositories a user owns.
 
+Like every kospex pull, the pull of an existing clone is fast-forward only, whatever
+your `pull.rebase` / `pull.ff` settings say. A clone that can't be fast-forwarded,
+because the remote's history was rewritten or the clone has commits of its own, is
+left as it was and recorded as `failed` ("clone or pull failed"), not synced.
+
 ```bash
 kgit sync --org acme
 kgit sync --user octocat

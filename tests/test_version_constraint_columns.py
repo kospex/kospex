@@ -423,3 +423,41 @@ class TestRequirementsRealignment:
         assert rec["version_kind"] == "tilde"
         assert rec["version_operator"] == "~="
         assert rec["resolved_version"] == "2.3.3"
+
+
+class TestGradleClassifiedAsGradle:
+    """A Gradle row is package_type `maven`, since deps.dev's Maven system is
+    where it's looked up, but a bare Gradle version is a minimum (decision 2,
+    changes/202611-gradle-dependency-parsing.md). The parser marks the row
+    `ecosystem="gradle"`, and both write paths classify by that."""
+
+    def _record(self, ecosystem):
+        return {
+            "_repo_id": "s~o~r", "hash": "h1", "file_path": "gradle/libs.versions.toml",
+            "package_type": "maven", "package_name": "com.squareup.okio:okio",
+            "package_version": "3.9.1", "requirements_type": "version-catalog",
+            "ecosystem": ecosystem,
+        }
+
+    def test_sca_path(self):
+        from kospex.extractors.registry import classify
+
+        extractor = classify("libs.versions.toml").extractor
+        rec = _kdeps()._enrich_dependency_records([self._record("gradle")], extractor)[0]
+        assert (rec["version_kind"], rec["version_operator"]) == ("gte", "")
+
+    def test_osi_path(self):
+        from kospex_dependencies import KospexDependencies
+        db = TestOsiPathPopulates()._db()
+        KospexDependencies(kospex_db=db).save_dependencies(
+            [self._record("gradle")], source="test")
+        row = next(db.query("SELECT * FROM dependency_data"))
+        assert row["version_kind"] == "gte"
+
+    def test_maven_is_unchanged(self):
+        from kospex_dependencies import KospexDependencies
+        db = TestOsiPathPopulates()._db()
+        KospexDependencies(kospex_db=db).save_dependencies(
+            [self._record("maven")], source="test")
+        row = next(db.query("SELECT * FROM dependency_data"))
+        assert row["version_kind"] == "pinned"

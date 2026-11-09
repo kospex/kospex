@@ -3,6 +3,11 @@ module.exports = {
   content: [
     "./src/templates/**/*.html",
     "./src/templates/**/*.js",
+    // Python that emits Tailwind classes into pages, e.g. SUMMARY_STATUSES
+    // ("bg-gray-300" exists nowhere else). Tailwind drops any class it doesn't
+    // see here, silently. List files individually: scanning all of src/**/*.py
+    // mints junk rules from words and slices like text[pos:stop].
+    "./src/kospex_web.py",
   ],
   theme: {
     extend: {

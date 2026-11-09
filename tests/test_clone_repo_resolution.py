@@ -63,9 +63,10 @@ def test_existing_clone_is_found_via_file_path_not_the_layout(code_dir, monkeypa
 
     assert q.asked_for == "github.com~textualize~rich"
     assert calls, "expected git to be invoked"
-    argv, cwd = calls[0]
-    assert argv[:2] == ["git", "pull"], f"expected a pull, got {argv[:3]}"
-    assert Path(cwd) == recorded, "pulled in the wrong directory"
+    argv, _ = calls[0]
+    assert "pull" in argv, f"expected a pull, got {argv}"
+    assert argv[:2] == ["git", "-C"]
+    assert Path(argv[2]) == recorded, "pulled in the wrong directory"
 
 
 def test_unknown_repo_still_clones_to_the_planned_path(code_dir, monkeypatch):

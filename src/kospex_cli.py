@@ -14,6 +14,7 @@ from shutil import which
 
 import click
 import requests
+from click.core import ParameterSource
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
@@ -24,6 +25,7 @@ import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
 from kospex.db import Migrator
 from kospex.db.migrator import warn_if_behind
+from kospex.extractors.registry import package_types
 from kospex_core import GitRepo, Kospex, RepoPathConflict
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
@@ -755,6 +757,59 @@ def deps(repo, directory, out):
         print("To assess a single dependency file, use `kospex sca FILE`.")
 
 
+def _sca_package(package_spec, file_path, save, out, as_json):
+    """`kospex sca -package TYPE:NAME`: one package's first release (#390).
+
+    The name is everything after the first colon, so a Maven
+    group:artifact keeps its own. Options that only apply to a file are
+    refused rather than ignored, before deps.dev is asked anything.
+    """
+    ctx = click.get_current_context()
+    refused = [name for name, given in (
+        ("FILE_PATH", file_path), ("-repo", ctx.params.get("repo")), ("-save", save),
+        ("-out", out), ("-json", as_json),
+        ("-scope", ctx.get_parameter_source("scope") == ParameterSource.COMMANDLINE))
+        if given]
+    if refused:
+        raise click.UsageError(f"-package cannot be used with {', '.join(refused)}.")
+
+    package_type, _, package_name = package_spec.partition(":")
+    package_type = package_type.lower()
+    types = package_types()
+    if not package_name or package_type not in types:
+        raise click.UsageError(
+            f"-package expects TYPE:NAME, with TYPE one of {', '.join(types)} "
+            f"(got {package_spec!r}).")
+
+    first = kospex.dependencies.first_release(package_type, package_name)
+    if first is None:
+        console.print(Text.assemble("deps.dev has no record of ", (package_name, "bold"),
+                                    f" ({package_type})."))
+        exit(1)
+
+    table = Table(title=f"First release: {package_type} {package_name}")
+    table.add_column("First")
+    table.add_column("Version")
+    table.add_column("Published")
+    table.add_row("stable release", first["first_stable_version"] or "none",
+                  first["first_stable_published"] or "")
+    table.add_row("any version", first["first_published_version"] or "none",
+                  first["first_published"] or "")
+    console.print()
+    KospexUtils.print_table(table, console)
+    console.print("'stable release' excludes alphas, betas, release candidates and other "
+                  "pre-releases; 'any version' includes them.")
+    console.print(f"{first['versions']} versions listed, {first['prereleases']} pre-releases.")
+    undated = first["undated"]
+    if undated == 1:
+        console.print("There is 1 undated version (no publish date); it may be older "
+                      "than the dates above.")
+    elif undated:
+        console.print(f"There are {undated} undated versions (no publish date); any of "
+                      "them may be older than the dates above.")
+    console.print()
+
+
 @cli.command("sca")
 @click.option("-repo", type=GitRepo(), help="NOT IMPLEMENTED - File path to git repo.")
 @click.option(
@@ -776,22 +831,38 @@ def deps(repo, directory, out):
 @click.option("-json", "as_json", is_flag=True, default=False,
               help="Print the results as JSON on stdout, and nothing else.")
 @click.option("-out", type=click.STRING, help="filename to write CSV results to.")
+@click.option("-package", "package_spec", metavar="TYPE:NAME",
+              help="Look up one package instead of a file, e.g. pypi:requests or "
+              "maven:io.netty:netty-handler. Shows its first release.")
 @click.argument("file_path", required=False, type=click.Path(exists=True))
-def sca(repo, scope, save, malware, as_json, out, file_path):
+def sca(repo, scope, save, malware, as_json, out, package_spec, file_path):
     """
     Run a lightweight software composition analysis (SCA) of a dependency file
     (e.g. requirements.txt, package.json), using deps.dev.
 
     Shows direct dependencies by default; use -scope to choose others.
+
+    With -package TYPE:NAME, looks up a single package instead. TYPE is an
+    ecosystem kospex reads dependency files for, such as npm, pypi or maven;
+    an unknown TYPE lists the accepted ones. It shows two first releases,
+    because a package's oldest version is often a pre-release: the first
+    stable release (alphas, betas, release candidates and other pre-releases
+    excluded) and the first version of any kind. Versions deps.dev lists
+    without a publish date are counted, since any of them may be older.
     """
     err = Console(stderr=True, soft_wrap=True)
+
+    if package_spec:
+        _sca_package(package_spec, file_path=file_path, save=save, out=out,
+                     as_json=as_json)
+        return
 
     if repo:
         err.print("-repo is NOT implemented")
         exit(1)
 
     if not file_path:
-        err.print("Either -repo REPO or file_path is required.\n")
+        err.print("Either -package TYPE:NAME, -repo REPO or file_path is required.\n")
         exit(1)
 
     try:

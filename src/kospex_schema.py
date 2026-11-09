@@ -39,11 +39,16 @@ PACKAGE_USE_TRANSITIVE = "transitive"
 # A Maven bill of materials (`<scope>import</scope>`): it supplies versions to
 # other dependencies and puts nothing on the classpath, so it is not `direct`.
 PACKAGE_USE_BOM        = "bom"
+# A Gradle version catalog entry (`gradle/libs.versions.toml`): it sets the
+# version a build uses, while a build file decides what is used. Its own value
+# so build-file rows for the same package don't double the `direct` count.
+PACKAGE_USE_VERSION_CATALOG = "version-catalog"
 
 PACKAGE_USE_VALUES = frozenset({
     PACKAGE_USE_DIRECT, PACKAGE_USE_DEV,
     PACKAGE_USE_PEER, PACKAGE_USE_OPTIONAL,
     PACKAGE_USE_TRANSITIVE, PACKAGE_USE_BOM,
+    PACKAGE_USE_VERSION_CATALOG,
 })
 
 # What to store when no mapping applies. NULL means *unknown*, the same rule
@@ -82,6 +87,8 @@ REQ_TO_PACKAGE_USE = {
     # pom.xml BOM imports. Counting one as `direct` would add a dependency
     # whose code is never used or shipped.
     "bom": PACKAGE_USE_BOM,
+    # Gradle version catalog entries; see PACKAGE_USE_VERSION_CATALOG.
+    "version-catalog": PACKAGE_USE_VERSION_CATALOG,
 }
 
 # Mapping of table name to create statement is below the create statement definitions in:
