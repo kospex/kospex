@@ -37,6 +37,7 @@ declares no library or plugin.
 Per-format notes are in docs/dependency-details.md.
 """
 
+import bisect
 import functools
 import os
 import re
@@ -250,6 +251,15 @@ def extract_version_catalog(path):
 # each one. A file with declarations and none readable raises (decision 3).
 # ---------------------------------------------------------------------------
 
+# Limits on the work a build file can cause (CWE-400). Every file read here
+# comes from a cloned third-party repository. Measured on 1,495 real build
+# files: the largest is 36 KB, braces nest at most 8 deep, no string holds more
+# than 4 references and no assignment is longer than 125 characters.
+_MAX_FILE_BYTES = 1024 * 1024
+_MAX_NESTING = 32
+# As maven.py's: `"$a$a$a"` where each $a is `"$b$b$b"` multiplies at each level.
+_MAX_INTERPOLATED_LENGTH = 1024
+
 _SETTINGS_FILES = ("settings.gradle", "settings.gradle.kts")
 _BUILD_FILES = ("build.gradle", "build.gradle.kts")
 _DEFAULT_CATALOG = os.path.join("gradle", "libs.versions.toml")
@@ -339,6 +349,7 @@ def _strip_comments(text):
 
 
 _PAIRS = {"{": "}", "(": ")", "[": "]"}
+_NON_SPACE = re.compile(r"\S")
 
 
 def _close(text, i):
@@ -364,8 +375,13 @@ def _statements(text, start, end):
 
     A statement ends at a newline or `;` outside brackets, so a call keeps its
     trailing closure (`implementation("x") { exclude(...) }`). A line ending in
-    `,`, `+` or `.`, or a next line starting with `.`, continues it."""
+    `,`, `+` or `.`, or a next line starting with `.`, continues it.
+
+    Linear in the block's length: nothing is sliced per newline. `last` is the
+    statement's last non-space character so far, and `ahead` caches where the
+    next non-space character is, so a run of blank lines is scanned once."""
     out, i, begin = [], start, None
+    last, ahead = "", -1
 
     def _emit(stop):
         if begin is not None:
@@ -373,27 +389,40 @@ def _statements(text, start, end):
             if stmt:
                 out.append((begin, stmt))
 
+    def _last_non_space(chunk_start, stop):
+        j = stop - 1
+        while j > chunk_start and text[j].isspace():
+            j -= 1
+        return text[j]
+
     while i < end:
         c = text[i]
         if c in "\"'":
             begin = i if begin is None else begin
-            i = min(_skip_string(text, i), end)
+            chunk, i = i, min(_skip_string(text, i), end)
+            last = _last_non_space(chunk, i)
         elif c in _PAIRS:
             begin = i if begin is None else begin
-            i = min(_close(text, i), end - 1) + 1
+            chunk, i = i, min(_close(text, i), end - 1) + 1
+            last = _last_non_space(chunk, i)
         elif c in "\n;":
-            tail = text[begin:i].rstrip() if begin is not None else ""
-            ahead = text[i + 1:end].lstrip()
-            if c == "\n" and tail and (tail[-1] in ",+." or ahead.startswith(".")
-                                       or ahead.startswith("?.")):
-                i += 1
-                continue
+            if c == "\n" and begin is not None:
+                if last in ",+.":
+                    i += 1
+                    continue
+                if ahead <= i:
+                    m = _NON_SPACE.search(text, i + 1, end)
+                    ahead = m.start() if m else end
+                if text.startswith(".", ahead, end) or text.startswith("?.", ahead, end):
+                    i += 1
+                    continue
             _emit(i)
-            begin = None
+            begin, last = None, ""
             i += 1
         else:
-            if begin is None and not c.isspace():
-                begin = i
+            if not c.isspace():
+                begin = i if begin is None else begin
+                last = c
             i += 1
     _emit(end)
     return out
@@ -442,20 +471,24 @@ def _string_value(match):
     return next(g for g in match.groups() if g is not None)
 
 
-def _line(text, offset):
-    return text.count("\n", 0, offset) + 1
-
-
 # -- the build's context: properties, assignments, catalogs -----------------
+
+def _too_large(path):
+    return UnreadableManifest(f"{path}: larger than {_MAX_FILE_BYTES} bytes; not read")
+
 
 def _read_text(path):
     try:
         with open(path, "rb") as f:
-            raw = f.read()
+            if os.fstat(f.fileno()).st_size > _MAX_FILE_BYTES:
+                raise _too_large(path)
+            raw = f.read(_MAX_FILE_BYTES + 1)
     except FileNotFoundError as e:
         raise UnreadableManifest(f"{path}: file not found") from e
     except OSError as e:
         raise UnreadableManifest(f"{path}: could not read: {e}") from e
+    if len(raw) > _MAX_FILE_BYTES:      # grew since the stat, or not a regular file
+        raise _too_large(path)
     try:
         return raw.decode("utf-8-sig")
     except UnicodeDecodeError as e:
@@ -466,6 +499,9 @@ def _properties_file(path):
     """A gradle.properties file as a dict; {} if absent or unreadable."""
     found = {}
     try:
+        if os.path.getsize(path) > _MAX_FILE_BYTES:
+            logger.info("Not reading %s: larger than %d bytes", path, _MAX_FILE_BYTES)
+            return found
         with open(path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
@@ -485,9 +521,15 @@ def _assignments(text):
     for pattern in _ASSIGNMENTS:
         for name, value in pattern.findall(text):
             found.setdefault(name, value.strip())
+    read_to = -1
     for m in re.finditer(r"(?<![\w.])ext\s*\{", text):
         brace = m.end() - 1
-        body = text[brace + 1:_close(text, brace)]
+        if brace < read_to:
+            # Inside an ext { } already read, whose scan covered these lines.
+            # Reading it again made nested blocks quadratic or worse.
+            continue
+        read_to = _close(text, brace)
+        body = text[brace + 1:read_to]
         for name, value in _BLOCK_ASSIGNMENT.findall(body):
             found.setdefault(name, value.strip())
     return found
@@ -660,12 +702,26 @@ class _Context:
             root_build = _side_file(os.path.join(root, name), repository)
             if root_build and root_build != real_path:
                 self.assigned.update(_file_assignments(root_build))
+        # (expression, depth) -> value. Without it, "$b$b..." where each $b is
+        # "$c$c..." looks every name up once per reference: k*k lookups.
+        self._values = {}
 
     def add_assignments(self, text):
         self.assigned.update(_assignments(text))
+        self._values.clear()
 
     def value(self, expression, depth=0):
-        """The string an expression names, or None if it can't be worked out."""
+        """The string an expression names, or None if it can't be worked out
+        or is longer than _MAX_INTERPOLATED_LENGTH."""
+        key = (expression, depth)
+        if key not in self._values:
+            found = self._value(expression, depth)
+            if found is not None and len(found) > _MAX_INTERPOLATED_LENGTH:
+                found = None
+            self._values[key] = found
+        return self._values[key]
+
+    def _value(self, expression, depth):
         expression = expression.strip()
         if depth > 5 or not expression:
             return None
@@ -695,10 +751,17 @@ class _Context:
         return None
 
     def interpolate(self, text, depth=0):
-        """(text with $x / ${x} filled in, [names not found])."""
-        missing = []
+        """(text with $x / ${x} filled in, [names not found]).
+
+        If filling in would make the text longer than _MAX_INTERPOLATED_LENGTH,
+        the text comes back as written, with the name that crossed the limit
+        counted as not found."""
+        missing, too_long = [], []
+        room = [_MAX_INTERPOLATED_LENGTH - len(text)]
 
         def _fill(m):
+            if too_long:
+                return m.group(0)
             name = m.group(1) if m.group(1) is not None else m.group(2)
             value = self.value(name, depth + 1)
             if value is None and m.group(2) and "." in name:
@@ -706,13 +769,22 @@ class _Context:
                 head, _, rest = name.partition(".")
                 value = self.value(head, depth + 1)
                 if value is not None:
-                    return f"{value}.{rest}"
+                    value = f"{value}.{rest}"
             if value is None:
                 missing.append(name)
                 return m.group(0)
+            room[0] -= len(value) - len(m.group(0))
+            if room[0] < 0:
+                too_long.append(name)
+                return m.group(0)
             return value
 
-        return _INTERPOLATION.sub(_fill, text), missing
+        filled = _INTERPOLATION.sub(_fill, text)
+        if too_long:
+            logger.info("%s: filling in %s would be longer than %d characters; kept as "
+                        "written", self.path, text[:100], _MAX_INTERPOLATED_LENGTH)
+            return text, missing + too_long
+        return filled, missing
 
 
 # -- declarations -----------------------------------------------------------
@@ -860,6 +932,7 @@ class _BuildReader:
     def __init__(self, path, text, ctx):
         self.path, self.text, self.ctx = path, text, ctx
         self.records, self.seen = [], {}
+        self._newlines = None
         self.unreadable = 0
 
     # rows ------------------------------------------------------------------
@@ -876,23 +949,41 @@ class _BuildReader:
             existing["is_dev"] = False
             existing["declared_scope"] = record["declared_scope"]
 
+    def _line(self, offset):
+        """The 1-based line of an offset. Counting newlines from the start for
+        every logged line made a file of unreadable lines quadratic."""
+        if self._newlines is None:
+            self._newlines = [m.start() for m in re.finditer("\n", self.text)]
+        return bisect.bisect_left(self._newlines, offset) + 1
+
     def _unreadable(self, offset, what):
         self.unreadable += 1
         logger.info("%s:%d: dependency kospex cannot read: %s", self.path,
-                    _line(self.text, offset), " ".join(what.split())[:200])
+                    self._line(offset), " ".join(what[:400].split())[:200])
+
+    def _too_deep(self, start, depth):
+        """A block nested past _MAX_NESTING is not read: each level re-scans its
+        body, and Python's recursion limit is near 1,000. It counts as one
+        unreadable declaration, so a file with nothing else raises."""
+        if depth <= _MAX_NESTING:
+            return False
+        self._unreadable(start, f"a block nested more than {_MAX_NESTING} deep")
+        return True
 
     # traversal -------------------------------------------------------------
 
-    def walk(self, start, end, heads):
+    def walk(self, start, end, heads, depth=0):
+        if self._too_deep(start, depth):
+            return
         for offset, stmt in _statements(self.text, start, end):
             for head, body_start, body_end in _brace_groups(stmt):
                 begin, finish = offset + body_start, offset + body_end
                 if head == "dependencies" or head.endswith(".dependencies"):
-                    self.dependencies(begin, finish, heads + [head])
+                    self.dependencies(begin, finish, heads + [head], depth + 1)
                 elif head == "plugins" and not heads:
                     self.plugins(begin, finish)
                 else:
-                    self.walk(begin, finish, heads + [head])
+                    self.walk(begin, finish, heads + [head], depth + 1)
 
     @staticmethod
     def _source_set_of(heads):
@@ -916,7 +1007,9 @@ class _BuildReader:
                     or _is_dev_configuration(configuration))
         return configuration, _is_dev_configuration(configuration)
 
-    def dependencies(self, start, end, heads):
+    def dependencies(self, start, end, heads, depth=0):
+        if self._too_deep(start, depth):
+            return
         for offset, stmt in _statements(self.text, start, end):
             word = re.match(r"^(\w+)", stmt)
             word = word.group(1) if word else ""
@@ -927,7 +1020,7 @@ class _BuildReader:
                                          and word not in _NOT_DECLARATIONS):
                 # if/else/for, or a bare block: what's inside is still a declaration.
                 for _head, body_start, body_end in groups:
-                    self.dependencies(offset + body_start, offset + body_end, heads)
+                    self.dependencies(offset + body_start, offset + body_end, heads, depth + 1)
                 continue
             if word in _NOT_DECLARATIONS:
                 continue
@@ -935,7 +1028,7 @@ class _BuildReader:
             if found is None:
                 if groups:
                     for _head, body_start, body_end in groups:
-                        self.dependencies(offset + body_start, offset + body_end, heads)
+                        self.dependencies(offset + body_start, offset + body_end, heads, depth + 1)
                     continue
                 self._unreadable(offset, stmt)
                 continue
@@ -965,7 +1058,7 @@ class _BuildReader:
             if kind[1] in ("files", "fileTree"):
                 # A jar checked into the repository: no coordinates to look up (#398).
                 logger.info("%s:%d: %s is a file dependency, not a package; no row",
-                            self.path, _line(self.text, offset), argument[:200])
+                            self.path, self._line(offset), argument[:200])
             return
         if kind[0] == "unreadable":
             self._unreadable(offset, argument)
@@ -996,7 +1089,7 @@ class _BuildReader:
                 found = catalog["plugins"].get(m.group(2)) if catalog else None
                 if found is None:
                     logger.info("%s:%d: plugin alias kospex cannot resolve: %s", self.path,
-                                _line(self.text, offset), stmt[:200])
+                                self._line(offset), stmt[:200])
                     continue
                 self._plugin_row(*found)
                 continue
@@ -1011,7 +1104,7 @@ class _BuildReader:
             version = self.ctx.value(expression)
             if version is None:
                 logger.info("%s:%d: plugin %s has a version kospex cannot resolve: %s",
-                            self.path, _line(self.text, offset), plugin_id, expression[:100])
+                            self.path, self._line(offset), plugin_id, expression[:100])
                 continue
             self._plugin_row(plugin_id, version)
 

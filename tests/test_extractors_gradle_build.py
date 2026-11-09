@@ -599,3 +599,118 @@ class TestErrorContract:
             assert _versions(extract_build_gradle(path)) == {"a.b:c": "1.0"}
         assert "intellijCore()" in caplog.text
         assert "build.gradle.kts:3" in caplog.text
+
+
+class _CountingText(str):
+    """A str that adds up how many characters its slices copy."""
+
+    copied = 0
+
+    def __getitem__(self, key):
+        part = str.__getitem__(self, key)
+        type(self).copied += len(part)
+        return part
+
+
+class TestResourceLimits:
+    """A build file comes from a cloned third-party repository, so its size and
+    shape are attacker-controlled (CWE-400). Real files are small: across 1,495
+    on the development estate the largest is 36 KB, braces nest at most 8 deep,
+    no string has more than 4 references and no assignment is longer than 125
+    characters. Each limit below is far above those."""
+
+    def test_an_expansion_that_multiplies_is_not_expanded(self, tmp_path):
+        # 200 references to $a, each 200 references to a 100-character property:
+        # 4 MB from a 1 KB file. Kept as written instead, like a pom's ${...}.
+        (tmp_path / "gradle.properties").write_text("b=" + "9" * 100 + "\n")
+        declared = "$a" * 200
+        path = _build(tmp_path, f'def a = "{"$b" * 200}"\n'
+                                f'dependencies {{\n    implementation "g:a:{declared}"\n}}\n',
+                      name="build.gradle")
+        assert _versions(extract_build_gradle(path)) == {"g:a": declared}
+
+    def test_each_name_is_worked_out_once(self, tmp_path, monkeypatch):
+        # $a holds 200 references to $b, which holds 200 to an unknown name:
+        # 80,000 lookups without memoising, a few hundred with it.
+        from kospex.extractors import gradle
+        calls = []
+        original = gradle._Context.value
+
+        def counting(self, expression, depth=0):
+            calls.append(expression)
+            return original(self, expression, depth)
+
+        monkeypatch.setattr(gradle._Context, "value", counting)
+        path = _build(tmp_path, f'def a = "{"$b" * 200}"\ndef b = "{"$c.x" * 200}"\n'
+                                'dependencies {\n    implementation "g:a:$a"\n}\n',
+                      name="build.gradle")
+        assert _versions(extract_build_gradle(path)) == {"g:a": "$a"}
+        assert len(calls) < 2_000
+
+    def test_a_value_within_the_limit_is_still_expanded(self, tmp_path):
+        (tmp_path / "gradle.properties").write_text("v=" + "1" * 500 + "\n")
+        path = _build(tmp_path, 'dependencies {\n    implementation "g:a:${v}.$v"\n}\n',
+                      name="build.gradle")
+        assert _versions(extract_build_gradle(path)) == {"g:a": "1" * 500 + "." + "1" * 500}
+
+    def test_blocks_nested_too_deep_are_unreadable(self, tmp_path, caplog):
+        path = _build(tmp_path, "a {" * 200 + 'dependencies { implementation("x.y:deep:1.0") }'
+                                + "}" * 200 + '\ndependencies { implementation("x.y:top:1.0") }\n')
+        with caplog.at_level(logging.INFO, logger="extractors.gradle"):
+            assert _versions(extract_build_gradle(path)) == {"x.y:top": "1.0"}
+        assert "nested" in caplog.text
+
+    def test_only_too_deep_declarations_raise(self, tmp_path):
+        path = _build(tmp_path, "a {" * 200 + 'dependencies { implementation("x.y:deep:1.0") }'
+                                + "}" * 200 + "\n")
+        with pytest.raises(UnreadableManifest):
+            extract_build_gradle(path)
+
+    def test_ordinary_nesting_is_read(self, tmp_path):
+        path = _build(tmp_path, "a {" * 10 + 'dependencies { implementation("x.y:z:1.0") }'
+                                + "}" * 10 + "\n")
+        assert _versions(extract_build_gradle(path)) == {"x.y:z": "1.0"}
+
+    def test_nested_ext_blocks_are_scanned_once(self, monkeypatch):
+        from kospex.extractors import gradle
+        scanned = []
+        original = gradle._close
+
+        def counting(text, i):
+            j = original(text, i)
+            scanned.append(j - i)
+            return j
+
+        monkeypatch.setattr(gradle, "_close", counting)
+        text = "ext {\n" * 300 + "x = '1'\n" + "}\n" * 300
+        assert gradle._assignments(text) == {"x": "'1'"}
+        assert sum(scanned) < 3 * len(text)
+
+    def test_statements_copy_each_character_a_bounded_number_of_times(self):
+        from kospex.extractors import gradle
+        for text in ('    implementation "g:a:1.0"\n' * 2_000,   # many statements
+                     "a,\n" * 2_000 + "b\n",                      # one continued statement
+                     "x\n" + "\n" * 2_000 + ".y\n"):              # continued by a later `.`
+            _CountingText.copied = 0
+            gradle._statements(_CountingText(text), 0, len(text))
+            assert _CountingText.copied < 3 * len(text), text[:20]
+
+    def test_a_dot_after_blank_lines_continues_the_statement(self):
+        from kospex.extractors import gradle
+        text = "x\n\n\n  .y\nz\n"
+        assert [s for _, s in gradle._statements(text, 0, len(text))] == ["x\n\n\n  .y", "z"]
+
+    def test_a_build_file_over_the_size_limit_is_unreadable(self, tmp_path, monkeypatch):
+        from kospex.extractors import gradle
+        monkeypatch.setattr(gradle, "_MAX_FILE_BYTES", 100)
+        path = _build(tmp_path, 'dependencies {\n    implementation("a.b:c:1.0")\n}\n' + " " * 100)
+        with pytest.raises(UnreadableManifest, match="larger than"):
+            extract_build_gradle(path)
+
+    def test_a_gradle_properties_over_the_size_limit_is_not_read(self, tmp_path, monkeypatch):
+        from kospex.extractors import gradle
+        monkeypatch.setattr(gradle, "_MAX_FILE_BYTES", 100)
+        (tmp_path / "gradle.properties").write_text("v=1.0\n" + "#" * 100 + "\n")
+        path = _build(tmp_path, 'dependencies {\n    implementation "a.b:c:$v"\n}\n',
+                      name="build.gradle")
+        assert _versions(extract_build_gradle(path)) == {"a.b:c": "$v"}

@@ -1123,6 +1123,26 @@ does for a parent pom. A cloned repository can commit a symlink to a file such a
 `~/.gradle/gradle.properties`, and a value read from it would be sent to deps.dev as a
 version. A refused file is logged and treated as absent.
 
+**Limits on the work a file can cause (CWE-400).** A crafted file could make the
+reader take time or memory that grew with the square of its size: a 16 KB file of
+`"$b$b..."` references took 21 s, a 4 KB one built a 200 MB version string, and
+3,000 nested blocks took 85 s before hitting Python's recursion limit. Real files are
+far below every limit: across the 1,495 measured, the largest is 36 KB, braces nest at
+most 8 deep, and no string has more than 4 references.
+
+- **A build or settings file over 1 MB** raises `UnreadableManifest` (as a side file,
+  it's treated as absent). A `gradle.properties` over 1 MB is not read.
+- **An expansion longer than 1,024 characters is kept as written**, so enrichment
+  reports `unresolved_spec`, as `maven.py` does for `${...}`. Each name is worked out
+  once per file.
+- **A block nested more than 32 deep is not read.** It counts as one unreadable
+  declaration and is logged, so a file with nothing else readable raises.
+- The statement splitter, the nested `ext { }` scan and the line numbers in log
+  messages are linear in the file's length.
+
+An A/B over every build file and catalog on the development estate gave identical
+output before and after these limits.
+
 ### Decisions and quirks
 
 - **`is_dev` is True for test configurations**: those starting `test`, `androidTest` or
