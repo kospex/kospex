@@ -18,6 +18,9 @@ the first 100 rows):
   disabled, no_access, not_found or error; `open_alerts` is a count only when
   enabled, otherwise null because it isn't known.
 """
+import os
+from collections import Counter
+
 from kospex_git import KospexGit
 from kospex.github_properties import GITHUB_HOST, RateLimited, _error_text
 
@@ -165,3 +168,84 @@ def alert_line(alert, owner, repo, github_repo_id, fetched_at):
         "fetched_at": fetched_at,
     }
     return line
+
+
+STATUS_KEYS = ("repo_id", "github_repo_id", "org", "repo",
+               "dependabot_status", "open_alerts", "error", "fetched_at")
+
+# An -org run stops if this many repos in a row from the start are no_access:
+# the token can't see alerts, and the full walk would only confirm it.
+EARLY_STOP_REPOS = 5
+
+ACCESS_NEEDED = ("Seeing Dependabot alerts needs Write, Maintain, Admin or Security Manager "
+                 "on the repo, which is more than read access.")
+
+
+class NoAlertAccess(Exception):
+    """The first repos of an -org run were all no_access: stop before the full walk."""
+
+
+def status_line(owner, repo, github_repo_id, status, open_alerts, error, fetched_at):
+    return {
+        "repo_id": KospexGit.generate_repo_id(GITHUB_HOST, owner, repo),
+        "github_repo_id": github_repo_id,
+        "org": owner,
+        "repo": repo,
+        "dependabot_status": status,
+        "open_alerts": open_alerts,
+        "error": error,
+        "fetched_at": fetched_at,
+    }
+
+
+def collect(gh, targets, fetched_at, early_stop):
+    """(alert lines, status lines) for (owner, repo, github_repo_id) targets, in order.
+
+    Raises RateLimited, or NoAlertAccess when early_stop is set and the first
+    min(EARLY_STOP_REPOS, len(targets)) repos are all no_access.
+    """
+    alert_lines, status_lines = [], []
+    check_at = min(EARLY_STOP_REPOS, len(targets))
+    for owner, repo, github_repo_id in targets:
+        status, alerts, error = fetch_repo_alerts(gh, owner, repo)
+        open_alerts = len(alerts) if status == STATUS_ENABLED else None
+        status_lines.append(status_line(owner, repo, github_repo_id, status, open_alerts,
+                                        error, fetched_at))
+        for a in alerts or []:
+            alert_lines.append(alert_line(a, owner, repo, github_repo_id, fetched_at))
+        if early_stop and len(status_lines) == check_at and all(
+                s["dependabot_status"] == STATUS_NO_ACCESS for s in status_lines):
+            raise NoAlertAccess(f"the first {check_at} repos were all no_access")
+    return alert_lines, status_lines
+
+
+def status_filename(filename):
+    """alerts.jsonl -> alerts-status.jsonl; a name with no extension gets -status.jsonl."""
+    path = os.fspath(filename)
+    root, ext = os.path.splitext(path)
+    return f"{root}-status{ext or '.jsonl'}"
+
+
+def summarise(alert_lines, status_lines):
+    return {
+        "repos": len(status_lines),
+        "alerts": len(alert_lines),
+        "by_status": dict(Counter(s["dependabot_status"] for s in status_lines)),
+        "by_severity": dict(Counter(a["severity"] for a in alert_lines)),
+    }
+
+
+def notes(status_lines, org_scope):
+    """What the counts can't show, for the console after a run."""
+    out = []
+    if org_scope:
+        out.append("Only repos this token can see are included. If the token isn't an "
+                   "org member, that's public repos only: private and internal repos "
+                   "are left out, with no error.")
+    no_access = sum(1 for s in status_lines if s["dependabot_status"] == STATUS_NO_ACCESS)
+    if status_lines and no_access * 2 > len(status_lines):
+        out.append(f"{no_access} of {len(status_lines)} repos are no_access. {ACCESS_NEEDED}")
+    out.append("No alerts doesn't mean no vulnerable dependencies: Dependabot can't match "
+               "a ranged or unpinned requirement (e.g. requirements.txt without ==) "
+               "unless the advisory affects every version.")
+    return out

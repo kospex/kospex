@@ -237,3 +237,128 @@ class TestAlertLine:
         a = alert()
         a["security_vulnerability"]["first_patched_version"] = None
         assert self.line(a)["patched_version"] is None
+
+
+class TestCollect:
+    """The run: one status line per repo, alert lines for enabled repos, early stop for -org."""
+
+    def fake_fetch(self, monkeypatch, results):
+        """results: {repo: (status, alerts, error)}; records the order repos were fetched."""
+        seen = []
+
+        def fetch(gh, owner, repo):
+            seen.append(repo)
+            return results[repo]
+
+        monkeypatch.setattr(GD, "fetch_repo_alerts", fetch)
+        return seen
+
+    def test_status_line_keys_and_order(self):
+        line = GD.status_line("Acme", "Payments", 101, "enabled", 3, None, FETCHED_AT)
+        assert tuple(line) == GD.STATUS_KEYS
+        assert line["repo_id"] == "github.com~acme~payments"
+
+    def test_enabled_counts_alerts(self, monkeypatch):
+        self.fake_fetch(monkeypatch, {"pay": ("enabled", [alert(1), alert(2), alert(3)], None)})
+        alerts, statuses = GD.collect(KospexGithub(), [("acme", "pay", 101)], FETCHED_AT, False)
+        assert statuses[0]["dependabot_status"] == "enabled"
+        assert statuses[0]["open_alerts"] == 3
+        assert statuses[0]["error"] is None
+        assert [a["alert_number"] for a in alerts] == [1, 2, 3]
+        assert {a["github_repo_id"] for a in alerts} == {101}
+
+    @pytest.mark.parametrize("status,error", [
+        ("disabled", None), ("no_access", "HTTP 403 x"), ("not_found", "HTTP 404"),
+        ("error", "HTTP 502")])
+    def test_open_alerts_null_unless_enabled(self, monkeypatch, status, error):
+        self.fake_fetch(monkeypatch, {"pay": (status, None, error)})
+        _, statuses = GD.collect(KospexGithub(), [("acme", "pay", 1)], FETCHED_AT, False)
+        assert statuses[0]["open_alerts"] is None
+        assert statuses[0]["error"] == error
+
+    def test_failed_repo_has_status_but_no_alerts(self, monkeypatch):
+        self.fake_fetch(monkeypatch, {"a": ("enabled", [alert(1)], None),
+                                      "b": ("error", None, "HTTP 502")})
+        alerts, statuses = GD.collect(
+            KospexGithub(), [("acme", "a", 1), ("acme", "b", 2)], FETCHED_AT, False)
+        assert [s["repo"] for s in statuses] == ["a", "b"]
+        assert {a["repo"] for a in alerts} == {"a"}
+
+    def test_one_fetched_at_on_every_line(self, monkeypatch):
+        self.fake_fetch(monkeypatch, {"a": ("enabled", [alert(1)], None)})
+        alerts, statuses = GD.collect(KospexGithub(), [("acme", "a", 1)], FETCHED_AT, False)
+        assert {l["fetched_at"] for l in alerts + statuses} == {FETCHED_AT}
+
+    def test_early_stop_when_first_five_no_access(self, monkeypatch):
+        repos = [f"r{i}" for i in range(7)]
+        seen = self.fake_fetch(monkeypatch, {r: ("no_access", None, "HTTP 403") for r in repos})
+        with pytest.raises(GD.NoAlertAccess):
+            GD.collect(KospexGithub(), [("acme", r, i) for i, r in enumerate(repos)],
+                       FETCHED_AT, True)
+        assert seen == repos[:5]
+
+    def test_no_early_stop_if_any_of_first_five_ok(self, monkeypatch):
+        repos = [f"r{i}" for i in range(7)]
+        results = {r: ("no_access", None, "HTTP 403") for r in repos}
+        results["r2"] = ("enabled", [], None)
+        self.fake_fetch(monkeypatch, results)
+        _, statuses = GD.collect(KospexGithub(), [("acme", r, i) for i, r in enumerate(repos)],
+                                 FETCHED_AT, True)
+        assert len(statuses) == 7
+
+    def test_early_stop_with_fewer_than_five(self, monkeypatch):
+        self.fake_fetch(monkeypatch, {"a": ("no_access", None, "x"), "b": ("no_access", None, "x")})
+        with pytest.raises(GD.NoAlertAccess):
+            GD.collect(KospexGithub(), [("acme", "a", 1), ("acme", "b", 2)], FETCHED_AT, True)
+
+    def test_no_early_stop_for_single_repo(self, monkeypatch):
+        self.fake_fetch(monkeypatch, {"a": ("no_access", None, "HTTP 403 x")})
+        _, statuses = GD.collect(KospexGithub(), [("acme", "a", 1)], FETCHED_AT, False)
+        assert statuses[0]["dependabot_status"] == "no_access"
+
+    def test_rate_limit_propagates(self, monkeypatch):
+        def limited(gh, owner, repo):
+            raise GP.RateLimited(f"{owner}/{repo}")
+
+        monkeypatch.setattr(GD, "fetch_repo_alerts", limited)
+        with pytest.raises(GP.RateLimited):
+            GD.collect(KospexGithub(), [("acme", "a", 1)], FETCHED_AT, False)
+
+
+class TestFilesAndSummary:
+    @pytest.mark.parametrize("given,expected", [
+        ("alerts.jsonl", "alerts-status.jsonl"),
+        ("out/a.jsonl", "out/a-status.jsonl"),
+        ("alerts", "alerts-status.jsonl"),
+        ("a.json", "a-status.json"),
+    ])
+    def test_status_filename(self, given, expected):
+        assert GD.status_filename(given) == expected
+
+    def test_summarise(self):
+        statuses = [{"dependabot_status": s} for s in ("enabled", "enabled", "disabled")]
+        alerts = [{"severity": s} for s in ("high", "high", "critical")]
+        assert GD.summarise(alerts, statuses) == {
+            "repos": 3, "alerts": 3,
+            "by_status": {"enabled": 2, "disabled": 1},
+            "by_severity": {"high": 2, "critical": 1}}
+
+    def test_notes_org_scope(self):
+        text = " ".join(GD.notes([{"dependabot_status": "enabled"}], org_scope=True))
+        assert "public repos only" in text
+
+    def test_notes_majority_no_access(self):
+        statuses = [{"dependabot_status": "no_access"}] * 3 + [{"dependabot_status": "enabled"}]
+        text = " ".join(GD.notes(statuses, org_scope=False))
+        assert "Write, Maintain, Admin or Security Manager" in text
+
+    def test_notes_warn_ranged_requirements_are_invisible(self):
+        # Measured: ranged pip requirements get no alerts unless the advisory
+        # covers every version, so "no alerts" isn't "no vulnerable dependencies".
+        text = " ".join(GD.notes([{"dependabot_status": "enabled"}], org_scope=False))
+        assert "unpinned" in text
+
+    def test_no_access_note_absent_when_minority(self):
+        statuses = [{"dependabot_status": "no_access"}] + [{"dependabot_status": "enabled"}] * 3
+        text = " ".join(GD.notes(statuses, org_scope=False))
+        assert "Security Manager" not in text
