@@ -503,6 +503,67 @@ class TestPlugins:
         assert extract_build_gradle(path) == []
 
 
+class TestSideFilesStayInTheRepository:
+    """CWE-59: a cloned repository can commit a symlink. Values read from
+    side files end up in versions sent to deps.dev, so a side file that
+    resolves outside the repository is not read."""
+
+    def _repo(self, tmp_path):
+        repo = tmp_path / "repo"
+        (repo / ".git").mkdir(parents=True)
+        (repo / "settings.gradle.kts").touch()
+        return repo
+
+    def test_a_symlinked_gradle_properties_outside_is_not_read(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (tmp_path / "home.properties").write_text("v=secret-token\n")
+        (repo / "gradle.properties").symlink_to(tmp_path / "home.properties")
+        path = repo / "build.gradle.kts"
+        path.write_text('dependencies {\n    implementation("a.b:c:$v")\n}\n')
+        assert _versions(extract_build_gradle(str(path))) == {"a.b:c": "$v"}
+
+    def test_a_symlinked_root_build_file_outside_is_not_read(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (tmp_path / "elsewhere.gradle").write_text("ext.v = 'secret-token'\n")
+        (repo / "build.gradle").symlink_to(tmp_path / "elsewhere.gradle")
+        path = repo / "app" / "build.gradle"
+        path.parent.mkdir()
+        path.write_text('dependencies {\n    implementation "a.b:c:$v"\n}\n')
+        assert _versions(extract_build_gradle(str(path))) == {"a.b:c": "$v"}
+
+    def test_a_symlinked_catalog_outside_is_not_read(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (tmp_path / "outside.toml").write_text('[libraries]\nokio = "com.squareup.okio:okio:9.9.9"\n')
+        (repo / "gradle").mkdir()
+        (repo / "gradle" / "libs.versions.toml").symlink_to(tmp_path / "outside.toml")
+        path = repo / "build.gradle.kts"
+        path.write_text('dependencies {\n    implementation(libs.okio)\n'
+                        '    implementation("a.b:c:1.0")\n}\n')
+        assert _versions(extract_build_gradle(str(path))) == {"a.b:c": "1.0"}
+
+    def test_a_named_catalog_through_a_symlinked_directory_is_not_read(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (tmp_path / "out").mkdir()
+        (tmp_path / "out" / "libs.versions.toml").write_text(
+            '[libraries]\nokio = "com.squareup.okio:okio:9.9.9"\n')
+        (repo / "link").symlink_to(tmp_path / "out")
+        (repo / "settings.gradle.kts").write_text(
+            'dependencyResolutionManagement { versionCatalogs { create("libs") {\n'
+            '  from(files("link/libs.versions.toml")) } } }\n')
+        path = repo / "build.gradle.kts"
+        path.write_text('dependencies {\n    implementation(libs.okio)\n'
+                        '    implementation("a.b:c:1.0")\n}\n')
+        assert _versions(extract_build_gradle(str(path))) == {"a.b:c": "1.0"}
+
+    def test_a_symlink_inside_the_repository_is_still_read(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / "shared.properties").write_text("v=1.0\n")
+        (repo / "gradle.properties").symlink_to(repo / "shared.properties")
+        path = repo / "build.gradle.kts"
+        path.write_text('dependencies {\n    implementation("a.b:c:$v")\n}\n')
+        assert _versions(extract_build_gradle(str(path))) == {"a.b:c": "1.0"}
+
+
 class TestErrorContract:
 
     def test_missing_file(self, tmp_path):

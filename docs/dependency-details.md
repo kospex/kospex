@@ -1113,6 +1113,13 @@ them androidx modules that depend only on sibling projects. 1,130 return rows.
   `../gradle/libs.versions.toml`).
 - **A `platform(...)` in the same file**, at enrichment time, as for a pom's imported BOM.
 
+**Side files stay inside the repository (CWE-59).** `gradle.properties`, the root build
+file, settings files and catalogs are resolved through symlinks and read only if they
+resolve inside the repository (the nearest `.git`, else the build root), as `maven.py`
+does for a parent pom. A cloned repository can commit a symlink to a file such as
+`~/.gradle/gradle.properties`, and a value read from it would be sent to deps.dev as a
+version. A refused file is logged and treated as absent.
+
 ### Decisions and quirks
 
 - **`is_dev` is True for test configurations**: those starting `test`, `androidTest` or

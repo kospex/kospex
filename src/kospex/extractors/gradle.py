@@ -580,7 +580,26 @@ def _load_catalog(path):
         return None
 
 
-def _catalogs(chain):
+def _side_file(path, repository):
+    """`path` resolved through symlinks, if it is a file inside `repository`.
+
+    Every file the build reader opens besides the build file itself comes
+    from a cloned third-party repository, and values read from it end up in
+    versions sent to deps.dev. A symlink (or a `..` path) to a file outside
+    the repository, such as the user's ~/.gradle/gradle.properties, is
+    refused rather than followed (CWE-59), as maven.py refuses a parent pom
+    outside the repository."""
+    real = os.path.realpath(path)
+    if not os.path.isfile(real):
+        return None
+    if os.path.commonpath([real, repository]) != repository:
+        logger.info("Not reading %s: it resolves to %s, outside the repository %s",
+                    path, real, repository)
+        return None
+    return real
+
+
+def _catalogs(chain, repository):
     """{accessor name: catalog} for the build containing chain[0].
 
     `libs` is gradle/libs.versions.toml beside the build's settings file, as
@@ -590,15 +609,15 @@ def _catalogs(chain):
     replaces a catalog when the path is a literal inside the repository."""
     found = {}
     root = chain[-1]
-    if os.path.isfile(os.path.join(root, _DEFAULT_CATALOG)):
-        found["libs"] = os.path.join(root, _DEFAULT_CATALOG)
+    default = _side_file(os.path.join(root, _DEFAULT_CATALOG), repository)
+    if default:
+        found["libs"] = default
     # An included build (buildSrc, build-logic) usually points at the main
     # build's catalog with "../gradle/libs.versions.toml": allowed while it
     # stays inside the repository.
-    repository = _repository_root(root)
     for name in _SETTINGS_FILES:
-        settings = os.path.join(root, name)
-        if not os.path.isfile(settings):
+        settings = _side_file(os.path.join(root, name), repository)
+        if not settings:
             continue
         try:
             text = _strip_comments(_read_text(settings))
@@ -607,8 +626,8 @@ def _catalogs(chain):
         for m in re.finditer(
                 r"""create\(\s*["'](\w+)["']\s*\)\s*\{[^{}]*?from\(\s*files\(\s*["']([^"'$]+)["']""",
                 text):
-            target = os.path.normpath(os.path.join(root, m.group(2)))
-            if target.startswith(repository + os.sep) and os.path.isfile(target):
+            target = _side_file(os.path.join(root, m.group(2)), repository)
+            if target:
                 found[m.group(1)] = target
     loaded = {}
     for name, path in found.items():
@@ -623,20 +642,23 @@ class _Context:
 
     def __init__(self, path):
         self.path = path
-        chain = _build_root(os.path.dirname(os.path.abspath(path)))
-        self.catalogs = _catalogs(chain)
+        real_path = os.path.realpath(path)
+        chain = _build_root(os.path.dirname(real_path))
+        repository = _repository_root(chain[-1])
+        self.catalogs = _catalogs(chain, repository)
         # Gradle reads gradle.properties from the build root and the project
         # directory, the project's winning. Assignments come from the root
         # build file (rootProject.ext) and then this file.
         self.properties = {}
         for d in reversed(chain):
-            self.properties.update(_properties_file(os.path.join(d, "gradle.properties")))
+            properties = _side_file(os.path.join(d, "gradle.properties"), repository)
+            if properties:
+                self.properties.update(_properties_file(properties))
         self.assigned = {}
         root = chain[-1]
         for name in _BUILD_FILES:
-            root_build = os.path.join(root, name)
-            if os.path.isfile(root_build) and \
-                    os.path.abspath(root_build) != os.path.abspath(path):
+            root_build = _side_file(os.path.join(root, name), repository)
+            if root_build and root_build != real_path:
                 self.assigned.update(_file_assignments(root_build))
 
     def add_assignments(self, text):
