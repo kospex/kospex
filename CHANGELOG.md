@@ -13,9 +13,20 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `version-catalog` (`kospex sca -scope version-catalog`): the catalog sets the
   version a build uses, but it isn't a direct dependency. A bare Gradle version
   is recorded as `gte`, because Gradle can raise it during conflict resolution.
-  `build.gradle` and `build.gradle.kts` are not read yet. In an existing
-  database, run `krunner file-metadata` before `krunner osi` so catalogs synced
-  with an older panopticas are tagged and found.
+  In an existing database, run `krunner file-metadata` before `krunner osi` so
+  catalogs synced with an older panopticas are tagged and found.
+- **Gradle build files (`build.gradle`, `build.gradle.kts`) are now read**
+  (#229). Each dependency a module declares becomes a `direct` row: literal
+  coordinates, `$var` versions from `gradle.properties` and simple assignments,
+  and `libs.x` / `libs.bundles.x` references with the version from the build's
+  catalog. `declared_scope` is the configuration (`testImplementation`, or
+  `commonTest.implementation` in a Kotlin Multiplatform build) and `is_dev` is
+  set for test configurations, `buildscript` classpath and plugins.
+  `platform(...)` is a `bom` row, so a BOM's versions fill versionless rows in
+  the same file. `project(...)` and `files(...)` give no row. Build files are
+  read, not run: on the development estate 98.7% of package declarations are
+  read, the rest are logged with file and line, and a file with declarations
+  but none readable is reported as `parse_error`.
 - **`kospex sca -package TYPE:NAME` looks up a single package** instead of a
   dependency file, and shows when it was first released (#390), from deps.dev's
   version list. It reports two dates, because the oldest version is often a

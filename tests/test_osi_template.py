@@ -74,14 +74,14 @@ def test_coverage_toggle_is_wired_before_the_file_table():
 def test_unsupported_warning_visible_without_expanding_details():
     import kospex_web as KospexWeb
     files = [{"_repo_id": "s~o~r", "Provider": p}
-             for p in ("a/build.gradle", "b/build.gradle", "package.json")]
+             for p in ("a/build.sbt", "b/build.sbt", "package.json")]
     _, commentary = KospexWeb.osi_extraction_view(files, extracted_keys=set())
     html = _render({"commentary": commentary, "file_number": 3,
                     "unsupported": KospexWeb.unsupported_dependency_files(files)})
     # Outside the collapsed #coverage_details block
     visible = html.split('id="coverage_details"')[0]
     assert 'id="unsupported_files"' in visible
-    assert "build.gradle" in visible
+    assert "build.sbt" in visible
     assert ">explain why<" in html
     # The toggle sits under the warning it explains
     assert html.index('id="unsupported_files"') < html.index('id="coverage_toggle"')

@@ -29,7 +29,8 @@ CASES = [
     ("Foo.csproj", Kind.PACKAGE, True),    # sca-only
     ("yarn.lock", Kind.PACKAGE, True),
     ("uv.lock", Kind.PACKAGE, True),
-    ("build.gradle", Kind.PACKAGE, False),
+    ("build.gradle", Kind.PACKAGE, True),
+    ("build.gradle.kts", Kind.PACKAGE, True),
     ("pom.xml", Kind.PACKAGE, True),
     (".python-version", Kind.RUNTIME, False),
     (".nvmrc", Kind.RUNTIME, False),
