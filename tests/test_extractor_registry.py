@@ -41,7 +41,7 @@ CASES = [
     ("npm-shrinkwrap.json", Kind.PACKAGE, True),
     ("gradle.lockfile", Kind.PACKAGE, False),
     ("buildscript-gradle.lockfile", Kind.PACKAGE, False),
-    ("libs.versions.toml", Kind.PACKAGE, False),
+    ("libs.versions.toml", Kind.PACKAGE, True),
     ("build.sbt", Kind.PACKAGE, False),
     ("plugins.sbt", Kind.PACKAGE, False),
     ("build.mill", Kind.PACKAGE, False),
