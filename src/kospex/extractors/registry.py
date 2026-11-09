@@ -225,6 +225,16 @@ REGISTRY: tuple[Extractor, ...] = (
 )
 
 
+def package_types() -> list[str]:
+    """Every PACKAGE `package_type` in the registry, sorted, each once.
+
+    These double as deps.dev system names (krunner passes package_type
+    straight through), so `kospex sca -package TYPE:NAME` accepts these as
+    TYPE rather than keeping a second list.
+    """
+    return sorted({entry.package_type for entry in REGISTRY if entry.package_type})
+
+
 def classify(filename: str) -> Classification:
     """Classify a dependency-file name into its kind and support state.
 
