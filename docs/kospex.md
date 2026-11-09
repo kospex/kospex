@@ -166,7 +166,8 @@ kospex sca -scope all pnpm-lock.yaml
 ```
 
 The scopes are `direct`, `dev`, `peer`, `optional`, `transitive`, `bom` (a Maven
-bill of materials), `unknown` (the file did not say) and `all`. `-scope` only changes what is shown. Every package is still
+bill of materials), `version-catalog` (an entry in a Gradle `libs.versions.toml`),
+`unknown` (the file did not say) and `all`. `-scope` only changes what is shown. Every package is still
 looked up, and all of them are saved with `-save`.
 
 **JSON output**

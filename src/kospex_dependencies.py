@@ -639,6 +639,7 @@ class KospexDependencies:
             KospexSchema.PACKAGE_USE_DIRECT, KospexSchema.PACKAGE_USE_DEV,
             KospexSchema.PACKAGE_USE_PEER, KospexSchema.PACKAGE_USE_OPTIONAL,
             KospexSchema.PACKAGE_USE_TRANSITIVE, KospexSchema.PACKAGE_USE_BOM,
+            KospexSchema.PACKAGE_USE_VERSION_CATALOG,
         ]
         # A new package_use value must not be silently unselectable.
         order += sorted(KospexSchema.PACKAGE_USE_VALUES - set(order))
@@ -831,7 +832,8 @@ class KospexDependencies:
 
             # What the manifest declared, recorded so "are we pinned?" can be
             # asked of the database rather than re-derived from the string.
-            kind, operator = classify_constraint(declared_version, package_type)
+            kind, operator = classify_constraint(
+                declared_version, self._constraint_system(out, package_type))
             out["version_kind"] = kind
             out["version_operator"] = operator
 
@@ -992,6 +994,19 @@ class KospexDependencies:
         self.dependencies = results
 
         return self.dependencies
+
+    @staticmethod
+    def _constraint_system(record, package_type):
+        """What classify_constraint should read a bare version as.
+
+        A Gradle row is package_type `maven`, the deps.dev system it's looked
+        up in, but Gradle reads a bare version as a minimum and Maven doesn't.
+        The parser marks the row's ecosystem `gradle`, which is not a column,
+        so this is decided from the record before that field is dropped.
+        """
+        if str(record.get("ecosystem") or "").lower() == "gradle":
+            return "gradle"
+        return package_type
 
     # Extractor-only template fields produced by the leaf parsers that are
     # NOT columns in TBL_DEPENDENCY_DATA and must be stripped before upsert.
@@ -1159,8 +1174,10 @@ class KospexDependencies:
             for field_name in self._NON_SCHEMA_FIELDS:
                 rec.pop(field_name, None)
             rec["latest"] = 1
+            # From r: `ecosystem` was just popped from rec, as a non-column.
             kind, operator = classify_constraint(
-                rec.get("package_version"), rec.get("package_type")
+                rec.get("package_version"),
+                self._constraint_system(r, rec.get("package_type")),
             )
             rec["version_kind"] = kind
             rec["version_operator"] = operator

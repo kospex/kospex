@@ -47,7 +47,15 @@ KINDS = (
 #
 # npm is the counter-example and the reason this cannot be decided by shape:
 # a bare npm version IS strict equality. Same string, different meaning.
-_BARE_IS_MINIMUM = ("go", "nuget")
+# Gradle: a bare version is a `require` version, which "cannot be lower ...
+# but could be higher through conflict resolution". Gradle rows are
+# package_type `maven`, so callers pass `gradle` from the record's ecosystem.
+_BARE_IS_MINIMUM = ("go", "nuget", "gradle")
+
+# Gradle dynamic versions: `1.+` / `1.2.+` (a prefix), `+` and `latest.*`
+# (whatever is newest). `!!` is the shorthand for `strictly`.
+_GRADLE_PREFIX = re.compile(r"^\d[\w.\-]*\.\+$")
+_GRADLE_LATEST = ("latest.release", "latest.integration", "latest.milestone")
 
 # npm wildcard: 1.x, 2.*, 1.2.x, 1.x.x — a floor and a ceiling, so `bounded`.
 # Also matches the pypi `==1.*` form once the operator is stripped.
@@ -112,6 +120,9 @@ def classify_constraint(declared_version, package_type=None):
       unrelated dependency requiring v1.5.0 raises the selected version.
     * NuGet `3.1.1` is documented as `>= 3.1.1` -> `gte`. An exact NuGet pin
       needs the bracket form `[3.1.1]`.
+    * Gradle `1.2.3` is a `require` version, raisable by conflict resolution
+      -> `gte`. Pass `gradle`, not the row's package_type (`maven`), which
+      is the one case where the two differ.
 
     An unknown or absent `package_type` defaults to `pinned`: absent a reason
     to think otherwise, a bare version is an equality.
@@ -146,6 +157,16 @@ def classify_constraint(declared_version, package_type=None):
 
     ecosystem = str(package_type or "").strip().lower()
 
+    if ecosystem == "gradle":
+        if text == "+":
+            return ("latest", "+")
+        if lowered in _GRADLE_LATEST:
+            return ("latest", lowered)
+        if _GRADLE_PREFIX.match(text):
+            return ("bounded", "+")
+        if text.endswith("!!") and re.match(r"^v?\d", text):
+            return ("pinned", "!!")
+
     # NuGet interval notation, before the operator scan: the brackets carry
     # the bounds, and the string contains no comparison operators to find.
     #
@@ -159,7 +180,7 @@ def classify_constraint(declared_version, package_type=None):
     # bare Maven version stays `pinned`: Maven calls it a "soft requirement",
     # replaceable by dependency mediation, which is neither a floor nor quite
     # an equality, and the declaration itself names one version.
-    if ecosystem in ("nuget", "maven"):
+    if ecosystem in ("nuget", "maven", "gradle"):
         interval = _NUGET_INTERVAL.match(text)
         if interval:
             return _classify_interval(interval, text)

@@ -6,6 +6,16 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 
+- **Gradle version catalogs (`gradle/libs.versions.toml`) are now read** (#229).
+  Each library and plugin in the catalog becomes a dependency row, looked up on
+  deps.dev for advisories and versions behind, including packages from Google's
+  Maven repository such as `androidx.*`. Rows have a new `package_use`,
+  `version-catalog` (`kospex sca -scope version-catalog`): the catalog sets the
+  version a build uses, but it isn't a direct dependency. A bare Gradle version
+  is recorded as `gte`, because Gradle can raise it during conflict resolution.
+  `build.gradle` and `build.gradle.kts` are not read yet. In an existing
+  database, run `krunner file-metadata` before `krunner osi` so catalogs synced
+  with an older panopticas are tagged and found.
 - **`kospex sca -package TYPE:NAME` looks up a single package** instead of a
   dependency file, and shows when it was first released (#390), from deps.dev's
   version list. It reports two dates, because the oldest version is often a
