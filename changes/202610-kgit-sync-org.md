@@ -335,9 +335,26 @@ Separate PRs, each mergeable on its own:
    - `last_fetch` is stamped on the `repo_id` the sync wrote (from the clone's
      remote), which differs from the listing's only if the remote is rewritten.
    - The drift list ("in kospex but not in this listing") is in `-status`.
-4. `kgit github`: the `-sync` alias, a switch for what a user listing includes,
+4. ~~`kgit github`: the `-sync` alias, a switch for what a user listing includes,
    and its docs. Also `kgit pull --org` accepting the same owner forms as
-   `kgit sync --org`.
+   `kgit sync --org`.~~ **Done** (2026-11-09). Notes from building it:
+   - **The switch is `-include-member`, and a user's listing is owned-only by
+     default** (decided 2026-11-09). That matches GitHub's own default and
+     `kgit sync --user`. Owned includes the user's forks: they're shown in the
+     listing (the table has a `fork` column), and `-sync` skips them, as
+     `kgit sync` does. `KospexGithub.get_repos(owned_only=True)` drops other
+     owners' repos before the per-fork parent lookup, so they cost no requests.
+   - **`-sync` refuses `-include-member`, `-out-repo-list` and
+     `-ssh-clone-url`.** They only shape the listing, and silently ignoring them
+     would surprise. Other `kgit sync` options aren't passed through; the help
+     points to `kgit sync`.
+   - **`kgit pull --org` matches the stored values,** not a rebuilt key, so a DB
+     from before ids were lowercased, holding a mixed-case owner, still matches.
+     The resolver is `OrgSync.resolve_pull_org`. It shares `split_owner` with
+     `parse_target`, but not `parse_target`'s GitHub-only check. A host whose
+     repos have no owner is checked before matching, so it always suggests
+     `--server`.
+   - `docs/kgit.md` had no `pull` section, so this PR adds one.
    - **`-sync` becomes the alias** of `kgit sync --org` / `--user`. That also
      fixes a bug: today `kgit github octocat -sync` clones and syncs every repo
      the listing returns, including 195 that octocat doesn't own (below).

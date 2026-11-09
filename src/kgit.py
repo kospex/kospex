@@ -90,7 +90,17 @@ def _resolve_pull_repos(kospex_query, repo_id=None, all_flag=False, org=None, se
     if repo_id:
         return kospex_query.get_repos(repo_id=repo_id)
     if org:
-        return kospex_query.get_repos(org_key=org)
+        rows = kospex_query.kospex_db.query(
+            "SELECT DISTINCT _git_server, _git_owner, _git_repo FROM repos")
+        server, owner = OrgSync.resolve_pull_org(
+            org, [(r["_git_server"], r["_git_owner"], r["_git_repo"]) for r in rows])
+        key = KospexGit.generate_org_key(server, owner)
+        if org != key:
+            console.print(f"Using org {key}")
+        # By the stored values, not a rebuilt key: a DB from before ids were
+        # lowercased can hold a mixed-case owner.
+        return [r for r in kospex_query.get_repos(server=server)
+                if (r.get("_git_owner") or "") == owner]
     return kospex_query.get_repos(server=server)
 
 
@@ -716,7 +726,10 @@ def _git_pull(path, no_prompt=False):
 
 @cli.command("pull")
 @click.option("--all", "all_flag", is_flag=True, default=False, help="All known repos")
-@click.option("--org", default=None, help="Scope to an ORG_KEY, e.g. github.com~kospex")
+@click.option("--org", default=None,
+              help="Scope to an org already in kospex: github.com~kospex, kospex, "
+                   "github.com/kospex or https://github.com/kospex. Matched against "
+                   "the DB, any host, ignoring case; an ambiguous name is an error.")
 @click.option("--server", default=None, help="Scope to a git server, e.g. github.com")
 @click.option("--check", "check", is_flag=True, default=False,
               help="Offline staleness report; no pull, no network")
@@ -832,7 +845,11 @@ def _github_properties(gh, org, repo_id, filename, level):
 
 @cli.command("github")
 @click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")
-@click.option('-sync', is_flag=True, help="Clone and sync all repos to the database.")
+@click.option('-sync', is_flag=True,
+              help="Clone and sync the owner's repos: runs `kgit sync --org` / `--user`.")
+@click.option('-include-member', is_flag=True, default=False,
+              help="For a user: also list repos they don't own (ones they collaborate "
+                   "on or reach through an organisation). By default only their own.")
 @click.option('-test-auth', is_flag=True, default=False,
               help=f"Test the GitHub token ({', '.join(KospexGithub.TOKEN_ENV_VARS)}) can authenticate.")
 @click.option('-out-repo-list', type=click.Path(), help="File to write clone URLs to.")
@@ -850,14 +867,21 @@ def _github_properties(gh, org, repo_id, filename, level):
                    "needs org membership; 'repo' is one request per repo and needs only "
                    "read access.")
 @click.argument('owner', type=click.STRING, required=False)
-def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, properties,
-           prop_org, prop_repo_id, prop_filename, prop_level, owner):
+def github(no_auth, sync, include_member, test_auth, out_repo_list, ssh_clone_url,
+           properties, prop_org, prop_repo_id, prop_filename, prop_level, owner):
     """
     Interact with the GitHub API.
 
     For authenticated access, set a GitHub Personal Access Token (PAT) in
     one of these environment variables, checked in this order:
     GITHUB_AUTH_TOKEN, GH_TOKEN, GITHUB_TOKEN. Empty values are ignored.
+
+    \b
+    List an owner's repos:
+      kgit github acme                     an organisation's repos
+      kgit github octocat                  the repos a user owns
+      kgit github octocat -include-member  also ones they don't own
+      kgit github acme -sync               same as: kgit sync --org acme
 
     \b
     Custom properties to JSONL:
@@ -902,33 +926,50 @@ def github(no_auth, sync, test_auth, out_repo_list, ssh_clone_url, properties,
     else:
         gh.get_env_credentials()
 
+    if sync:
+        # One org-sync implementation: -sync is `kgit sync --org` / `--user`, so it
+        # gets the manifest, resume, lock and per-repo failures that command has.
+        listing_only = [name for name, value in (
+            ("-include-member", include_member), ("-out-repo-list", out_repo_list),
+            ("-ssh-clone-url", ssh_clone_url)) if value]
+        if listing_only:
+            raise click.UsageError(
+                f"{', '.join(listing_only)} only apply to the listing, not -sync. "
+                f"For more sync options use kgit sync --org / --user {owner}.")
+
     account_type = gh.get_account_type(owner)
+
+    if sync:
+        kind = {OrgSync.GITHUB_ORG: "org", OrgSync.GITHUB_USER: "user"}.get(account_type)
+        if not kind:
+            _error(f"Couldn't find a GitHub organisation or user called {owner!r}.")
+        console.print(f"Running: kgit sync --{kind} {owner}{' -no-auth' if no_auth else ''}")
+        _sync_owner(owner_kind=kind, both=False, target=owner, inventory=False,
+                    next_=None, status=False, relist=False, retry_failed=False,
+                    include_forks=False, skip_forks=False, skip_archived=False,
+                    ssh=False, no_prompt=False, no_auth=no_auth)
+        return
+
+    # A user's listing also returns repos they don't own. Only their own unless
+    # -include-member, the same set `kgit sync --user` keeps.
+    owned_only = account_type == OrgSync.GITHUB_USER and not include_member
     print(f"\nFinding repos for: {owner} ({account_type})\n")
     try:
-        repos = gh.get_repos(owner, no_auth=no_auth)
+        repos = gh.get_repos(owner, no_auth=no_auth, owned_only=owned_only)
     except GitHubListingIncomplete as e:
-        # Nothing is cloned, printed or written from a partial list: a short
+        # Nothing is printed or written from a partial list: a short
         # -out-repo-list file would silently drop repos from `kgit clone -filename`.
         console.print(Text.assemble(("Error:", "bold red"), f" {e}"))
-        console.print("No repos were synced and no repo list was written. Re-run to retry.")
+        console.print("No repo list was written. Re-run to retry.")
         exit(1)
-
-    if repos:
-        for repo in repos:
-            if sync:
-                clone_url = repo.get('clone_url')
-                if clone_path_conflict(kospex, clone_url):
-                    # One conflicting repo must not stop the rest of the org.
-                    continue
-                repo_path = kgit.clone_repo(clone_url)
-                if not repo_path:
-                    print(f"ERROR: failed to clone {clone_url}, skipping")
-                    continue
-                print(f"Syncing repo: {clone_url} in directory {repo_path}")
-                kospex.sync_repo(repo_path)
 
     table = kgit.get_repos_pretty_table(repos=repos)
     print(table)
+    if owned_only:
+        print(f"Repos {owner} owns. -include-member also lists ones they collaborate "
+              "on or reach through an organisation.")
+    elif include_member and account_type != OrgSync.GITHUB_USER:
+        print("-include-member applies to a user; an organisation lists its own repos.")
 
     # Write out the repo list to a file
     if out_repo_list:

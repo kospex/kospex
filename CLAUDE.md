@@ -101,7 +101,8 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
   parked - do not document it, and do not delete the commented block. Restoring it (an auth-free
   sync for a repo already on disk) is tracked in [#123](https://github.com/kospex/kospex/issues/123).
 - `kgit clone https://github.com/owner/repo` - Clone with kospex structure (syncs by default)
-- `kgit pull REPO_ID|--all|--org ORG_KEY|--server SERVER` - git pull (ff-only) + re-sync known local clones
+- `kgit pull REPO_ID|--all|--org ORG|--server SERVER` - git pull (ff-only) + re-sync known local clones. `--org` takes `acme`, `github.com/acme`, a URL or `github.com~acme`, resolved against the orgs in the DB (any host, case-insensitive; ambiguous is an error) by `OrgSync.resolve_pull_org`
+- `kgit github OWNER [-include-member] [-sync]` - list an owner's GitHub repos; a user's are only the ones they own unless `-include-member`. `-sync` runs `kgit sync --org` / `--user`
 - `kgit pull --check [scope]` - offline staleness report (last_fetch / last_sync / fetch_age); no network
 - `kgit sync --org ORG|--user USER [-inventory|-next N|-status]` - list a GitHub owner's repos, save them as a run (`org_sync_runs` / `org_sync_items`), clone and sync them; resumable. Logic in `src/kospex/org_sync.py`, manifest in `src/kospex/org_sync_manifest.py`
 - `kgit pull --no-prompt [scope]` - non-interactive auth (fail fast) for unattended runs

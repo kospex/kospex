@@ -159,7 +159,7 @@ class TestKgitGithubCli:
         from click.testing import CliRunner
         import kgit
 
-        def incomplete(self, owner, no_auth=False):
+        def incomplete(self, owner, no_auth=False, owned_only=False):
             raise GitHubListingIncomplete(
                 "https://api.github.com/orgs/acme/repos", page=3, items_read=200,
                 reason="HTTP 502")
@@ -180,11 +180,5 @@ class TestKgitGithubCli:
         assert result.exit_code == 1
         assert not out.exists()
 
-    def test_does_not_sync(self, monkeypatch, tmp_path):
-        import kgit
-
-        cloned = []
-        monkeypatch.setattr(kgit.kgit, "clone_repo", lambda url: cloned.append(url))
-        result = self.run(monkeypatch, tmp_path, "-sync")
-        assert result.exit_code == 1
-        assert cloned == []
+    # -sync is now `kgit sync --org`, which refuses an incomplete listing itself
+    # before saving or syncing anything (tests/test_kgit_sync_org_cli.py).
