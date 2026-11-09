@@ -355,12 +355,28 @@ def _v1_identity(name, version):
     if not isinstance(version, str) or not version.startswith(_NPM_ALIAS):
         return name, version
 
-    real_name, sep, real_version = version[len(_NPM_ALIAS):].rpartition("@")
-    if not sep or not _is_package_name(real_name) or not real_version:
+    target = npm_alias_target(version)
+    if target is None:
         logger.warning(
             "could not read the alias %r for %r; recording it as declared",
             version, name)
         return name, version
+    return target
+
+
+def npm_alias_target(spec):
+    """(name, version) an ``npm:<name>@<version>`` spec installs, else None.
+
+    The same text in a v1 lockfile and in a ``package.json`` dependency, so the
+    lockfile parser and the deps.dev lookup (#350) read it with one rule. The
+    version may be a range in a manifest (``npm:react@^17``). None for anything
+    that is not an alias, or names no package and version.
+    """
+    if not isinstance(spec, str) or not spec.startswith(_NPM_ALIAS):
+        return None
+    real_name, sep, real_version = spec[len(_NPM_ALIAS):].rpartition("@")
+    if not sep or not _is_package_name(real_name) or not real_version:
+        return None
     return real_name, real_version
 
 

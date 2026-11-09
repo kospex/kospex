@@ -229,6 +229,19 @@ alias may not be a real registry package, and will show no advisory data for tha
 reason. The row beside it, under the real name, is the one that answers the
 security question.
 
+Where the alias name *is* a real package, unrelated, the row is worse than empty:
+`string-width-cjs` exists on npm without a `4.2.3`, so that row is
+`version_yanked`. That is a known false positive. It is left in place, not
+relabelled, because a lockfile cannot vouch for its own alias, and a tampered one
+could use an alias label to hide a version npm really took down. Checking a
+lockfile alias against the project's `package.json` is the planned fix (#405). See
+`changes/202611-npm-alias-lookup.md`.
+
+`package.json` is different. Its `npm:` spec is how the project asks for the
+alias, so it names what is installed. Since #350, a `package.json` alias is
+looked up as its target: `"react-17": "npm:react@^17"` is checked as react
+`^17`, and the row keeps `react-17` as its name.
+
 What remains unresolvable here: a lockfile that lies consistently across `name`,
 `resolved` and `integrity`. Settling that needs the tarball fetched and hashed,
 which a parser cannot do.

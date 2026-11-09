@@ -281,8 +281,22 @@ somewhere else entirely.
   database instead of a re-scan.
 - **Read with `utf-8-sig`, because npm reads a BOM'd `package.json`** and refusing one
   reported a working repository as broken. See [Byte order marks](#byte-order-marks).
+- **An `npm:` alias is stored as written and looked up as its target** (#350).
+  `"react-17": "npm:react@^17"` becomes a row named `react-17` at `npm:react@^17`.
+  Those two values are part of the `dependency_data` key, and they are what the
+  project imports and declares. The parser does not unwrap the alias.
+  `KospexDependencies.lookup_dependency` does that, using
+  `kospex.extractors.npmlock.npm_alias_target`, and then applies the usual range
+  handling to `^17`. Before this, the alias name was looked up as a package: most
+  aliases returned `package_not_found`, an alias named like an unrelated package
+  returned `version_yanked`, and a fork installed under the original's name was
+  checked as the original. `npm:classnames@*` unwraps to `classnames` at `*`, which
+  names no version, so it stays `unresolved_spec`. It is the one alias on the estate
+  that doesn't resolve. A spec the helper can't read, such as `npm:react` with no
+  version, is looked up as before.
 
 **Upstream docs:** [package.json](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/)
+· [npm install `<alias>@npm:<name>`](https://docs.npmjs.com/cli/v11/commands/npm-install)
 
 **Drift watch:** new dependency sections. The parser maps a fixed list
 (`NPM_SECTION_TO_REQ_TYPE`); a section npm adds is silently not read, which is the one
@@ -332,7 +346,11 @@ Three structurally distinct formats:
   elects, and a manifest is one untrusted document so cross-field corroboration is not
   a security control. Measured cost: **10 extra rows in 13,739**, all ten real
   published packages, because the second identity is the alias *target* — the thing
-  deps.dev can answer about.
+  deps.dev can answer about. The install-path row is still looked up by its own
+  name, so `string-width-cjs@4.2.3` is a false `version_yanked`. Unlike
+  `package.json` (#350), it is not unwrapped, because nothing in the lockfile vouches
+  for the alias. Checking it against the sibling `package.json` is the planned fix
+  (#405, `changes/202611-npm-alias-lookup.md`).
 - **"Was this fetched at all?", not "do I recognise this registry."** An entry at an
   unusual path (`vendor/evil-pkg`) is treated as a dependency if it carries both a
   version and a `resolved` URL *with a scheme*. A gate asking whether the URL looked

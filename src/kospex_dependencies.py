@@ -25,6 +25,7 @@ from packaging.version import Version, InvalidVersion
 import kospex_schema as KospexSchema
 from kospex.extractors.constraints import classify_constraint
 from kospex.extractors.errors import UnreadableManifest
+from kospex.extractors.npmlock import npm_alias_target
 from kospex.extractors.registry import classify, resolve_parser
 from kospex.npm_range import min_satisfying, parse_range
 import kospex_utils as KospexUtils
@@ -398,12 +399,24 @@ class KospexDependencies:
         `6.0.0`, NuGet `13.0.1.0` is `13.0.1`. When it does not resolve,
         nothing answered, and it is the version that was sent. When a range
         permits no published version, nothing is looked up and it is empty.
+
+        An npm alias, `"react-17": "npm:react@^17"`, is looked up as its target,
+        react at ^17 (#350). The alias name is what the project imports, not a
+        package: looking it up reported `package_not_found`, `version_yanked`
+        when an unrelated package has that name, or -- for a fork published
+        under the original's name -- the original's advisories. The record
+        keeps the alias as package_name, part of the dependency_data key; the
+        target is in the declared `npm:<name>@` text.
         """
+        lookup_name = package_name
         if bom_version:
             lookup_version, satisfiable = bom_version, None
         else:
+            if (package_type or "").lower() == "npm" and (
+                    target := npm_alias_target(declared_version)):
+                lookup_name, declared_version = target
             lookup_version, satisfiable = self._range_floor(
-                package_type, package_name, declared_version)
+                package_type, lookup_name, declared_version)
         if satisfiable is False:
             # No published version is in the range. Looking up the written
             # floor anyway could resolve a version the range excludes --
@@ -413,7 +426,8 @@ class KospexDependencies:
             return {"package_name": package_name, "package_version": lookup_version,
                     "package_type": package_type, "versions_behind": None,
                     "resolution": "no_satisfying_version"}, ""
-        record = dict(self.depsdev_record(package_type, package_name, lookup_version))
+        record = dict(self.depsdev_record(package_type, lookup_name, lookup_version))
+        record["package_name"] = package_name
         depsdev_version = record.pop("depsdev_version", None)
         if (record.get("resolution") == "version_yanked"
                 and self._is_range(package_type, declared_version)):
