@@ -2,7 +2,55 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## Unreleased
+## 0.3.0 - 2026-11-10
+
+### Highlights
+
+**Upgrading an existing database takes three commands, in this order.** Back
+up `~/kospex/kospex.db` first:
+
+```bash
+kospex upgrade-db -apply
+krunner file-metadata
+krunner osi
+```
+
+- Migration `0012` adds the tables `kgit sync --org` records its runs in. A
+  plain sync works without it; `kgit sync --org`, `kgit sync --user` and
+  `kgit github -sync` need it.
+- `krunner file-metadata` tags the files panopticas 0.0.22 and 0.0.23 newly
+  recognise, such as Gradle version catalogs, so the `krunner osi` that follows
+  reads them.
+- Stored dependency rows keep their old `versions_behind`, `resolved_version`
+  and status until `krunner osi` (or `kospex sca -save`) reads their repo
+  again.
+- If you ran `kospex rebuild developer-stats` on 0.2.0, run it again (#352).
+
+kospex now requires `panopticas>=0.0.23`.
+
+**Changes that scripts and alerts will notice:**
+
+- `kospex deps -file` and `-dev` are removed; use `kospex sca FILE`. Passing
+  either is a usage error (exit 2).
+- `kgit github USER` lists only the repositories the user owns
+  (`-include-member` lists the rest), and `kgit github OWNER -sync` now runs
+  `kgit sync --org` / `--user`, which records forks but skips them.
+- Every kospex pull is fast-forward only. A clone whose remote history was
+  rewritten is no longer pulled or synced.
+- kweb returns 404 for a repository, organisation or server id that isn't in
+  the database, instead of an empty page with HTTP 200.
+- `kospex sca` gains the columns `checked at` and `resolution`, and `-json` /
+  `-out` gain `resolved_version` and `resolution`. `kospex sca -save` only
+  saves from the checkout kospex synced.
+
+**New:**
+
+- More dependency files are read: Gradle version catalogs and build files,
+  `pom.xml` (including versions an imported BOM sets) and `yarn.lock`.
+- `kgit sync --org` and `kgit sync --user` sync a whole GitHub organisation or
+  user, and can be stopped and resumed.
+- `versions_behind` counts releases, not pre-releases, and npm and PyPI ranges
+  are looked up at a version they allow instead of being reported as yanked.
 
 ### Added
 
@@ -91,6 +139,25 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   provider's own id for a repository, which survives renames and transfers
   (#348), and `provider_checked_at`. An existing DB
   needs `kospex upgrade-db -apply`; a new one migrates itself.
+- **`/dependencies/` explains an empty table, and both `/dependencies/` and
+  `/osi/` say which dependency files kospex can't read yet** (#326, #327).
+  A newly synced repo had an empty dependency table with no explanation,
+  which looked the same as a repo that declares nothing.
+  - When there are no rows, `/dependencies/` says why and what to run. For a
+    repo it checks each step in order (synced, file metadata, examined by
+    `krunner osi`) and reports the first that is missing, with the commands.
+    An org, server or all-repo page suggests `krunner osi` for that scope.
+  - On every scope, both pages warn when dependency files have no parser yet,
+    with how many and the most common names. On `/osi/` the warning is shown
+    outside the collapsed coverage details, whose toggle reads "explain why"
+    when there is something to explain.
+  - On `/osi/`, the list of those files is headed "Dependencies not
+    extracted, format not currently supported". Unscanned files get the same
+    "To fix, run:" box as `/dependencies/`: `krunner osi` for the scope, or
+    `cd` into the clone and `kospex sca -save` for one file.
+  - "Individual Files" on `/osi/` has an "explain column descriptions" link,
+    covering Last Commit, Days Ago, Status (with each band's day range: 90,
+    180 and 365 days) and Extracted?.
 - **`pom.xml` is parsed**, by both `kospex sca` and `krunner osi`. Packages are
   named `groupId:artifactId`, and `<scope>` is recorded in `declared_scope`
   (`test` sets `is_dev`). Versions are filled in from the file's own properties
@@ -101,6 +168,40 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   A pom carrying a DOCTYPE is refused (CWE-776), and so is property expansion
   past a fixed size. A parent is never read from outside the repository,
   including through a symlink.
+- **`yarn.lock` is now read**, by both `kospex sca` and `krunner osi` (#229).
+  It was recognised but had no parser, so every one was reported as
+  `unsupported`. Both formats that share the name are read: Yarn Classic (v1)
+  and Yarn 2+ (Berry), for `__metadata.version` 6, 8 and 10. Each installed
+  `name@version` becomes a `resolved` row. Install state is left blank, because
+  neither format says per entry whether a package is dev or optional. An npm
+  alias records both names, as the `package-lock.json` parser does. `patch:`
+  entries are recorded as the npm version they patch, and local packages
+  (`link:`, `file:`, `workspace:`, `portal:`) are skipped. A file kospex can't
+  interpret, such as an unknown Berry version or a v1 line outside the format,
+  is reported as `parse_error`, not as empty. On a development estate all 111
+  v1 files and 44 Berry files were read (62,237 rows). Rows appear when
+  `krunner osi` next examines each repository. See
+  `docs/dependency-details.md`.
+- **Dependency files newly tagged by panopticas 0.0.22 and 0.0.23 are
+  recognised** (#349). panopticas tags about 40 more file names as dependency
+  files. kospex knew none of them, so after a re-sync each would have shown on
+  `/osi/` and `/dependencies/` as an unrecognised file.
+  - `npm-shrinkwrap.json` is read, through the `package-lock.json` parser: it
+    is the same format.
+  - `.ruby-version` is a runtime pin, like `.python-version` and `.nvmrc`.
+  - Yarn's `.pnp.cjs` and `.pnp.loader.mjs` are generated from `yarn.lock`, so
+    they are treated as a companion file, like `go.sum`, and not reported as
+    lacking a parser.
+  - The rest are listed as having no parser yet: Cargo, Ruby (`Gemfile`,
+    `Gemfile.lock`, gemspecs), Composer, Pipfile, Poetry, PDM and `pylock`
+    lockfiles, Mix, pub, Bun, Deno, sbt, Mill, Gradle lockfiles,
+    `pnpm-workspace.yaml` and several .NET formats. Cargo and Ruby parsers are
+    tracked in #359 and #360.
+
+  kospex now requires `panopticas>=0.0.23` (was `>=0.0.21`), so the new tags
+  never arrive without these entries. As for Gradle catalogs, run
+  `krunner file-metadata` on an existing database to tag files synced with an
+  older panopticas.
 - **Maven version ranges** such as `[1.0,2.0)` are now classified like NuGet's,
   instead of as `none`.
 
@@ -179,6 +280,15 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   recorded at sync, and the file to resolve inside it, which refuses a
   committed symlink to a file outside the repo. A repo with no recorded path is
   refused until it's re-synced. Without `-save`, sca still reads any file.
+- **The summary page's status circles fit their counts.** On a large estate a
+  four-digit count overflowed the smallest circles. A count is now shortened
+  to at most four characters (`2.8k`, `66k`, `1.3M`), with the font sized to
+  the circle, and the exact count (`66,362`) is printed under the status name
+  and shown in a tooltip. Circle sizes and percentages are unchanged.
+- **Tested on Python 3.13 and 3.14, and on Ubuntu 26.04's system Python.**
+  CI ran on Python 3.12 only. It now also runs 3.13 and 3.14, and a job in an
+  Ubuntu 26.04 container installs kospex into a venv with the distro's own
+  Python 3.14 and SQLite, as a user on that OS (or WSL) would.
 
 ### Removed
 
@@ -273,9 +383,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   each ecosystem's own rules. An unresolved lookup still records what was sent.
   On the kweb `/dependencies/` page, the declared text stays the main value. A
   muted `checked at …` line under it shows the version the numbers are for: on
-  every range, and on a pin only when deps.dev spells it differently. A note
-  under the table explains that a range's versions behind and advisories are
-  for the oldest version it allows, which may be older than the version
+  every range, and on a pin only when deps.dev spells it differently. A "Show
+  table explanation" link under the page heading explains that a range's
+  versions behind and advisories are for the oldest version it allows, which may be older than the version
   installed.
 - **`versions_behind` no longer counts a package's whole history when the
   version is spelled differently** (#378). `3.0` vs `3.0.0`, a bare `6`, and
@@ -292,17 +402,27 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   that the tag is retired and a link to its replacement. `/tags/` lists retired
   tags in their own section. A change of case alone (`eslint` to `ESLint`) is
   not listed: both spellings already worked.
+- **The `/tags/` columns have space between them again.** The page uses
+  `gap-x-8`, which the shipped stylesheet didn't contain, so the three columns
+  ran together. The stylesheet is rebuilt.
 - **The "See Files" page for a tag or technology says what it is filtered to.**
   `/tag/{tag}?repo_id=...` and `/tech/{tech}?repo_id=...` were headed only
   "Repository Files". They now have the same server / org / repo breadcrumb
   as the repository pages, name the tag or technology, and link back to the
   listing across all repositories.
+- **File links on `/files/repo/` work.** Every file name linked to
+  `/repo/<file path>`, which is not a page, so each was a 404. They now link to
+  the file's collaboration page, `/file-collab/{repo_id}/?file_path=...`, as
+  the commit page does.
 - **The `/tenure/` page no longer returns HTTP 500 when there are no commits**
   (#206). That included the unscoped page on a fresh install, before anything
   was synced. It now shows `No commits synced yet.`, or `No commits synced for
   this repository.` (or organisation, server, developer) for a known scope
   with no commits. An id that isn't in the database (a typo or stale link)
   returns 404, naming the id.
+- **`/tenure/` with a developer id returns 404, not HTTP 500.** Tenure is per
+  repository, organisation or server, and the page now says to use
+  `/developers/` for a developer, as `/summary/` does.
 - **kweb pages return 404 for a repository, organisation or server id that
   isn't in the database**, instead of an empty page with HTTP 200 that looked
   the same as a real one with no data. For example `No repository with ID
@@ -312,8 +432,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `/history/`, `/hotspots/`, `/files/repo/`, `/landscape/`, `/osi/`,
   `/orphans/`, `/metadata/repos/`, `/bubble/`, `/treemap/`, `/graph/`,
   `/collab/graph/` and `/file-collab/`. `/commit/` also returns 404 for a
-  commit hash that isn't in the repository. `/dependencies/` is unchanged: it
-  already explains that the repository isn't synced and what to run.
+  commit hash that isn't in the repository. `/dependencies/` instead explains that
+  the repository isn't synced and what to run (see above).
 - **Maven `.Final` and `.RELEASE` versions are looked up on deps.dev.** Versions
   like netty's `4.2.18.Final` were recorded as `unresolved_spec` without
   deps.dev being asked, so these production releases had no advisory count.
@@ -328,6 +448,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   naming the page and the reason, and writes and syncs nothing. A failed lookup
   of the org or user no longer reports `Could not find user or organization`
   either; that message is now only for a genuine 404.
+- **GitHub's secondary rate limits are recognised.** kospex only recognised
+  a `403` with `X-RateLimit-Remaining: 0`. A secondary limit, which GitHub
+  returns as a `429` or a `403` with `Retry-After` or a "secondary rate limit"
+  message, was treated as an ordinary HTTP error, so a listing's error named
+  the HTTP status rather than the rate limit. Both limits now stop the run as
+  a rate limit. A `Retry-After` of 60 seconds or less is waited out once
+  before giving up.
 - **`kospex rebuild developer-stats` no longer empties the file-level
   columns** of `developer_stats` (#352). It rewrote each repo's rows without
   `additions`, `deletions` and `unique_files` (all time and 90 days), which
@@ -355,6 +482,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `requests` refuses an `Authorization` header value, its exception message
   quotes the value, and kospex printed that message. The token is now
   redacted from every printed request error.
+- **Reading a `package-lock.json` no longer takes quadratic time on a long
+  `resolved` URL** (CWE-1333). The pattern that takes the version from a
+  tarball URL was searched without a left anchor, so it retried from every
+  `-` in the value. A lockfile in a scanned repository could make `kospex sca`
+  and `krunner osi` spend time that grew with the square of a `resolved`
+  value's length. The version is now found with one linear search of the
+  URL's last path segment. It returns the same version as before across
+  22,841 real `resolved` URLs. `yarn.lock` uses the same code.
 
 ## 0.2.0 - 2026-10-25
 
