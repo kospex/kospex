@@ -6,6 +6,15 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 
+- **`kospex sca -package TYPE:NAME` looks up a single package** instead of a
+  dependency file, and shows when it was first released (#390), from deps.dev's
+  version list. It reports two dates, because the oldest version is often a
+  pre-release: the first stable release (`maven:io.netty:netty-handler`
+  4.0.0.Final, 2013) and the first version of any kind (4.0.0.Alpha1, 2012).
+  Versions deps.dev lists with no publish date are counted and reported, since
+  they can be older than the dates shown (numpy has 37). Options that only
+  apply to a file (`-save`, `-out`, `-json`, `-scope`) are refused with
+  `-package`. Nothing is stored in the database yet.
 - **Maven versions set by an imported BOM are now looked up.** A pom dependency
   with no `<version>` whose version comes from an imported BOM (for example
   netty-handler under `netty-bom`) was reported as `no_version`, with no
@@ -141,6 +150,21 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **`versions_behind` counts releases, not pre-releases** (#276). deps.dev
+  lists every canary, nightly, release candidate and Go pseudo-version, with
+  no pre-release flag, and kospex counted them all. react 16.12.0 showed
+  2,730 versions behind; 43 are releases. Each ecosystem's own rule now
+  decides what's a pre-release (`kospex/prerelease.py`). Two related fixes:
+  - When deps.dev's default version is a pre-release, the count starts at
+    the newest release. netty-handler's default is a 2015 alpha, so 4.2.18
+    used to read 0 behind.
+  - A project on a pre-release now reads unknown (`-`), not a count.
+
+  In one 9,000-package estate, re-counting the same deps.dev data took
+  npm's total from 4.38M to 1.10M and Go's from 169k to 9.9k. 3,633 rows
+  improve their status on `/dependencies/` and 4 get worse; those 4 now
+  count real releases that a pre-release default used to hide. Stored rows
+  change when their repo is re-scanned.
 - **PyPI ranges are looked up at a version they allow** (#388). kospex used
   the floor as written, which pip doesn't:
   - `click==8.*` was never looked up, so it had no advisory data. It is now
