@@ -397,3 +397,14 @@ Separate PRs, each mergeable on its own:
    as `osi_runs`.
 2. **#80 `sync-target`**: is a "target" a saved org with its latest run, so that
    `sync-target` is just `sync --org` on a schedule? If so, this table is the target list.
+3. **A clone left half-made by an interrupted `git clone`** (2026-11-09, from
+   #374). The next run finds the directory, tries to pull, fails, and records the
+   repo as `failed` ("clone or pull failed") on every run. Nothing deletes it.
+   The questions:
+   - **Detecting it.** A directory with no `.git`, a `.git` with no `HEAD`
+     commit, or no `origin` remote.
+   - **What to say.** A specific detail, such as "incomplete clone", instead of
+     the generic one.
+   - **What to do about it.** Remove it and clone again automatically, or
+     report it and leave it, as kospex does for a clone that can't be
+     fast-forwarded (#385).
