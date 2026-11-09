@@ -375,8 +375,10 @@ class KospexGithub:
                 'id': repo.get('id'),
                 'name': repo.get('full_name'),
                 'visibility': repo.get('visibility'),
-                'type': owner_type,
-                'owner': username_or_org,
+                # The repo's own owner, not the account asked about: a user's
+                # listing includes other owners' repos (-include-member).
+                'type': (repo.get('owner') or {}).get('type') or owner_type,
+                'owner': (repo.get('owner') or {}).get('login') or repo_owner or username_or_org,
                 'updated_at': repo.get('updated_at'),
                 'pushed_at': repo.get('pushed_at'),
                 'archived': repo.get('archived'),

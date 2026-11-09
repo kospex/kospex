@@ -108,7 +108,10 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   listing for a user also returns repos they collaborate on or reach through an
   organisation (for `octocat`, 8 owned and 203 in all), and kgit showed them all.
   `-include-member` lists them as before. That applies to `-out-repo-list` too.
-  An organisation's listing is unchanged.
+  An organisation's listing is unchanged. The table's `owner` and `type`
+  columns now show each repo's own owner and its account type. They used to
+  repeat the account you asked about, so with `-include-member` another
+  owner's repo showed you as its owner.
 - **`kgit pull --org` takes `acme`, `github.com/acme` and URLs** (#335), as
   `kgit sync --org` does. It used to accept only the org key (`github.com~acme`),
   exit with an error for anything else, and silently find nothing for a key in

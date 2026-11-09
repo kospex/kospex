@@ -56,6 +56,17 @@ def test_owned_only_skips_the_fork_lookup_for_repos_it_drops(monkeypatch):
     assert looked_up == ["my-fork"]
 
 
+def test_each_row_names_its_own_owner_not_the_account_asked_about(monkeypatch):
+    listing = [dict(_repo("octocat/hello"), owner={"login": "octocat", "type": "User"}),
+               dict(_repo("github/docs"), owner={"login": "github", "type": "Organization"}),
+               _repo("someorg/no-owner-field")]
+    gh, _ = _gh(monkeypatch, listing=listing)
+    rows = {r["name"]: (r["owner"], r["type"]) for r in gh.get_repos("octocat", no_auth=True)}
+    assert rows["octocat/hello"] == ("octocat", "User")
+    assert rows["github/docs"] == ("github", "Organization")
+    assert rows["someorg/no-owner-field"][0] == "someorg"   # from full_name
+
+
 def test_without_owned_only_everything_is_listed(monkeypatch):
     gh, looked_up = _gh(monkeypatch)
     assert len(gh.get_repos("octocat", no_auth=True)) == 4
