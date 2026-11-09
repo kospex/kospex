@@ -141,6 +141,21 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **`versions_behind` counts releases, not pre-releases** (#276). deps.dev
+  lists every canary, nightly, release candidate and Go pseudo-version, with
+  no pre-release flag, and kospex counted them all. react 16.12.0 showed
+  2,730 versions behind; 43 are releases. Each ecosystem's own rule now
+  decides what's a pre-release (`kospex/prerelease.py`). Two related fixes:
+  - When deps.dev's default version is a pre-release, the count starts at
+    the newest release. netty-handler's default is a 2015 alpha, so 4.2.18
+    used to read 0 behind.
+  - A project on a pre-release now reads unknown (`-`), not a count.
+
+  In one 9,000-package estate, re-counting the same deps.dev data took
+  npm's total from 4.38M to 1.10M and Go's from 169k to 9.9k. 3,633 rows
+  improve their status on `/dependencies/` and 4 get worse; those 4 now
+  count real releases that a pre-release default used to hide. Stored rows
+  change when their repo is re-scanned.
 - **PyPI ranges are looked up at a version they allow** (#388). kospex used
   the floor as written, which pip doesn't:
   - `click==8.*` was never looked up, so it had no advisory data. It is now

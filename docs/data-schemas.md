@@ -229,7 +229,7 @@ Software composition analysis (SCA) data.
 | `package_use` | TEXT | Usage type (direct, development, testing) |
 | `published_at` | TEXT | Package publication date |
 | `advisories` | INTEGER | Number of security advisories |
-| `versions_behind` | INTEGER | How many versions behind latest |
+| `versions_behind` | INTEGER | How many releases deps.dev lists between the default version and `resolved_version`. Releases only: pre-releases, nightlies, canaries and Go pseudo-versions are not counted, by each ecosystem's own rule (`kospex/prerelease.py`, #276). Counted from the default, or from the newest release when deps.dev's default is a pre-release. NULL when unknown: not looked up, the version is not in deps.dev's list, or the version in use is itself a pre-release |
 | `source_repo` | TEXT | Source repository URL |
 | `default` | TEXT | If this is the default version |
 | `resolution` | TEXT | Why a deps.dev version lookup resolved or failed: `resolved`, `no_version`, `unresolved_spec`, `version_yanked`, `no_satisfying_version`, `package_not_found`, `lookup_error`; NULL for legacy unclassified rows _(migration 0005)_. `version_yanked` means deps.dev 404'd a version of a package it knows — never published or removed; deps.dev does not say which. `no_satisfying_version` is an npm or PyPI range that no published version satisfies; nothing is looked up (#379, #388) |

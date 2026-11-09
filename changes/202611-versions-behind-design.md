@@ -1,7 +1,7 @@
 # versions_behind: what to count, and how to find the version in use
 
-Status: **#378 and #379 implemented** (see "Implemented" below); #276 and #377 still
-design only. Pulls together #276 (pre-releases),
+Status: **#378, #379, #388 and #276 implemented** (see the "Implemented" sections
+below); #377 still design only. Pulls together #276 (pre-releases),
 #377 (older maintenance lines) and the `version_fuzzy_match` bug (#378), because all three
 are fixed in the same ~80 lines of `KospexDependencies.get_versions_behind()` and
 the fixes interact.
@@ -292,6 +292,44 @@ Offline A/B over the 580 current PyPI range rows (`url_cache`, no network):
 excludes (`<2`, `!=1.0`, `>4`) move to one it allows -- for a ceiling-only
 range, the first release (`attrs!=21.1.0`: 21.1.0 → 15.0.0), so those rows can
 show more versions behind after a re-scan; 1 not evaluated (no cached list).
+
+## Implemented: #276 (pre-releases)
+
+* `src/kospex/prerelease.py`: `is_prerelease(system, version)`, one rule per
+  ecosystem as in section 2 above. Checked over the 2.28M versions in a dev
+  estate's cache. Reading every lettered Maven version it called stable found
+  two misses, now handled: Jackson's `.prN`, and a qualifier straight after a
+  digit (`3.2.0rc2`, as Maven's own parser splits).
+* `KospexDependencies.release_list(type, name)`: every listed version with
+  `published_at`, `is_default`, `is_prerelease`, newest first. Same-moment
+  releases are ordered by version (PEP 440, or numeric semver), so the order
+  is the same on every run. Undated versions (`""`) sort last, so `list[-1]` is
+  not the first release. Shared with #390 (first release date), so both
+  agree on what a release is.
+* `get_versions_behind()` reads it: it counts releases only, starts at the
+  default or at the newest release when the default is a pre-release, and
+  returns None when the version in use is a pre-release.
+
+Not done here: the `in_prerelease` flag (would need a column), maintenance
+lines (#377; netty-handler 4.2.18 now reads 5, of which three are 4.1.x
+backports), and Maven flavour twins (`-jre` / `-android` both count).
+
+A/B, old against new algorithm on the **same** cached deps.dev data:
+
+| ecosystem | total behind, old → new | rows lower | rows higher | now unknown |
+|---|---|---:|---:|---:|
+| npm | 4,382,556 → 1,097,604 | 13,428 | 0 | 423 |
+| go | 169,299 → 9,925 | 909 | 1 | 11 |
+| pypi | 16,362 → 14,699 | 204 | 2 | 0 |
+| nuget | 391 → 304 | 6 | 0 | 0 |
+| maven | 49 → 55 | 2 | 4 | 1 |
+
+kweb status: 3,633 rows improve and 4 get worse. The 7 package versions whose
+count rises all re-anchor from a pre-release default that hid newer releases
+(google-auth, netty-handler), or are same-timestamp releases now ordered
+deterministically (netty-bom, guava-testlib). Comparing the new counts with
+the **stored** values instead shows 1,650 increases, but most of those are
+releases published since the rows were stored. Compare on the same data.
 
 ## Suggested order
 

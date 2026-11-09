@@ -138,7 +138,7 @@ The table has the following columns. A missing value is shown as `-`.
   what is installed: `>=2.25.0` is checked at `2.25.0`, `^1` at the first
   published 1.x, `==8.*` at `8.0.0`. Spelled as deps.dev spells it (`>=6` is
   checked at `6.0.0`)
-- `versions_behind` — how many versions behind is this version
+- `versions_behind` — how many releases newer than this one deps.dev lists. Pre-releases (canaries, nightlies, release candidates, Go pseudo-versions) are not counted, and a version that is itself a pre-release shows `-` (unknown)
 - `days_ago` — whole days since this version was published
 - `published_at` — date this version was published
 - `default` — is this the default version which is installed as of today
