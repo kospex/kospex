@@ -168,14 +168,67 @@ kgit github -test-auth
 This `-test-auth` flag checks the token works, prints which variable it came
 from (never the token itself), and exits.
 
-To list the repos for a user:
+To list an owner's repos, give the organisation or user name:
 
 ```bash
-kgit github -user USERNAME
+kgit github acme                     # an organisation's repos
+kgit github octocat                  # the repos a user owns
+kgit github octocat -include-member  # also the ones they don't own
 ```
 
-For an organisation:
+For a user, kgit lists only the repos the user owns by default, forks included,
+as `kgit sync --user` does. GitHub's listing for a user also returns repos they
+collaborate on or reach through an organisation: for `octocat`, 8 owned and 203
+in all. `-include-member` lists those too. For your own account, that includes
+your organisations' repos. An organisation's listing is always its own repos.
+
+`-out-repo-list FILENAME` writes the clone URLs of the listed repos to a file,
+for `kgit clone -filename`; add `-ssh-clone-url` for SSH URLs.
+
+`-sync` clones and syncs the owner's repos. It runs
+[`kgit sync --org` or `--user`](#sync), whichever the owner is, so it saves the
+listing as a run, resumes after an interruption, and skips forks unless told
+otherwise:
 
 ```bash
-kgit github -org ORG_OR_TEAM
+kgit github acme -sync      # the same as: kgit sync --org acme
 ```
+
+For that command's other options (`-next`, `-include-forks`, `-ssh` and so on),
+use `kgit sync` directly. `-sync` can't be combined with `-include-member`,
+`-out-repo-list` or `-ssh-clone-url`, which only apply to the listing.
+
+## pull
+
+`kgit pull` updates clones kospex already has, then syncs them. It never clones
+anything new. It needs a scope:
+
+```bash
+kgit pull github.com~acme~app    # one repo, by repo id
+kgit pull --org acme             # every repo of an org in kospex
+kgit pull --server gitlab.com    # every repo on a git server
+kgit pull --all                  # every repo
+kgit pull --org acme --check     # how stale each clone is; no network
+```
+
+The pull is fast-forward only: a clone that can't be fast-forwarded is left as
+it was, reported, and not synced.
+
+`--org` accepts the same forms as `kgit sync --org`: `acme`, `github.com/acme`,
+`https://github.com/acme` or the org key `github.com~acme`. Unlike `kgit sync`,
+which asks GitHub, `kgit pull` matches the value against the orgs already in
+kospex, on any git server, ignoring case:
+
+- **One match** is used, and kgit prints the org key it chose, for example
+  `Using org github.com~acme`.
+- **More than one match**, such as `acme` on both github.com and gitlab.com, is
+  an error listing both keys. Give the key, or the host and owner
+  (`gitlab.com/acme`).
+- **A repository** (`github.com/acme/app`) is an error giving the repo id to
+  use instead.
+- **A git server** (`gitlab.com`, or a host whose repos have no owner, such as
+  `go.googlesource.com`) is an error suggesting `--server`.
+- **An org kospex doesn't have** is an error suggesting `kgit sync --org` first.
+
+GitLab nested groups work as `gitlab.com/group/subgroup` or by their org key,
+`gitlab.com~group~~subgroup`. A name without `--org` is always read as a repo id.

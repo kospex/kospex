@@ -34,6 +34,89 @@ SKIP_ARCHIVED = "archived"
 _OWNER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
 
 
+def split_owner(raw):
+    """`(host, owner)` from the forms an owner can be given in, without judging them.
+
+    - `github.com~acme`: an org key, through parse_org_key, so a nested
+      `gitlab.com~group~~sub` decodes to the owner `group/sub`. A value it doesn't
+      accept (a repo id) comes back as `(None, raw)` for the caller to refuse.
+    - `https://host/acme`: the URL's host and path. Not parse_git_remote: it
+      parses repository URLs and returns None for an owner's URL.
+    - `host.tld/acme`: a first segment with a dot is a host.
+    - `acme`, or `acme/app` (an owner and a repository, not a host): host None.
+
+    host is None when the value names none; parse_target and resolve_pull_org
+    decide what that means.
+    """
+    if "~" in raw:
+        parsed = KospexUtils.parse_org_key(raw)
+        return (parsed["git_server"], parsed["org"]) if parsed else (None, raw)
+    if "://" in raw:
+        url = urlparse(raw)
+        return url.hostname or "", url.path.strip("/")
+    if "/" in raw:
+        host, _, owner = raw.partition("/")
+        if "." in host:
+            return host, owner.strip("/")
+    return None, raw
+
+
+def resolve_pull_org(value, repos):
+    """The org `kgit pull --org VALUE` means, as the stored `(git_server, git_owner)`.
+
+    repos: `(git_server, git_owner, git_repo)` for every repo in the DB. `pull`
+    works on what kospex already has, on any host, so unlike `kgit sync --org`
+    a bare name isn't taken to mean github.com: it's matched against the owners
+    in the DB, case-insensitively. Exactly one match is used. None, or more than
+    one, raises ValueError naming what to use instead; it never picks one.
+    """
+    raw = (value or "").strip().rstrip("/")
+    if not raw:
+        raise ValueError("No org given.")
+    repos = [(s or "", o or "", r or "") for s, o, r in repos]
+    if "~" in raw and not KospexUtils.parse_org_key(raw):
+        if KospexUtils.parse_repo_id(raw):
+            raise ValueError(f"{raw!r} is a repository id, not an org. "
+                             f"Use: kgit pull {raw}")
+        raise ValueError(f"{raw!r} isn't an org key (<server>~<owner>).")
+
+    host, owner = split_owner(raw)
+    if host is not None:
+        host = host.lower()
+    owner_l = owner.lower()
+
+    orgs = sorted({(s, o) for s, o, _ in repos})
+    servers = {s.lower() for s, _ in orgs}
+    if not owner or (host is None and owner_l in servers
+                     and not any(o.lower() == owner_l for _, o in orgs)):
+        # A host on its own, or a host whose repos have no owner
+        # (go.googlesource.com): that's --server, not --org.
+        server = host or owner
+        if server and server.lower() in servers:
+            raise ValueError(f"{raw!r} is a git server in kospex, not an org. "
+                             f"Use: kgit pull --server {server}")
+        raise ValueError(f"No org {raw!r} in kospex.")
+
+    matches = [(s, o) for s, o in orgs
+               if o.lower() == owner_l and (host is None or s.lower() == host)]
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        keys = ", ".join(KospexGit.generate_org_key(s, o) for s, o in matches)
+        raise ValueError(f"{raw!r} matches more than one org in kospex: {keys}. "
+                         "Use the org key.")
+
+    # Nothing by that owner. Say what it is instead, if it's something else.
+    org_part, _, repo_part = owner_l.removesuffix(".git").rpartition("/")
+    for s, o, r in repos:
+        if (org_part and o.lower() == org_part and r.lower() == repo_part
+                and (host is None or s.lower() == host)):
+            raise ValueError(f"{raw!r} is a repository, not an org. "
+                             f"Use: kgit pull {KospexGit.generate_repo_id(s, o, r)}")
+    raise ValueError(f"No org {raw!r} in kospex. If it's on GitHub, add it first "
+                     f"with: kgit sync --org {owner or raw}")
+
+
 def parse_target(target):
     """The owner name from a target, as `(host, owner)`. Raises ValueError.
 
@@ -45,25 +128,9 @@ def parse_target(target):
     if not raw:
         raise ValueError("No organisation or user given.")
 
-    if "~" in raw:
-        # An org key. parse_org_key returns None for a repo id, which is refused
-        # below like any other target naming a repository.
-        parsed = KospexUtils.parse_org_key(raw)
-        host, owner = (parsed["git_server"], parsed["org"]) if parsed else (GITHUB_HOST, raw)
-    elif "://" in raw:
-        # Not parse_git_remote: it parses repository URLs and returns None for an
-        # owner's URL, which is all this accepts.
-        url = urlparse(raw)
-        host, owner = url.hostname or "", url.path.strip("/")
-    elif "/" in raw:
-        host, _, owner = raw.partition("/")
-        if "." not in host:
-            # `acme/app` is an owner and a repository, not a host and an owner.
-            host, owner = GITHUB_HOST, raw
-    else:
-        host, owner = GITHUB_HOST, raw
-
-    host = host.lower()
+    host, owner = split_owner(raw)
+    # No host given means github.com here; `kgit pull --org` reads it as any host.
+    host = (GITHUB_HOST if host is None else host).lower()
     if host != GITHUB_HOST:
         raise ValueError(f"Only GitHub is supported for now, not {host or target!r}.")
     if "/" in owner or "~" in owner:

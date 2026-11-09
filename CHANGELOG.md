@@ -95,6 +95,30 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 
+- **`kgit github OWNER -sync` runs `kgit sync --org` / `--user`** (#335), so it
+  gets that command's saved run, resume, lock and per-repo failure records. It
+  used to clone and sync in a loop of its own: a failed page gave a shorter list
+  that looked complete, one repo's sync error stopped the run, and for a user it
+  synced every repo GitHub listed, including ones the user doesn't own (195 of
+  203 for `octocat`). Forks are now recorded but skipped, unless
+  `KOSPEX_CLONE_FORKS_DEFAULT=true` or `kgit sync -include-forks`.
+  `-sync` can't be combined with `-include-member`, `-out-repo-list` or
+  `-ssh-clone-url`.
+- **`kgit github USER` lists only the repos the user owns** (#335). GitHub's
+  listing for a user also returns repos they collaborate on or reach through an
+  organisation (for `octocat`, 8 owned and 203 in all), and kgit showed them all.
+  `-include-member` lists them as before. That applies to `-out-repo-list` too.
+  An organisation's listing is unchanged. The table's `owner` and `type`
+  columns now show each repo's own owner and its account type. They used to
+  repeat the account you asked about, so with `-include-member` another
+  owner's repo showed you as its owner.
+- **`kgit pull --org` takes `acme`, `github.com/acme` and URLs** (#335), as
+  `kgit sync --org` does. It used to accept only the org key (`github.com~acme`),
+  exit with an error for anything else, and silently find nothing for a key in
+  another case (`GitHub.com~Acme`). The value is matched against the orgs
+  already in kospex, on any git server and ignoring case, and the key used is
+  printed. A name that matches more than one org, a repository or a git server
+  is an error saying what to use instead.
 - **`kospex sca` shows which version it checked, and why a row is blank.** The
   table has two new columns:
   - `checked at` is the version looked up on deps.dev, which the numbers
@@ -160,6 +184,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **Listing your own GitHub account works.** `kgit github YOU`, `kgit sync
+  --user YOU` and the old `kgit github YOU -sync` all failed with
+  `HTTP 422` when YOU was the token's own account, because kospex sent GitHub
+  both `type` and `affiliation`, which GitHub refuses together. Other accounts
+  use a different endpoint and were unaffected. Your own listing now asks only
+  for the repos you own, unless `-include-member`.
 - **Every kospex pull is now fast-forward only.** `kgit clone` and `kgit sync`
   (one repo, `--org` or `--user`), `kgit github -sync`, `krunner git-pull` and
   `kospex-agent` ran a plain `git pull` on an existing clone, which follows your
