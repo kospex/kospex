@@ -362,3 +362,137 @@ class TestFilesAndSummary:
         statuses = [{"dependabot_status": "no_access"}] + [{"dependabot_status": "enabled"}] * 3
         text = " ".join(GD.notes(statuses, org_scope=False))
         assert "Security Manager" not in text
+
+
+class TestCli:
+    """kgit github --dependabot: options, both files written only after a complete run."""
+
+    @pytest.fixture
+    def kgit_cli(self, monkeypatch):
+        import kgit
+        monkeypatch.setattr(KospexGithub, "get_env_credentials", lambda self: True)
+        return kgit.cli
+
+    @pytest.fixture
+    def collected(self, monkeypatch):
+        """Fake collect; records its arguments and returns one alert and one status line."""
+        seen = {}
+
+        def fake(gh, targets, fetched_at, early_stop):
+            seen.update(targets=targets, early_stop=early_stop)
+            alerts = [GD.alert_line(alert(1), "acme", "a", 1, fetched_at)]
+            statuses = [GD.status_line("acme", "a", 1, "enabled", 1, None, fetched_at)]
+            return alerts, statuses
+
+        monkeypatch.setattr(GD, "collect", fake)
+        return seen
+
+    def run(self, cli, args):
+        from click.testing import CliRunner
+        return CliRunner().invoke(cli, ["github", *args])
+
+    def test_needs_filename(self, kgit_cli):
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme"])
+        assert result.exit_code != 0
+        assert "-filename" in result.output
+
+    @pytest.mark.parametrize("args", [[], ["-org", "acme", "-repo_id", "github.com~acme~a"]])
+    def test_needs_exactly_one_scope(self, kgit_cli, tmp_path, args):
+        out = tmp_path / "a.jsonl"
+        result = self.run(kgit_cli, ["--dependabot", "-filename", str(out), *args])
+        assert result.exit_code != 0
+        assert "-org" in result.output and "-repo_id" in result.output
+        assert not out.exists()
+
+    def test_level_is_refused(self, kgit_cli, tmp_path):
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme", "-level", "repo",
+                                     "-filename", str(tmp_path / "a.jsonl")])
+        assert result.exit_code != 0
+        assert "-level" in result.output
+
+    def test_properties_and_dependabot_together_refused(self, kgit_cli, tmp_path):
+        result = self.run(kgit_cli, ["--dependabot", "--properties", "-org", "acme",
+                                     "-filename", str(tmp_path / "a.jsonl")])
+        assert result.exit_code != 0
+        assert "--properties" in result.output and "--dependabot" in result.output
+
+    def test_single_dash_accepted(self, kgit_cli, tmp_path, monkeypatch, collected):
+        monkeypatch.setattr(GP, "lookup_repo", lambda gh, owner, repo: (owner, repo, 1))
+        result = self.run(kgit_cli, ["-dependabot", "-repo_id", "github.com~acme~a",
+                                     "-filename", str(tmp_path / "a.jsonl")])
+        assert result.exit_code == 0, result.output
+
+    def test_repo_id_uses_lookup_and_no_early_stop(self, kgit_cli, tmp_path, monkeypatch,
+                                                   collected):
+        monkeypatch.setattr(GP, "lookup_repo",
+                            lambda gh, owner, repo: ("Acme", "Payments", 101))
+        result = self.run(kgit_cli, ["--dependabot", "-repo_id", "github.com~acme~payments",
+                                     "-filename", str(tmp_path / "a.jsonl")])
+        assert result.exit_code == 0, result.output
+        assert collected == {"targets": [("Acme", "Payments", 101)], "early_stop": False}
+
+    def test_org_walks_listing_with_early_stop(self, kgit_cli, tmp_path, monkeypatch, collected):
+        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1),
+                                                                    ("acme", "b", 2)])
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme",
+                                     "-filename", str(tmp_path / "a.jsonl")])
+        assert result.exit_code == 0, result.output
+        assert collected == {"targets": [("acme", "a", 1), ("acme", "b", 2)],
+                             "early_stop": True}
+
+    def test_writes_both_files(self, kgit_cli, tmp_path, monkeypatch, collected):
+        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1)])
+        out = tmp_path / "alerts.jsonl"
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme", "-filename", str(out)])
+        assert result.exit_code == 0, result.output
+        alerts = [json.loads(l) for l in out.read_text().splitlines()]
+        statuses = [json.loads(l) for l in
+                    (tmp_path / "alerts-status.jsonl").read_text().splitlines()]
+        assert tuple(alerts[0]) == GD.ALERT_KEYS
+        assert tuple(statuses[0]) == GD.STATUS_KEYS
+
+    def test_summary_prints_both_paths(self, kgit_cli, tmp_path, monkeypatch, collected):
+        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1)])
+        out = tmp_path / "alerts.jsonl"
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme", "-filename", str(out)])
+        flat = result.output.replace("\n", "")
+        assert "alerts.jsonl" in flat and "alerts-status.jsonl" in flat
+
+    def test_no_alert_access_writes_nothing(self, kgit_cli, tmp_path, monkeypatch):
+        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1)])
+
+        def denied(gh, targets, fetched_at, early_stop):
+            raise GD.NoAlertAccess("the first 1 repos were all no_access")
+
+        monkeypatch.setattr(GD, "collect", denied)
+        out = tmp_path / "alerts.jsonl"
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme", "-filename", str(out)])
+        assert result.exit_code != 0
+        assert not out.exists() and not (tmp_path / "alerts-status.jsonl").exists()
+        assert "Security Manager" in result.output
+
+    def test_rate_limit_writes_nothing(self, kgit_cli, tmp_path, monkeypatch):
+        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1)])
+
+        def limited(gh, targets, fetched_at, early_stop):
+            raise GP.RateLimited("acme/a")
+
+        monkeypatch.setattr(GD, "collect", limited)
+        out = tmp_path / "alerts.jsonl"
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme", "-filename", str(out)])
+        assert result.exit_code != 0
+        assert "rate limit" in result.output
+        assert not out.exists() and not (tmp_path / "alerts-status.jsonl").exists()
+
+    def test_listing_failure_writes_nothing(self, kgit_cli, tmp_path, monkeypatch):
+        from kospex_github import GitHubListingIncomplete
+
+        def fail(gh, org):
+            raise GitHubListingIncomplete("u", 2, 100, "HTTP 502")
+
+        monkeypatch.setattr(GP, "list_org_repos", fail)
+        out = tmp_path / "alerts.jsonl"
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme", "-filename", str(out)])
+        assert result.exit_code != 0
+        assert "Nothing was written" in result.output
+        assert not out.exists() and not (tmp_path / "alerts-status.jsonl").exists()
