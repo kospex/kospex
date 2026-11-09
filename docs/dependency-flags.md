@@ -529,14 +529,25 @@ install and are illustrative of shape, not representative proportions. The quote
 definitions are from the linked documentation; the counts are reproducible by
 parsing the files named.
 
-Not verified here: Gradle configurations, NuGet `PrivateAssets` /
-`developmentDependency`, and Composer. Each is believed to have its own vocabulary
-and none should be assumed to match a table above.
+Not verified here: NuGet `PrivateAssets` / `developmentDependency`, and Composer.
+Each is believed to have its own vocabulary and none should be assumed to match a
+table above.
 
 A Gradle version catalog (`libs.versions.toml`) states none of these flags. It names
 libraries and their versions, and a build file's configuration (`testImplementation`,
 `implementation`, ...) decides how each is used, so catalog rows leave `is_dev` unset.
 See [Version catalogs](https://docs.gradle.org/current/userguide/version_catalogs.html).
+
+A Gradle build file states a configuration per declaration, which is recorded raw in
+`declared_scope` (99 distinct names on the development estate, including
+project-specific ones such as androidx's `docs`). It has no optional or install-script
+flag. `is_dev` is derived from the name: True for the test configurations (`test*`,
+`androidTest*`, `testFixtures*`, and forms with `Test` as a camel-case word such as
+`debugTestImplementation`), for `buildscript` classpath and for plugins; False for the
+rest, including `compileOnly`, `kapt`, `ksp` and `annotationProcessor`, as Maven's
+`provided` is. A Kotlin Multiplatform source set ending in `Test` is dev too, and its
+name is part of `declared_scope` (`commonTest.implementation`). See
+[Dependency configurations](https://docs.gradle.org/current/userguide/dependency_configurations.html).
 
 yarn's upstream vocabulary is not quoted here either. What its lockfile states was
 measured instead, when the parser landed: neither v1 nor Berry records a dev,

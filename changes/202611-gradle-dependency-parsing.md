@@ -132,9 +132,9 @@ and bundles. Finds catalogs the way Gradle does:
 `gradle/libs.versions.toml` next to the build's `settings.gradle(.kts)` as
 `libs`, plus any `versionCatalogs` entry in that settings file whose
 `from(files("..."))` is a literal path inside the repository. A build file's
-`libs` is the catalog of the nearest directory above it that has one, not
-always the repository root's: a repository can hold a Gradle build in a
-subdirectory (measured in phase 2, below). A catalog outside the repository, or one published
+`libs` is the catalog beside the nearest `settings.gradle(.kts)` above it, not
+always the repository root's: a repository can hold a Gradle build of its own
+in a subdirectory (measured in phase 2, below). A catalog outside the repository, or one published
 as an artifact (`from("g:a:v")`), is not read. The settings file is matched with
 a regular expression, not evaluated.
 
@@ -499,8 +499,9 @@ measured the damage, not the rules.
 - **The catalog is not always at the repository root.** maplibre-native keeps
   its Android build, catalog included, under `platform/android/`. Looking
   only at the root left it 26% readable. Looking from the nearest directory
-  with `gradle/libs.versions.toml` makes it 100%, and is how Gradle finds it.
-  The "Catalog reader" paragraph above now says this.
+  with `gradle/libs.versions.toml` makes it 100%. Building the reader refined
+  this (see "Phase 2 as built"): Gradle uses the catalog beside the build's
+  settings file, and `platform/android/` has one.
 
 **Repository hosts.** 94 `mavenCentral()`, 75 `google()`, 35
 `gradlePluginPortal()`, 11 `mavenLocal()`, 4 `jcenter()` and 45 `maven { }`.
@@ -529,6 +530,41 @@ the `conditional` field.
    as `$var`, since it costs one more pattern.
 5. **`constraints { }` stays out of scope** (42 declarations): it only changes
    versions. **`buildscript` classpath stays in** (20), as planned.
+
+## Phase 2 as built (2026-11-09)
+
+`extract_build_gradle` in `src/kospex/extractors/gradle.py`, registered as
+`gradle-build` for `sca` and `osi`. The rules are in
+`docs/dependency-details.md`. Run over every build file on disk (the same
+1,291): 9,853 rows from 1,130 files, 151 files with none (`empty`), 10 raise,
+119 declarations logged as unreadable, in about 20 seconds. On timber, `osi`
+saved 18 build-file rows, all resolved on deps.dev; `kospex sca` on retrofit's
+`build.gradle` resolved all 5.
+
+What building it changed:
+
+- **The catalog is the one beside the build's settings file**, not the nearest
+  `gradle/` folder. androidx's `car/app/app-samples` has a catalog of its own
+  but no settings file, so Gradle builds it with androidx's catalog; the
+  nearest-folder rule read the wrong one. maplibre's `platform/android` has a
+  settings file, so it keeps its own.
+- **Included builds name the main catalog.** okhttp's `build-logic` and coil's
+  `buildSrc` declare `from(files("../gradle/libs.versions.toml"))`. The path
+  must stay inside the repository, not inside the included build.
+- **Groovy can pass the closure as an argument**
+  (`implementation(libs.x, { transitive = true })`); it's ignored, not counted
+  as unreadable.
+- **A variable can hold the whole coordinate** (androidx's
+  `def sidecar = "g:a:1.0"` then `compileOnly(sidecar)`); it's resolved.
+- **The 10 files that raise** are five of kotlinx.coroutines' (its
+  `version("x")` helper from `buildSrc`) and five androidx test projects whose
+  coordinate is a property the test harness injects. Both are genuinely not
+  readable without running Gradle.
+- **`kotlin("x")` usually has no version** (345 of the 521 blank-version
+  rows): the Kotlin plugin supplies it. Filling it from the build's Kotlin
+  plugin version is a possible later improvement.
+
+Repository hosts, the other half of phase 2, follow in a separate change.
 
 ## Out of scope
 
