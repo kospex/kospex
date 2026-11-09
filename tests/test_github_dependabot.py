@@ -69,8 +69,9 @@ def scripted(gh, monkeypatch, replies):
     """Fake _make_request: replies is a list of (data, response), consumed in order."""
     calls = []
 
-    def fake(url, params=None, method="GET"):
+    def fake(url, params=None, method="GET", quiet_statuses=()):
         calls.append((url, params))
+        gh.quiet_seen = quiet_statuses
         return replies.pop(0)
 
     monkeypatch.setattr(gh, "_make_request", fake)
@@ -123,6 +124,13 @@ class TestFetchRepoAlerts:
         assert (status, len(alerts), error) == ("enabled", 103, None)
         assert calls[1] == (nxt, None)
 
+    def test_expected_failures_are_quiet(self, monkeypatch):
+        # 403 and 404 become a status line, so they shouldn't also print "HTTP Error".
+        gh = KospexGithub()
+        scripted(gh, monkeypatch, [([], response(200, []))])
+        GD.fetch_repo_alerts(gh, "acme", "payments")
+        assert set(gh.quiet_seen) == {403, 404}
+
     def test_enabled_with_no_alerts(self, monkeypatch):
         gh = KospexGithub()
         scripted(gh, monkeypatch, [([], response(200, []))])
@@ -145,7 +153,7 @@ class TestFetchRepoAlerts:
     def test_rate_limit_raises(self, monkeypatch):
         gh = KospexGithub()
 
-        def throttled(url, params=None, method="GET"):
+        def throttled(url, params=None, method="GET", quiet_statuses=()):
             gh.throttled = True
             return None, response(429)
 

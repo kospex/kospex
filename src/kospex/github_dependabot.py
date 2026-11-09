@@ -87,7 +87,8 @@ def fetch_repo_alerts(gh, owner, repo):
     params = {"state": "open", "per_page": 100}
     alerts, page = [], 1
     while url:
-        data, response = gh._make_request(url, params=params)
+        # 403 and 404 become the repo's status, so they don't print as errors.
+        data, response = gh._make_request(url, params=params, quiet_statuses=(403, 404))
         if gh.throttled:
             raise RateLimited(f"{owner}/{repo}")
         if data is None:

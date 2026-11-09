@@ -89,6 +89,26 @@ def test_ordinary_403_is_not_throttled(gh):
     assert gh.throttled is False
 
 
+def test_quiet_status_is_not_printed(gh, capsys):
+    # A caller that turns a 403/404 into a status doesn't want "HTTP Error" noise.
+    gh.replies = [response(403, {"message": "Dependabot alerts are disabled for this repository."})]
+    data, resp = gh._make_request("https://api.github.com/x", quiet_statuses=(403, 404))
+    assert data is None and resp.status_code == 403
+    assert "HTTP Error" not in capsys.readouterr().out
+
+
+def test_other_statuses_still_printed(gh, capsys):
+    gh.replies = [response(502, {"message": "Bad Gateway"})]
+    gh._make_request("https://api.github.com/x", quiet_statuses=(403, 404))
+    assert "HTTP Error" in capsys.readouterr().out
+
+
+def test_errors_printed_by_default(gh, capsys):
+    gh.replies = [response(404, {"message": "Not Found"})]
+    gh._make_request("https://api.github.com/x")
+    assert "HTTP Error" in capsys.readouterr().out
+
+
 def test_primary_limit_still_detected(gh):
     gh.replies = [response(403, {"message": "API rate limit exceeded"},
                            {"X-RateLimit-Remaining": "0"})]

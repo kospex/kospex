@@ -64,7 +64,7 @@ class KospexGithub:
         """
         self.timeout = timeout
 
-    def _make_request(self, url, params=None, method='GET'):
+    def _make_request(self, url, params=None, method='GET', quiet_statuses=()):
         """
         Make a request to the GitHub API with proper error handling.
 
@@ -72,6 +72,8 @@ class KospexGithub:
             url: The full URL to request
             params: Optional query parameters
             method: HTTP method (default: GET)
+            quiet_statuses: HTTP statuses the caller handles itself (e.g. a 403
+                it records as a status), so no "HTTP Error" line is printed
 
         Returns:
             Tuple of (response_data, response) or (None, response) on error
@@ -108,7 +110,8 @@ class KospexGithub:
                 return None, response
 
         except requests.exceptions.HTTPError as err:
-            print(f"HTTP Error: {self._redact(err)}")
+            if response is None or response.status_code not in quiet_statuses:
+                print(f"HTTP Error: {self._redact(err)}")
             return None, response
         except requests.exceptions.Timeout as err:
             print(f"Timeout: {self._redact(err)}")

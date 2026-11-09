@@ -96,7 +96,7 @@ class TestRepoLevel:
     def scripted(self, gh, monkeypatch, replies):
         calls = []
 
-        def fake(url, params=None, method="GET"):
+        def fake(url, params=None, method="GET", quiet_statuses=()):
             calls.append(url)
             return replies[url]
 
@@ -152,7 +152,7 @@ class TestRepoLevel:
     def test_rate_limit_stops_the_run(self, monkeypatch):
         gh = KospexGithub()
 
-        def throttled(url, params=None, method="GET"):
+        def throttled(url, params=None, method="GET", quiet_statuses=()):
             gh.throttled = True
             return None, response(403)
 
@@ -181,25 +181,30 @@ class TestLookupRepo:
         gh = KospexGithub()
         urls = []
 
-        def fake(url, params=None, method="GET"):
+        quiet = []
+
+        def fake(url, params=None, method="GET", quiet_statuses=()):
             urls.append(url)
+            quiet.append(set(quiet_statuses))
             return {"id": 101, "name": "Payments", "owner": {"login": "Acme"}}, response(200)
 
         monkeypatch.setattr(gh, "_make_request", fake)
         assert GP.lookup_repo(gh, "acme", "payments") == ("Acme", "Payments", 101)
         assert urls == ["https://api.github.com/repos/acme/payments"]
+        # A failed lookup is reported by the request that follows, so it stays quiet.
+        assert quiet == [{403, 404}]
 
     def test_unreadable_repo_keeps_the_name_without_an_id(self, monkeypatch):
         # The properties call that follows records the error line.
         gh = KospexGithub()
         monkeypatch.setattr(gh, "_make_request",
-                            lambda url, params=None, method="GET": (None, response(404)))
+                            lambda url, params=None, method="GET", quiet_statuses=(): (None, response(404)))
         assert GP.lookup_repo(gh, "acme", "payments") == ("acme", "payments", None)
 
     def test_rate_limit_raises(self, monkeypatch):
         gh = KospexGithub()
 
-        def throttled(url, params=None, method="GET"):
+        def throttled(url, params=None, method="GET", quiet_statuses=()):
             gh.throttled = True
             return None, response(403)
 

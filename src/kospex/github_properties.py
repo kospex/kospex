@@ -109,7 +109,8 @@ def lookup_repo(gh, owner, repo):
 
     Raises RateLimited if the rate limit is hit.
     """
-    data, _ = gh._make_request(f"{gh.base_url}/repos/{owner}/{repo}")
+    data, _ = gh._make_request(f"{gh.base_url}/repos/{owner}/{repo}",
+                              quiet_statuses=(403, 404))
     if gh.throttled:
         raise RateLimited(f"{owner}/{repo}")
     if not data:
