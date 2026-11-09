@@ -8,15 +8,18 @@ Two ways to read them, with the same output:
 - repo level: GET /repos/{owner}/{repo}/properties/values, one request per repo.
   Needs only read access to each repo.
 
-Line shape (the contract for whatever loads the file):
+Line shape (the contract for whatever loads the file). Every line has the same
+keys, so a loader that infers columns from the first rows (sqlite-utils reads
+100) never meets a new one later:
 
-    {"repo_id", "org", "repo", "level", "fetched_at", "properties": {name: value}}
-    {"repo_id", "org", "repo", "level", "fetched_at", "error": "HTTP 404 Not Found"}
+    {"repo_id", "org", "repo", "level", "fetched_at", "properties": {name: value}, "error": null}
+    {"repo_id", "org", "repo", "level", "fetched_at", "properties": null, "error": "HTTP 404 Not Found"}
 
-A repo with nothing set has `"properties": {}`; one that couldn't be read has
-`error` and no `properties`, so the two can't be confused. Multi-select values
-stay arrays. An unset property is left out (see normalise). `level` and `fetched_at` are on every
-line so files from several orgs and runs can be concatenated.
+`"properties": {}` means nothing is set; `"properties": null` with an error means
+the repo couldn't be read, so its properties are unknown. Multi-select values
+stay arrays. An unset property is left out (see normalise). `level` and
+`fetched_at` are on every line so files from several orgs and runs can be
+concatenated.
 """
 import json
 import os
@@ -63,6 +66,8 @@ def _line(owner, repo, level, fetched_at):
         "repo": repo,
         "level": level,
         "fetched_at": fetched_at,
+        "properties": None,
+        "error": None,
     }
 
 
@@ -173,7 +178,7 @@ def notes(lines, org_scope):
 
 
 def summarise(lines):
-    errors = sum(1 for l in lines if "error" in l)
+    errors = sum(1 for l in lines if l.get("error"))
     with_props = sum(1 for l in lines if l.get("properties"))
     return {"repos": len(lines), "with_properties": with_props,
             "no_properties": len(lines) - errors - with_props, "errors": errors}

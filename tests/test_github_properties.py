@@ -65,9 +65,10 @@ class TestOrgLevel:
 
         assert lines == [
             {"repo_id": "github.com~acme~payments", "org": "Acme", "repo": "Payments",
-             "level": "org", "fetched_at": FETCHED_AT, "properties": {"team": "billing"}},
+             "level": "org", "fetched_at": FETCHED_AT, "properties": {"team": "billing"},
+             "error": None},
             {"repo_id": "github.com~acme~docs", "org": "Acme", "repo": "docs",
-             "level": "org", "fetched_at": FETCHED_AT, "properties": {}},
+             "level": "org", "fetched_at": FETCHED_AT, "properties": {}, "error": None},
         ]
 
     def test_calls_the_org_properties_endpoint(self, monkeypatch):
@@ -120,8 +121,21 @@ class TestRepoLevel:
         assert lines[1]["properties"] == {}
         assert lines[2] == {"repo_id": "github.com~acme~legacy", "org": "acme", "repo": "legacy",
                             "level": "repo", "fetched_at": FETCHED_AT,
-                            "error": "HTTP 404 Not Found"}
-        assert "properties" not in lines[2]
+                            "properties": None, "error": "HTTP 404 Not Found"}
+        assert lines[1]["error"] is None
+
+    def test_every_line_has_the_same_keys(self, monkeypatch):
+        # sqlite-utils infers columns from the first 100 lines; a key that first
+        # appears later aborts the load partway (measured).
+        gh = KospexGithub()
+        base = "https://api.github.com/repos"
+        self.scripted(gh, monkeypatch, {
+            f"{base}/acme/ok/properties/values": ([], response(200)),
+            f"{base}/acme/bad/properties/values": (None, response(404)),
+        })
+        lines = GP.repo_level_lines(gh, [("acme", "ok"), ("acme", "bad")], FETCHED_AT)
+        assert list(lines[0]) == list(lines[1]) == [
+            "repo_id", "org", "repo", "level", "fetched_at", "properties", "error"]
 
     def test_no_response_is_an_error_line(self, monkeypatch):
         gh = KospexGithub()
