@@ -344,10 +344,13 @@ Three structurally distinct formats:
   inside the `resolved` tarball URL — and they can disagree. All are recorded, because
   any rule electing one field as authoritative is spoofable in whichever direction it
   elects, and a manifest is one untrusted document so cross-field corroboration is not
-  a security control. Measured cost: **10 extra rows in 13,739**, all ten real
-  published packages, because the second identity is the alias *target* — the thing
-  deps.dev can answer about. The install-path row is still looked up by its own
-  name, so `string-width-cjs@4.2.3` is a false `version_yanked`. Unlike
+  a security control. Measured cost, November 2026: **24 extra rows in 34,059**,
+  from 78 entries across the 78 lockfiles in a development DB's synced
+  repositories. That is 10 rows in 13,739 when first measured. All 78 entries are
+  genuine aliases, so the second identity is the alias *target*, the thing
+  deps.dev can answer about. Counts are in
+  [`dependency-flags.md`](dependency-flags.md). The install-path row is still
+  looked up by its own name, so `string-width-cjs@4.2.3` is a false `version_yanked`. Unlike
   `package.json` (#350), it is not unwrapped, because nothing in the lockfile vouches
   for the alias. Checking it against the sibling `package.json` is the planned fix
   (#405, `changes/202611-npm-alias-lookup.md`).
