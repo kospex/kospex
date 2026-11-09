@@ -29,11 +29,11 @@ The caller's spelling is kept in the bound pattern rather than canonicalised,
 since `LIKE` matches either way and rewriting a caller's input would be
 surprising.
 
-**Known limitation.** A tag panopticas has *retired* is now rejected along with a
-typo, because `get_tags()` reports only the current vocabulary. On live data that
-is `Claude Code` (7 files), renamed to brand-level `Claude`. Tests here use a
-patched vocabulary rather than asserting on panopticas' current contents, which
-would make them a test of someone else's data.
+**Retired tags (#317).** A tag panopticas has renamed or dropped is accepted too,
+from `get_deprecated_tags()`: rows recorded before the rename still carry it. On
+live data that is `Claude Code`, renamed to brand-level `Claude`. Until then it was
+rejected like a typo. Tests here use a patched vocabulary rather than asserting on
+panopticas' current contents, which would make them a test of someone else's data.
 """
 import os
 
@@ -42,7 +42,8 @@ import pytest
 import sqlite_utils
 
 import kospex_schema as KospexSchema
-from kospex_query import KospexData, KospexQuery
+from kospex_query import (
+    KospexData, KospexQuery, retired_tag_replacement, retired_tags)
 
 
 @pytest.fixture(autouse=True)
@@ -65,6 +66,14 @@ def vocabulary(monkeypatch):
     does not define -- a LIKE wildcard in a tag, or a retired spelling."""
     def _set(*tags):
         monkeypatch.setattr(panopticas, "get_tags", lambda: list(tags))
+    return _set
+
+
+@pytest.fixture
+def deprecations(monkeypatch):
+    """Replace panopticas' retired tags, old spelling -> replacement or None."""
+    def _set(mapping):
+        monkeypatch.setattr(panopticas, "get_deprecated_tags", lambda: dict(mapping))
     return _set
 
 
@@ -91,6 +100,9 @@ _ROWS = [
     # a tag stored in the spelling panopticas used before it recased it
     {"Provider": ".eslintrc", "hash": "h1", "_repo_id": "github.com~acme~four",
      "Filename": ".eslintrc", "tech_type": "|eslint|config|", "latest": 1},
+    # a tag panopticas has since renamed (Claude Code -> Claude)
+    {"Provider": "CLAUDE.md", "hash": "h1", "_repo_id": "github.com~acme~four",
+     "Filename": "CLAUDE.md", "tech_type": "|Claude Code|AI|", "latest": 1},
 ]
 
 
@@ -216,15 +228,80 @@ class TestKnownTags:
 
         assert kd.get_bind_parameters() == ["%|ESLINT|%"]
 
-    def test_a_retired_tag_is_rejected_with_the_rest(self, vocabulary):
-        """Documents the known limitation: get_tags() reports only the current
-        vocabulary, so a renamed tag is indistinguishable from a typo until
-        panopticas exposes its deprecations."""
+
+class TestRetiredTags:
+    """A tag panopticas has retired is accepted, not rejected as a typo (#317)."""
+
+    def test_a_renamed_tag_is_accepted(self, vocabulary, deprecations):
         vocabulary("Claude")
+        deprecations({"Claude Code": "Claude"})
+        kd = KospexData(kospex_db=_seed_db())
+
+        kd.where_tag("Claude Code")
+
+        assert kd.get_bind_parameters() == ["%|Claude Code|%"]
+
+    def test_a_retired_tag_is_matched_case_insensitively(self, vocabulary, deprecations):
+        vocabulary("Claude")
+        deprecations({"Claude Code": "Claude"})
+        kd = KospexData(kospex_db=_seed_db())
+
+        kd.where_tag("claude code")
+
+        assert kd.get_bind_parameters() == ["%|claude code|%"]
+
+    def test_a_dropped_tag_is_accepted(self, vocabulary, deprecations):
+        """A replacement of None means panopticas dropped the tag outright. The
+        stored rows are just as real."""
+        vocabulary("Python")
+        deprecations({"Gone": None})
+        kd = KospexData(kospex_db=_seed_db())
+
+        kd.where_tag("Gone")
+
+        assert kd.get_bind_parameters() == ["%|Gone|%"]
+
+    def test_a_typo_is_still_rejected(self, vocabulary, deprecations):
+        vocabulary("Claude")
+        deprecations({"Claude Code": "Claude"})
         kd = KospexData(kospex_db=_seed_db())
 
         with pytest.raises(ValueError):
-            kd.where_tag("Claude Code")
+            kd.where_tag("Claude Cod")
+
+    def test_rows_stored_under_a_renamed_tag_are_found(self, vocabulary, deprecations):
+        vocabulary("Claude", "AI")
+        deprecations({"Claude Code": "Claude"})
+        kq = KospexQuery(kospex_db=_seed_db())
+
+        rows = kq.get_metadata_files(tag="Claude Code")
+
+        assert [r["Filename"] for r in rows] == ["CLAUDE.md"]
+
+    def test_the_installed_panopticas_accepts_claude_code(self):
+        """Not patched: the rename this issue was raised for, against the real
+        get_deprecated_tags()."""
+        kd = KospexData(kospex_db=_seed_db())
+        kd.where_tag("Claude Code")
+
+        assert kd.get_bind_parameters() == ["%|Claude Code|%"]
+
+
+class TestRetiredTagHelpers:
+
+    def test_a_change_of_case_is_not_listed_as_retired(self, deprecations):
+        """eslint -> ESLint is the same tag to kospex, so listing it would show
+        a tag beside itself."""
+        deprecations({"eslint": "ESLint", "Claude Code": "Claude", "Gone": None})
+
+        assert retired_tags() == {"Claude Code": "Claude", "Gone": None}
+
+    def test_the_replacement_is_found_ignoring_case(self, deprecations):
+        deprecations({"Claude Code": "Claude", "Gone": None})
+
+        assert retired_tag_replacement("CLAUDE CODE") == (True, "Claude")
+        assert retired_tag_replacement("gone") == (True, None)
+        assert retired_tag_replacement("Python") == (False, None)
 
 
 class TestThroughProduction:

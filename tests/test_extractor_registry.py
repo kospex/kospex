@@ -317,3 +317,15 @@ def test_known_unregistered_are_still_unregistered():
     """When one of KNOWN_UNREGISTERED gains an entry, take it off the list."""
     stale = [name for name in KNOWN_UNREGISTERED if classify(name).extractor is not None]
     assert not stale, f"now registered, remove from KNOWN_UNREGISTERED: {stale}"
+
+
+def test_package_types_lists_each_registry_package_type_once():
+    """package_types() is what `kospex sca -package` accepts as TYPE, so a
+    package type added to the registry is accepted without a second list."""
+    from kospex.extractors.registry import package_types
+
+    types = package_types()
+    assert types == sorted(set(types))
+    assert None not in types
+    assert {e.package_type for e in REGISTRY if e.package_type} <= set(types)
+    assert {"npm", "pypi", "maven", "go"} <= set(types)

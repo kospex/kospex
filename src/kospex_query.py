@@ -91,6 +91,32 @@ def _org_key_parts(org_key):
     return parsed["git_server"], parsed["org"]
 
 
+def retired_tags():
+    """Tags panopticas has renamed or dropped, mapped to the replacement or None.
+
+    From panopticas.get_deprecated_tags(), less its changes of case
+    (`eslint` -> `ESLint`). Those are the same tag to kospex: where_tag()
+    compares case-insensitively and SQLite's LIKE matches either spelling, so
+    listing them as retired would only show a tag beside itself.
+    """
+    return {
+        old: new for old, new in Panopticas.get_deprecated_tags().items()
+        if new is None or old.lower() != new.lower()
+    }
+
+
+def retired_tag_replacement(tag):
+    """(True, replacement) if tag is a retired panopticas tag, else (False, None).
+
+    Case-insensitive, like where_tag(). The replacement is None for a tag
+    panopticas dropped outright.
+    """
+    for old, new in retired_tags().items():
+        if old.lower() == tag.lower():
+            return True, new
+    return False, None
+
+
 class KospexQuery:
     """kospex database query functionality"""
 
@@ -2848,16 +2874,17 @@ class KospexData:
         (`eslint` became `ESLint` in 0.0.21). The caller's spelling is kept in
         the pattern rather than canonicalised, since LIKE matches either way.
 
-        Known limitation: a tag panopticas has *retired* is rejected alongside a
-        typo, because get_tags() reports only the current vocabulary. On live
-        data that is `Claude Code` (7 files), renamed to brand-level `Claude`.
-        Revisit when panopticas exposes its deprecated tags -- kospex#317,
-        tracking panopticas#54.
+        A tag panopticas has *retired* is accepted too (#317): rows recorded
+        before the rename still carry it, so a query for it has real answers.
+        On live data that is `Claude Code`, renamed to brand-level `Claude`.
+        The vocabulary is get_tags() plus retired_tags(); anything else is
+        still rejected.
         """
         if not isinstance(tag, str) or not tag:
             raise ValueError(f"Tag '{tag}' must be a non-empty string")
 
         known = {t.lower() for t in Panopticas.get_tags()}
+        known |= {t.lower() for t in retired_tags()}
         if tag.lower() not in known:
             raise ValueError(
                 f"Tag '{tag}' is not a known tag "

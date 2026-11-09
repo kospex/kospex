@@ -166,22 +166,21 @@ def enrich_dependency_records(results, kdeps, echo=None, progress=None):
     bom_versions = kdeps.maven_bom_versions(results)
 
     for position, d in enumerate(results, start=1):
-        cleaned_version = bom_versions.get(position - 1) or kdeps.clean_version_spec(
-            d["package_version"], d["package_type"])
-        deps_rec = kdeps.depsdev_record(
-            d["package_type"],
-            d["package_name"],
-            cleaned_version,
-        )
+        # The BOM version first, then the declared range's floor (#379); the
+        # same helper as `kospex sca`, so the two scan paths cannot drift.
+        deps_rec, cleaned_version = kdeps.lookup_dependency(
+            d["package_type"], d["package_name"], d["package_version"],
+            bom_version=bom_versions.get(position - 1))
         if echo:
             echo(KospexDependencies.summary_line(d))
         d["versions_behind"] = deps_rec.get("versions_behind")   # int or None, no "Unknown"
         d["advisories"] = deps_rec.get("advisories")
         d["resolution"] = deps_rec.get("resolution")
-        # resolved_version is defined as "the version actually sent to
-        # deps.dev" (migration 0006) -- reuse the same value passed to
-        # depsdev_record() above rather than recomputing it, so the two
-        # cannot drift apart if this function is edited later.
+        # resolved_version is the version the numbers above are for: deps.dev's
+        # spelling when it resolved, else what was sent. lookup_dependency()
+        # decides, for both scan paths, so they cannot drift apart. (Migration
+        # 0006 said "the version sent"; docs/data-schemas.md has the current
+        # definition.)
         d["resolved_version"] = cleaned_version
         published = deps_rec.get("published_at", None)
         if published:

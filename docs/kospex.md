@@ -132,12 +132,21 @@ The table has the following columns. A missing value is shown as `-`.
 
 - `package_name`
 - `package_version` — the version as declared in the file, e.g. `>=2.25.0`
-- `versions_behind` — how many versions behind is this version
-- `days_ago` — whole days since this version was published. For a range such as
-  `>=2.25.0` this is the lowest version it allows (`2.25.0`)
+- `checked at` (`resolved_version` in `-json` and `-out`) — the version looked
+  up on deps.dev, which the columns after it describe. For a range it is the
+  oldest published version the range allows, the worst case it permits, not
+  what is installed: `>=2.25.0` is checked at `2.25.0`, `^1` at the first
+  published 1.x, `==8.*` at `8.0.0`. Spelled as deps.dev spells it (`>=6` is
+  checked at `6.0.0`)
+- `versions_behind` — how many releases newer than this one deps.dev lists. Pre-releases (canaries, nightlies, release candidates, Go pseudo-versions) are not counted, and a version that is itself a pre-release shows `-` (unknown)
+- `days_ago` — whole days since this version was published
 - `published_at` — date this version was published
 - `default` — is this the default version which is installed as of today
 - `advisories` — number of known security advisories
+- `resolution` — whether the lookup succeeded, and if not why: `resolved`,
+  `no_satisfying_version` (no published version is in the range),
+  `version_yanked`, `package_not_found`, `unresolved_spec`, `no_version` or
+  `lookup_error`. A row's numbers are blank when it is not `resolved`
 - `source_repo` — the git URL for this package if known
 
 Below the table, a line says which scopes were shown and what else is in the file:

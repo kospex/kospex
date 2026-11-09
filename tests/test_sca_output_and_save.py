@@ -152,6 +152,40 @@ class TestColumns:
         assert rows[0]["advisories"] is None        # the template's "" seed
         assert rows[0]["versions_behind"] == 0      # a real zero survives
 
+    def test_which_version_was_checked_and_why_not_are_columns(self):
+        """A range's numbers are for resolved_version, not the declared text
+        (`^1` -> 1.12.0), and a blank row needs its reason (`no_satisfying_version`).
+        Same columns in the table, -json and -out, from the one list."""
+        fields = KospexDependencies().get_table_field_names()
+        assert fields == ["package_name", "package_version", "resolved_version",
+                          "versions_behind", "days_ago", "published_at", "default",
+                          "advisories", "resolution", "source_repo"]
+
+    def test_the_table_titles_resolved_version_checked_at(self):
+        """As on /dependencies/. -json and -out keep the DB column name."""
+        from rich.console import Console
+
+        console = Console(record=True, width=250)
+        KospexDependencies().print_table_rows(
+            [{"package_name": "@playwright/test", "package_version": "^1",
+              "resolved_version": "1.12.0", "resolution": "resolved"}], console=console)
+        text = console.export_text()
+
+        assert "checked at" in text
+        assert "resolved_version" not in text
+        assert "1.12.0" in text
+
+    def test_assess_rows_carry_the_checked_version_and_resolution(self, tmp_path):
+        kd = _stub_depsdev(KospexDependencies())
+        path = tmp_path / "requirements.txt"
+        path.write_text("requests>=2.25.0\n")
+
+        rows = kd.table_rows(kd.assess(str(path), quiet=True))
+
+        assert rows[0]["package_version"] == ">=2.25.0"
+        assert rows[0]["resolved_version"] == "2.25.0"
+        assert rows[0]["resolution"] == "resolved"
+
     def test_missing_values_render_as_dash(self):
         assert KospexDependencies.summary_line(
             {"package_name": "pyyaml", "package_version": "", "published_at": None}

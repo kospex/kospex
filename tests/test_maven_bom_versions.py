@@ -21,11 +21,32 @@ OTHER_BOM = ("https://api.deps.dev/v3alpha/systems/maven/packages/"
 
 
 def _requirements(*managed):
+    """Entries the BOM declares itself: deps.dev fills name and resolvedName."""
     return json.dumps({"maven": {"dependencyManagement": [
-        {"name": name, "version": "${project.version}", "resolvedVersion": version,
-         "origin": "management"}
-        for name, version in managed
+        _declared(name, version) for name, version in managed
     ]}})
+
+
+def _declared(name, version):
+    return {"name": name, "version": "${project.version}", "resolvedName": name,
+            "resolvedVersion": version, "origin": "management"}
+
+
+def _inherited(name, version):
+    """An entry from a BOM this BOM imports, or from its parent: deps.dev
+    leaves name blank and gives the artifact only as resolvedName."""
+    return {"name": "", "version": "", "resolvedName": name,
+            "resolvedVersion": version, "origin": "management"}
+
+
+def _nested_import(name, version):
+    """The coordinates of a BOM this BOM imports. Not a managed artifact."""
+    return {"name": "", "version": "", "resolvedName": name,
+            "resolvedVersion": version, "origin": "import"}
+
+
+def _raw(*entries):
+    return json.dumps({"maven": {"dependencyManagement": list(entries)}})
 
 
 class _Query:
@@ -125,6 +146,43 @@ class TestManagedVersions:
                     "package_type": "npm", "requirements_type": "direct"}]
 
         assert kdeps.maven_bom_versions(records) == {}
+
+
+class TestBomThatInheritsItsVersions:
+    """A BOM that imports other BOMs or has a parent, as spring-boot-dependencies
+    does: most of what it manages arrives with a blank name (1,157 of 1,607
+    entries for 3.5.7), so the artifact is read from resolvedName."""
+
+    def test_version_from_a_bom_it_imports(self):
+        kdeps = _kdeps({NETTY_BOM: (_raw(_inherited("org.assertj:assertj-core", "3.27.6")), 200)})
+        records = [_bom(), _row("org.assertj:assertj-core")]
+
+        assert kdeps.maven_bom_versions(records) == {1: "3.27.6"}
+
+    def test_a_nested_import_is_not_a_managed_version(self):
+        kdeps = _kdeps({NETTY_BOM: (_raw(_nested_import("org.assertj:assertj-bom", "3.27.6")), 200)})
+        records = [_bom(), _row("org.assertj:assertj-bom")]
+
+        assert kdeps.maven_bom_versions(records) == {}
+
+    def test_the_import_declaration_itself_is_skipped(self):
+        # Named, but unresolved: the `scope=import` entry as written in the BOM.
+        declaration = {"name": "org.assertj:assertj-bom", "version": "${assertj.version}",
+                       "type": "pom", "scope": "import", "resolvedName": "",
+                       "resolvedVersion": "", "origin": "management"}
+        kdeps = _kdeps({NETTY_BOM: (_raw(declaration), 200)})
+        records = [_bom(), _row("org.assertj:assertj-bom")]
+
+        assert kdeps.maven_bom_versions(records) == {}
+
+    def test_first_entry_for_an_artifact_wins(self):
+        # Maven: a version the BOM declares beats one it imports. deps.dev
+        # lists the BOM's own entries before the inherited ones.
+        kdeps = _kdeps({NETTY_BOM: (_raw(_declared("io.netty:netty-handler", "4.2.18.Final"),
+                                         _inherited("io.netty:netty-handler", "4.1.0.Final")), 200)})
+        records = [_bom(), _row("io.netty:netty-handler")]
+
+        assert kdeps.maven_bom_versions(records) == {1: "4.2.18.Final"}
 
 
 class TestFailuresLeaveTheRowBlank:

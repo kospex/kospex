@@ -1,6 +1,7 @@
 # versions_behind: what to count, and how to find the version in use
 
-Status: **design / measured, no code changed.** Pulls together #276 (pre-releases),
+Status: **#378, #379, #388 and #276 implemented** (see the "Implemented" sections
+below); #377 still design only. Pulls together #276 (pre-releases),
 #377 (older maintenance lines) and the `version_fuzzy_match` bug (#378), because all three
 are fixed in the same ~80 lines of `KospexDependencies.get_versions_behind()` and
 the fixes interact.
@@ -28,7 +29,10 @@ Four things distort that number:
 4. **A pre-release can be the default.** deps.dev marks e.g. `duckdb@2.0.1.dev…`,
    `httpx@1.0.0.dev6`, `protobuf-java@4.37.0-RC1` as `isDefault`, which moves the
    anchor of the count. About 0.7% of cached packages (npm 72 of ~11k, PyPI 16 of
-   ~860, Maven 4 of 20).
+   ~860, Maven 4 of 20). It can push the anchor *below* the version in use:
+   `io.netty:netty-handler`'s default is `5.0.0.Alpha2`, published 2015-03-03, so a
+   project on `4.2.18.Final` (2026-09-09) is never reached after the default and reads
+   **0** behind instead of 2.
 
 ## Measurements
 
@@ -224,6 +228,108 @@ So the floor should be the **lowest published stable version that satisfies the 
 satisfying release, and is what `resolved_version` is for: the worst case the constraint
 permits. Strip `npm:<name>@` and look up `<name>` for aliases; record a distinct resolution
 (e.g. `no_satisfying_version`) rather than `version_yanked` when nothing satisfies.
+
+## Implemented: #378 and #379
+
+**#378.** `depsdev_record()` passes deps.dev's canonical `versionKey.version` from
+its exact-version lookup to `get_versions_behind()`, which matches it exactly and
+returns `versions_behind = None` when the version is not listed.
+`version_fuzzy_match()` is removed. `tests/test_versions_behind_canonical.py`.
+
+**#379.** Both scan paths now call one helper,
+`KospexDependencies.lookup_dependency(type, name, declared, bom_version=None)`,
+which returns the deps.dev record and the version sent (`resolved_version`):
+
+1. a Maven BOM version, when there is one — already concrete, never re-floored;
+2. else `resolve_lookup_version()`: `clean_version_spec()`'s floor, except that for
+   an **npm range** (`caret`, `tilde`, `gte`, `bounded`) whose floor is not a
+   published version, the lowest published stable version the range permits;
+3. a 404 for an npm range is recorded as `no_satisfying_version`, not
+   `version_yanked`.
+
+Range evaluation is `src/kospex/npm_range.py`, a ~150-line port of node-semver 7's
+desugaring for stable versions only. It is not a dependency because the one Python
+port of node-semver had a three-year release gap. It is checked against node-semver's
+own verdicts (`tests/data/npm_range_golden.json`, 278 real declarations, one or two
+per syntactic shape, none containing `:` or `/`); rebuild with
+`tests/manual/build_npm_range_golden.py`. A mutation pass confirmed the golden
+catches a caret/tilde mix-up (81 cases), the 0.x caret rule (21), undesugared
+operator x-ranges (23) and stable/pre-release ordering (242); the 2**53 limit,
+which no corpus range exercises, has its own test.
+
+Left alone on purpose:
+
+* **A floor that is published is kept**, even where a range evaluator would pick
+  differently — `^19.0.0-rc.1` stays `19.0.0-rc.1`. So no currently resolving row
+  changes.
+* **A full-version ceiling** (`<4.0.0` alone) is still looked up at `4.0.0`, the
+  ceiling, because `4.0.0` is published. 2 npm rows on the estate.
+* **npm aliases** (#350) and **Cargo**, whose range syntax differs (bare `1` is
+  `^1`, comma is AND). No Cargo short floors on the estate.
+
+## Implemented: #388 (PyPI ranges)
+
+The same step for PyPI, in `KospexDependencies._range_floor()`, which both
+ecosystems now share; `_RANGE_KINDS` lists each one's range kinds. PyPI uses
+`packaging.specifiers.SpecifierSet` (already a dependency), not a port:
+
+* a written floor that is a published version the specifier allows is kept,
+  as sent today (`>=6` still sends `6`);
+* otherwise the lowest version in **deps.dev's** list `SpecifierSet.filter()`
+  accepts. deps.dev's, not PyPI's: deps.dev has no numpy 1.0, so `numpy>=1`
+  is `1.3.0`. `filter()` applies pip's pre-release rule. A first cut filtered
+  every pre-release and turned 6 nightly rows (`keras-nightly~=2.14.0.dev`,
+  1,828 releases and none stable) into `no_satisfying_version`; pip installs them;
+* entries `packaging` cannot parse (`1.0.1.dev3460.win32-py2.4`) are skipped.
+
+A range nothing satisfies is now `no_satisfying_version` **without a lookup**,
+for npm too: looking up `>9999` at `9999` could resolve and return numbers for a
+version the range excludes. `resolved_version` is then empty.
+
+Offline A/B over the 580 current PyPI range rows (`url_cache`, no network):
+534 unchanged; 21 formerly `version_yanked` now resolve; 3 wildcards formerly
+`unresolved_spec` now resolve; 21 formerly resolved at a version the range
+excludes (`<2`, `!=1.0`, `>4`) move to one it allows -- for a ceiling-only
+range, the first release (`attrs!=21.1.0`: 21.1.0 → 15.0.0), so those rows can
+show more versions behind after a re-scan; 1 not evaluated (no cached list).
+
+## Implemented: #276 (pre-releases)
+
+* `src/kospex/prerelease.py`: `is_prerelease(system, version)`, one rule per
+  ecosystem as in section 2 above. Checked over the 2.28M versions in a dev
+  estate's cache. Reading every lettered Maven version it called stable found
+  two misses, now handled: Jackson's `.prN`, and a qualifier straight after a
+  digit (`3.2.0rc2`, as Maven's own parser splits).
+* `KospexDependencies.release_list(type, name)`: every listed version with
+  `published_at`, `is_default`, `is_prerelease`, newest first. Same-moment
+  releases are ordered by version (PEP 440, or numeric semver), so the order
+  is the same on every run. Undated versions (`""`) sort last, so `list[-1]` is
+  not the first release. Shared with #390 (first release date), so both
+  agree on what a release is.
+* `get_versions_behind()` reads it: it counts releases only, starts at the
+  default or at the newest release when the default is a pre-release, and
+  returns None when the version in use is a pre-release.
+
+Not done here: the `in_prerelease` flag (would need a column), maintenance
+lines (#377; netty-handler 4.2.18 now reads 5, of which three are 4.1.x
+backports), and Maven flavour twins (`-jre` / `-android` both count).
+
+A/B, old against new algorithm on the **same** cached deps.dev data:
+
+| ecosystem | total behind, old → new | rows lower | rows higher | now unknown |
+|---|---|---:|---:|---:|
+| npm | 4,382,556 → 1,097,604 | 13,428 | 0 | 423 |
+| go | 169,299 → 9,925 | 909 | 1 | 11 |
+| pypi | 16,362 → 14,699 | 204 | 2 | 0 |
+| nuget | 391 → 304 | 6 | 0 | 0 |
+| maven | 49 → 55 | 2 | 4 | 1 |
+
+kweb status: 3,633 rows improve and 4 get worse. The 7 package versions whose
+count rises all re-anchor from a pre-release default that hid newer releases
+(google-auth, netty-handler), or are same-timestamp releases now ordered
+deterministically (netty-bom, guava-testlib). Comparing the new counts with
+the **stored** values instead shows 1,650 increases, but most of those are
+releases published since the rows were stored. Compare on the same data.
 
 ## Suggested order
 

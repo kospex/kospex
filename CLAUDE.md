@@ -113,6 +113,7 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - `kospex tech-landscape -metadata` - Show technology stack overview
 - `kospex summary` - Overview of all synced repositories
 - `kospex stats REPO_ID` - Show developer stats for a repo (key person analysis, Rich table)
+- `kospex sca -package TYPE:NAME` - Look up one package on deps.dev instead of a file; shows its first stable release and first version of any kind (TYPE from `registry.package_types()`)
 
 ### Logging Control (Global Options)
 - `kospex --debug COMMAND` - Enable debug-level logging for detailed troubleshooting
@@ -248,6 +249,12 @@ Design / spec: `changes/202605-db-migration-system.md` (migration system), `chan
   commit messages, test fixtures, `changes/` docs or CHANGELOG. Use `acme` / `example.com`
   placeholders, and describe scale as a repo-count band ("a 5000-repo estate"), never as
   "customer X has N repos".
+- **A PR that fixes several issues needs a closing keyword in front of every issue
+  number**: `Fixes #378, fixes #379` (or one `Fixes #N` per line). GitHub closes only
+  the issue directly after a keyword, so `Fixes #378 and #379` closes #378 and leaves
+  #379 open. That happened with #387, and #379 had to be closed by hand after the
+  merge. A bare `#N` elsewhere in the description only links it. After merging, check
+  every issue the PR fixed is closed: `gh issue view N --json state`.
 
 ### Testing
 - Tests located in `/tests/` directory using pytest framework

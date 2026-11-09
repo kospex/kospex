@@ -6,13 +6,24 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 
+- **`kospex sca -package TYPE:NAME` looks up a single package** instead of a
+  dependency file, and shows when it was first released (#390), from deps.dev's
+  version list. It reports two dates, because the oldest version is often a
+  pre-release: the first stable release (`maven:io.netty:netty-handler`
+  4.0.0.Final, 2013) and the first version of any kind (4.0.0.Alpha1, 2012).
+  Versions deps.dev lists with no publish date are counted and reported, since
+  they can be older than the dates shown (numpy has 37). Options that only
+  apply to a file (`-save`, `-out`, `-json`, `-scope`) are refused with
+  `-package`. Nothing is stored in the database yet.
 - **Maven versions set by an imported BOM are now looked up.** A pom dependency
   with no `<version>` whose version comes from an imported BOM (for example
   netty-handler under `netty-bom`) was reported as `no_version`, with no
   advisories. kospex now asks deps.dev which versions that BOM sets and looks
   the dependency up at that version. The pom's declaration stays blank; the
   version used is in `resolved_version`. A BOM deps.dev can't answer for, such
-  as a snapshot, leaves the row `no_version` as before. On the kweb
+  as a snapshot, leaves the row `no_version` as before. Versions a BOM takes
+  from BOMs it imports itself are included, which for `spring-boot-dependencies`
+  3.5.7 is 1,478 managed artifacts rather than 356. On the kweb
   `/dependencies/` page such a version is shown greyed, marked `via BOM`, so it
   isn't read as one the pom states.
 - **`kospex rebuild` now writes to `kospex.log`.** It used to print to the
@@ -74,6 +85,18 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 
+- **`kospex sca` shows which version it checked, and why a row is blank.** The
+  table has two new columns:
+  - `checked at` is the version looked up on deps.dev, which the numbers
+    describe. For a range it isn't the declared text: `==8.*` is checked at
+    `8.0.0`, and `^1` at the first published 1.x.
+  - `resolution` says why a row's numbers are blank, such as
+    `no_satisfying_version`.
+
+  `-json` and `-out` gain the same two fields as `resolved_version` and
+  `resolution`, the `dependency_data` column names. No existing field is
+  renamed or moved, but code that reads those outputs by position will see
+  the new columns.
 - **The `krunner osi -next` lock takes over a crashed run's lock at once.** It
   now records the host as well as the PID, and if that process is no longer
   running on this host, the next run takes the lock straight away instead of
@@ -141,6 +164,76 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   fast-forwarded is no longer synced: `krunner git-pull` lists it as
   `GIT_ERROR`, and `kospex-agent` logs a warning and doesn't prompt for
   credentials.
+- **`versions_behind` counts releases, not pre-releases** (#276). deps.dev
+  lists every canary, nightly, release candidate and Go pseudo-version, with
+  no pre-release flag, and kospex counted them all. react 16.12.0 showed
+  2,730 versions behind; 43 are releases. Each ecosystem's own rule now
+  decides what's a pre-release (`kospex/prerelease.py`). Two related fixes:
+  - When deps.dev's default version is a pre-release, the count starts at
+    the newest release. netty-handler's default is a 2015 alpha, so 4.2.18
+    used to read 0 behind.
+  - A project on a pre-release now reads unknown (`-`), not a count.
+
+  In one 9,000-package estate, re-counting the same deps.dev data took
+  npm's total from 4.38M to 1.10M and Go's from 169k to 9.9k. 3,633 rows
+  improve their status on `/dependencies/` and 4 get worse; those 4 now
+  count real releases that a pre-release default used to hide. Stored rows
+  change when their repo is re-scanned.
+- **PyPI ranges are looked up at a version they allow** (#388). kospex used
+  the floor as written, which pip doesn't:
+  - `click==8.*` was never looked up, so it had no advisory data. It is now
+    checked at `8.0.0`.
+  - `tqdm>4` and `cffi<2` were checked at `4` and `2`, which those ranges
+    exclude. They are now checked at `4.1.0` and `0.1.0`.
+  - `setuptools>=77.0` was recorded as yanked, because `77.0` was never
+    released. It is now checked at `77.0.1`.
+
+  A range now uses the lowest version in deps.dev's list that pip's own
+  specifier logic accepts, and a published floor the range allows is kept as
+  before. A range with only an upper bound (`<2`, `!=1.0`) is now checked at
+  the first release, the worst case it permits, so after a re-scan it can
+  show more versions behind than it did. A range nothing satisfies is
+  `no_satisfying_version`, now without a deps.dev lookup, for npm as well.
+- **npm ranges are no longer reported as yanked** (#379). A partial range such
+  as `^19`, `^1.9` or `<4` was looked up on deps.dev as `19`, `1.9` or `4`,
+  which aren't npm versions, and the 404 was recorded as `version_yanked`. In
+  one 9,000-package estate that was 1,227 of 1,417 npm "yanked" rows, none of
+  them yanked. An npm range is now looked up at the lowest published stable
+  version it permits (`^1` → `1.12.0` for `@playwright/test`, which never
+  published `1.0.0`), and that version is in `resolved_version`. A range no
+  published version satisfies is the new `no_satisfying_version`. Pins, npm
+  floors that are published, and other ecosystems are unchanged.
+- **`resolved_version` is now the version the numbers describe** (#379). When
+  deps.dev resolves a lookup, `resolved_version` holds deps.dev's spelling of
+  the version, not what kospex sent: PyPI `>=6` is recorded as `6.0.0`, not
+  `6`, and NuGet `13.0.1.0` as `13.0.1`. Those are the same versions under
+  each ecosystem's own rules. An unresolved lookup still records what was sent.
+  On the kweb `/dependencies/` page, the declared text stays the main value. A
+  muted `checked at …` line under it shows the version the numbers are for: on
+  every range, and on a pin only when deps.dev spells it differently. A note
+  under the table explains that a range's versions behind and advisories are
+  for the oldest version it allows, which may be older than the version
+  installed.
+- **`versions_behind` no longer counts a package's whole history when the
+  version is spelled differently** (#378). `3.0` vs `3.0.0`, a bare `6`, and
+  PEP 440's `2026.3.post1` vs `2026.3.0.post1` never matched, so the count ran
+  to the end of the release list: `sphinx>=9` reported 347 behind instead of 7.
+  kospex now matches deps.dev's own spelling of the version, and reports
+  `versions_behind` as unknown, not maximal, if a version still isn't listed.
+
+  Both fixes apply as repos are re-enriched (`krunner osi`, `kospex sca -save`);
+  stored rows keep their old values until then.
+- **A tag panopticas has retired can be queried again** (#317). `/tag/Claude Code`
+  returned 404 "unknown Tag", although files recorded before panopticas renamed
+  it to `Claude` still carry it. It now lists those repositories, with a note
+  that the tag is retired and a link to its replacement. `/tags/` lists retired
+  tags in their own section. A change of case alone (`eslint` to `ESLint`) is
+  not listed: both spellings already worked.
+- **The "See Files" page for a tag or technology says what it is filtered to.**
+  `/tag/{tag}?repo_id=...` and `/tech/{tech}?repo_id=...` were headed only
+  "Repository Files". They now have the same server / org / repo breadcrumb
+  as the repository pages, name the tag or technology, and link back to the
+  listing across all repositories.
 - **The `/tenure/` page no longer returns HTTP 500 when there are no commits**
   (#206). That included the unscoped page on a fresh install, before anything
   was synced. It now shows `No commits synced yet.`, or `No commits synced for

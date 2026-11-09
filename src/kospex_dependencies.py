@@ -19,12 +19,15 @@ from xml.etree import ElementTree as ET
 import dateutil.parser
 import requests
 from packaging.requirements import InvalidRequirement, Requirement
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import Version, InvalidVersion
 
 import kospex_schema as KospexSchema
 from kospex.extractors.constraints import classify_constraint
 from kospex.extractors.errors import UnreadableManifest
 from kospex.extractors.registry import classify, resolve_parser
+from kospex.npm_range import min_satisfying, parse_range
+from kospex.prerelease import is_prerelease
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 
@@ -249,11 +252,16 @@ class KospexDependencies:
             log.warning("maven BOM %s %s: unreadable deps.dev requirements: %s",
                         name, version, e)
             return {}
-        return {
-            entry["name"]: entry["resolvedVersion"]
-            for entry in entries
-            if isinstance(entry, dict) and entry.get("name") and entry.get("resolvedVersion")
-        }
+        # resolvedName, not name: an entry the BOM inherits (from a BOM it
+        # imports, or its parent) has a blank name. origin=import entries are
+        # those imported BOMs' own coordinates, not versions they manage.
+        managed = {}
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("origin") == "import":
+                continue
+            if entry.get("resolvedName") and entry.get("resolvedVersion"):
+                managed.setdefault(entry["resolvedName"], entry["resolvedVersion"])
+        return managed
 
     def _classify_lookup_miss(self, package_type, package_name, status):
         """Category for a failed exact-version lookup given its HTTP status."""
@@ -261,6 +269,162 @@ class KospexDependencies:
             return "version_yanked" if self._package_exists(package_type, package_name) \
                 else "package_not_found"
         return "lookup_error"
+
+    # Constraint kinds that permit more than one version, per ecosystem whose
+    # ranges kospex evaluates. A pin, an alias (#350) and a resolution
+    # mechanism (workspace:, link:) are not ranges. PyPI has no caret; its
+    # `!=1.0` (`excluded`) permits every other version.
+    _RANGE_KINDS = {
+        "npm": ("caret", "tilde", "gte", "bounded"),
+        "pypi": ("tilde", "gte", "bounded", "excluded"),
+    }
+
+    # Declared versions come from untrusted manifests, and evaluating a range
+    # checks every clause against every published version: 1,000 distinct
+    # PyPI `!=` clauses against 700 releases took 1.2 s per row, 4,000 took
+    # 18 s (CWE-400). The longest real ranges on a development estate were 46
+    # (PyPI) and 104 (npm) characters. A longer one is not evaluated; its
+    # written floor is used, as it was before ranges were evaluated.
+    _MAX_EVALUATED_RANGE_LENGTH = 256
+
+    def _is_range(self, package_type, declared_version):
+        kinds = self._RANGE_KINDS.get((package_type or "").lower())
+        if not kinds or not declared_version:
+            return False
+        kind, _operator = classify_constraint(declared_version, package_type)
+        return kind in kinds
+
+    def _published_versions(self, package_type, package_name):
+        """deps.dev's version list for a package, or None if unavailable.
+
+        The same cached URL get_versions_behind() reads, so for a row that
+        resolves this costs no extra request."""
+        url = ("https://api.deps.dev/v3alpha/systems/"
+               f"{package_type}/packages/{urllib.parse.quote(package_name, safe='')}")
+        content, _status = self.kospex_query.url_request_with_status(url)
+        try:
+            return [v["versionKey"]["version"]
+                    for v in json.loads(content).get("versions", [])]
+        except (TypeError, ValueError, KeyError, AttributeError):
+            return None
+
+    @staticmethod
+    def _pypi_range_floor(cleaned, versions, declared_version):
+        """PyPI half of _range_floor(), using pip's own specifier logic."""
+        try:
+            spec = SpecifierSet(declared_version.strip())
+        except InvalidSpecifier:
+            return cleaned, None
+        parsed = []
+        for text in versions:
+            try:
+                parsed.append((Version(text), text))
+            except InvalidVersion:
+                continue            # legacy uploads, e.g. 1.0.1.dev3460.win32-py2.4
+        try:
+            floor = Version(cleaned)
+        except InvalidVersion:
+            floor = None            # `8.*` from `==8.*`
+        if (floor is not None and spec.contains(floor, prereleases=True)
+                and any(v == floor for v, _ in parsed)):
+            return cleaned, True
+        # filter() applies pip's pre-release rule: none unless the specifier
+        # names one (`~=2.14.0.dev`) or nothing else matches.
+        spelling = {v: text for v, text in parsed}
+        allowed = list(spec.filter(spelling))
+        return (spelling[min(allowed)], True) if allowed else (cleaned, False)
+
+    def _range_floor(self, package_type, package_name, declared_version):
+        """(version to look up, whether any published version satisfies).
+
+        The second value is None when nothing was evaluated -- not a range, an
+        ecosystem kospex doesn't evaluate, an unreadable range, or no version
+        list -- and the version is then clean_version_spec()'s floor, as before.
+        """
+        cleaned = self.clean_version_spec(declared_version or "", package_type)
+        if not self._is_range(package_type, declared_version) or not self.kospex_query:
+            return cleaned, None
+        if len(declared_version) > self._MAX_EVALUATED_RANGE_LENGTH:
+            log.info(f"range not evaluated, {len(declared_version)} characters: "
+                     f"{package_type} {package_name}")
+            return cleaned, None
+        versions = self._published_versions(package_type, package_name)
+        if versions is None:
+            return cleaned, None
+        if package_type.lower() == "pypi":
+            return self._pypi_range_floor(cleaned, versions, declared_version)
+        if cleaned in versions:
+            return cleaned, True
+        if parse_range(declared_version) is None:
+            return cleaned, None
+        chosen = min_satisfying(versions, declared_version)
+        return (chosen, True) if chosen else (cleaned, False)
+
+    def resolve_lookup_version(self, package_type, package_name, declared_version):
+        """The version to look up on deps.dev for a declaration (#379, #388).
+
+        `clean_version_spec()` reads a floor off the declared text, which for
+        a range need not be a version the range allows:
+
+        * npm `^19` gives `19` and `<4` gives `4` (the ceiling), both 404s.
+        * PyPI `==8.*` gives `8.*`, `>4` gives `4` and `<2` gives `2` -- not a
+          version, or one the range excludes.
+        * `^1`'s `1.0.0` and `>=77.0`'s `77.0` were never published.
+
+        So for an npm or PyPI range whose written floor is not a published
+        version it allows, the lookup uses the lowest published stable version
+        the range permits, from the package's deps.dev version list -- npm via
+        kospex.npm_range, PyPI via `packaging.specifiers.SpecifierSet`, pip's
+        own logic. deps.dev's list rather than the registry's, because a
+        version deps.dev lacks would only 404 (deps.dev has no numpy 1.0).
+
+        Unchanged: other ecosystems, pins, and a published floor the range
+        allows. If nothing satisfies, lookup_dependency() records
+        `no_satisfying_version` without a lookup.
+        """
+        return self._range_floor(package_type, package_name, declared_version)[0]
+
+    def lookup_dependency(self, package_type, package_name, declared_version,
+                          bom_version=None):
+        """deps.dev record for one declaration, and the version it describes.
+
+        Shared by both scan paths (`kospex sca` and `krunner osi`) so they
+        cannot drift. A version an imported Maven BOM supplies comes first: it
+        is already concrete and is never re-floored.
+
+        The returned version is what `resolved_version` records: the version
+        advisories and versions_behind are for. When deps.dev resolves the
+        lookup, that is its canonical spelling, which can differ from what was
+        sent where the ecosystem defines equal spellings -- PyPI `6` is
+        `6.0.0`, NuGet `13.0.1.0` is `13.0.1`. When it does not resolve,
+        nothing answered, and it is the version that was sent. When a range
+        permits no published version, nothing is looked up and it is empty.
+        """
+        if bom_version:
+            lookup_version, satisfiable = bom_version, None
+        else:
+            lookup_version, satisfiable = self._range_floor(
+                package_type, package_name, declared_version)
+        if satisfiable is False:
+            # No published version is in the range. Looking up the written
+            # floor anyway could resolve a version the range excludes --
+            # `>9999` at 9999 -- and return numbers for it.
+            log.info(f"deps.dev unresolved [no_satisfying_version] {package_type} "
+                     f"{package_name} {declared_version!r}")
+            return {"package_name": package_name, "package_version": lookup_version,
+                    "package_type": package_type, "versions_behind": None,
+                    "resolution": "no_satisfying_version"}, ""
+        record = dict(self.depsdev_record(package_type, package_name, lookup_version))
+        depsdev_version = record.pop("depsdev_version", None)
+        if (record.get("resolution") == "version_yanked"
+                and self._is_range(package_type, declared_version)):
+            # A range kospex could not evaluate (npm treats a number above
+            # 2**53, a peer-dependency sentinel, as no range at all) and
+            # deps.dev 404'd its floor. A range cannot be yanked.
+            record["resolution"] = "no_satisfying_version"
+        if record.get("resolution") == "resolved" and depsdev_version:
+            return record, depsdev_version
+        return record, lookup_version
 
     def deps_dev_package(self, package_type, package_name):
         """
@@ -376,22 +540,35 @@ class KospexDependencies:
         repo only when that repo happened to be synced locally, so it read 0 or
         `-` for almost every package. `malware` is not a column: the lookup
         behind it is a deprecated service.
+
+        `resolved_version` is the version versions_behind, days_ago and
+        advisories describe -- for a range, not the declared text (`^1` is
+        checked at 1.12.0). `resolution` says why a row's numbers are blank
+        (`no_satisfying_version`, `version_yanked`, ...).
         """
         return [
             "package_name",
             "package_version",
+            "resolved_version",
             "versions_behind",
             "days_ago",
             "published_at",
             "default",
             "advisories",
+            "resolution",
             "source_repo",
         ]
 
     # Columns rendered right-aligned; everything else is left-aligned.
     _NUMERIC_TABLE_FIELDS = frozenset({
-        "package_version", "versions_behind", "days_ago", "default", "advisories",
+        "package_version", "resolved_version", "versions_behind", "days_ago",
+        "default", "advisories",
     })
+
+    # Table headers that differ from the field name. -json and -out keep the
+    # field name, which is the dependency_data column; the table says what it
+    # means, as the /dependencies/ page does.
+    _TABLE_HEADERS = {"resolved_version": "checked at"}
 
     def get_cli_table(self):
         """Return an empty rich Table with the dependency columns."""
@@ -402,7 +579,8 @@ class KospexDependencies:
             justify = "right" if name in self._NUMERIC_TABLE_FIELDS else "left"
             # fold, not the default ellipsis: a narrow terminal (or a pipe,
             # which rich renders at 80 columns) must wrap a value, not lose it.
-            table.add_column(name, justify=justify, overflow="fold")
+            table.add_column(self._TABLE_HEADERS.get(name, name),
+                             justify=justify, overflow="fold")
         return table
 
     @staticmethod
@@ -636,12 +814,10 @@ class KospexDependencies:
             # looking: depsdev_record already short-circuits a version it cannot
             # resolve, so a `workspace:*` entry still costs no round trip, and
             # making the lookups themselves faster is #226.
-            lookup_version = bom_versions.get(index) or self.clean_version_spec(
-                declared_version or "", package_type
-            )
-            out.update(
-                self.depsdev_record(package_type, out.get("package_name"), lookup_version)
-            )
+            record, lookup_version = self.lookup_dependency(
+                package_type, out.get("package_name"), declared_version or "",
+                bom_version=bom_versions.get(index))
+            out.update(record)
             # depsdev_record echoes back the version it was given; restore
             # the declared text so the primary key matches the manifest.
             out["package_version"] = declared_version
@@ -660,8 +836,9 @@ class KospexDependencies:
             out["version_operator"] = operator
 
             # What the advisory numbers actually refer to. For a range this is
-            # the floor, so `advisories` describes the worst case the constraint
-            # permits — unreadable without recording which version was queried.
+            # its oldest permitted version, so `advisories` describes the worst
+            # case the constraint permits. deps.dev's spelling when it resolved
+            # (see lookup_dependency).
             out["resolved_version"] = lookup_version
 
             # Written on every save. NOT a column default: created_at is
@@ -1114,7 +1291,15 @@ class KospexDependencies:
         # a little dirty with actual Git urls and not https to Github
         details["source_repo"] = KospexUtils.extract_git_url(self.get_source_repo_info(deps_info))
         details["advisories"] = self.get_advisories_count(deps_info)
-        days_info = self.get_versions_behind(package_type, package_name, package_version)
+        # deps.dev's canonical spelling of the version just resolved. It has
+        # applied the ecosystem's own equality rules (PyPI `9` -> `9.0.0`,
+        # `2026.3.post1` -> `2026.3.0.post1`; NuGet `13.0.1.0` -> `13.0.1`), so
+        # the version list can be matched exactly rather than guessed at (#378).
+        canonical = (deps_info.get("versionKey") or {}).get("version") or package_version
+        # Handed to lookup_dependency(), which records it as resolved_version
+        # and removes it from the record (it is not a dependency_data column).
+        details["depsdev_version"] = canonical
+        days_info = self.get_versions_behind(package_type, package_name, canonical)
         versions_behind = days_info.get("versions_behind")
         details["versions_behind"] = versions_behind if isinstance(versions_behind, int) else None
         details["authors"] = None
@@ -1556,46 +1741,126 @@ class KospexDependencies:
         data = response.json()
         return data
 
-    def version_fuzzy_match(self, from_config, from_depsdev):
-        """Compare two version strings and return True if they are a match, False otherwise."""
+    @staticmethod
+    def _version_order_key(system, version):
+        """A sort key that orders versions as their ecosystem does, where kospex
+        can: PEP 440 for PyPI, numeric x.y.z (a release above its own
+        pre-releases) for semver ecosystems. Otherwise the string, which is
+        deterministic but not semantic. Only used to break publish-time ties."""
+        eco = (system or "").lower()
+        if eco == "pypi":
+            try:
+                return (1, Version(version), version)
+            except InvalidVersion:
+                return (0, version)
+        if eco in ("npm", "cargo", "nuget", "go"):
+            core = version.lstrip("v").split("+", 1)[0]
+            numbers, _, pre = core.partition("-")
+            try:
+                parts = tuple(int(p) for p in numbers.split("."))
+            except ValueError:
+                return (0, version)
+            return (1, parts, 0 if pre else 1, version)
+        return (0, version)
 
-        # If the versions are exactly the same, return True
-        if from_config == from_depsdev:
-            return True
+    def release_list(self, package_type, package_name):
+        """Every version deps.dev lists for a package, newest first, or None.
 
-        # change the version strings to lists of integers to remove 0 padding,
-        # which doesn't always match properly e.g. 2022.07.13 != 2022.7.13
-        parts = from_config.split(".")
-        # parts = [str(int(part)) for part in parts]
-        cleaned_parts = [part.lstrip("0") for part in parts]
-        ver_string = ".".join(cleaned_parts)
+        Each entry is {"version", "published_at", "is_default", "is_prerelease"}.
+        `is_prerelease` is kospex.prerelease's verdict, so versions_behind and
+        the first-release date (#390) agree on what a release is. Pre-releases
+        are included; filter on `is_prerelease` for releases only.
 
-        if ver_string == from_depsdev:
-            return True
+        Order: newest `published_at` first; versions published at the same
+        moment are ordered by version (`_version_order_key`), so the order is
+        the same on every run. A version with no publish date has
+        `published_at` "" and sorts **last** -- the oldest position -- so
+        `list[-1]` is not necessarily the first release: skip entries with no
+        `published_at` to find that.
 
-        if len(parts) == 2:
-            # Only 1 period like 3.4 we might need a .0 on the end to make it 3.4.0
-            ver_string = ".".join([ver_string, "0"])
-            if ver_string == from_depsdev:
-                return True
+        None when deps.dev returned no package record. The URL is the same
+        cached one the version lookup's caller has usually just fetched.
+        """
+        if not self.kospex_query:
+            return None
+        url = ("https://api.deps.dev/v3alpha/systems/"
+               f"{package_type}/packages/{urllib.parse.quote(package_name, safe='')}")
+        content, status = self.kospex_query.url_request_with_status(url)
+        try:
+            data = json.loads(content) if content else None
+            versions = data.get("versions", []) if data else None
+        except (TypeError, ValueError, AttributeError):
+            versions = None
+        if not versions:
+            log.info("deps.dev returned no package record (status %s) for %s %s",
+                     status, package_type, package_name)
+            return None
+        releases = [{"version": v["versionKey"]["version"],
+                     "published_at": v.get("publishedAt") or "",
+                     "is_default": bool(v.get("isDefault")),
+                     "is_prerelease": is_prerelease(package_type, v["versionKey"]["version"])}
+                    for v in versions]
+        releases.sort(key=lambda r: (r["published_at"] != "", r["published_at"],
+                                     self._version_order_key(package_type, r["version"])),
+                      reverse=True)
+        return releases
 
-        return False
+    def first_release(self, package_type, package_name):
+        """When a package was first released, from release_list() (#390), or None.
+
+        deps.dev has no first-release field, so this is the oldest dated entry
+        in release_list(). Two answers, because the oldest version is often a
+        pre-release (react's 0.0.0-* builds, an early alpha):
+        `first_published[_version]` is the oldest version of any kind and
+        `first_stable_published` / `first_stable_version` the oldest release.
+        Either is None when no version qualifies.
+
+        Undated versions are skipped -- release_list() sorts them last, the
+        oldest position -- and counted in `undated`. They can be older than
+        every dated one (numpy's 1.0.1.dev3460), so when `undated` is non-zero
+        the date is the earliest *known* release. Versions unpublished
+        upstream are not in deps.dev's list at all.
+
+        None when deps.dev returned no package record.
+        """
+        releases = self.release_list(package_type, package_name)
+        if releases is None:
+            return None
+        dated = [r for r in releases if r["published_at"]]
+        stable = [r for r in dated if not r["is_prerelease"]]
+        # Newest first, so the last entry is the oldest; same-moment ties are
+        # in version order, so it is also the lowest version of that moment.
+        first = dated[-1] if dated else {}
+        first_stable = stable[-1] if stable else {}
+        return {
+            "first_published": first.get("published_at"),
+            "first_published_version": first.get("version"),
+            "first_stable_published": first_stable.get("published_at"),
+            "first_stable_version": first_stable.get("version"),
+            "versions": len(releases),
+            "prereleases": sum(1 for r in releases if r["is_prerelease"]),
+            "undated": len(releases) - len(dated),
+        }
 
     def get_versions_behind(self, package_manager, package_name, version):
-        """Use Deps.Dev API to get the versions behing the used version"""
-        # Define the base URL for deps.dev API
-        base_url = "https://api.deps.dev/v3alpha/systems"
-        encoded_name = urllib.parse.quote(package_name, safe="")
-        # url = f"{base_url}/{package_manager}/packages/{encoded_name}/versions/{version}"
-        # The following is the correct URL to get all versions
-        url = f"{base_url}/{package_manager}/packages/{encoded_name}"
-        # package_url = f"https://deps.dev/_/s/{package_manager}/p/{encoded_name}/v/{version}"
+        """Count the releases between deps.dev's default version and `version`.
 
-        content, status = self.kospex_query.url_request_with_status(url) \
-            if self.kospex_query else (None, None)
-        data = json.loads(content) if content else None
+        `version` must be spelled as deps.dev lists it: depsdev_record() passes
+        the canonical `versionKey.version` from its exact-version lookup, and the
+        dependency-graph caller passes versions deps.dev itself returned. The
+        match is exact. If `version` is not in the list, versions_behind is
+        None (unknown) -- never a count to the end of the list (#378).
 
-        if not data:
+        Only releases are counted (#276): pre-releases, nightlies, canaries and
+        Go pseudo-versions are skipped. The count starts at deps.dev's default,
+        or at the newest release when the default is itself a pre-release
+        (duckdb's nightly; netty-handler's 2015 alpha, which is older than
+        versions in use and made them read 0). A version in use that is a
+        pre-release gives None: neither 0 nor a count of releases describes it.
+        """
+        releases = self.release_list(package_manager, package_name)
+
+        if releases is None:
             # deps.dev answered nothing for the PACKAGE-level endpoint. This is a
             # second request, separate from the exact-version lookup in
             # depsdev_record() -- which has already succeeded by the time this
@@ -1615,54 +1880,46 @@ class KospexDependencies:
             # written with the advisory and publication data the version lookup
             # returned, and this one field is left unknown. Zero would assert
             # "up to date", which is a different claim and a false one.
-            log.info("deps.dev returned no package record (status %s) for %s %s "
-                     "-- versions_behind unknown", status, package_manager,
-                     package_name)
+            # (release_list() has logged the status.)
             return {}
 
-        versions = data.get("versions", [])
-        # We will need to sort the list, since the API returns the versions in a weird order
-        # print(json.dumps(versions, indent=2))
-        # print(len(versions))
+        details = {"versions": len(releases)}
 
-        # Handle the case where there is no publishedAt key, we need this key to sort later
-        for v in versions:
-            if not v.get("publishedAt"):
-                v["publishedAt"] = ""
-                # TODO - log when we have a missing publishedAt
-                # Perhaps track this metadata
-                # print(f"missing publishedAt for {v['versionKey']['version']}")
-            # print(v['versionKey']['version'])
-            # print(v.get("publishedAt"))
+        # Exact: `version` is deps.dev's own spelling (see docstring). The
+        # fuzzy match this replaced missed `3.0` vs `3.0.0`, `6` and
+        # `2026.3.post1` vs `2026.3.0.post1`.
+        in_use = next((r for r in releases if r["version"] == version), None)
+        if in_use is None or in_use["is_prerelease"]:
+            # Not listed: walking off the end would report the package's whole
+            # history as "behind". On a pre-release: 0 would claim "current"
+            # and a count of releases says nothing about a nightly. Either
+            # way the position is unknown, and NULL is how this says that.
+            log.info("version %s of %s %s is %s -- versions_behind unknown", version,
+                     package_manager, package_name,
+                     "not in deps.dev's version list" if in_use is None else "a pre-release")
+            details["versions_before_default"] = None
+            details["versions_behind"] = None
+            return details
 
-        sorted_list = sorted(versions, key=lambda x: x["publishedAt"], reverse=True)
-        # Find the 'default' install version
-        # default_version = data.get("defaultVersion")
-        # print(json.dumps(sorted_list, indent=2))
-
-        details = {}
-        details["versions"] = len(sorted_list)
+        stable = [r for r in releases if not r["is_prerelease"]]
+        default = next((r for r in releases if r["is_default"]), None)
+        # Start at the default, or at the newest release when deps.dev's
+        # default is a pre-release (or missing).
+        anchor = default if default and not default["is_prerelease"] else stable[0]
 
         keys_before_default = 0
         versions_behind = 0
-        found_default = False
-
-        for release in sorted_list:
-            if release["isDefault"]:
-                # print(f"default {release['versionKey']['version']}")
-                found_default = True
-
-            if self.version_fuzzy_match(version, release["versionKey"]["version"]):
-                # print(f"Found version {version}")
+        found_anchor = False
+        for release in stable:
+            if release is anchor:
+                found_anchor = True
+            if release is in_use:
                 break
-
-            if not found_default:
-                keys_before_default += 1
-            else:
+            if found_anchor:
                 versions_behind += 1
+            else:
+                keys_before_default += 1
 
-        # print(f"Keys before default: {keys_before_default}")
-        # print(f"Versions between: {versions_behind}")
         details["versions_before_default"] = keys_before_default
         details["versions_behind"] = versions_behind
 
