@@ -2,7 +2,7 @@
 
 The last open part of #229. Follows the pom parser (`202611-pom-xml-parser.md`)
 and its BOM lookup (`202611-maven-bom-version-resolution.md`), whose rules this
-reuses. **Status: design, not started. Three decisions below are open.**
+reuses. **Status: design, not started. The three decisions below were made on 2026-11-09.**
 
 ## Problem
 
@@ -180,7 +180,10 @@ Out of scope; it can be added when one matters.
 
 ## Decisions needed
 
-**1. What does a catalog library produce?**
+**1. What does a catalog library produce?** **Decided 2026-11-09: (c), with a new
+`package_use` value `version-catalog`.** The catalog is where the version a
+build uses is set, so its libraries must get advisories even before build files
+are read. Details under "Rows" below. The options as weighed:
 
 - **(a) A row in the catalog file.** One row per `[libraries]` entry, with
   `file_path` = `gradle/libs.versions.toml`. Build files produce rows only for
@@ -199,11 +202,71 @@ Out of scope; it can be added when one matters.
 - **(c) Both.** Catalog rows *and* usage rows. Counts per repository double
   unless the catalog rows get their own `package_use` (as `bom` did).
 
-Leaning (b), for consistency with Maven. If something must ship sooner, (a)
-works as an interim, but moving from (a) to (b) later changes which file a row
-belongs to, so existing rows would move.
+(a) has about five times fewer rows than (b): 1,170 catalog libraries against
+at least 6,616 uses in build files.
 
-**2. What `version_kind` is a bare Gradle version?**
+(c) with its own `package_use` lets the catalog ship first (phase 1), and
+build-file rows are added later (phase 2) without moving any existing row.
+`bom` was considered as the label and rejected: `maven_bom_versions` treats every
+`bom` row in a file as a BOM to fetch from deps.dev. A catalog with an
+unversioned entry (27 on disk) would then send a request for each of its
+libraries, as if each were a BOM. It would also mix catalog libraries into
+`kospex sca -scope bom`. `version-catalog`, not `catalog`, because `version_kind`
+already has a value `catalog` (pnpm's `catalog:` versions), in a different
+column.
+
+### Rows
+
+**`gradle/libs.versions.toml`** (and any other catalog): one row per
+`[libraries]` entry, `package_use="version-catalog"`, `is_dev` None (a catalog
+doesn't say whether a library is for tests), checked for advisories like any
+row. It answers *where the version is set*, which is where it would be fixed.
+`[plugins]` entries become their marker artifact (`id:id.gradle.plugin`), with
+the same `package_use`.
+
+**`build.gradle` and `build.gradle.kts`**: the same file in two languages, Groovy
+(the original) and Kotlin (Gradle's default for new builds since 8.2). A module
+has one or the other: 1,067 and 428 on disk. Rows follow the pom parser's
+pattern, where `package_use` says how a package got into the project and
+`is_dev` says whether it's test-only:
+
+| declaration | `package_use` | `is_dev` | `declared_scope` |
+|---|---|---|---|
+| `implementation("g:a:1.2")`, `api(...)`, `runtimeOnly(...)` | `direct` | False | the configuration name |
+| `implementation(libs.okhttp)` | `direct` | False | `implementation` |
+| `testImplementation(...)`, `androidTestImplementation(...)`, `testFixtures*` | `direct` | True | as written |
+| `compileOnly`, `kapt`, `ksp`, `annotationProcessor` | `direct` | False, as Maven's `provided` | as written |
+| `buildscript { classpath(...) }`, `plugins { id(...) version "..." }` | `direct` | True (build tooling, not the product) | `classpath` / `plugin` |
+| `platform(...)`, `enforcedPlatform(...)` | `bom` | | `platform` / `enforcedPlatform` |
+| `project(":core")`, `projects.core`, `testFixtures(project(...))` | no row | | |
+| `files(...)`, `fileTree(...)` | no row | | |
+
+A row from a catalog reference takes the catalog's version into its
+`package_version`, as a pom child takes its parent's managed version. So okhttp
+in a catalog project has two rows with the same version and the same advisories.
+`gradle/libs.versions.toml` answers where the version is set;
+`app/build.gradle.kts` answers which module uses it and whether only for tests.
+Counts of `direct` don't double, because catalog rows have their own
+`package_use`, as `bom` rows do.
+
+**No row for `project(...)`**: it depends on another module in the same
+repository. Its source is there, not a published package, and nothing can be
+looked up. That module's own build file is parsed separately, so what it
+depends on is recorded there. Recording first-party links is a possible later
+addition, alongside marking Maven sibling modules first-party.
+
+**No row for `files(...)` / `fileTree(...)`**: a jar checked into the
+repository (35 such declarations on disk). It has no coordinates, so it can't
+be looked up. It is a risk, though: a vendored jar of unknown version is invisible
+to advisory checks. So each one is logged with its file and line rather than
+skipped silently. Whether to record them as rows is a later decision.
+
+**Phase 1 caveat**: until the build-file reader lands, a catalog project has
+only `version-catalog` rows. Advisories work from day one, but its count of
+`direct` dependencies reads zero until phase 2.
+
+**2. What `version_kind` is a bare Gradle version?** **Decided 2026-11-09: `gte`**, because
+that's how Gradle resolves it.
 
 `implementation("g:a:1.2.3")` is, in Gradle's terms, a `require` version: the
 selected version "cannot be lower … but could be higher through conflict
@@ -212,11 +275,22 @@ reads the same string as a soft `pinned` requirement, and `constraints.py`
 classifies by `ecosystem`, which is `maven` for both. Options: classify Gradle
 bare versions as `gte` (needs a Gradle-specific path into `constraints.py`), or
 keep `pinned` to match Maven and document that it overstates how fixed the
-version is. Leaning `gte`, because it's what Gradle does. `strictly` is
+version is. Chosen: `gte`. `strictly` is
 `pinned`, and dynamic versions (`1.+`, `latest.release`) and Maven-style ranges
 are `bounded` / `latest`.
 
 **3. What does a build file report when the parser can't read some of it?**
+**Decided 2026-11-09: raise `UnreadableManifest`** when a file has dependency
+declarations and none could be read, so it reports `parse_error`. Such files
+can be listed from the per-file outcomes `osi` stores (one JSON object per
+repository in `observations`):
+
+```sql
+SELECT o._repo_id, j.key AS file_path
+FROM observations o, json_each(o.data) j
+WHERE o.observation_key = 'OSI_EXTRACTION' AND o.latest = 1
+  AND j.value = 'parse_error';
+```
 
 The error contract has two outcomes: raise (unreadable) or return rows.
 A build file whose dependencies are all repository helpers returns `[]`, which
@@ -230,15 +304,17 @@ is recorded as `empty`: "read, declares nothing". That's false. Options:
 - **Always return rows, log the rest.** Simpler, but an all-helpers file shows
   as `empty`.
 
-Leaning the first, because it's the case `classify_outcome` can't tell apart
+Chosen: the first, because it's the case `classify_outcome` can't tell apart
 otherwise. A partly read file is still reported as fully read either way; a
 per-file "partial" outcome would be new vocabulary. If it's needed, it belongs
 with #148.
 
 ## Phases
 
-1. **Catalog reader** (pure, tested against all 20 catalogs on disk), plus the
-   registry changes. Ships rows only under decision 1(a).
+1. **Catalog reader** (pure, tested against all 20 catalogs on disk), the
+   `version-catalog` `package_use` value, and the registry change that gives
+   `gradle-version-catalog` a parser. Ships `version-catalog` rows with
+   advisories.
 2. **Build-file reader**: literal coordinates, catalog references, `platform`,
    `project` and helpers, scope, plugins. Measured against every build file on
    disk before merging, as the pom and pnpm gates were: count readable versus
@@ -259,3 +335,8 @@ Estimate: phase 1 about a day; phases 2 and 3 two to three days.
   constraints (`constraints { }`) that only change versions.
 - `ext` maps of coordinates (`deps.okhttp`), an older idiom from before
   catalogs. Measure on the estate before deciding.
+- Other Gradle scripts a build pulls in with `apply from: "..."`
+  (`publish.gradle`, `dependencies.gradle`, ...): 151 on disk, applied 55 times
+  from build files. They can declare dependencies, but the registry matches only
+  `build.gradle(.kts)`. They'd need a registry entry, and a way to tell a script
+  that declares dependencies from one that only configures publishing.
