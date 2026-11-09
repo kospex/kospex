@@ -19,6 +19,7 @@ the first 100 rows):
   enabled, otherwise null because it isn't known.
 """
 import os
+import re
 from collections import Counter
 
 from kospex_git import KospexGit
@@ -50,7 +51,8 @@ ALERT_KEYS = (
     "fetched_at",
 )
 
-_RANGE_CHARS = set("<>=~^!, ")
+_VERSION = re.compile(r"v?\d+(\.\d+)*([-+.]?[0-9A-Za-z][0-9A-Za-z.+-]*)?")
+_WILDCARD_SEGMENT = re.compile(r"(^|\.)[xX*](\.|$)")
 
 
 def _message(response):
@@ -111,7 +113,10 @@ def current_version(version_requirement):
     if not version_requirement:
         return None
     version = version_requirement.removeprefix("= ").strip()
-    if not version or _RANGE_CHARS & set(version):
+    # Accept only what looks like one concrete version: digits first, then
+    # pre-release / build suffixes. Wildcards (*, 1.x), dist-tags (latest),
+    # bracketed ranges and unresolved placeholders are not an installed version.
+    if not _VERSION.fullmatch(version) or _WILDCARD_SEGMENT.search(version):
         return None
     return version
 

@@ -168,6 +168,17 @@ class TestCurrentVersion:
         assert GD.current_version("^4.17.1") is None
         assert GD.current_version("~= 1.4") is None
 
+    @pytest.mark.parametrize("requirement", [
+        "*", "1.0.*", "1.x", "1.2.X", "latest", "[1.2.3]", "${dep.version}", "= 1.x"])
+    def test_wildcards_and_placeholders_are_none(self, requirement):
+        assert GD.current_version(requirement) is None
+
+    @pytest.mark.parametrize("requirement,expected", [
+        ("1.0.0-beta.1", "1.0.0-beta.1"), ("= 2.0.0rc1", "2.0.0rc1"),
+        ("1.2.3+build.5", "1.2.3+build.5"), ("v1.4.2", "v1.4.2")])
+    def test_real_versions_with_suffixes_are_kept(self, requirement, expected):
+        assert GD.current_version(requirement) == expected
+
     def test_empty_and_none_are_none(self):
         # A ranged pip requirement comes back as "" (measured).
         assert GD.current_version("") is None
