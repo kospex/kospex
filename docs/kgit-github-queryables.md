@@ -28,7 +28,7 @@ kgit github --properties -repo_id github.com~acme~payments -filename payments.js
 | Option | |
 |---|---|
 | `-org ORG` | Every repo GitHub lists for the org. This asks GitHub, not the kospex DB, so repos you haven't synced are included. |
-| `-repo_id REPO_ID` | One repo, as a kospex repo_id (`github.com~OWNER~REPO`). It doesn't need to be synced. |
+| `-repo_id REPO_ID` | One repo, as a kospex repo_id (`github.com~OWNER~REPO`). It doesn't need to be synced. Costs one extra request, for the repo's GitHub id. |
 | `-filename FILE` | Required. The file is overwritten. |
 | `-level org\|repo` | How the values are read (below). Defaults to `org` for `-org`. `-repo_id` is always `repo`. |
 
@@ -60,9 +60,9 @@ and only org members can hold it.
 JSON Lines: one object per repo, UTF-8, every line ending in a newline.
 
 ```json
-{"repo_id": "github.com~acme~payments", "org": "acme", "repo": "payments", "level": "org", "fetched_at": "2026-11-09T03:12:00Z", "properties": {"business_unit": "Retail", "compliance": ["pci", "sox"]}, "error": null}
-{"repo_id": "github.com~acme~docs", "org": "acme", "repo": "docs", "level": "org", "fetched_at": "2026-11-09T03:12:00Z", "properties": {}, "error": null}
-{"repo_id": "github.com~acme~legacy", "org": "acme", "repo": "legacy", "level": "repo", "fetched_at": "2026-11-09T03:12:00Z", "properties": null, "error": "HTTP 404 Not Found"}
+{"repo_id": "github.com~acme~payments", "github_repo_id": 101, "org": "acme", "repo": "payments", "level": "org", "fetched_at": "2026-11-09T03:12:00Z", "properties": {"business_unit": "Retail", "compliance": ["pci", "sox"]}, "error": null}
+{"repo_id": "github.com~acme~docs", "github_repo_id": 102, "org": "acme", "repo": "docs", "level": "org", "fetched_at": "2026-11-09T03:12:00Z", "properties": {}, "error": null}
+{"repo_id": "github.com~acme~legacy", "github_repo_id": null, "org": "acme", "repo": "legacy", "level": "repo", "fetched_at": "2026-11-09T03:12:00Z", "properties": null, "error": "HTTP 404 Not Found"}
 ```
 
 Every line has the same keys. Loaders that work out columns from the first rows (sqlite-utils
@@ -71,6 +71,7 @@ reads the first 100) would otherwise fail, or stop part-way through, at the firs
 | Field | |
 |---|---|
 | `repo_id` | The kospex repo_id, lowercased, so it joins to `repos.repo_id` for synced repos |
+| `github_repo_id` | GitHub's numeric repo id. It survives renames and transfers, so it's the key to use against GitHub's own data. `null` only when a single `-repo_id` couldn't be read. |
 | `org`, `repo` | GitHub's own casing |
 | `level` | `org` or `repo` |
 | `fetched_at` | When the run started (UTC). It's the same on every line of a run. |

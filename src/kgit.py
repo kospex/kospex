@@ -802,9 +802,10 @@ def _github_properties(gh, org, repo_id, filename, level):
     try:
         if repo_id:
             try:
-                target = GitHubProperties.parse_github_repo_id(repo_id)
+                owner, repo = GitHubProperties.parse_github_repo_id(repo_id)
             except ValueError as e:
                 raise click.UsageError(str(e))
+            target = GitHubProperties.lookup_repo(gh, owner, repo)
             lines = GitHubProperties.repo_level_lines(gh, [target], fetched_at)
         elif (level or GitHubProperties.LEVEL_ORG) == GitHubProperties.LEVEL_ORG:
             console.print(f"Reading custom properties for {org} (org level)")
