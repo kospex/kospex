@@ -123,16 +123,8 @@ Load the result into SQLite with [sqlite-utils](https://sqlite-utils.datasette.i
 ```bash
 sqlite-utils insert props.db props all.jsonl --nl --pk repo_id --replace
 
-# One property for every repo
-sqlite-utils props.db "select repo_id, json_extract(properties, '$.business_unit') as bu from props" -t
-
-# Every property and value, with counts
-sqlite-utils props.db "select j.key, j.value, count(*) as repos
-                       from props, json_each(props.properties) j group by 1, 2" -t
-
-# Repos without a business_unit (errors excluded)
-sqlite-utils props.db "select repo_id from props
-                       where error is null and json_extract(properties, '$.business_unit') is null" -t
+# Repos that couldn't be read
+sqlite-utils props.db "select repo_id, error from props where error is not null" -t
 ```
 
 Or look one repo up in Python:
@@ -280,21 +272,12 @@ sqlite-utils insert dep.db status status.jsonl --nl --pk repo_id --replace
 
 # Repos by Dependabot status
 sqlite-utils dep.db "select dependabot_status, count(*) from status group by 1" -t
-
-# Critical and high alerts with no fix
-sqlite-utils dep.db "select repo_id, package_name, ghsa_id, severity from alerts
-                     where patched_version is null and severity in ('critical', 'high')" -t
 ```
 
-Join to the properties file on `repo_id`, for example to count alerts by business unit:
+Join to the properties file on `repo_id`:
 
 ```bash
 sqlite-utils insert dep.db props all.jsonl --nl --pk repo_id --replace
-sqlite-utils dep.db "select json_extract(p.properties, '$.business_unit') as bu,
-                            count(a.alert_number) as alerts,
-                            sum(a.severity = 'critical') as critical
-                     from status s
-                     left join props p using (repo_id)
-                     left join alerts a using (repo_id)
-                     group by 1" -t
+sqlite-utils dep.db "select a.repo_id, a.package_name, a.severity, p.properties
+                     from alerts a join props p using (repo_id)" -t
 ```
