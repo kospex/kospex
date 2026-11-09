@@ -200,13 +200,14 @@ class KospexGithub:
         data, response = self._make_request(url)
         return data
 
-    def _get_user_repos(self, username, repo_type='all'):
+    def _get_user_repos(self, username, repo_type='all', owned_only=False):
         """
         Get repositories for a specific user.
 
         Args:
             username: The username
-            repo_type: Type of repos ('all', 'owner', 'member') - only for authenticated user
+            repo_type: Type of repos ('all', 'owner', 'member') - other users only
+            owned_only: For the token's own account, ask only for the repos it owns
 
         Yields:
             Repository dictionaries
@@ -214,9 +215,12 @@ class KospexGithub:
         # Check if this is the authenticated user
         auth_user = self._get_authenticated_user()
         if auth_user and auth_user.get('login') == username and self.authenticated:
-            # Use authenticated endpoint for own repos
+            # Use authenticated endpoint for own repos. No `type`: GitHub answers
+            # 422 "If you specify visibility or affiliation, you cannot specify
+            # type", which failed every listing of the token's own account.
             url = f'{self.base_url}/user/repos'
-            params = {'type': repo_type, 'affiliation': 'owner,collaborator,organization_member'}
+            params = {'affiliation': 'owner' if owned_only
+                      else 'owner,collaborator,organization_member'}
         else:
             # Use public endpoint for other users
             url = f'{self.base_url}/users/{username}/repos'
@@ -345,7 +349,8 @@ class KospexGithub:
             if auth_user and auth_user.get('login') == username_or_org:
                 # This requires authentication to check
                 print("Fetching your own repositories (including private)...")
-                repos = self._get_user_repos(username_or_org, repo_type='all')
+                repos = self._get_user_repos(username_or_org, repo_type='all',
+                                             owned_only=owned_only)
             elif owner_type == 'Organization':
                 print("Owner is an organization")
                 repos = self._get_org_repos(username_or_org, repo_type='all')

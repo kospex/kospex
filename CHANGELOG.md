@@ -181,6 +181,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **Listing your own GitHub account works.** `kgit github YOU`, `kgit sync
+  --user YOU` and the old `kgit github YOU -sync` all failed with
+  `HTTP 422` when YOU was the token's own account, because kospex sent GitHub
+  both `type` and `affiliation`, which GitHub refuses together. Other accounts
+  use a different endpoint and were unaffected. Your own listing now asks only
+  for the repos you own, unless `-include-member`.
 - **Every kospex pull is now fast-forward only.** `kgit clone` and `kgit sync`
   (one repo, `--org` or `--user`), `kgit github -sync`, `krunner git-pull` and
   `kospex-agent` ran a plain `git pull` on an existing clone, which follows your

@@ -355,6 +355,13 @@ Separate PRs, each mergeable on its own:
      repos have no owner is checked before matching, so it always suggests
      `--server`.
    - `docs/kgit.md` had no `pull` section, so this PR adds one.
+   - **Listing the token's own account failed with HTTP 422** (found by Peter
+     running it, 2026-11-09). `/user/repos` was sent `type` with
+     `affiliation`, which GitHub refuses: "If you specify visibility or
+     affiliation, you cannot specify type". That broke `kgit github`,
+     `kgit sync --user` and the old `-sync` for your own login. The request now
+     sends `affiliation` only, and `affiliation=owner` when owned-only, so your
+     organisations' repos aren't fetched just to be dropped.
    - **`-sync` becomes the alias** of `kgit sync --org` / `--user`. That also
      fixes a bug: today `kgit github octocat -sync` clones and syncs every repo
      the listing returns, including 195 that octocat doesn't own (below).

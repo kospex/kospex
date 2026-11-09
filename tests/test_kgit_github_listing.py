@@ -1,5 +1,6 @@
 """`kgit github OWNER`: a user's listing is the repos they own unless -include-member,
 and -sync is `kgit sync --org` / `--user`. No network: the GitHub calls are faked."""
+import pytest
 from click.testing import CliRunner
 
 import kgit as kgit_module
@@ -59,6 +60,35 @@ def test_without_owned_only_everything_is_listed(monkeypatch):
     gh, looked_up = _gh(monkeypatch)
     assert len(gh.get_repos("octocat", no_auth=True)) == 4
     assert sorted(looked_up) == ["my-fork", "their-fork"]
+
+
+# --- the token's own account: /user/repos -------------------------------------
+
+def _own_account_request(monkeypatch, owned_only):
+    gh = KospexGithub()
+    gh.authenticated = True
+    seen = {}
+    monkeypatch.setattr(gh, "_get_authenticated_user", lambda: {"login": "me"})
+
+    def paginate(url, params=None):
+        seen["url"], seen["params"] = url, dict(params or {})
+        return iter([])
+
+    monkeypatch.setattr(gh, "_paginate", paginate)
+    list(gh._get_user_repos("me", repo_type="all", owned_only=owned_only))
+    return seen
+
+
+@pytest.mark.parametrize("owned_only, affiliation", [
+    (True, "owner"), (False, "owner,collaborator,organization_member")])
+def test_own_account_listing_never_sends_type_with_affiliation(monkeypatch, owned_only,
+                                                                affiliation):
+    """GitHub answers 422 "If you specify visibility or affiliation, you cannot
+    specify type" (checked live), which failed every listing of your own account."""
+    seen = _own_account_request(monkeypatch, owned_only)
+    assert seen["url"].endswith("/user/repos")
+    assert "type" not in seen["params"]
+    assert seen["params"]["affiliation"] == affiliation
 
 
 # --- kgit github OWNER --------------------------------------------------------
