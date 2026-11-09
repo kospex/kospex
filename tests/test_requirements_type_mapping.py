@@ -143,7 +143,8 @@ class TestMappingIsTotal:
         what the source says; this proves the scan is actually finding things,
         so a scan that silently returned an empty set could not pass both.
         """
-        for req_type in ("direct", "dev", "resolved", "indirect", "peer", "optional", "bom"):
+        for req_type in ("direct", "dev", "resolved", "indirect", "peer", "optional", "bom",
+                         "version-catalog"):
             assert req_type in KospexSchema.REQ_TO_PACKAGE_USE, (
                 f"{req_type!r} is emitted by a parser but is not mapped"
             )
@@ -242,6 +243,24 @@ class TestBomIsNotDirect:
     def test_maven_parser_emits_bom(self):
         found = _emitted_requirements_types(SRC / "kospex" / "extractors" / "maven.py")
         assert {"direct", "bom"} <= found
+
+
+class TestVersionCatalogIsNotDirect:
+    """A Gradle version catalog sets versions; a build file decides what is
+    used. Its rows have their own package_use, so they don't double the
+    count of direct dependencies once build files are read too."""
+
+    def test_version_catalog_maps_to_version_catalog(self):
+        assert (KospexSchema.REQ_TO_PACKAGE_USE["version-catalog"]
+                == KospexSchema.PACKAGE_USE_VERSION_CATALOG)
+
+    def test_version_catalog_is_not_recorded_as_direct(self):
+        assert (KospexSchema.REQ_TO_PACKAGE_USE["version-catalog"]
+                != KospexSchema.PACKAGE_USE_DIRECT)
+
+    def test_gradle_parser_emits_version_catalog(self):
+        found = _emitted_requirements_types(SRC / "kospex" / "extractors" / "gradle.py")
+        assert "version-catalog" in found
 
 
 class TestUnknownIsUnknown:

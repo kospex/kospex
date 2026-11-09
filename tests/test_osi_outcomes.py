@@ -47,7 +47,7 @@ def test_a_parsed_file_with_no_rows_is_empty(filename):
 
 
 @pytest.mark.parametrize("filename", [
-    "build.gradle", "build.gradle.kts",
+    "build.sbt", "Cargo.toml",
 ])
 def test_a_recognised_manifest_with_no_parser_is_unsupported(filename):
     """Real manifests kospex can name but cannot yet read — sub-project D."""

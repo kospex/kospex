@@ -129,9 +129,12 @@ DB, no network, standard library only (`tomllib`, `re`). Registered for both
 **Catalog reader.** Parses a `*.versions.toml` into
 `{accessor: (group, artifact, version, version_kind)}`, expanding `version.ref`
 and bundles. Finds catalogs the way Gradle does:
-`<repo root>/gradle/libs.versions.toml` as `libs`, plus any `versionCatalogs`
-entry in the root `settings.gradle(.kts)` whose `from(files("..."))` is a literal
-path inside the repository. A catalog outside the repository, or one published
+`gradle/libs.versions.toml` next to the build's `settings.gradle(.kts)` as
+`libs`, plus any `versionCatalogs` entry in that settings file whose
+`from(files("..."))` is a literal path inside the repository. A build file's
+`libs` is the catalog beside the nearest `settings.gradle(.kts)` above it, not
+always the repository root's: a repository can hold a Gradle build of its own
+in a subdirectory (measured in phase 2, below). A catalog outside the repository, or one published
 as an artifact (`from("g:a:v")`), is not read. The settings file is matched with
 a regular expression, not evaluated.
 
@@ -177,6 +180,111 @@ file with no `dependencies { }` block returns `[]`, recorded as `empty`.
 
 **Lockfiles.** `gradle.lockfile` is exact and easy, but there's one on disk.
 Out of scope; it can be added when one matters.
+
+### Repository hosts (phase 2)
+
+A build also says where its packages come from. Gradle declares this in
+`repositories { }` blocks: in `settings.gradle(.kts)` under
+`dependencyResolutionManagement` and `pluginManagement`, and in build files
+(including `buildscript { repositories { } }`). A pom does it in
+`<repositories>` and `<pluginRepositories>`, including inside `<profiles>`.
+Phase 2 records these hosts for both Gradle and Maven. It records them only:
+it doesn't label any host or change which rows are looked up.
+
+Why record them:
+
+- **Lookup misses get context.** A package deps.dev can't find is expected
+  when the build fetches from JitPack or a company repository that deps.dev
+  doesn't index. Today such a miss gets an outcome label and nothing else.
+- **Which builds use which registries** is useful across an estate on its own.
+- **Enrichment can use it later.** Any rule based on where a package comes
+  from belongs in enrichment, next to the existing lookup entry point, not in
+  the parser.
+
+The hosts can't go on each `dependency_data` row. Gradle tries the
+repositories in order and decides which one serves a dependency at resolution
+time. The only exception is a `content { includeGroup(...) }` filter. So this
+is a fact about the build file, not about each dependency.
+
+**Storage: `observations`, no migration.** One row per file that declares
+repositories:
+
+| column | value |
+|---|---|
+| `observation_key` | `BUILD_REPOSITORIES` |
+| `observation_type` | `FILE` |
+| `file_path` | `settings.gradle.kts`, `app/build.gradle`, `pom.xml`, ... |
+| `hash` | `''`, as `OSI_EXTRACTION` uses. A commit hash would add a row for every commit, because `hash` is in the primary key |
+| `latest` | `1`, replaced in place, no history (as `record_outcome` in `osi_queue.py`, which explains why) |
+| `format` | `JSON` |
+| `source` | `krunner osi` |
+| `data` | a list in declaration order, below |
+
+```json
+[
+  {"block": "dependencyResolutionManagement", "kind": "mavenCentral", "host": "repo.maven.apache.org"},
+  {"block": "dependencyResolutionManagement", "kind": "google", "host": "maven.google.com"},
+  {"block": "dependencyResolutionManagement", "kind": "maven",
+   "url": "https://repo.example.com/releases", "host": "repo.example.com",
+   "include_groups": ["com.example"]},
+  {"block": "pluginManagement", "kind": "maven", "host": null, "unresolved": true}
+]
+```
+
+- `block`: where it was declared. For Gradle that's `dependencyResolutionManagement`,
+  `pluginManagement`, `buildscript` or `repositories`. For a pom it's
+  `repositories` or `pluginRepositories`, plus `profile` with the profile id
+  when the declaration is inside one.
+- `kind`: the declaration form. For Gradle that's `mavenCentral`, `google`,
+  `gradlePluginPortal`, `mavenLocal`, `maven`, `ivy` or `flatDir`. For a pom
+  it's `repository`, and the pom's `<id>` is kept as `id`.
+- `host`: for the shortcut forms, filled in from a constant table in the
+  extractor (`mavenCentral()` is `repo.maven.apache.org`), not looked up.
+- `unresolved: true`: the URL comes from a property, a variable or string
+  building. It's recorded as present but unreadable, not guessed.
+- `include_groups`: from a `content { }` filter, the only case where a host is
+  tied to particular dependencies.
+- `conditional: true`: declared inside an `if (...)`, so whether the build uses
+  it depends on a property or environment variable that isn't evaluated.
+
+Reading it needs one `json_each`, which SQLite 3.26 has. For example, each host
+and how many repositories declare it:
+
+```sql
+SELECT json_extract(r.value, '$.host') AS host,
+       COUNT(DISTINCT o._repo_id)      AS repos
+FROM observations o, json_each(o.data) r
+WHERE o.observation_key = 'BUILD_REPOSITORIES' AND o.latest = 1
+GROUP BY host ORDER BY repos DESC;
+```
+
+Rules:
+
+1. **Replace the repository's whole set on each run.** Delete its
+   `BUILD_REPOSITORIES` rows, then insert the current ones, in one
+   `db.atomic()`. Otherwise a deleted or moved build file leaves a stale row.
+   The OSI outcomes avoid the same problem by using one blob per repository.
+   Here, one row per file keeps the query simple.
+2. **Never store credentials.** Repository blocks often carry
+   `credentials { username = ...; password = ... }` or a `user:token@` in the
+   URL, and a pom's `<repository>` can sit next to `<server>`-style settings.
+   Keep the scheme, host and path, strip userinfo and query strings, and never
+   copy the credentials block or raw expression text. A test pins this.
+3. **Parse only.** A separate function per format (`extract_repositories`)
+   beside the dependency extractor, so the dependency extractor's return shape
+   doesn't change. `krunner osi` calls both and writes both in one transaction.
+   No network access, like every extractor.
+4. **Facts, not labels.** Nothing like `internal`, `public` or `first-party`.
+   Those are decisions for enrichment.
+
+What isn't visible in the repository isn't recorded: repositories added by an
+init script or `~/.gradle/`, and Maven mirrors in `~/.m2/settings.xml`. A
+build with none of its own records nothing, and that doesn't mean it uses only
+Maven Central.
+
+Nothing in kweb shows these rows until a view is built. If they later need a
+table of their own, they can be backfilled from `observations` in that
+migration.
 
 ## Decisions needed
 
@@ -253,13 +361,13 @@ Counts of `direct` don't double, because catalog rows have their own
 repository. Its source is there, not a published package, and nothing can be
 looked up. That module's own build file is parsed separately, so what it
 depends on is recorded there. Recording first-party links is a possible later
-addition, alongside marking Maven sibling modules first-party.
+addition, alongside marking Maven sibling modules first-party: #399.
 
 **No row for `files(...)` / `fileTree(...)`**: a jar checked into the
 repository (35 such declarations on disk). It has no coordinates, so it can't
 be looked up. It is a risk, though: a vendored jar of unknown version is invisible
 to advisory checks. So each one is logged with its file and line rather than
-skipped silently. Whether to record them as rows is a later decision.
+skipped silently. Recording them as rows is #398.
 
 **Phase 1 caveat**: until the build-file reader lands, a catalog project has
 only `version-catalog` rows. Advisories work from day one, but its count of
@@ -318,13 +426,145 @@ with #148.
 2. **Build-file reader**: literal coordinates, catalog references, `platform`,
    `project` and helpers, scope, plugins. Measured against every build file on
    disk before merging, as the pom and pnpm gates were: count readable versus
-   unreadable declarations per repository.
+   unreadable declarations per repository. Also the repository hosts that
+   Gradle builds and poms declare, stored in `observations` (see
+   "Repository hosts" above).
 3. **Docs**: `docs/dependency-details.md` (the `build.gradle` section, the
    catalog and lockfile entries, and a drift watch for Gradle 9 DSL changes and
    the catalog format), `docs/dependency-flags.md` for configurations, and the
    CHANGELOG.
 
 Estimate: phase 1 about a day; phases 2 and 3 two to three days.
+
+## Phase 1 as built (2026-11-09)
+
+`src/kospex/extractors/gradle.py`, `extract_version_catalog`, registered as
+`gradle-version-catalog` for `sca` and `osi`. The parser's rules and the
+measurements are in `docs/dependency-details.md`; what building it turned up:
+
+- **All 20 catalogs on disk parse, none raises.** 1,237 rows: 1,152 with a
+  version (all `gte`), 85 without one. 63 of the 85 are lottie-android's
+  refreshVersions placeholder `_`. The other 22 are libraries whose version a
+  `platform(...)` supplies, which phase 2 reads.
+- **Classifying as Gradle needed plumbing.** `classify_constraint` is given
+  `package_type`, which is `maven` for Gradle rows. The parser sets
+  `ecosystem="gradle"`, which isn't a column. Both write paths now pass
+  `gradle` from it (`KospexDependencies._constraint_system`), and in
+  `save_dependencies` that happens before the field is dropped.
+  `constraints.py` also knows Gradle's `+`, `1.+`, `latest.*` and `!!`, for
+  phase 2.
+- **`strictly` is recorded as its plain value, so it's `gte`.** Gradle's `!!`
+  shorthand would classify as `pinned`, but `clean_version_spec` would send
+  `1.2.3!!` to deps.dev and the lookup would fail. Two entries on disk.
+- **An existing database needs `krunner file-metadata` first.** `osi` only reads
+  files tagged `dependencies`, and panopticas started tagging catalogs in
+  0.0.22/0.0.23. timber, synced with 0.0.19, showed only its four `build.gradle`
+  files as `unsupported`. After re-tagging, `osi` saved its 18 catalog rows, all
+  resolved.
+- **deps.dev answers for Google's Maven repository.** On timber, retrofit and
+  firebase-android-sdk, 212 of 214 rows resolved. The two that didn't are
+  versions deps.dev doesn't list, which the existing lookup-miss classification
+  records as `version_yanked`.
+
+## Phase 2 measurements (2026-11-09)
+
+Before writing the build-file reader, its rules were applied by a throwaway
+script to every `build.gradle(.kts)` and `settings.gradle(.kts)` on disk.
+1,291 build files in 20 repositories. One further clone was excluded: its
+working tree was incomplete (catalog and settings file missing), so it
+measured the damage, not the rules.
+
+| What the declaration would become | Count |
+|---|---|
+| **A row** | **8,975** |
+| ↳ catalog reference, `libs.x` or `libs.bundles.x` | 5,556 |
+| ↳ literal `"g:a:v"` | 3,201 |
+| ↳ literal with `$var` filled from properties or assignments | 74 |
+| ↳ literal with `$var` not found, kept as written (`unresolved_spec`) | 27 |
+| ↳ no version, `kotlin("x")`, map notation, dynamic version | 57 |
+| First-party: `project(...)`, `projects.x`, no row | 3,695 |
+| Not a package: `files`, `fileTree`, `gradleApi`, ..., no row | 66 |
+| `platform(...)`, a `bom` row | 13 |
+| **Unreadable** | **122**, 1.3% of package declarations |
+
+- **By repository:** 9 are fully readable, 7 at 90% or more, 2 at 50–90%,
+  and 2 declare no packages. The largest, androidx, is 99.1% readable (7,606
+  rows). The lowest is kotlinx.coroutines at 62%, which builds versions with a
+  `version("x")` helper from `buildSrc`.
+- **The unreadable 122 are mostly project-specific helpers:** androidx's
+  `projectOrArtifact(...)`, `SdkHelperKt.getSdkDependency(...)`, and string
+  concatenation (`"g:a:" + composeVersion`). None is common enough to support.
+- **6 files would read nothing and so raise `UnreadableManifest`** under
+  decision 3: five in kotlinx.coroutines and one sample app.
+- **The catalog is not always at the repository root.** maplibre-native keeps
+  its Android build, catalog included, under `platform/android/`. Looking
+  only at the root left it 26% readable. Looking from the nearest directory
+  with `gradle/libs.versions.toml` makes it 100%. Building the reader refined
+  this (see "Phase 2 as built"): Gradle uses the catalog beside the build's
+  settings file, and `platform/android/` has one.
+
+**Repository hosts.** 94 `mavenCentral()`, 75 `google()`, 35
+`gradlePluginPortal()`, 11 `mavenLocal()`, 4 `jcenter()` and 45 `maven { }`.
+Of the 45, 35 have a literal URL (11 distinct hosts) and 10 don't, mostly a
+`$buildDir` local directory. 8 have a `content { }` filter and 1 a credentials
+block. No URL has a `user:token@`. About 14 are declared inside an `if`, hence
+the `conditional` field.
+
+### Decisions from the measurement
+
+1. **Plugins.** `id("x")` without a version produces no row: it's a core
+   Gradle plugin or one whose version is set elsewhere (2,774 on disk). Rows
+   come from `id("x") version "y"` (44) and `alias(libs.plugins.x)` (109).
+   Only a top-level `plugins { }` applies plugins: the block of the same name
+   inside `gradlePlugin { }` defines them and is not read.
+2. **Kotlin Multiplatform.** 773 declarations are in
+   `kotlin { sourceSets { <name> { dependencies { } } } }`. `declared_scope` is
+   `<sourceSet>.<configuration>`, for example `commonMain.implementation`.
+   `is_dev` is True for source sets whose name ends in `Test`.
+3. **Configurations outside the test rule stay `is_dev=False`.** androidx has
+   890 declarations in `docs` and `kmpDocs`, and some in `lintChecks`. They
+   aren't tests, so the rule leaves them as product dependencies, which
+   raises androidx's direct count. Kept, because a per-project list of
+   configuration names would be a policy, not a parse.
+4. **`val x = property("y")` is resolved** from `gradle.properties`, the same
+   as `$var`, since it costs one more pattern.
+5. **`constraints { }` stays out of scope** (42 declarations): it only changes
+   versions. **`buildscript` classpath stays in** (20), as planned.
+
+## Phase 2 as built (2026-11-09)
+
+`extract_build_gradle` in `src/kospex/extractors/gradle.py`, registered as
+`gradle-build` for `sca` and `osi`. The rules are in
+`docs/dependency-details.md`. Run over every build file on disk (the same
+1,291): 9,853 rows from 1,130 files, 151 files with none (`empty`), 10 raise,
+119 declarations logged as unreadable, in about 20 seconds. On timber, `osi`
+saved 18 build-file rows, all resolved on deps.dev; `kospex sca` on retrofit's
+`build.gradle` resolved all 5.
+
+What building it changed:
+
+- **The catalog is the one beside the build's settings file**, not the nearest
+  `gradle/` folder. androidx's `car/app/app-samples` has a catalog of its own
+  but no settings file, so Gradle builds it with androidx's catalog; the
+  nearest-folder rule read the wrong one. maplibre's `platform/android` has a
+  settings file, so it keeps its own.
+- **Included builds name the main catalog.** okhttp's `build-logic` and coil's
+  `buildSrc` declare `from(files("../gradle/libs.versions.toml"))`. The path
+  must stay inside the repository, not inside the included build.
+- **Groovy can pass the closure as an argument**
+  (`implementation(libs.x, { transitive = true })`); it's ignored, not counted
+  as unreadable.
+- **A variable can hold the whole coordinate** (androidx's
+  `def sidecar = "g:a:1.0"` then `compileOnly(sidecar)`); it's resolved.
+- **The 10 files that raise** are five of kotlinx.coroutines' (its
+  `version("x")` helper from `buildSrc`) and five androidx test projects whose
+  coordinate is a property the test harness injects. Both are genuinely not
+  readable without running Gradle.
+- **`kotlin("x")` usually has no version** (345 of the 521 blank-version
+  rows): the Kotlin plugin supplies it. Filling it from the build's Kotlin
+  plugin version is a possible later improvement.
+
+Repository hosts, the other half of phase 2, follow in a separate change.
 
 ## Out of scope
 

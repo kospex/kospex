@@ -105,7 +105,7 @@ from kgit import _pull_command
 def test_pull_command_interactive_by_default():
     argv, env = _pull_command("/clone/path", no_prompt=False)
     assert argv[:3] == ["git", "-C", "/clone/path"]
-    assert argv[-2:] == ["pull", "--ff-only"]
+    assert argv[-3:] == ["pull", "--ff-only", "--no-rebase"]
     assert "GIT_TERMINAL_PROMPT" not in env
 
 

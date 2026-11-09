@@ -145,18 +145,25 @@ REGISTRY: tuple[Extractor, ...] = (
               "kospex.extractors.yarn:extract_yarn_lock"),
     Extractor("maven-pom", Kind.PACKAGE, _matcher(r"pom\.xml"), ("sca", "osi"), "maven",
               "kospex.extractors.maven:extract_pom"),
+    # The version catalog Gradle imports from gradle/ as `libs`. A catalog
+    # named otherwise is declared in settings.gradle(.kts), and its rows come
+    # from the build files that use it, not from the catalog file itself.
+    Extractor("gradle-version-catalog", Kind.PACKAGE, _matcher(r"libs\.versions\.toml"),
+              ("sca", "osi"), "maven",
+              "kospex.extractors.gradle:extract_version_catalog"),
+    # Groovy and Kotlin DSL build files: read, not evaluated.
+    Extractor("gradle-build", Kind.PACKAGE, _matcher(r"build\.gradle(\.kts)?"),
+              ("sca", "osi"), "maven",
+              "kospex.extractors.gradle:extract_build_gradle"),
     # --- package: recognised but no parser yet (-> sub-project D) ---
-    Extractor("gradle-build", Kind.PACKAGE, _matcher(r"build\.gradle(\.kts)?"), (), "maven", None),
     # Tagged `dependencies` from panopticas 0.0.22 / 0.0.23. Named here so a consumer
     # sees "no parser yet" rather than an unrecognised file. package_type is
     # the deps.dev system a future parser would query, or None where deps.dev
     # has no such system (Packagist, Hex, Pub, Deno's JSR).
-    # Gradle's dependency lockfiles, and the version catalog Gradle imports
-    # from gradle/. Replaced when a Gradle parser lands (#229).
+    # Gradle's dependency lockfiles. Out of scope for the Gradle parser (#229):
+    # one on the development estate.
     Extractor("gradle-lockfile", Kind.PACKAGE,
               _matcher(r"(buildscript-)?gradle\.lockfile"), (), "maven", None),
-    Extractor("gradle-version-catalog", Kind.PACKAGE, _matcher(r"libs\.versions\.toml"), (),
-              "maven", None),
     Extractor("sbt", Kind.PACKAGE, _matcher(r".+\.sbt"), (), "maven", None),
     Extractor("mill", Kind.PACKAGE,
               _matcher(r"(build|package)\.mill(\.yaml)?|build\.sc"), (), "maven", None),

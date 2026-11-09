@@ -90,29 +90,6 @@ def test_clone_failure_in_sync_does_not_call_sync_repo(monkeypatch):
     assert result.exception is None or isinstance(result.exception, SystemExit)
 
 
-def test_github_sync_skips_repos_that_fail_to_clone(monkeypatch):
-    """One repo failing to clone must not abort the whole github sync loop.
-
-    `github`'s GitHub client (`gh = KospexGithub()`) is constructed inline in
-    the command body, not held as a module-level object, so it's stubbed by
-    patching the class methods it calls rather than swapping an instance.
-    """
-    monkeypatch.setattr(kgit_module.kgit, "clone_repo", lambda url: None)
-
-    synced = []
-    monkeypatch.setattr(
-        kgit_module.kospex, "sync_repo", lambda path: synced.append(path))
-
-    monkeypatch.setattr(
-        kgit_module.KospexGithub, "get_account_type",
-        lambda self, owner: "Organization")
-    monkeypatch.setattr(
-        kgit_module.KospexGithub, "get_repos",
-        lambda self, owner, no_auth=False: [
-            {"clone_url": "https://github.com/company-org/dashboard.git"}])
-
-    result = CliRunner().invoke(
-        kgit_module.cli, ["github", "company-org", "-no-auth", "-sync"])
-
-    assert result.exit_code == 0
-    assert synced == [], "sync_repo must not be called for a repo that failed to clone"
+# `kgit github ORG -sync` now runs `kgit sync --org` (tests/test_kgit_github_listing.py).
+# A repo that fails to clone is recorded as failed and not synced, while the rest
+# continue: tests/test_org_sync.py ("clone or pull failed").

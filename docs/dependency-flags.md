@@ -229,6 +229,19 @@ alias may not be a real registry package, and will show no advisory data for tha
 reason. The row beside it, under the real name, is the one that answers the
 security question.
 
+Where the alias name *is* a real package, unrelated, the row is worse than empty:
+`string-width-cjs` exists on npm without a `4.2.3`, so that row is
+`version_yanked`. That is a known false positive. It is left in place, not
+relabelled, because a lockfile cannot vouch for its own alias, and a tampered one
+could use an alias label to hide a version npm really took down. Checking a
+lockfile alias against the project's `package.json` is the planned fix (#405). See
+`changes/202611-npm-alias-lookup.md`.
+
+`package.json` is different. Its `npm:` spec is how the project asks for the
+alias, so it names what is installed. Since #350, a `package.json` alias is
+looked up as its target: `"react-17": "npm:react@^17"` is checked as react
+`^17`, and the row keeps `react-17` as its name.
+
 What remains unresolvable here: a lockfile that lies consistently across `name`,
 `resolved` and `integrity`. Settling that needs the tarball fetched and hashed,
 which a parser cannot do.
@@ -516,9 +529,25 @@ install and are illustrative of shape, not representative proportions. The quote
 definitions are from the linked documentation; the counts are reproducible by
 parsing the files named.
 
-Not verified here: Gradle configurations, NuGet `PrivateAssets` /
-`developmentDependency`, and Composer. Each is believed to have its own vocabulary
-and none should be assumed to match a table above.
+Not verified here: NuGet `PrivateAssets` / `developmentDependency`, and Composer.
+Each is believed to have its own vocabulary and none should be assumed to match a
+table above.
+
+A Gradle version catalog (`libs.versions.toml`) states none of these flags. It names
+libraries and their versions, and a build file's configuration (`testImplementation`,
+`implementation`, ...) decides how each is used, so catalog rows leave `is_dev` unset.
+See [Version catalogs](https://docs.gradle.org/current/userguide/version_catalogs.html).
+
+A Gradle build file states a configuration per declaration, which is recorded raw in
+`declared_scope` (99 distinct names on the development estate, including
+project-specific ones such as androidx's `docs`). It has no optional or install-script
+flag. `is_dev` is derived from the name: True for the test configurations (`test*`,
+`androidTest*`, `testFixtures*`, and forms with `Test` as a camel-case word such as
+`debugTestImplementation`), for `buildscript` classpath and for plugins; False for the
+rest, including `compileOnly`, `kapt`, `ksp` and `annotationProcessor`, as Maven's
+`provided` is. A Kotlin Multiplatform source set ending in `Test` is dev too, and its
+name is part of `declared_scope` (`commonTest.implementation`). See
+[Dependency configurations](https://docs.gradle.org/current/userguide/dependency_configurations.html).
 
 yarn's upstream vocabulary is not quoted here either. What its lockfile states was
 measured instead, when the parser landed: neither v1 nor Berry records a dev,

@@ -336,3 +336,40 @@ class TestKindVocabularyIsClosed:
     def test_kind_is_always_from_the_vocabulary(self, declared, package_type):
         kind, _op = classify_constraint(declared, package_type)
         assert kind in self.VALID, f"{declared!r} produced unknown kind {kind!r}"
+
+
+class TestGradle:
+    """Gradle rows are package_type `maven` (deps.dev's system) but are
+    classified as `gradle`, passed from the record's `ecosystem`, because
+    Gradle reads a bare version differently from Maven.
+    See changes/202611-gradle-dependency-parsing.md, decision 2."""
+
+    def test_bare_version_is_a_minimum(self):
+        # Gradle's `require`: "cannot be lower ... but could be higher
+        # through conflict resolution". Maven's bare version stays pinned.
+        assert classify_constraint("1.2.3", "gradle") == ("gte", "")
+        assert classify_constraint("1.2.3", "maven") == ("pinned", "")
+
+    def test_strictly_shorthand_is_pinned(self):
+        assert classify_constraint("1.2.3!!", "gradle") == ("pinned", "!!")
+
+    @pytest.mark.parametrize("declared,kind,operator", [
+        ("+", "latest", "+"),
+        ("latest.release", "latest", "latest.release"),
+        ("latest.integration", "latest", "latest.integration"),
+        ("1.+", "bounded", "+"),
+        ("1.2.+", "bounded", "+"),
+        ("[1.0,2.0)", "bounded", "[)"),
+    ])
+    def test_dynamic_versions_and_ranges(self, declared, kind, operator):
+        assert classify_constraint(declared, "gradle") == (kind, operator)
+
+    def test_gradle_rules_do_not_leak(self):
+        assert classify_constraint("1.+", "maven")[0] != "bounded"
+        assert classify_constraint("1.2.3!!", "maven") != ("pinned", "!!")
+        assert classify_constraint("+", "maven")[0] != "latest"
+
+    def test_never_raises(self):
+        for declared in ("", None, "+", "!!", "latest.", ".+", "[", "1.2.3!!!!"):
+            kind, operator = classify_constraint(declared, "gradle")
+            assert isinstance(kind, str) and isinstance(operator, str)

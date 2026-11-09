@@ -11,7 +11,13 @@ The format for this command is:
 krunner git-pull DIRECTORY
 ```
 
-By default, this will find all repos in DIRECTORY and attempt a "git pull" as your user.
+By default, this will find all repos in DIRECTORY, pull each one as your user,
+and sync it to the kospex database.
+
+The pull is fast-forward only (`git pull --ff-only --no-rebase`), whatever your
+`pull.rebase` / `pull.ff` settings say. If a repo can't be fast-forwarded,
+because its remote history was rewritten or the clone has commits of its own, it
+is left as it was, not synced, and listed as `GIT_ERROR` in the summary at the end.
 
 **NOTE** — this will NOT download new repositories, it will only sync existing ones that are already on disk.
 

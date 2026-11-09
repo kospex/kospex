@@ -335,9 +335,33 @@ Separate PRs, each mergeable on its own:
    - `last_fetch` is stamped on the `repo_id` the sync wrote (from the clone's
      remote), which differs from the listing's only if the remote is rewritten.
    - The drift list ("in kospex but not in this listing") is in `-status`.
-4. `kgit github`: the `-sync` alias, a switch for what a user listing includes,
+4. ~~`kgit github`: the `-sync` alias, a switch for what a user listing includes,
    and its docs. Also `kgit pull --org` accepting the same owner forms as
-   `kgit sync --org`.
+   `kgit sync --org`.~~ **Done** (2026-11-09). Notes from building it:
+   - **The switch is `-include-member`, and a user's listing is owned-only by
+     default** (decided 2026-11-09). That matches GitHub's own default and
+     `kgit sync --user`. Owned includes the user's forks: they're shown in the
+     listing (the table has a `fork` column), and `-sync` skips them, as
+     `kgit sync` does. `KospexGithub.get_repos(owned_only=True)` drops other
+     owners' repos before the per-fork parent lookup, so they cost no requests.
+   - **`-sync` refuses `-include-member`, `-out-repo-list` and
+     `-ssh-clone-url`.** They only shape the listing, and silently ignoring them
+     would surprise. Other `kgit sync` options aren't passed through; the help
+     points to `kgit sync`.
+   - **`kgit pull --org` matches the stored values,** not a rebuilt key, so a DB
+     from before ids were lowercased, holding a mixed-case owner, still matches.
+     The resolver is `OrgSync.resolve_pull_org`. It shares `split_owner` with
+     `parse_target`, but not `parse_target`'s GitHub-only check. A host whose
+     repos have no owner is checked before matching, so it always suggests
+     `--server`.
+   - `docs/kgit.md` had no `pull` section, so this PR adds one.
+   - **Listing the token's own account failed with HTTP 422** (found by Peter
+     running it, 2026-11-09). `/user/repos` was sent `type` with
+     `affiliation`, which GitHub refuses: "If you specify visibility or
+     affiliation, you cannot specify type". That broke `kgit github`,
+     `kgit sync --user` and the old `-sync` for your own login. The request now
+     sends `affiliation` only, and `affiliation=owner` when owned-only, so your
+     organisations' repos aren't fetched just to be dropped.
    - **`-sync` becomes the alias** of `kgit sync --org` / `--user`. That also
      fixes a bug: today `kgit github octocat -sync` clones and syncs every repo
      the listing returns, including 195 that octocat doesn't own (below).
@@ -397,3 +421,14 @@ Separate PRs, each mergeable on its own:
    as `osi_runs`.
 2. **#80 `sync-target`**: is a "target" a saved org with its latest run, so that
    `sync-target` is just `sync --org` on a schedule? If so, this table is the target list.
+3. **A clone left half-made by an interrupted `git clone`** (2026-11-09, from
+   #374). The next run finds the directory, tries to pull, fails, and records the
+   repo as `failed` ("clone or pull failed") on every run. Nothing deletes it.
+   The questions:
+   - **Detecting it.** A directory with no `.git`, a `.git` with no `HEAD`
+     commit, or no `origin` remote.
+   - **What to say.** A specific detail, such as "incomplete clone", instead of
+     the generic one.
+   - **What to do about it.** Remove it and clone again automatically, or
+     report it and leave it, as kospex does for a clone that can't be
+     fast-forwarded (#385).

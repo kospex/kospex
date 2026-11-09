@@ -241,13 +241,14 @@ class KospexGithub:
         data, response = self._make_request(url)
         return data
 
-    def _get_user_repos(self, username, repo_type='all'):
+    def _get_user_repos(self, username, repo_type='all', owned_only=False):
         """
         Get repositories for a specific user.
 
         Args:
             username: The username
-            repo_type: Type of repos ('all', 'owner', 'member') - only for authenticated user
+            repo_type: Type of repos ('all', 'owner', 'member') - other users only
+            owned_only: For the token's own account, ask only for the repos it owns
 
         Yields:
             Repository dictionaries
@@ -255,9 +256,12 @@ class KospexGithub:
         # Check if this is the authenticated user
         auth_user = self._get_authenticated_user()
         if auth_user and auth_user.get('login') == username and self.authenticated:
-            # Use authenticated endpoint for own repos
+            # Use authenticated endpoint for own repos. No `type`: GitHub answers
+            # 422 "If you specify visibility or affiliation, you cannot specify
+            # type", which failed every listing of the token's own account.
             url = f'{self.base_url}/user/repos'
-            params = {'type': repo_type, 'affiliation': 'owner,collaborator,organization_member'}
+            params = {'affiliation': 'owner' if owned_only
+                      else 'owner,collaborator,organization_member'}
         else:
             # Use public endpoint for other users
             url = f'{self.base_url}/users/{username}/repos'
@@ -339,13 +343,18 @@ class KospexGithub:
         return api_url
 
     @timer()
-    def get_repos(self, username_or_org: str, no_auth: Optional[bool] = False) -> List[Dict[str, Any]]:
+    def get_repos(self, username_or_org: str, no_auth: Optional[bool] = False,
+                  owned_only: bool = False) -> List[Dict[str, Any]]:
         """
         Get the repos for a user or organization.
 
         Args:
             username_or_org: The username or organization name
             no_auth: If True only fetch public repositories (default: False)
+            owned_only: Keep only repos whose owner is username_or_org. A user's
+                listing also returns repos they collaborate on or reach through
+                an organisation (octocat: 8 owned of 203). Dropped before the
+                per-fork lookup, so they cost no extra requests.
 
         Returns:
             List of repository information dictionaries
@@ -381,7 +390,8 @@ class KospexGithub:
             if auth_user and auth_user.get('login') == username_or_org:
                 # This requires authentication to check
                 print("Fetching your own repositories (including private)...")
-                repos = self._get_user_repos(username_or_org, repo_type='all')
+                repos = self._get_user_repos(username_or_org, repo_type='all',
+                                             owned_only=owned_only)
             elif owner_type == 'Organization':
                 print("Owner is an organization")
                 repos = self._get_org_repos(username_or_org, repo_type='all')
@@ -398,13 +408,18 @@ class KospexGithub:
         repo_list = []
 
         for repo in repos:
+            repo_owner = (repo.get('full_name') or '').partition('/')[0]
+            if owned_only and repo_owner.lower() != username_or_org.lower():
+                continue
             record = {
                 # The provider's own id survives renames and transfers (#348).
                 'id': repo.get('id'),
                 'name': repo.get('full_name'),
                 'visibility': repo.get('visibility'),
-                'type': owner_type,
-                'owner': username_or_org,
+                # The repo's own owner, not the account asked about: a user's
+                # listing includes other owners' repos (-include-member).
+                'type': (repo.get('owner') or {}).get('type') or owner_type,
+                'owner': (repo.get('owner') or {}).get('login') or repo_owner or username_or_org,
                 'updated_at': repo.get('updated_at'),
                 'pushed_at': repo.get('pushed_at'),
                 'archived': repo.get('archived'),

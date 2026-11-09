@@ -50,7 +50,7 @@ section for that format.
 | `package.json` | the five dependency sections | 11,486 files (mostly vendored copies) |
 | `yarn.lock` | v1, Berry `__metadata.version` 6, 8, 10 | v1 ×116, Berry `__metadata.version` 10 ×39, 8 ×4, 6 ×1 |
 | `uv.lock` | `version` 1, any `revision` (1–3 measured) | `version=1` ×24 — `revision` 3 ×19, 2 ×4, 1 ×1 |
-| `build.gradle(.kts)` | **not parsed** — #229 | 68 files |
+| `build.gradle(.kts)` | Groovy and Kotlin DSL, read not evaluated | 1,291 files on disk |
 | `pom.xml` | POM model 4.0.0 | 14 files, all `modelVersion` 4.0.0 |
 
 The *versions seen* column comes from reading the working copies directly, with
@@ -281,8 +281,22 @@ somewhere else entirely.
   database instead of a re-scan.
 - **Read with `utf-8-sig`, because npm reads a BOM'd `package.json`** and refusing one
   reported a working repository as broken. See [Byte order marks](#byte-order-marks).
+- **An `npm:` alias is stored as written and looked up as its target** (#350).
+  `"react-17": "npm:react@^17"` becomes a row named `react-17` at `npm:react@^17`.
+  Those two values are part of the `dependency_data` key, and they are what the
+  project imports and declares. The parser does not unwrap the alias.
+  `KospexDependencies.lookup_dependency` does that, using
+  `kospex.extractors.npmlock.npm_alias_target`, and then applies the usual range
+  handling to `^17`. Before this, the alias name was looked up as a package: most
+  aliases returned `package_not_found`, an alias named like an unrelated package
+  returned `version_yanked`, and a fork installed under the original's name was
+  checked as the original. `npm:classnames@*` unwraps to `classnames` at `*`, which
+  names no version, so it stays `unresolved_spec`. It is the one alias on the estate
+  that doesn't resolve. A spec the helper can't read, such as `npm:react` with no
+  version, is looked up as before.
 
 **Upstream docs:** [package.json](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/)
+· [npm install `<alias>@npm:<name>`](https://docs.npmjs.com/cli/v11/commands/npm-install)
 
 **Drift watch:** new dependency sections. The parser maps a fixed list
 (`NPM_SECTION_TO_REQ_TYPE`); a section npm adds is silently not read, which is the one
@@ -332,7 +346,11 @@ Three structurally distinct formats:
   elects, and a manifest is one untrusted document so cross-field corroboration is not
   a security control. Measured cost: **10 extra rows in 13,739**, all ten real
   published packages, because the second identity is the alias *target* — the thing
-  deps.dev can answer about.
+  deps.dev can answer about. The install-path row is still looked up by its own
+  name, so `string-width-cjs@4.2.3` is a false `version_yanked`. Unlike
+  `package.json` (#350), it is not unwrapped, because nothing in the lockfile vouches
+  for the alias. Checking it against the sibling `package.json` is the planned fix
+  (#405, `changes/202611-npm-alias-lookup.md`).
 - **"Was this fetched at all?", not "do I recognise this registry."** An entry at an
   unusual path (`vendor/evil-pkg`) is treated as a dependency if it carries both a
   version and a `resolved` URL *with a scheme*. A gate asking whether the URL looked
@@ -962,6 +980,189 @@ and `.resolvedVersion`, skipping `origin: "import"`) is v3alpha and may change. 
 `resolvedName`: an entry a BOM inherits from its own imports or parent has a blank
 `name` (1,157 of 1,607 for `spring-boot-dependencies` 3.5.7).
 
+## `libs.versions.toml` — Gradle version catalog
+
+| | |
+|---|---|
+| registry entry | `gradle-version-catalog`, `Kind.PACKAGE`, `package_type="maven"` |
+| parser | `kospex.extractors.gradle:extract_version_catalog` |
+| estate | 20 catalogs on disk (19 named `libs.versions.toml`), 1,237 rows; 19 in `file_metadata` |
+
+Phase 1 of the Gradle design, `changes/202611-gradle-dependency-parsing.md`. A catalog
+is where a Gradle build sets the versions its modules use. Build files decide which of
+them a module uses (phase 2, see `build.gradle` below).
+
+One record per `[libraries]` entry, named `groupId:artifactId`, and one per `[plugins]`
+entry, named by its marker artifact `<id>:<id>.gradle.plugin` (deps.dev knows these, and
+Google's Maven repository: `androidx.*`, `com.google.firebase.*`). `[bundles]` only group
+libraries and give no rows. `requirements_type` is `version-catalog`, which has its own
+`package_use` of the same name: a catalog row gets advisories like any row, but it isn't
+a direct dependency, and build-file rows will be. Library rows have `is_dev` and
+`declared_scope` None, because a catalog doesn't say whether a library is for tests.
+Plugin rows have `declared_scope="plugin"` and `is_dev=True`, since they are build tooling.
+
+**`ecosystem` is `gradle`, `package_type` stays `maven`.** A bare Gradle version is a
+`require` version, which conflict resolution can raise, so it's classified `gte`, where
+Maven's is `pinned`. `classify_constraint` is given `gradle` from the record's
+`ecosystem` on both write paths (`KospexDependencies._constraint_system`), because
+`package_type` can't tell the two apart.
+
+### Raises
+
+- missing or unreadable file, not UTF-8, or not valid TOML
+- `[versions]`, `[libraries]` or `[plugins]` that isn't a table
+- **an entry Gradle refuses**, which makes Gradle reject the whole catalog: a library
+  that isn't `group:artifact` (string, `module`, or `group` + `name`), a plugin with no
+  `id`, a `version.ref` naming no `[versions]` key, or a version that is neither a string
+  nor a rich version table
+
+### Returns `[]`
+
+A catalog with no `[libraries]` or `[plugins]` entry, or an empty file. None on disk:
+the smallest, androidx's `bench-flame-diff`, has one plugin and so one row.
+
+### Quirks and decisions
+
+- **The version recorded is the one Gradle requires**: `strictly`, else `require`, else
+  `prefer`. A rich version with only `reject` records "". `strictly` is recorded as its
+  plain value, so it's classified `gte`, not `pinned`. Gradle's `!!` shorthand would
+  classify correctly, but `clean_version_spec` passes `1.2.3!!` to deps.dev unchanged and
+  the lookup fails. Two entries on disk use `strictly`.
+- **No version → ""**: 22 libraries leave the version to a `platform(...)` in a build
+  file. The catalog row stays `no_version`; the build file's row for the same library
+  gets the platform's version, because the platform is in that file.
+- **refreshVersions `_` → ""**: lottie-android's 63 libraries all use the placeholder
+  `_`, whose version is in `versions.properties`, not read. Logged, reported
+  `no_version`.
+- **Exact duplicates are one row.** Two aliases for the same artifact at the same version
+  would collide on the primary key; at two versions they're two rows.
+- **Only the name `libs.versions.toml` is matched.** Gradle imports it from `gradle/`
+  automatically. A catalog with another name is declared in `settings.gradle(.kts)`
+  (`importMaven.versions.toml` in androidx, 9 libraries, unused by the build) and is not
+  read.
+- **An existing database needs the files re-tagged first.** panopticas tags
+  `libs.versions.toml` as `dependencies` from 0.0.22/0.0.23 (#349), and `krunner osi` only reads tagged
+  files. A repo synced with an older panopticas shows nothing until
+  `krunner file-metadata` re-tags it (see `docs/refreshing-data.md`). Measured on the
+  development database: timber, synced with 0.0.19, had its catalog untagged.
+- **Measured against deps.dev** (sca path, timber, retrofit, firebase-android-sdk): 212
+  of 214 rows resolve. The two that don't are versions deps.dev doesn't list
+  (`androidx.appcompat:appcompat` 1.7.1, the Crashlytics plugin 3.0.4), recorded as
+  `version_yanked` by the existing lookup-miss classification.
+- **`versions_behind` inherits #377.** deps.dev's default version for the Android Gradle
+  plugin (`com.android.tools.build:gradle`) is 2.3.0 from 2017, so a current version
+  reads 0 behind.
+
+**Upstream docs:** [Version catalogs](https://docs.gradle.org/current/userguide/version_catalogs.html),
+[Declaring rich versions](https://docs.gradle.org/current/userguide/dependency_versions.html)
+
+**Drift watch:** the catalog `[metadata] format.version` (1.1 today), new rich-version
+keys, and Gradle supporting a catalog location other than `gradle/` by default. A
+panopticas release that stops tagging `libs.versions.toml`, which would hide every catalog
+from `osi`.
+
+## `build.gradle` / `build.gradle.kts` — Gradle build files
+
+| | |
+|---|---|
+| registry entry | `gradle-build`, `Kind.PACKAGE`, `package_type="maven"` |
+| parser | `kospex.extractors.gradle:extract_build_gradle` |
+| estate | 1,291 build files on disk (20 repositories), 9,853 rows |
+
+Phase 2 of `changes/202611-gradle-dependency-parsing.md`. A build file is a Groovy or
+Kotlin program, and Gradle isn't run: the reader recognises the declaration forms
+measured on the estate and counts the rest as unreadable. Of about 12,900 declarations,
+3,695 are first-party `project(...)` references, which aren't packages, and 119 are
+unreadable: about 1.3% of package declarations.
+
+Each recognised declaration is a row named `groupId:artifactId`, `requirements_type`
+`direct`, with `declared_scope` the configuration as written and `is_dev` from it.
+`platform(...)` / `enforcedPlatform(...)` is a `bom` row, so the existing
+`maven_bom_versions()` lookup fills versionless rows in the same file, unchanged.
+`ecosystem` is `gradle`, as for the catalog, so a bare version is `gte`.
+
+### Raises
+
+- missing or unreadable file, a directory, or not UTF-8
+- **declarations and none readable** (decision 3): a file whose dependencies are all
+  project helpers would otherwise report `empty`. 10 files on disk: five of
+  kotlinx.coroutines' (its `version("x")` helper from `buildSrc`) and five androidx test
+  projects whose coordinate is a property the test harness injects.
+
+### Returns `[]`
+
+A file with no package declarations: no `dependencies { }`, only `project(...)` and
+`files(...)` references, or only plugins without a version. 151 files on disk, 101 of
+them androidx modules that depend only on sibling projects. 1,130 return rows.
+
+### Where a version comes from
+
+- **The literal**, `"g:a:1.2"`. `g:a:1.2:classifier` and `g:a:1.2@aar` keep `1.2`.
+- **`$var` / `${var}`**, filled from `gradle.properties` (the build root's, then the
+  module's, which wins), from simple assignments in the root build file (`ext { }`,
+  `ext.x =`, `extra["x"] =`) and from this file (`val`, `def`), including
+  `val x = property("y")` (decision 4) and `libs.versions.x.get()`. A version that can't
+  be filled is kept as written, so enrichment reports `unresolved_spec`, as for
+  `${revision}` in a pom. A *name* that can't be filled is unreadable.
+- **The build's catalog** for `libs.x` and `libs.bundles.x`. The catalog is
+  `gradle/libs.versions.toml` beside the nearest `settings.gradle(.kts)`, as Gradle reads
+  it, not the nearest `gradle/` folder: androidx's `car/app/app-samples` has its own
+  catalog but no settings file, so Gradle builds it with androidx's. A settings file's
+  `versionCatalogs { create("x") { from(files("...")) } }` adds a catalog when the path is
+  a literal inside the repository (okhttp's and coil's included builds point at
+  `../gradle/libs.versions.toml`).
+- **A `platform(...)` in the same file**, at enrichment time, as for a pom's imported BOM.
+
+**Side files stay inside the repository (CWE-59).** `gradle.properties`, the root build
+file, settings files and catalogs are resolved through symlinks and read only if they
+resolve inside the repository (the nearest `.git`, else the build root), as `maven.py`
+does for a parent pom. A cloned repository can commit a symlink to a file such as
+`~/.gradle/gradle.properties`, and a value read from it would be sent to deps.dev as a
+version. A refused file is logged and treated as absent.
+
+### Decisions and quirks
+
+- **`is_dev` is True for test configurations**: those starting `test`, `androidTest` or
+  `testFixtures`, or with `Test` as a camel-case word (`debugTestImplementation`,
+  `kspAndroidTest`), and for `buildscript` classpath and plugins (build tooling).
+  `compileOnly`, `kapt`, `ksp` and `annotationProcessor` stay False, as the pom parser
+  treats `provided`. So do androidx's `docs` / `kmpDocs` / `lintChecks` (decision 3).
+- **Kotlin Multiplatform** (decision 2): `declared_scope` is
+  `<sourceSet>.<configuration>`, for `commonMain.dependencies { }`,
+  `sourceSets { jvmTest { dependencies { } } }`, `val x by getting { }` and
+  `named("x") { }`, and for JVM test suites. A source set ending `Test` is dev.
+- **Plugins** (decision 1): only a top-level `plugins { }`, and only a plugin with a
+  version (`id("x") version "y"`, `kotlin("jvm") version "y"`, `alias(libs.plugins.x)`),
+  named by its marker artifact. 2,774 `id("x")` without a version give no row.
+  `gradlePlugin { plugins { } }` defines plugins and isn't read.
+- **One row per (name, version)**, the primary key's pair. When a package is declared for
+  tests and for the product, the product use wins.
+- **`1.2!!` is stored as `1.2`**, as the catalog stores `strictly`.
+- **`kotlin("x")` is `org.jetbrains.kotlin:kotlin-x` with no version** unless one is
+  given: the Kotlin plugin supplies it. 345 of the 521 blank-version rows on disk. Filling
+  it from the build's Kotlin plugin version is possible later.
+- **No row, by design:** `project(...)`, `projects.x` and `testFixtures(project(...))`
+  (first-party, #399), `files(...)` / `fileTree(...)` (a checked-in jar, logged, #398),
+  `gradleApi()` and the other Gradle helpers, and `constraints { }` (versions only,
+  decision 5).
+- **Declarations in `if`/`else`, `subprojects { }` and `allprojects { }` are read** as if
+  unconditional. The file declares them, and an inventory prefers over-reporting.
+- **Unreadable declarations are logged with file and line** at INFO. The most common on
+  disk: androidx's `projectOrArtifact(...)`, kotlinx.coroutines' `version("x")`, and
+  string concatenation (`"g:a:" + v`).
+- **Not read:** convention plugins in `buildSrc/` and `build-logic/` that add dependencies
+  to every module, `apply from:` scripts, and `ext` maps of coordinates (`deps.okhttp`).
+
+**Upstream docs:** [Declaring dependencies](https://docs.gradle.org/current/userguide/declaring_dependencies.html),
+[Dependency configurations](https://docs.gradle.org/current/userguide/dependency_configurations.html),
+[Kotlin Multiplatform dependencies](https://kotlinlang.org/docs/multiplatform/multiplatform-add-dependencies.html)
+
+**Drift watch:** new DSL forms for declaring dependencies (Gradle 9's declarative DSL),
+the default catalog location, Android Gradle plugin source-set names (`androidHostTest`,
+`androidDeviceTest` are recent), and a rise in the unreadable count from the logs,
+which means a new idiom worth supporting. Re-run the measurement script approach from
+the design doc against every build file on disk before changing a rule.
+
 ---
 
 # Classified, no parser yet
@@ -973,24 +1174,6 @@ Two rules from the parsers above are worth applying from the start rather than
 retrofitting: **an unreadable file raises**, and **record every identity the file
 asserts**. Prefer over-reporting: in a dependency inventory a false positive is visible
 and dismissible, a false negative is not.
-
-## `build.gradle` / `build.gradle.kts`
-
-| | |
-|---|---|
-| registry entry | `gradle-build`, `Kind.PACKAGE`, `package_type="maven"`, `parse_ref=None` |
-| estate | 68 files across 11 repositories |
-
-**The hardest of the four, and the one where "parsed it" and "read what it declares"
-come apart most.** It is a Groovy or Kotlin DSL, not a data format: dependencies can be
-computed, read from a version catalog (`gradle/libs.versions.toml`), or added by a
-plugin. A regex over `implementation '...'` lines will read *some* of the truth from
-most files and report the rest as absent.
-
-That makes it the format where the registry's `supported` flag is least able to stand
-in for coverage, and where a file-by-file check against real projects matters most.
-
-**Upstream docs:** [Declaring dependencies](https://docs.gradle.org/current/userguide/declaring_dependencies.html)
 
 ## Tagged by panopticas 0.0.22 and 0.0.23 — #349
 
@@ -1014,7 +1197,7 @@ repository, not real use.
 | `cargo-toml` `Cargo.toml` | 126 | `cargo` | one per workspace member; parser #359 |
 | `pnpm-workspace` `pnpm-workspace.yaml` | 48 | `npm` | see below |
 | `sbt` `*.sbt` | 32 | `maven` | any `*.sbt` is build definition, not only `build.sbt` |
-| `gradle-version-catalog` `libs.versions.toml` | 19 | `maven` | Gradle imports it from `gradle/`; replaced when a Gradle parser lands (#229) |
+| `gradle-version-catalog` `libs.versions.toml` | 19 | `maven` | Gradle imports it from `gradle/`; has a parser now, see its section above |
 | `cargo-lock` `Cargo.lock` | 15 | `cargo` | parser #359 |
 | `gemfile` `Gemfile`, `gems.rb` | 15 | `rubygems` | Ruby code, so a parser reads a subset; #360 |
 | `gemspec` `*.gemspec` | 9 | `rubygems` | Ruby code building a `Gem::Specification`; #360 |

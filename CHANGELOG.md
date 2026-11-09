@@ -6,6 +6,27 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 
+- **Gradle version catalogs (`gradle/libs.versions.toml`) are now read** (#229).
+  Each library and plugin in the catalog becomes a dependency row, looked up on
+  deps.dev for advisories and versions behind, including packages from Google's
+  Maven repository such as `androidx.*`. Rows have a new `package_use`,
+  `version-catalog` (`kospex sca -scope version-catalog`): the catalog sets the
+  version a build uses, but it isn't a direct dependency. A bare Gradle version
+  is recorded as `gte`, because Gradle can raise it during conflict resolution.
+  In an existing database, run `krunner file-metadata` before `krunner osi` so
+  catalogs synced with an older panopticas are tagged and found.
+- **Gradle build files (`build.gradle`, `build.gradle.kts`) are now read**
+  (#229). Each dependency a module declares becomes a `direct` row: literal
+  coordinates, `$var` versions from `gradle.properties` and simple assignments,
+  and `libs.x` / `libs.bundles.x` references with the version from the build's
+  catalog. `declared_scope` is the configuration (`testImplementation`, or
+  `commonTest.implementation` in a Kotlin Multiplatform build) and `is_dev` is
+  set for test configurations, `buildscript` classpath and plugins.
+  `platform(...)` is a `bom` row, so a BOM's versions fill versionless rows in
+  the same file. `project(...)` and `files(...)` give no row. Build files are
+  read, not run: on the development estate 98.7% of package declarations are
+  read, the rest are logged with file and line, and a file with declarations
+  but none readable is reported as `parse_error`.
 - **`kospex sca -package TYPE:NAME` looks up a single package** instead of a
   dependency file, and shows when it was first released (#390), from deps.dev's
   version list. It reports two dates, because the oldest version is often a
@@ -85,6 +106,30 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 
+- **`kgit github OWNER -sync` runs `kgit sync --org` / `--user`** (#335), so it
+  gets that command's saved run, resume, lock and per-repo failure records. It
+  used to clone and sync in a loop of its own: a failed page gave a shorter list
+  that looked complete, one repo's sync error stopped the run, and for a user it
+  synced every repo GitHub listed, including ones the user doesn't own (195 of
+  203 for `octocat`). Forks are now recorded but skipped, unless
+  `KOSPEX_CLONE_FORKS_DEFAULT=true` or `kgit sync -include-forks`.
+  `-sync` can't be combined with `-include-member`, `-out-repo-list` or
+  `-ssh-clone-url`.
+- **`kgit github USER` lists only the repos the user owns** (#335). GitHub's
+  listing for a user also returns repos they collaborate on or reach through an
+  organisation (for `octocat`, 8 owned and 203 in all), and kgit showed them all.
+  `-include-member` lists them as before. That applies to `-out-repo-list` too.
+  An organisation's listing is unchanged. The table's `owner` and `type`
+  columns now show each repo's own owner and its account type. They used to
+  repeat the account you asked about, so with `-include-member` another
+  owner's repo showed you as its owner.
+- **`kgit pull --org` takes `acme`, `github.com/acme` and URLs** (#335), as
+  `kgit sync --org` does. It used to accept only the org key (`github.com~acme`),
+  exit with an error for anything else, and silently find nothing for a key in
+  another case (`GitHub.com~Acme`). The value is matched against the orgs
+  already in kospex, on any git server and ignoring case, and the key used is
+  printed. A name that matches more than one org, a repository or a git server
+  is an error saying what to use instead.
 - **`kospex sca` shows which version it checked, and why a row is blank.** The
   table has two new columns:
   - `checked at` is the version looked up on deps.dev, which the numbers
@@ -150,6 +195,26 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **Listing your own GitHub account works.** `kgit github YOU`, `kgit sync
+  --user YOU` and the old `kgit github YOU -sync` all failed with
+  `HTTP 422` when YOU was the token's own account, because kospex sent GitHub
+  both `type` and `affiliation`, which GitHub refuses together. Other accounts
+  use a different endpoint and were unaffected. Your own listing now asks only
+  for the repos you own, unless `-include-member`.
+- **Every kospex pull is now fast-forward only.** `kgit clone` and `kgit sync`
+  (one repo, `--org` or `--user`), `kgit github -sync`, `krunner git-pull` and
+  `kospex-agent` ran a plain `git pull` on an existing clone, which follows your
+  `pull.rebase` / `pull.ff` settings. When the remote's history had been
+  rewritten (a force-push, or a repo deleted and recreated at the same URL),
+  `pull.rebase=true` rebased the clone, dropping the old commits from the
+  branch, and `pull.rebase=false` added a merge commit the remote never had.
+  The sync that followed recorded the result. They now all run
+  `git pull --ff-only --no-rebase`, as `kgit pull` already did, so the clone is
+  either fast-forwarded or left as it was. With neither setting, recent git
+  already refused these pulls, but older git merges. A clone that can't be
+  fast-forwarded is no longer synced: `krunner git-pull` lists it as
+  `GIT_ERROR`, and `kospex-agent` logs a warning and doesn't prompt for
+  credentials.
 - **`versions_behind` counts releases, not pre-releases** (#276). deps.dev
   lists every canary, nightly, release candidate and Go pseudo-version, with
   no pre-release flag, and kospex counted them all. react 16.12.0 showed
@@ -165,6 +230,18 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   improve their status on `/dependencies/` and 4 get worse; those 4 now
   count real releases that a pre-release default used to hide. Stored rows
   change when their repo is re-scanned.
+- **npm aliases in `package.json` are looked up as the package they install**
+  (#350). `"react-17": "npm:react@^17"` installs react, but kospex asked
+  deps.dev about a package called `react-17`. Most aliases came back
+  `package_not_found`. An alias whose name belongs to an unrelated package,
+  such as `string-width-cjs`, came back `version_yanked`. A fork installed under
+  the original's name was checked as the original, with the original's
+  advisories. kospex now looks up the target and its range, so `^17` is checked
+  at `17.0.0`. The row keeps the alias as `package_name` and the declared
+  `npm:react@^17` as `package_version`. On a development estate, 110 of 111
+  alias rows now resolve, and 7 of them show advisories they were missing.
+  Alias entries in lockfiles are unchanged: both names are still recorded, and
+  the alias-name row can still be a false `version_yanked` (#405).
 - **PyPI ranges are looked up at a version they allow** (#388). kospex used
   the floor as written, which pip doesn't:
   - `click==8.*` was never looked up, so it had no advisory data. It is now

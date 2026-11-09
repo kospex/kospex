@@ -25,6 +25,7 @@ from packaging.version import Version, InvalidVersion
 import kospex_schema as KospexSchema
 from kospex.extractors.constraints import classify_constraint
 from kospex.extractors.errors import UnreadableManifest
+from kospex.extractors.npmlock import npm_alias_target
 from kospex.extractors.registry import classify, resolve_parser
 from kospex.npm_range import min_satisfying, parse_range
 from kospex.prerelease import is_prerelease
@@ -399,12 +400,24 @@ class KospexDependencies:
         `6.0.0`, NuGet `13.0.1.0` is `13.0.1`. When it does not resolve,
         nothing answered, and it is the version that was sent. When a range
         permits no published version, nothing is looked up and it is empty.
+
+        An npm alias, `"react-17": "npm:react@^17"`, is looked up as its target,
+        react at ^17 (#350). The alias name is what the project imports, not a
+        package: looking it up reported `package_not_found`, `version_yanked`
+        when an unrelated package has that name, or -- for a fork published
+        under the original's name -- the original's advisories. The record
+        keeps the alias as package_name, part of the dependency_data key; the
+        target is in the declared `npm:<name>@` text.
         """
+        lookup_name = package_name
         if bom_version:
             lookup_version, satisfiable = bom_version, None
         else:
+            if (package_type or "").lower() == "npm" and (
+                    target := npm_alias_target(declared_version)):
+                lookup_name, declared_version = target
             lookup_version, satisfiable = self._range_floor(
-                package_type, package_name, declared_version)
+                package_type, lookup_name, declared_version)
         if satisfiable is False:
             # No published version is in the range. Looking up the written
             # floor anyway could resolve a version the range excludes --
@@ -414,7 +427,8 @@ class KospexDependencies:
             return {"package_name": package_name, "package_version": lookup_version,
                     "package_type": package_type, "versions_behind": None,
                     "resolution": "no_satisfying_version"}, ""
-        record = dict(self.depsdev_record(package_type, package_name, lookup_version))
+        record = dict(self.depsdev_record(package_type, lookup_name, lookup_version))
+        record["package_name"] = package_name
         depsdev_version = record.pop("depsdev_version", None)
         if (record.get("resolution") == "version_yanked"
                 and self._is_range(package_type, declared_version)):
@@ -639,6 +653,7 @@ class KospexDependencies:
             KospexSchema.PACKAGE_USE_DIRECT, KospexSchema.PACKAGE_USE_DEV,
             KospexSchema.PACKAGE_USE_PEER, KospexSchema.PACKAGE_USE_OPTIONAL,
             KospexSchema.PACKAGE_USE_TRANSITIVE, KospexSchema.PACKAGE_USE_BOM,
+            KospexSchema.PACKAGE_USE_VERSION_CATALOG,
         ]
         # A new package_use value must not be silently unselectable.
         order += sorted(KospexSchema.PACKAGE_USE_VALUES - set(order))
@@ -831,7 +846,8 @@ class KospexDependencies:
 
             # What the manifest declared, recorded so "are we pinned?" can be
             # asked of the database rather than re-derived from the string.
-            kind, operator = classify_constraint(declared_version, package_type)
+            kind, operator = classify_constraint(
+                declared_version, self._constraint_system(out, package_type))
             out["version_kind"] = kind
             out["version_operator"] = operator
 
@@ -992,6 +1008,19 @@ class KospexDependencies:
         self.dependencies = results
 
         return self.dependencies
+
+    @staticmethod
+    def _constraint_system(record, package_type):
+        """What classify_constraint should read a bare version as.
+
+        A Gradle row is package_type `maven`, the deps.dev system it's looked
+        up in, but Gradle reads a bare version as a minimum and Maven doesn't.
+        The parser marks the row's ecosystem `gradle`, which is not a column,
+        so this is decided from the record before that field is dropped.
+        """
+        if str(record.get("ecosystem") or "").lower() == "gradle":
+            return "gradle"
+        return package_type
 
     # Extractor-only template fields produced by the leaf parsers that are
     # NOT columns in TBL_DEPENDENCY_DATA and must be stripped before upsert.
@@ -1159,8 +1188,10 @@ class KospexDependencies:
             for field_name in self._NON_SCHEMA_FIELDS:
                 rec.pop(field_name, None)
             rec["latest"] = 1
+            # From r: `ecosystem` was just popped from rec, as a non-column.
             kind, operator = classify_constraint(
-                rec.get("package_version"), rec.get("package_type")
+                rec.get("package_version"),
+                self._constraint_system(r, rec.get("package_type")),
             )
             rec["version_kind"] = kind
             rec["version_operator"] = operator
