@@ -189,6 +189,18 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   improve their status on `/dependencies/` and 4 get worse; those 4 now
   count real releases that a pre-release default used to hide. Stored rows
   change when their repo is re-scanned.
+- **npm aliases in `package.json` are looked up as the package they install**
+  (#350). `"react-17": "npm:react@^17"` installs react, but kospex asked
+  deps.dev about a package called `react-17`. Most aliases came back
+  `package_not_found`. An alias whose name belongs to an unrelated package,
+  such as `string-width-cjs`, came back `version_yanked`. A fork installed under
+  the original's name was checked as the original, with the original's
+  advisories. kospex now looks up the target and its range, so `^17` is checked
+  at `17.0.0`. The row keeps the alias as `package_name` and the declared
+  `npm:react@^17` as `package_version`. On a development estate, 110 of 111
+  alias rows now resolve, and 7 of them show advisories they were missing.
+  Alias entries in lockfiles are unchanged: both names are still recorded, and
+  the alias-name row can still be a false `version_yanked` (#405).
 - **PyPI ranges are looked up at a version they allow** (#388). kospex used
   the floor as written, which pip doesn't:
   - `click==8.*` was never looked up, so it had no advisory data. It is now
