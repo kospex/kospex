@@ -1805,6 +1805,43 @@ class KospexDependencies:
                       reverse=True)
         return releases
 
+    def first_release(self, package_type, package_name):
+        """When a package was first released, from release_list() (#390), or None.
+
+        deps.dev has no first-release field, so this is the oldest dated entry
+        in release_list(). Two answers, because the oldest version is often a
+        pre-release (react's 0.0.0-* builds, an early alpha):
+        `first_published[_version]` is the oldest version of any kind and
+        `first_stable_published` / `first_stable_version` the oldest release.
+        Either is None when no version qualifies.
+
+        Undated versions are skipped -- release_list() sorts them last, the
+        oldest position -- and counted in `undated`. They can be older than
+        every dated one (numpy's 1.0.1.dev3460), so when `undated` is non-zero
+        the date is the earliest *known* release. Versions unpublished
+        upstream are not in deps.dev's list at all.
+
+        None when deps.dev returned no package record.
+        """
+        releases = self.release_list(package_type, package_name)
+        if releases is None:
+            return None
+        dated = [r for r in releases if r["published_at"]]
+        stable = [r for r in dated if not r["is_prerelease"]]
+        # Newest first, so the last entry is the oldest; same-moment ties are
+        # in version order, so it is also the lowest version of that moment.
+        first = dated[-1] if dated else {}
+        first_stable = stable[-1] if stable else {}
+        return {
+            "first_published": first.get("published_at"),
+            "first_published_version": first.get("version"),
+            "first_stable_published": first_stable.get("published_at"),
+            "first_stable_version": first_stable.get("version"),
+            "versions": len(releases),
+            "prereleases": sum(1 for r in releases if r["is_prerelease"]),
+            "undated": len(releases) - len(dated),
+        }
+
     def get_versions_behind(self, package_manager, package_name, version):
         """Count the releases between deps.dev's default version and `version`.
 

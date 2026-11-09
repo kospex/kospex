@@ -6,6 +6,15 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 
+- **`kospex sca -package TYPE:NAME` looks up a single package** instead of a
+  dependency file, and shows when it was first released (#390), from deps.dev's
+  version list. It reports two dates, because the oldest version is often a
+  pre-release: the first stable release (`maven:io.netty:netty-handler`
+  4.0.0.Final, 2013) and the first version of any kind (4.0.0.Alpha1, 2012).
+  Versions deps.dev lists with no publish date are counted and reported, since
+  they can be older than the dates shown (numpy has 37). Options that only
+  apply to a file (`-save`, `-out`, `-json`, `-scope`) are refused with
+  `-package`. Nothing is stored in the database yet.
 - **Maven versions set by an imported BOM are now looked up.** A pom dependency
   with no `<version>` whose version comes from an imported BOM (for example
   netty-handler under `netty-bom`) was reported as `no_version`, with no
