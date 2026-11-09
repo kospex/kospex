@@ -1,7 +1,8 @@
 """`kgit github --properties`: GitHub custom property values to JSONL.
 
 The file is loaded by other scripts, so its shape is the contract: one line per
-repo, `properties` as a {name: value} object, `error` instead of `properties`
+repo, keyed by both the kospex `repo_id` and GitHub's numeric
+`github_repo_id`, `properties` as a {name: value} object, `error` instead of `properties`
 when a repo couldn't be read, and `level` / `fetched_at` on every line so files
 from different orgs and runs can be concatenated.
 """
@@ -25,8 +26,8 @@ def response(status, body=None):
     return r
 
 
-def org_item(full_name, props):
-    return {"repository_id": 1, "repository_name": full_name.split("/")[1],
+def org_item(full_name, props, repository_id=1):
+    return {"repository_id": repository_id, "repository_name": full_name.split("/")[1],
             "repository_full_name": full_name,
             "properties": [{"property_name": k, "value": v} for k, v in props.items()]}
 
@@ -58,16 +59,17 @@ class TestNormalise:
 class TestOrgLevel:
     def test_one_line_per_repo_with_repo_id(self, monkeypatch):
         gh = KospexGithub()
-        items = [org_item("Acme/Payments", {"team": "billing"}), org_item("Acme/docs", {})]
+        items = [org_item("Acme/Payments", {"team": "billing"}, 101),
+                 org_item("Acme/docs", {}, 102)]
         monkeypatch.setattr(gh, "_paginate", lambda url, params=None: iter(items))
 
         lines = GP.org_level_lines(gh, "acme", FETCHED_AT)
 
         assert lines == [
-            {"repo_id": "github.com~acme~payments", "org": "Acme", "repo": "Payments",
+            {"repo_id": "github.com~acme~payments", "github_repo_id": 101, "org": "Acme", "repo": "Payments",
              "level": "org", "fetched_at": FETCHED_AT, "properties": {"team": "billing"},
              "error": None},
-            {"repo_id": "github.com~acme~docs", "org": "Acme", "repo": "docs",
+            {"repo_id": "github.com~acme~docs", "github_repo_id": 102, "org": "Acme", "repo": "docs",
              "level": "org", "fetched_at": FETCHED_AT, "properties": {}, "error": None},
         ]
 
@@ -94,7 +96,7 @@ class TestRepoLevel:
     def scripted(self, gh, monkeypatch, replies):
         calls = []
 
-        def fake(url, params=None, method="GET"):
+        def fake(url, params=None, method="GET", quiet_statuses=()):
             calls.append(url)
             return replies[url]
 
@@ -113,13 +115,16 @@ class TestRepoLevel:
         })
 
         lines = GP.repo_level_lines(
-            gh, [("acme", "payments"), ("acme", "empty"), ("acme", "legacy")], FETCHED_AT)
+            gh, [("acme", "payments", 11), ("acme", "empty", 12), ("acme", "legacy", 13)],
+            FETCHED_AT)
 
         assert len(calls) == 3
         assert lines[0]["properties"] == {"team": "billing"}
         assert lines[0]["level"] == "repo"
         assert lines[1]["properties"] == {}
-        assert lines[2] == {"repo_id": "github.com~acme~legacy", "org": "acme", "repo": "legacy",
+        assert lines[0]["github_repo_id"] == 11
+        assert lines[2] == {"repo_id": "github.com~acme~legacy", "github_repo_id": 13,
+                            "org": "acme", "repo": "legacy",
                             "level": "repo", "fetched_at": FETCHED_AT,
                             "properties": None, "error": "HTTP 404 Not Found"}
         assert lines[1]["error"] is None
@@ -133,27 +138,27 @@ class TestRepoLevel:
             f"{base}/acme/ok/properties/values": ([], response(200)),
             f"{base}/acme/bad/properties/values": (None, response(404)),
         })
-        lines = GP.repo_level_lines(gh, [("acme", "ok"), ("acme", "bad")], FETCHED_AT)
+        lines = GP.repo_level_lines(gh, [("acme", "ok", 1), ("acme", "bad", None)], FETCHED_AT)
         assert list(lines[0]) == list(lines[1]) == [
-            "repo_id", "org", "repo", "level", "fetched_at", "properties", "error"]
+            "repo_id", "github_repo_id", "org", "repo", "level", "fetched_at", "properties", "error"]
 
     def test_no_response_is_an_error_line(self, monkeypatch):
         gh = KospexGithub()
         self.scripted(gh, monkeypatch, {
             "https://api.github.com/repos/acme/a/properties/values": (None, None)})
-        lines = GP.repo_level_lines(gh, [("acme", "a")], FETCHED_AT)
+        lines = GP.repo_level_lines(gh, [("acme", "a", 1)], FETCHED_AT)
         assert lines[0]["error"] == "no response"
 
     def test_rate_limit_stops_the_run(self, monkeypatch):
         gh = KospexGithub()
 
-        def throttled(url, params=None, method="GET"):
+        def throttled(url, params=None, method="GET", quiet_statuses=()):
             gh.throttled = True
             return None, response(403)
 
         monkeypatch.setattr(gh, "_make_request", throttled)
         with pytest.raises(GP.RateLimited):
-            GP.repo_level_lines(gh, [("acme", "a"), ("acme", "b")], FETCHED_AT)
+            GP.repo_level_lines(gh, [("acme", "a", 1), ("acme", "b", 2)], FETCHED_AT)
 
     def test_list_org_repos_uses_the_org_listing(self, monkeypatch):
         gh = KospexGithub()
@@ -161,11 +166,51 @@ class TestRepoLevel:
 
         def listing(org, repo_type="all"):
             seen.append((org, repo_type))
-            yield {"full_name": "Acme/Payments", "name": "Payments", "owner": {"login": "Acme"}}
+            yield {"id": 101, "full_name": "Acme/Payments", "name": "Payments",
+                   "owner": {"login": "Acme"}}
 
         monkeypatch.setattr(gh, "_get_org_repos", listing)
-        assert GP.list_org_repos(gh, "acme") == [("Acme", "Payments")]
+        assert GP.list_org_repos(gh, "acme") == [("Acme", "Payments", 101)]
         assert seen == [("acme", "all")]
+
+
+class TestLookupRepo:
+    """-repo_id: the repo endpoints don't return the numeric id, so ask for the repo."""
+
+    def test_returns_github_casing_and_id(self, monkeypatch):
+        gh = KospexGithub()
+        urls = []
+
+        quiet = []
+
+        def fake(url, params=None, method="GET", quiet_statuses=()):
+            urls.append(url)
+            quiet.append(set(quiet_statuses))
+            return {"id": 101, "name": "Payments", "owner": {"login": "Acme"}}, response(200)
+
+        monkeypatch.setattr(gh, "_make_request", fake)
+        assert GP.lookup_repo(gh, "acme", "payments") == ("Acme", "Payments", 101)
+        assert urls == ["https://api.github.com/repos/acme/payments"]
+        # A failed lookup is reported by the request that follows, so it stays quiet.
+        assert quiet == [{403, 404}]
+
+    def test_unreadable_repo_keeps_the_name_without_an_id(self, monkeypatch):
+        # The properties call that follows records the error line.
+        gh = KospexGithub()
+        monkeypatch.setattr(gh, "_make_request",
+                            lambda url, params=None, method="GET", quiet_statuses=(): (None, response(404)))
+        assert GP.lookup_repo(gh, "acme", "payments") == ("acme", "payments", None)
+
+    def test_rate_limit_raises(self, monkeypatch):
+        gh = KospexGithub()
+
+        def throttled(url, params=None, method="GET", quiet_statuses=()):
+            gh.throttled = True
+            return None, response(403)
+
+        monkeypatch.setattr(gh, "_make_request", throttled)
+        with pytest.raises(GP.RateLimited):
+            GP.lookup_repo(gh, "acme", "payments")
 
 
 class TestParseRepoId:
@@ -256,12 +301,15 @@ class TestCli:
 
     def test_single_dash_properties_accepted(self, kgit_cli, tmp_path, monkeypatch):
         out = tmp_path / "p.jsonl"
-        monkeypatch.setattr(GP, "repo_level_lines",
-                            lambda gh, repos, fetched_at: [{"repo_id": "x", "properties": {}}])
+        monkeypatch.setattr(GP, "lookup_repo", lambda gh, owner, repo: (owner, repo, 7))
+        seen = []
+        monkeypatch.setattr(GP, "repo_level_lines", lambda gh, repos, fetched_at: seen.extend(repos)
+                            or [{"repo_id": "x", "properties": {}}])
         result = self.run(kgit_cli, ["-properties", "-repo_id", "github.com~acme~a",
                                      "-filename", str(out)])
         assert result.exit_code == 0, result.output
         assert out.exists()
+        assert seen == [("acme", "a", 7)]
 
     def test_repo_id_cannot_use_org_level(self, kgit_cli, tmp_path):
         result = self.run(kgit_cli, ["--properties", "-repo_id", "github.com~acme~a",
@@ -283,26 +331,26 @@ class TestCli:
 
     def test_repo_level_org_walks_the_listing(self, kgit_cli, tmp_path, monkeypatch):
         out = tmp_path / "p.jsonl"
-        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a"), ("acme", "b")])
+        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1), ("acme", "b", 2)])
         seen = []
 
         def lines(gh, repos, fetched_at):
             seen.extend(repos)
             return [{"repo_id": f"github.com~acme~{r}", "level": "repo",
-                     "fetched_at": fetched_at, "properties": {}} for _, r in repos]
+                     "fetched_at": fetched_at, "properties": {}} for _, r, _ in repos]
 
         monkeypatch.setattr(GP, "repo_level_lines", lines)
         result = self.run(kgit_cli, ["--properties", "-org", "acme", "-level", "repo",
                                      "-filename", str(out)])
         assert result.exit_code == 0, result.output
-        assert seen == [("acme", "a"), ("acme", "b")]
+        assert seen == [("acme", "a", 1), ("acme", "b", 2)]
         written = [json.loads(l) for l in out.read_text().splitlines()]
         assert [w["repo_id"] for w in written] == ["github.com~acme~a", "github.com~acme~b"]
         assert len({w["fetched_at"] for w in written}) == 1
 
     def test_rate_limit_writes_nothing(self, kgit_cli, tmp_path, monkeypatch):
         out = tmp_path / "p.jsonl"
-        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a")])
+        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1)])
 
         def limited(gh, repos, fetched_at):
             raise GP.RateLimited("acme/a")

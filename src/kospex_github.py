@@ -1,6 +1,7 @@
 """High level functions for common queries on Github orgs and users. """
 import json
 import os
+import time
 from typing import Optional, List, Dict, Any
 import requests
 from kospex_utils import timer
@@ -37,9 +38,12 @@ class KospexGithub:
     # Order of precedence. The kospex-specific name wins, so a token set
     # deliberately for kospex isn't overridden by a personal gh token.
     TOKEN_ENV_VARS = (ENV_GITHUB_AUTH_TOKEN, ENV_GH_TOKEN, ENV_GITHUB_TOKEN)
+    # A rate limit asking to retry within this many seconds is waited out once.
+    RETRY_AFTER_MAX = 60
 
     def __init__(self):
 
+        self._sleep = time.sleep
         self.access_token = ""
         self.headers = {}
         self.timeout = 10
@@ -60,7 +64,7 @@ class KospexGithub:
         """
         self.timeout = timeout
 
-    def _make_request(self, url, params=None, method='GET'):
+    def _make_request(self, url, params=None, method='GET', quiet_statuses=()):
         """
         Make a request to the GitHub API with proper error handling.
 
@@ -68,27 +72,33 @@ class KospexGithub:
             url: The full URL to request
             params: Optional query parameters
             method: HTTP method (default: GET)
+            quiet_statuses: HTTP statuses the caller handles itself (e.g. a 403
+                it records as a status), so no "HTTP Error" line is printed
 
         Returns:
             Tuple of (response_data, response) or (None, response) on error
         """
+        response = None
         try:
-            response = requests.request(
-                method=method,
-                url=url,
-                headers=self.headers,
-                params=params,
-                timeout=self.timeout
-            )
-
-            # Check rate limiting
-            if response.status_code == 403:
-                if 'X-RateLimit-Remaining' in response.headers:
-                    remaining = response.headers.get('X-RateLimit-Remaining')
-                    if remaining == '0':
-                        self.throttled = True
-                        print("GitHub API rate limit exceeded")
-                        return None, response
+            retried = False
+            while True:
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    headers=self.headers,
+                    params=params,
+                    timeout=self.timeout
+                )
+                if not self._is_rate_limited(response):
+                    break
+                wait = self._retry_after(response)
+                if not retried and wait is not None and wait <= self.RETRY_AFTER_MAX:
+                    retried = True
+                    self._sleep(wait)
+                    continue
+                self.throttled = True
+                print("GitHub API rate limit exceeded")
+                return None, response
 
             # Raise for other HTTP errors
             response.raise_for_status()
@@ -100,7 +110,8 @@ class KospexGithub:
                 return None, response
 
         except requests.exceptions.HTTPError as err:
-            print(f"HTTP Error: {self._redact(err)}")
+            if response is None or response.status_code not in quiet_statuses:
+                print(f"HTTP Error: {self._redact(err)}")
             return None, response
         except requests.exceptions.Timeout as err:
             print(f"Timeout: {self._redact(err)}")
@@ -108,6 +119,36 @@ class KospexGithub:
         except requests.exceptions.RequestException as err:
             print(f"Request Error: {self._redact(err)}")
             return None, None
+
+    @staticmethod
+    def _is_rate_limited(response):
+        """The primary limit (403, X-RateLimit-Remaining: 0), or a secondary one.
+
+        Secondary limits come back as a 429, or as a 403 with Retry-After or a
+        "secondary rate limit" message. Any other 403 (no access, a feature
+        turned off) is an ordinary error, not throttling.
+        """
+        if response.status_code == 429:
+            return True
+        if response.status_code != 403:
+            return False
+        if response.headers.get('X-RateLimit-Remaining') == '0':
+            return True
+        if 'Retry-After' in response.headers:
+            return True
+        try:
+            message = (response.json() or {}).get('message') or ''
+        except (ValueError, AttributeError):
+            message = ''
+        return 'secondary rate limit' in message.lower()
+
+    @staticmethod
+    def _retry_after(response):
+        """Retry-After in seconds, or None if absent or not an integer."""
+        try:
+            return int(response.headers.get('Retry-After'))
+        except (TypeError, ValueError):
+            return None
 
     def _redact(self, err):
         """The exception text with the token removed (CWE-532).

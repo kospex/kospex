@@ -12,8 +12,12 @@ Line shape (the contract for whatever loads the file). Every line has the same
 keys, so a loader that infers columns from the first rows (sqlite-utils reads
 100) never meets a new one later:
 
-    {"repo_id", "org", "repo", "level", "fetched_at", "properties": {name: value}, "error": null}
-    {"repo_id", "org", "repo", "level", "fetched_at", "properties": null, "error": "HTTP 404 Not Found"}
+    {"repo_id", "github_repo_id", "org", "repo", "level", "fetched_at", "properties": {name: value}, "error": null}
+    {"repo_id", "github_repo_id", "org", "repo", "level", "fetched_at", "properties": null, "error": "HTTP 404 Not Found"}
+
+`repo_id` is the kospex id (github.com~owner~repo, lowercased), for joining to
+the kospex DB. `github_repo_id` is GitHub's numeric id, which survives renames
+and transfers; it is null only when a single -repo_id couldn't be read.
 
 `"properties": {}` means nothing is set; `"properties": null` with an error means
 the repo couldn't be read, so its properties are unknown. Multi-select values
@@ -59,9 +63,10 @@ def normalise(properties):
             if p.get("value") is not None}
 
 
-def _line(owner, repo, level, fetched_at):
+def _line(owner, repo, github_repo_id, level, fetched_at):
     return {
         "repo_id": KospexGit.generate_repo_id(GITHUB_HOST, owner, repo),
+        "github_repo_id": github_repo_id,
         "org": owner,
         "repo": repo,
         "level": level,
@@ -80,18 +85,37 @@ def org_level_lines(gh, org, fetched_at):
     lines = []
     for item in gh._paginate(url):
         owner, _, repo = item["repository_full_name"].partition("/")
-        line = _line(owner, repo, LEVEL_ORG, fetched_at)
+        line = _line(owner, repo, item.get("repository_id"), LEVEL_ORG, fetched_at)
         line["properties"] = normalise(item.get("properties"))
         lines.append(line)
     return lines
 
 
 def list_org_repos(gh, org):
-    """(owner, repo) for every repo in the org listing, for a repo-level run.
+    """(owner, repo, github_repo_id) for every repo in the org listing, for a repo-level run.
 
     Raises GitHubListingIncomplete if any page fails.
     """
-    return [(r["owner"]["login"], r["name"]) for r in gh._get_org_repos(org, repo_type="all")]
+    return [(r["owner"]["login"], r["name"], r["id"])
+            for r in gh._get_org_repos(org, repo_type="all")]
+
+
+def lookup_repo(gh, owner, repo):
+    """(owner, repo, github_repo_id) for a single -repo_id, in GitHub's casing.
+
+    The repo properties endpoint doesn't return the numeric id, so this costs one
+    extra request. If the repo can't be read, the names are kept and the id is
+    None; the properties request that follows records the error line.
+
+    Raises RateLimited if the rate limit is hit.
+    """
+    data, _ = gh._make_request(f"{gh.base_url}/repos/{owner}/{repo}",
+                              quiet_statuses=(403, 404))
+    if gh.throttled:
+        raise RateLimited(f"{owner}/{repo}")
+    if not data:
+        return owner, repo, None
+    return data["owner"]["login"], data["name"], data["id"]
 
 
 def _error_text(response):
@@ -106,17 +130,17 @@ def _error_text(response):
 
 
 def repo_level_lines(gh, repos, fetched_at):
-    """One request per (owner, repo). A repo that fails gets an `error` line.
+    """One request per (owner, repo, github_repo_id). A repo that fails gets an `error` line.
 
     Raises RateLimited if the rate limit is hit.
     """
     lines = []
-    for owner, repo in repos:
+    for owner, repo, github_repo_id in repos:
         url = f"{gh.base_url}/repos/{owner}/{repo}/properties/values"
         data, response = gh._make_request(url)
         if gh.throttled:
             raise RateLimited(f"{owner}/{repo}")
-        line = _line(owner, repo, LEVEL_REPO, fetched_at)
+        line = _line(owner, repo, github_repo_id, LEVEL_REPO, fetched_at)
         if data is None:
             line["error"] = _error_text(response)
         else:

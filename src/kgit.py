@@ -15,6 +15,7 @@ from kospex.db.migrator import warn_if_behind
 from kospex_git import KospexGit
 from kospex_github import GitHubListingIncomplete, KospexGithub
 import kospex.github_properties as GitHubProperties
+import kospex.github_dependabot as GitHubDependabot
 import kospex.org_sync as OrgSync
 import kospex.org_sync_manifest as OrgSyncManifest
 from kospex.habitat_config import HabitatConfig
@@ -808,9 +809,10 @@ def _github_properties(gh, org, repo_id, filename, level):
     try:
         if repo_id:
             try:
-                target = GitHubProperties.parse_github_repo_id(repo_id)
+                owner, repo = GitHubProperties.parse_github_repo_id(repo_id)
             except ValueError as e:
                 raise click.UsageError(str(e))
+            target = GitHubProperties.lookup_repo(gh, owner, repo)
             lines = GitHubProperties.repo_level_lines(gh, [target], fetched_at)
         elif (level or GitHubProperties.LEVEL_ORG) == GitHubProperties.LEVEL_ORG:
             console.print(f"Reading custom properties for {org} (org level)")
@@ -843,6 +845,57 @@ def _github_properties(gh, org, repo_id, filename, level):
         console.print(f"Note: {note}")
 
 
+def _github_dependabot(gh, org, repo_id, filename, level):
+    """`kgit github --dependabot`: see kospex.github_dependabot."""
+    if not filename:
+        raise click.UsageError("--dependabot needs -filename.")
+    if bool(org) == bool(repo_id):
+        raise click.UsageError("--dependabot needs exactly one of -org or -repo_id.")
+    if level:
+        raise click.UsageError("-level doesn't apply to --dependabot: it always reads "
+                               "each repo, which also gives each repo's Dependabot status.")
+
+    if not gh.get_env_credentials():
+        token_vars = ", ".join(KospexGithub.TOKEN_ENV_VARS)
+        raise click.ClickException(f"--dependabot needs a GitHub token. Set one of: {token_vars}")
+
+    status_file = GitHubDependabot.status_filename(filename)
+    fetched_at = GitHubProperties.now_utc()
+    try:
+        if repo_id:
+            try:
+                owner, repo = GitHubProperties.parse_github_repo_id(repo_id)
+            except ValueError as e:
+                raise click.UsageError(str(e))
+            targets = [GitHubProperties.lookup_repo(gh, owner, repo)]
+        else:
+            console.print(f"Listing {org}'s repos, then reading open Dependabot alerts per repo")
+            targets = GitHubProperties.list_org_repos(gh, org)
+            console.print(f"{len(targets)} repos")
+        alert_lines, status_lines = GitHubDependabot.collect(
+            gh, targets, fetched_at, early_stop=bool(org))
+    except GitHubListingIncomplete as e:
+        raise click.ClickException(f"{e}. Nothing was written. Rerun to retry.")
+    except GitHubProperties.RateLimited as e:
+        raise click.ClickException(
+            f"GitHub rate limit hit at {e}. Nothing was written. Rerun after the limit resets.")
+    except GitHubDependabot.NoAlertAccess as e:
+        raise click.ClickException(
+            f"This token can't see Dependabot alerts: {e}. Nothing was written. "
+            f"{GitHubDependabot.ACCESS_NEEDED}")
+
+    GitHubProperties.write_jsonl(filename, alert_lines)
+    GitHubProperties.write_jsonl(status_file, status_lines)
+    s = GitHubDependabot.summarise(alert_lines, status_lines)
+    by_status = ", ".join(f"{n} {k}" for k, n in sorted(s["by_status"].items()))
+    by_severity = ", ".join(f"{n} {k}" for k, n in sorted(s["by_severity"].items()))
+    console.print(f"Wrote {s['alerts']} open alerts to {filename}"
+                  + (f" ({by_severity})" if by_severity else ""))
+    console.print(f"Wrote {s['repos']} repo statuses to {status_file}: {by_status}")
+    for note in GitHubDependabot.notes(status_lines, org_scope=bool(org)):
+        console.print(f"Note: {note}")
+
+
 @cli.command("github")
 @click.option('-no-auth', is_flag=True, help="Access the Github API unauthenticated.")
 @click.option('-sync', is_flag=True,
@@ -856,19 +909,22 @@ def _github_properties(gh, org, repo_id, filename, level):
 @click.option('-ssh-clone-url',is_flag=True, help="Write SSH clone urls to file instead of HTTPS")
 @click.option('-properties', '--properties', 'properties', is_flag=True,
               help="Write custom property values to -filename as JSONL, one line per repo.")
+@click.option('-dependabot', '--dependabot', 'dependabot', is_flag=True,
+              help="Write open Dependabot alerts to -filename as JSONL, one line per alert, "
+                   "and each repo's Dependabot status to FILENAME-status.jsonl.")
 @click.option('-org', 'prop_org', default=None,
-              help="With --properties: every repo GitHub lists for this org.")
+              help="With --properties or --dependabot: every repo GitHub lists for this org.")
 @click.option('-repo_id', 'prop_repo_id', default=None,
-              help="With --properties: one repo, e.g. github.com~acme~payments.")
+              help="With --properties or --dependabot: one repo, e.g. github.com~acme~payments.")
 @click.option('-filename', 'prop_filename', type=click.Path(dir_okay=False), default=None,
-              help="With --properties: JSONL output file (overwritten). Required.")
+              help="With --properties or --dependabot: JSONL output file (overwritten). Required.")
 @click.option('-level', 'prop_level', type=click.Choice(['org', 'repo']), default=None,
               help="With --properties: 'org' (default for -org) is one org-wide query and "
                    "needs org membership; 'repo' is one request per repo and needs only "
                    "read access.")
 @click.argument('owner', type=click.STRING, required=False)
 def github(no_auth, sync, include_member, test_auth, out_repo_list, ssh_clone_url,
-           properties, prop_org, prop_repo_id, prop_filename, prop_level, owner):
+           properties, dependabot, prop_org, prop_repo_id, prop_filename, prop_level, owner):
     """
     Interact with the GitHub API.
 
@@ -888,12 +944,22 @@ def github(no_auth, sync, include_member, test_auth, out_repo_list, ssh_clone_ur
       kgit github --properties -org acme -filename props.jsonl [-level repo]
       kgit github --properties -repo_id github.com~acme~payments -filename props.jsonl
 
+    \b
+    Open Dependabot alerts to JSONL (also writes alerts-status.jsonl):
+      kgit github --dependabot -org acme -filename alerts.jsonl
+      kgit github --dependabot -repo_id github.com~acme~payments -filename alerts.jsonl
+
     """
     gh = KospexGithub()
     repos = []
 
+    if properties and dependabot:
+        raise click.UsageError("Use --properties or --dependabot, not both.")
     if properties:
         _github_properties(gh, prop_org, prop_repo_id, prop_filename, prop_level)
+        return
+    if dependabot:
+        _github_dependabot(gh, prop_org, prop_repo_id, prop_filename, prop_level)
         return
 
     if test_auth:
