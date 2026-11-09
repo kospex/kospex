@@ -1446,9 +1446,14 @@ def git_pull(directory, sync):
     errors = KrunnerUtils.RunErrors(logger=log, console=console)
     for d in dirs:
         print("\nRepo: " + d)
-        # Run git in the repo (cwd=) rather than chdir'ing the process around it,
-        # and as a list with no shell.
-        subprocess.run(["git", "pull"], cwd=d, check=False)
+        # A list with no shell, run in the repo rather than chdir'ing the process
+        # around it. Fast-forward only: a clone whose remote history was rewritten
+        # is left as it was and not synced, rather than rebased or merged.
+        argv, _ = KospexGit.pull_command(d)
+        if subprocess.run(argv, check=False).returncode != 0:
+            errors.add(KrunnerUtils.GIT_ERROR, d,
+                       "git pull --ff-only failed; clone left as it was, not synced")
+            continue
         if sync:
             print("Syncing to kospex DB ...")
             try:
