@@ -964,6 +964,8 @@ After tiers 1 and 2: **38 resolved, 13 blank, 0 unresolved `${...}`.**
   with `[5.2.0-SNAPSHOT,6.0.0-SNAPSHOT)` (`bounded`). A bare Maven version is a "soft
   requirement" that mediation can replace, and is classified `pinned`. A multi-range
   set such as `(,1.0],[1.2,)` is not recognised and classifies `none`.
+  Intervals are read with a linear scan (`_match_interval`), not a regex, because of the
+  CWE-1333 backtracking described in the CHANGELOG. Keep it that way.
 - **Elements are matched by local name.** Every pom on the estate declares the Maven
   namespace; it is optional, and matching one spelling only would report the other as
   declaring nothing.

@@ -2,6 +2,19 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+### Security
+
+- **Reading a Maven, NuGet or Gradle version range no longer takes polynomial
+  time** (CWE-1333). The interval pattern allowed optional whitespace on both
+  sides of a part that could itself contain whitespace, so a failed match
+  tried every way of splitting a run of spaces: 163 characters took 5 s, and
+  each doubling took about 27 times longer. Declared versions come from the
+  scanned repository's manifests. Intervals are now read with a linear scan,
+  which gives the same result as the pattern for every string up to 6
+  characters over the characters that matter.
+
 ## 0.3.0 - 2026-11-10
 
 ### Highlights

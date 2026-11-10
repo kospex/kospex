@@ -74,7 +74,23 @@ _HYPHEN_RANGE = re.compile(r"^\S+\s+-\s+\S+$")
 
 # NuGet interval notation. Each end is independent: `[`/`]` inclusive,
 # `(`/`)` exclusive, so `[1.0,2.0)` is `>=1.0 <2.0` — the idiomatic "any 1.x".
-_NUGET_INTERVAL = re.compile(r"^([\[(])\s*([^,\]\)]*)\s*(?:,\s*([^,\]\)]*)\s*)?([\])])$")
+def _match_interval(text):
+    """(open, low, high, close) for interval text, else None.
+
+    `[`/`(`, at most one comma, no `]`/`)` inside, then `]`/`)`. `high` is
+    None when there is no comma. A linear scan: the regex this replaced,
+    `\\s*([^,\\]\\)]*)\\s*` on each side of the comma, could split a run of
+    spaces many ways, so a failed match backtracked polynomially -- a
+    163-character version took 5 s, and versions come from untrusted
+    manifests (CWE-1333).
+    """
+    if len(text) < 2 or text[0] not in "[(" or text[-1] not in "])":
+        return None
+    inner = text[1:-1]
+    if "]" in inner or ")" in inner or inner.count(",") > 1:
+        return None
+    low, comma, high = inner.partition(",")
+    return text[0], low.strip(), (high.strip() if comma else None), text[-1]
 
 # Resolution mechanisms, not version constraints. Prefix -> kind.
 _MECHANISM_PREFIXES = (
@@ -181,7 +197,7 @@ def classify_constraint(declared_version, package_type=None):
     # replaceable by dependency mediation, which is neither a floor nor quite
     # an equality, and the declaration itself names one version.
     if ecosystem in ("nuget", "maven", "gradle"):
-        interval = _NUGET_INTERVAL.match(text)
+        interval = _match_interval(text)
         if interval:
             return _classify_interval(interval, text)
 
@@ -262,7 +278,7 @@ def _classify_interval(match, text):
     independent — so the bracket characters alone do not decide the kind.
     What matters is which bounds are actually present.
     """
-    open_br, low, high, close_br = match.groups()
+    open_br, low, high, close_br = match
     low = (low or "").strip()
     high = (high or "").strip()
 
