@@ -872,20 +872,45 @@ def _github_dependabot(gh, org, repo_id, filename, level):
             console.print(f"Listing {org}'s repos, then reading open Dependabot alerts per repo")
             targets = GitHubProperties.list_org_repos(gh, org)
             console.print(f"{len(targets)} repos")
-        alert_lines, status_lines = GitHubDependabot.collect(
-            gh, targets, fetched_at, early_stop=bool(org))
     except GitHubListingIncomplete as e:
         raise click.ClickException(f"{e}. Nothing was written. Rerun to retry.")
     except GitHubProperties.RateLimited as e:
         raise click.ClickException(
             f"GitHub rate limit hit at {e}. Nothing was written. Rerun after the limit resets.")
-    except GitHubDependabot.NoAlertAccess as e:
-        raise click.ClickException(
-            f"This token can't see Dependabot alerts: {e}. Nothing was written. "
-            f"{GitHubDependabot.ACCESS_NEEDED}")
 
-    GitHubProperties.write_jsonl(filename, alert_lines)
-    GitHubProperties.write_jsonl(status_file, status_lines)
+    log.info("kgit github --dependabot: %s repos for %s, writing %s",
+             len(targets), org or repo_id, filename)
+    with GitHubDependabot.RunFiles(filename, status_file) as files:
+
+        def on_repo(index, total, status, repo_alerts):
+            files.add(status, repo_alerts)
+            progress = GitHubDependabot.progress_line(index, total, status)
+            console.print(progress)
+            log.info("kgit github --dependabot: %s", progress)
+
+        def stopped(reason):
+            message = (f"{reason}. Stopped after {files.repos} of {len(targets)} repos: those "
+                       f"are in {files.alerts_partial} and {files.status_partial}. "
+                       f"{filename} was not written. Rerun to get every repo.")
+            log.warning("kgit github --dependabot: %s", message)
+            return message
+
+        try:
+            alert_lines, status_lines = GitHubDependabot.collect(
+                gh, targets, fetched_at, early_stop=bool(org), on_repo=on_repo)
+        except GitHubProperties.RateLimited as e:
+            raise click.ClickException(
+                stopped(f"GitHub rate limit hit at {e}") + " Wait for the limit to reset.")
+        except GitHubDependabot.NoAlertAccess as e:
+            raise click.ClickException(
+                stopped(f"This token can't see Dependabot alerts: {e}")
+                + f" {GitHubDependabot.ACCESS_NEEDED}")
+        except KeyboardInterrupt:
+            raise click.ClickException(stopped("Interrupted"))
+        files.finish()
+
+    log.info("kgit github --dependabot: finished, %s repos and %s alerts in %s",
+             files.repos, files.alerts, filename)
     s = GitHubDependabot.summarise(alert_lines, status_lines)
     by_status = ", ".join(f"{n} {k}" for k, n in sorted(s["by_status"].items()))
     by_severity = ", ".join(f"{n} {k}" for k, n in sorted(s["by_severity"].items()))

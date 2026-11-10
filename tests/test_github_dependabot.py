@@ -343,6 +343,105 @@ class TestCollect:
         with pytest.raises(GP.RateLimited):
             GD.collect(KospexGithub(), [("acme", "a", 1)], FETCHED_AT, False)
 
+    def test_on_repo_called_after_each_repo_in_order(self, monkeypatch):
+        self.fake_fetch(monkeypatch, {"a": ("enabled", [alert(1), alert(2)], None),
+                                      "b": ("disabled", None, None)})
+        calls = []
+        GD.collect(KospexGithub(), [("acme", "a", 1), ("acme", "b", 2)], FETCHED_AT, False,
+                   on_repo=lambda i, n, s, a: calls.append((i, n, s["repo"], len(a))))
+        assert calls == [(1, 2, "a", 2), (2, 2, "b", 0)]
+
+    def test_on_repo_sees_repos_done_before_a_rate_limit(self, monkeypatch):
+        def fetch(gh, owner, repo):
+            if repo == "b":
+                raise GP.RateLimited(f"{owner}/{repo}")
+            return "enabled", [alert(1)], None
+
+        monkeypatch.setattr(GD, "fetch_repo_alerts", fetch)
+        done = []
+        with pytest.raises(GP.RateLimited):
+            GD.collect(KospexGithub(), [("acme", "a", 1), ("acme", "b", 2)], FETCHED_AT, False,
+                       on_repo=lambda i, n, s, a: done.append(s["repo"]))
+        assert done == ["a"]
+
+    def test_on_repo_sees_early_stopped_repos(self, monkeypatch):
+        repos = [f"r{i}" for i in range(7)]
+        self.fake_fetch(monkeypatch, {r: ("no_access", None, "HTTP 403") for r in repos})
+        done = []
+        with pytest.raises(GD.NoAlertAccess):
+            GD.collect(KospexGithub(), [("acme", r, i) for i, r in enumerate(repos)],
+                       FETCHED_AT, True, on_repo=lambda i, n, s, a: done.append(s["repo"]))
+        assert done == repos[:5]
+
+
+class TestProgress:
+    def test_enabled_shows_alert_count(self):
+        line = GD.status_line("acme", "payments", 1, "enabled", 7, None, FETCHED_AT)
+        assert GD.progress_line(412, 1300, line) == "[412/1300] acme/payments: enabled, 7 open alerts"
+
+    def test_one_alert_is_singular(self):
+        line = GD.status_line("acme", "payments", 1, "enabled", 1, None, FETCHED_AT)
+        assert GD.progress_line(1, 2, line).endswith("enabled, 1 open alert")
+
+    def test_disabled_has_no_count(self):
+        line = GD.status_line("acme", "docs", 1, "disabled", None, None, FETCHED_AT)
+        assert GD.progress_line(3, 9, line) == "[3/9] acme/docs: disabled"
+
+    def test_error_shows_the_error(self):
+        line = GD.status_line("acme", "x", 1, "error", None, "HTTP 502", FETCHED_AT)
+        assert GD.progress_line(3, 9, line) == "[3/9] acme/x: error (HTTP 502)"
+
+
+class TestRunFiles:
+    """Lines go to .partial files as each repo finishes; only a finished run renames them."""
+
+    def lines(self, path):
+        return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines()]
+
+    def test_lines_are_readable_before_the_run_finishes(self, tmp_path):
+        out, status = tmp_path / "a.jsonl", tmp_path / "a-status.jsonl"
+        with GD.RunFiles(out, status) as files:
+            files.add(GD.status_line("acme", "a", 1, "enabled", 1, None, FETCHED_AT),
+                      [GD.alert_line(alert(1), "acme", "a", 1, FETCHED_AT)])
+            assert len(self.lines(tmp_path / "a.jsonl.partial")) == 1
+            assert len(self.lines(tmp_path / "a-status.jsonl.partial")) == 1
+            assert not out.exists() and not status.exists()
+
+    def test_finish_renames_partials_to_the_final_names(self, tmp_path):
+        out, status = tmp_path / "a.jsonl", tmp_path / "a-status.jsonl"
+        with GD.RunFiles(out, status) as files:
+            files.add(GD.status_line("acme", "a", 1, "enabled", 1, None, FETCHED_AT),
+                      [GD.alert_line(alert(1), "acme", "a", 1, FETCHED_AT)])
+            files.finish()
+        assert tuple(self.lines(out)[0]) == GD.ALERT_KEYS
+        assert tuple(self.lines(status)[0]) == GD.STATUS_KEYS
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["a-status.jsonl", "a.jsonl"]
+
+    def test_unfinished_run_keeps_partials_and_leaves_old_files_alone(self, tmp_path):
+        out, status = tmp_path / "a.jsonl", tmp_path / "a-status.jsonl"
+        out.write_text("previous\n")
+        with pytest.raises(GP.RateLimited):
+            with GD.RunFiles(out, status) as files:
+                files.add(GD.status_line("acme", "a", 1, "disabled", None, None, FETCHED_AT), [])
+                raise GP.RateLimited("acme/b")
+        assert out.read_text() == "previous\n"
+        assert not status.exists()
+        assert self.lines(tmp_path / "a-status.jsonl.partial")[0]["repo"] == "a"
+
+    def test_counts_repos_and_alerts_written(self, tmp_path):
+        with GD.RunFiles(tmp_path / "a.jsonl", tmp_path / "s.jsonl") as files:
+            files.add(GD.status_line("acme", "a", 1, "enabled", 2, None, FETCHED_AT),
+                      [GD.alert_line(alert(n), "acme", "a", 1, FETCHED_AT) for n in (1, 2)])
+            files.add(GD.status_line("acme", "b", 2, "disabled", None, None, FETCHED_AT), [])
+            assert (files.repos, files.alerts) == (2, 2)
+
+    def test_unicode_kept_and_newline_terminated(self, tmp_path):
+        with GD.RunFiles(tmp_path / "a.jsonl", tmp_path / "s.jsonl") as files:
+            files.add(GD.status_line("acme", "a", 1, "error", None, "café", FETCHED_AT), [])
+            files.finish()
+        text = (tmp_path / "s.jsonl").read_text(encoding="utf-8")
+        assert "café" in text and text.endswith("\n")
+
 
 class TestFilesAndSummary:
     @pytest.mark.parametrize("given,expected", [
@@ -384,7 +483,7 @@ class TestFilesAndSummary:
 
 
 class TestCli:
-    """kgit github --dependabot: options, both files written only after a complete run."""
+    """kgit github --dependabot: options, progress, and files written as the run goes."""
 
     @pytest.fixture
     def kgit_cli(self, monkeypatch):
@@ -393,14 +492,43 @@ class TestCli:
         return kgit.cli
 
     @pytest.fixture
+    def logged(self, monkeypatch):
+        """kgit's log.info and log.warning messages."""
+        import kgit
+        messages = []
+        record = lambda msg, *a, **k: messages.append(msg % a if a else msg)  # noqa: E731
+        monkeypatch.setattr(kgit.log, "info", record)
+        monkeypatch.setattr(kgit.log, "warning", record)
+        return messages
+
+    @staticmethod
+    def fake_collect(monkeypatch, per_repo, then=None):
+        """Fake collect: reports each (status_line, alert_lines) to on_repo, then raises `then`."""
+
+        def fake(gh, targets, fetched_at, early_stop, on_repo=None):
+            alerts, statuses = [], []
+            for i, (status, repo_alerts) in enumerate(per_repo, start=1):
+                statuses.append(status)
+                alerts.extend(repo_alerts)
+                if on_repo:
+                    on_repo(i, len(targets), status, repo_alerts)
+            if then:
+                raise then
+            return alerts, statuses
+
+        monkeypatch.setattr(GD, "collect", fake)
+
+    @pytest.fixture
     def collected(self, monkeypatch):
         """Fake collect; records its arguments and returns one alert and one status line."""
         seen = {}
 
-        def fake(gh, targets, fetched_at, early_stop):
+        def fake(gh, targets, fetched_at, early_stop, on_repo=None):
             seen.update(targets=targets, early_stop=early_stop)
             alerts = [GD.alert_line(alert(1), "acme", "a", 1, fetched_at)]
             statuses = [GD.status_line("acme", "a", 1, "enabled", 1, None, fetched_at)]
+            if on_repo:
+                on_repo(1, len(targets), statuses[0], alerts)
             return alerts, statuses
 
         monkeypatch.setattr(GD, "collect", fake)
@@ -477,31 +605,82 @@ class TestCli:
         flat = result.output.replace("\n", "")
         assert "alerts.jsonl" in flat and "alerts-status.jsonl" in flat
 
-    def test_no_alert_access_writes_nothing(self, kgit_cli, tmp_path, monkeypatch):
+    def two_repos(self, monkeypatch):
+        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1),
+                                                                    ("acme", "b", 2),
+                                                                    ("acme", "c", 3)])
+        return [
+            (GD.status_line("acme", "a", 1, "enabled", 2, None, FETCHED_AT),
+             [GD.alert_line(alert(n), "acme", "a", 1, FETCHED_AT) for n in (1, 2)]),
+            (GD.status_line("acme", "b", 2, "disabled", None, None, FETCHED_AT), []),
+        ]
+
+    def test_prints_a_progress_line_per_repo(self, kgit_cli, tmp_path, monkeypatch):
+        self.fake_collect(monkeypatch, self.two_repos(monkeypatch))
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme",
+                                     "-filename", str(tmp_path / "a.jsonl")])
+        assert result.exit_code == 0, result.output
+        assert "[1/3] acme/a: enabled, 2 open alerts" in result.output
+        assert "[2/3] acme/b: disabled" in result.output
+
+    def test_logs_start_each_repo_and_finish(self, kgit_cli, tmp_path, monkeypatch, logged):
+        self.fake_collect(monkeypatch, self.two_repos(monkeypatch))
+        out = tmp_path / "a.jsonl"
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme", "-filename", str(out)])
+        assert result.exit_code == 0, result.output
+        text = "\n".join(logged)
+        assert "3 repos" in text and str(out) in text
+        assert "[1/3] acme/a: enabled, 2 open alerts" in text
+        assert "[2/3] acme/b: disabled" in text
+        assert "finished" in text.lower()
+
+    def test_finished_run_leaves_no_partial_files(self, kgit_cli, tmp_path, monkeypatch):
+        self.fake_collect(monkeypatch, self.two_repos(monkeypatch))
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme",
+                                     "-filename", str(tmp_path / "a.jsonl")])
+        assert result.exit_code == 0, result.output
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["a-status.jsonl", "a.jsonl"]
+        assert len((tmp_path / "a.jsonl").read_text().splitlines()) == 2
+
+    def test_rate_limit_keeps_the_repos_done_in_partial_files(self, kgit_cli, tmp_path,
+                                                              monkeypatch, logged):
+        self.fake_collect(monkeypatch, self.two_repos(monkeypatch),
+                          then=GP.RateLimited("acme/c"))
+        out = tmp_path / "alerts.jsonl"
+        out.write_text("previous run\n")
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme", "-filename", str(out)])
+        assert result.exit_code != 0
+        flat = result.output.replace("\n", " ")
+        assert "rate limit" in flat
+        assert "2 of 3 repos" in flat and "alerts.jsonl.partial" in flat
+        assert "Nothing was written" not in flat
+        assert out.read_text() == "previous run\n"
+        assert len((tmp_path / "alerts.jsonl.partial").read_text().splitlines()) == 2
+        assert len((tmp_path / "alerts-status.jsonl.partial").read_text().splitlines()) == 2
+        assert any("rate limit" in m for m in logged)
+
+    def test_no_alert_access_keeps_partial_files(self, kgit_cli, tmp_path, monkeypatch, logged):
         monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1)])
-
-        def denied(gh, targets, fetched_at, early_stop):
-            raise GD.NoAlertAccess("the first 1 repos were all no_access")
-
-        monkeypatch.setattr(GD, "collect", denied)
+        denied = [(GD.status_line("acme", "a", 1, "no_access", None, "HTTP 403", FETCHED_AT), [])]
+        self.fake_collect(monkeypatch, denied,
+                          then=GD.NoAlertAccess("the first 1 repos were all no_access"))
         out = tmp_path / "alerts.jsonl"
         result = self.run(kgit_cli, ["--dependabot", "-org", "acme", "-filename", str(out)])
         assert result.exit_code != 0
-        assert not out.exists() and not (tmp_path / "alerts-status.jsonl").exists()
         assert "Security Manager" in result.output
+        assert not out.exists()
+        assert (tmp_path / "alerts-status.jsonl.partial").exists()
 
-    def test_rate_limit_writes_nothing(self, kgit_cli, tmp_path, monkeypatch):
-        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1)])
-
-        def limited(gh, targets, fetched_at, early_stop):
-            raise GP.RateLimited("acme/a")
-
-        monkeypatch.setattr(GD, "collect", limited)
+    def test_ctrl_c_keeps_partial_files_and_says_where(self, kgit_cli, tmp_path, monkeypatch,
+                                                       logged):
+        self.fake_collect(monkeypatch, self.two_repos(monkeypatch), then=KeyboardInterrupt())
         out = tmp_path / "alerts.jsonl"
         result = self.run(kgit_cli, ["--dependabot", "-org", "acme", "-filename", str(out)])
         assert result.exit_code != 0
-        assert "rate limit" in result.output
-        assert not out.exists() and not (tmp_path / "alerts-status.jsonl").exists()
+        flat = result.output.replace("\n", " ")
+        assert "2 of 3 repos" in flat and "alerts.jsonl.partial" in flat
+        assert not out.exists()
+        assert len((tmp_path / "alerts.jsonl.partial").read_text().splitlines()) == 2
 
     def test_listing_failure_writes_nothing(self, kgit_cli, tmp_path, monkeypatch):
         from kospex_github import GitHubListingIncomplete

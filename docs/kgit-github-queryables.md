@@ -175,10 +175,31 @@ kgit github --dependabot -repo_id github.com~acme~payments -filename payments-al
   A 2,000-repo org takes about 2,020 requests, against GitHub's limit of 5,000 an hour.
 - **Token:** the same as for `--properties`.
 
-Neither file is written if the run doesn't finish:
-- if the repo listing fails partway;
-- if the GitHub rate limit is hit, including the secondary limits GitHub applies to bursts
-  of requests.
+**Progress.** Each repo prints a line as it finishes, and the same line goes to
+`~/kospex/logs/kgit.log`, so a long run can be followed from another terminal with
+`tail -f ~/kospex/logs/kgit.log`:
+
+```
+[412/1300] acme/payments: enabled, 7 open alerts
+[413/1300] acme/docs: disabled
+```
+
+**Files are written as the run goes.** Each repo's lines are added to
+`acme-alerts.jsonl.partial` and `acme-alerts-status.jsonl.partial` as soon as it's read.
+Only a finished run renames them to the names you gave, so a file without `.partial` is
+always a complete run, and a previous complete file is left alone until a new run
+finishes.
+
+If a run stops partway, the `.partial` files keep every repo it finished and the message
+says how many. That happens if:
+- the GitHub rate limit is hit, including the secondary limits GitHub applies to bursts
+  of requests;
+- the first repos of an `-org` run are all `no_access` (the token can't see alerts);
+- the run is interrupted (Ctrl-C).
+
+The `.partial` files load the same way as complete ones. Rerun to get every repo.
+
+If the repo listing itself fails, nothing is written, because no repo has been read.
 
 ### Access
 
