@@ -331,6 +331,25 @@ deterministically (netty-bom, guava-testlib). Comparing the new counts with
 the **stored** values instead shows 1,650 increases, but most of those are
 releases published since the rows were stored. Compare on the same data.
 
+## Implemented: #414 (Maven/NuGet intervals, npm ceilings)
+
+* `src/kospex/extractors/constraints.py`: `interval_lookup_version(text)` reads
+  interval notation: `[1.5]` is a pin, `[1.0,…` an inclusive floor, and
+  anything else is "not evaluated". It shares `_match_interval()` with
+  `classify_constraint`, a linear scan that replaced a backtracking pattern.
+* `KospexDependencies._range_floor()` uses it for `maven` and `nuget` before
+  `clean_version_spec`, which also uses it, so it no longer returns fragments
+  such as `2.0)`.
+* `lookup_dependency()` records `range_not_evaluated`, with nothing looked up,
+  when there is no inclusive floor. It also records it when the inclusive
+  floor 404s, because the range may still allow later versions.
+* Full evaluation needs Maven's `ComparableVersion` ordering. It isn't
+  implemented, because the dev estate has no interval rows. Revisit if Gradle
+  build files show ranges are common.
+* npm: the written floor is kept only if `satisfies()` allows it. Over the
+  36,181 npm, Maven and NuGet declarations in a dev DB, compared on the same
+  cached data, one row changes: `@types/chai <5.2.0`, from 5.2.0 to 2.0.0.
+
 ## Suggested order
 
 1. #378 — canonical-spelling match, `None` when not found. Small, uncontroversial, and the

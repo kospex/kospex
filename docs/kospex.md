@@ -145,7 +145,8 @@ The table has the following columns. A missing value is shown as `-`.
 - `advisories` — number of known security advisories
 - `resolution` — whether the lookup succeeded, and if not why: `resolved`,
   `no_satisfying_version` (no published version is in the range),
-  `version_yanked`, `package_not_found`, `unresolved_spec`, `no_version` or
+  `range_not_evaluated` (a Maven or NuGet interval kospex can't find a
+  lowest version for, such as `(1.0,2.0)`), `version_yanked`, `package_not_found`, `unresolved_spec`, `no_version` or
   `lookup_error`. A row's numbers are blank when it is not `resolved`
 - `source_repo` — the git URL for this package if known
 

@@ -964,8 +964,12 @@ After tiers 1 and 2: **38 resolved, 13 blank, 0 unresolved `${...}`.**
   with `[5.2.0-SNAPSHOT,6.0.0-SNAPSHOT)` (`bounded`). A bare Maven version is a "soft
   requirement" that mediation can replace, and is classified `pinned`. A multi-range
   set such as `(,1.0],[1.2,)` is not recognised and classifies `none`.
-  Intervals are read with a linear scan (`_match_interval`), not a regex, because of the
-  CWE-1333 backtracking described in the CHANGELOG. Keep it that way.
+  For the deps.dev lookup (#414), `[1.5]` is looked up as `1.5` and an inclusive lower
+  bound (`[1.0,2.0)`, `[1.0,)`) at `1.0`. Every other interval, a multi-range set
+  included, is recorded as `range_not_evaluated` with nothing looked up, because finding
+  its lowest allowed version needs Maven's version ordering. Intervals are read with a
+  linear scan (`_match_interval`), not a regex, because of the CWE-1333 backtracking
+  described in the CHANGELOG. Keep it that way.
 - **Elements are matched by local name.** Every pom on the estate declares the Maven
   namespace; it is optional, and matching one spelling only would report the other as
   declaring nothing.

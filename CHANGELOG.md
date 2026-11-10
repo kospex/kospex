@@ -4,6 +4,26 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+### Fixed
+
+- **Maven and NuGet version ranges are looked up at a version** (#414).
+  `clean_version_spec` read interval notation as if it were npm, so
+  `[1.0,2.0)` was sent to deps.dev as `2.0)`, `(,2.0]` as `2.0]`, and `[1.0,)`
+  and `[1.5]` unchanged. Each lookup missed and the row was recorded as
+  `version_yanked`. Now `[1.5]` is looked up as `1.5`, and an inclusive lower
+  bound such as `[1.0,2.0)` or `[1.0,)` at `1.0`. Any other interval (an
+  exclusive lower bound, no lower bound, or a union) needs Maven's version
+  ordering to evaluate. Those are recorded with the new resolution
+  `range_not_evaluated` and nothing is looked up. So is an inclusive lower
+  bound deps.dev doesn't list, because a range can't be yanked. Gradle
+  declarations use the same notation.
+- **An npm range with only a ceiling is no longer checked at that ceiling**
+  (#414). `<4.0.0` contains one version, 4.0.0, which is the one the range
+  excludes; when it was published, its advisories and versions behind were
+  recorded for the row. The written version is now kept only if the range
+  allows it, as for PyPI, and otherwise the lowest published version the
+  range allows is used.
+
 ### Security
 
 - **Reading a Maven, NuGet or Gradle version range no longer takes polynomial

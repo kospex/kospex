@@ -271,6 +271,41 @@ def classify_constraint(declared_version, package_type=None):
     return ("none", "")
 
 
+# Interval notation's lookup version, for interval_lookup_version().
+INTERVAL_PIN, INTERVAL_FLOOR, INTERVAL_NOT_EVALUATED = "pin", "floor", "not_evaluated"
+
+
+def interval_lookup_version(declared_version):
+    """(kind, version) for Maven/NuGet interval notation, or (None, None).
+
+    * `[1.5]` -> (INTERVAL_PIN, "1.5"): an exact pin.
+    * `[1.0,2.0)`, `[1.0,)` -> (INTERVAL_FLOOR, "1.0"): an inclusive lower
+      bound, the lowest version the range can allow.
+    * Anything else in brackets -- an exclusive lower bound `(1.0,2.0)`, no
+      lower bound `(,2.0]`, a union `[1.0,2.0),[3.0,)`, malformed input ->
+      (INTERVAL_NOT_EVALUATED, None). Finding the lowest version those allow
+      needs Maven's version ordering, which kospex does not implement (#414).
+    * Text not in brackets -> (None, None).
+
+    Callers gate on ecosystem: PEP 508 allows `(>=2.0)` in pypi.
+    """
+    text = str(declared_version or "").strip()
+    if not text or text[0] not in "[(" or text[-1] not in "])":
+        return None, None
+    match = _match_interval(text)
+    if not match:
+        return INTERVAL_NOT_EVALUATED, None
+    open_br, low, _high, close_br = match
+    low = (low or "").strip()
+    if "," not in text:
+        if low and open_br == "[" and close_br == "]":
+            return INTERVAL_PIN, low
+        return INTERVAL_NOT_EVALUATED, None
+    if low and open_br == "[":
+        return INTERVAL_FLOOR, low
+    return INTERVAL_NOT_EVALUATED, None
+
+
 def _classify_interval(match, text):
     """Classify a NuGet interval like `[1.0]`, `[1.0,)` or `[1.0,2.0)`.
 
