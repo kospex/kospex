@@ -1915,6 +1915,23 @@ class KospexDependencies:
             "undated": len(releases) - len(dated),
         }
 
+    # Maven artifacts published in parallel flavours: Guava's -jre / -android.
+    _MAVEN_FLAVOURS = ("-jre", "-android")
+
+    @classmethod
+    def _maven_flavour(cls, package_manager, version):
+        """The flavour suffix of a Maven version, or None (#415)."""
+        if (package_manager or "").lower() != "maven" or not version:
+            return None
+        return next((f for f in cls._MAVEN_FLAVOURS if version.endswith(f)), None)
+
+    @classmethod
+    def _without_flavour(cls, version):
+        for flavour in cls._MAVEN_FLAVOURS:
+            if version.endswith(flavour):
+                return version[: -len(flavour)]
+        return version
+
     def get_versions_behind(self, package_manager, package_name, version):
         """Count the releases between deps.dev's default version and `version`.
 
@@ -1930,6 +1947,9 @@ class KospexDependencies:
         (duckdb's nightly; netty-handler's 2015 alpha, which is older than
         versions in use and made them read 0). A version in use that is a
         pre-release gives None: neither 0 nor a count of releases describes it.
+
+        A Maven version in a flavour (`-jre`, `-android`) counts only releases
+        of that flavour (#415): Guava publishes each release in both.
         """
         releases = self.release_list(package_manager, package_name)
 
@@ -1980,6 +2000,16 @@ class KospexDependencies:
         # default is a pre-release (or missing).
         anchor = default if default and not default["is_prerelease"] else stable[0]
 
+        # Guava publishes each release twice, -jre and -android (#415). A
+        # project on one flavour is behind only that flavour's releases. The
+        # count starts at whichever of the anchor's twins comes first in the
+        # list, so the default's own twin is never counted as behind.
+        flavour = self._maven_flavour(package_manager, version)
+        if flavour:
+            anchor_base = self._without_flavour(anchor["version"])
+            anchor = next(r for r in stable
+                          if self._without_flavour(r["version"]) == anchor_base)
+
         keys_before_default = 0
         versions_behind = 0
         found_anchor = False
@@ -1988,6 +2018,8 @@ class KospexDependencies:
                 found_anchor = True
             if release is in_use:
                 break
+            if flavour and not release["version"].endswith(flavour):
+                continue
             if found_anchor:
                 versions_behind += 1
             else:

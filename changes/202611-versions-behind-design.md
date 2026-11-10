@@ -350,6 +350,24 @@ releases published since the rows were stored. Compare on the same data.
   36,181 npm, Maven and NuGet declarations in a dev DB, compared on the same
   cached data, one row changes: `@types/chai <5.2.0`, from 5.2.0 to 2.0.0.
 
+## Implemented: #415 (Maven flavour twins)
+
+* `get_versions_behind()`: when the version in use is a Maven version ending
+  in `-jre` or `-android` (`_MAVEN_FLAVOURS`), only releases with the same
+  suffix are counted.
+* The count starts at whichever of the anchor's twins comes first in the list.
+  Twins share a publish time, and their tie order isn't meaningful: on the
+  real record, `33.8.0-android` sorts after the `-jre` default and was counted
+  as one behind, so a project on it read 1 instead of 0.
+* Versions with no flavour (`22.0`, before Guava split) are unchanged. Other
+  ecosystems are never affected.
+* Expected counts in `tests/test_versions_behind_flavour.py` come from
+  Guava's real deps.dev record, computed outside kospex by publish date.
+* Dev DB, old against new on the same cached data, over 24,714 distinct
+  resolved versions: 13 rows change, all Guava (`guava`, `guava-testlib`), and
+  each count roughly halves. Add a suffix to `_MAVEN_FLAVOURS` if another
+  artifact turns out to publish parallel flavours.
+
 ## Suggested order
 
 1. #378 — canonical-spelling match, `None` when not found. Small, uncontroversial, and the
