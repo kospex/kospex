@@ -18,6 +18,7 @@ the first 100 rows):
   disabled, no_access, not_found or error; `open_alerts` is a count only when
   enabled, otherwise null because it isn't known.
 """
+import json
 import os
 import re
 from collections import Counter
@@ -204,25 +205,102 @@ def status_line(owner, repo, github_repo_id, status, open_alerts, error, fetched
     }
 
 
-def collect(gh, targets, fetched_at, early_stop):
+def collect(gh, targets, fetched_at, early_stop, on_repo=None):
     """(alert lines, status lines) for (owner, repo, github_repo_id) targets, in order.
+
+    on_repo(index, total, status_line, alert_lines), if given, is called as each
+    repo finishes (index from 1), so a caller can report progress and write the
+    lines before the run ends. It sees every repo that finished before a raise.
 
     Raises RateLimited, or NoAlertAccess when early_stop is set and the first
     min(EARLY_STOP_REPOS, len(targets)) repos are all no_access.
     """
     alert_lines, status_lines = [], []
-    check_at = min(EARLY_STOP_REPOS, len(targets))
-    for owner, repo, github_repo_id in targets:
+    total = len(targets)
+    check_at = min(EARLY_STOP_REPOS, total)
+    for index, (owner, repo, github_repo_id) in enumerate(targets, start=1):
         status, alerts, error = fetch_repo_alerts(gh, owner, repo)
         open_alerts = len(alerts) if status == STATUS_ENABLED else None
-        status_lines.append(status_line(owner, repo, github_repo_id, status, open_alerts,
-                                        error, fetched_at))
-        for a in alerts or []:
-            alert_lines.append(alert_line(a, owner, repo, github_repo_id, fetched_at))
+        line = status_line(owner, repo, github_repo_id, status, open_alerts, error, fetched_at)
+        repo_alerts = [alert_line(a, owner, repo, github_repo_id, fetched_at)
+                       for a in alerts or []]
+        status_lines.append(line)
+        alert_lines.extend(repo_alerts)
+        if on_repo:
+            on_repo(index, total, line, repo_alerts)
         if early_stop and len(status_lines) == check_at and all(
                 s["dependabot_status"] == STATUS_NO_ACCESS for s in status_lines):
             raise NoAlertAccess(f"the first {check_at} repos were all no_access")
     return alert_lines, status_lines
+
+
+def progress_line(index, total, line):
+    """One repo's result for the console and kgit.log: "[412/1300] acme/payments: enabled, 7 open alerts"."""
+    text = f"[{index}/{total}] {line['org']}/{line['repo']}: {line['dependabot_status']}"
+    if line["dependabot_status"] == STATUS_ENABLED:
+        n = line["open_alerts"]
+        text += f", {n} open alert{'' if n == 1 else 's'}"
+    elif line["error"]:
+        text += f" ({line['error']})"
+    return text
+
+
+PARTIAL_SUFFIX = ".partial"
+
+
+class RunFiles:
+    """The alerts and status files, written one repo at a time.
+
+    Lines go to `<name>.partial` and are flushed after each repo, so an
+    interrupted run (rate limit, Ctrl-C, a dropped session) keeps every repo it
+    finished. Only finish() renames them to the final names, so a file without
+    `.partial` is always a complete run, and a previous complete file is left
+    alone until a new run completes.
+    """
+
+    def __init__(self, alerts_path, status_path):
+        self.alerts_path = os.fspath(alerts_path)
+        self.status_path = os.fspath(status_path)
+        self.alerts_partial = self.alerts_path + PARTIAL_SUFFIX
+        self.status_partial = self.status_path + PARTIAL_SUFFIX
+        self.repos = 0
+        self.alerts = 0
+        self._files = None
+
+    def __enter__(self):
+        alerts_file = open(self.alerts_partial, "w", encoding="utf-8")
+        try:
+            status_file = open(self.status_partial, "w", encoding="utf-8")
+        except BaseException:
+            alerts_file.close()
+            raise
+        self._files = (alerts_file, status_file)
+        return self
+
+    def add(self, status, alert_lines):
+        alerts_file, status_file = self._files
+        for a in alert_lines:
+            alerts_file.write(json.dumps(a, ensure_ascii=False) + "\n")
+        status_file.write(json.dumps(status, ensure_ascii=False) + "\n")
+        alerts_file.flush()
+        status_file.flush()
+        self.repos += 1
+        self.alerts += len(alert_lines)
+
+    def _close(self):
+        if self._files:
+            for f in self._files:
+                f.close()
+            self._files = None
+
+    def finish(self):
+        self._close()
+        os.replace(self.alerts_partial, self.alerts_path)
+        os.replace(self.status_partial, self.status_path)
+
+    def __exit__(self, *exc):
+        self._close()
+        return False
 
 
 def status_filename(filename):
