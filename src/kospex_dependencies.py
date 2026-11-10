@@ -23,11 +23,14 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import Version, InvalidVersion
 
 import kospex_schema as KospexSchema
-from kospex.extractors.constraints import classify_constraint
+from kospex.extractors.constraints import (
+    INTERVAL_FLOOR, INTERVAL_NOT_EVALUATED, classify_constraint,
+    interval_lookup_version,
+)
 from kospex.extractors.errors import UnreadableManifest
 from kospex.extractors.npmlock import npm_alias_target
 from kospex.extractors.registry import classify, resolve_parser
-from kospex.npm_range import min_satisfying, parse_range
+from kospex.npm_range import min_satisfying, parse_range, satisfies
 from kospex.prerelease import is_prerelease
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
@@ -335,13 +338,33 @@ class KospexDependencies:
         allowed = list(spec.filter(spelling))
         return (spelling[min(allowed)], True) if allowed else (cleaned, False)
 
+    _INTERVAL_ECOSYSTEMS = ("maven", "nuget")
+
+    def _interval(self, package_type, declared_version):
+        """interval_lookup_version() for Maven/NuGet; (None, None) elsewhere.
+
+        Gated on ecosystem: PEP 508 permits `(>=2.0)` in pypi."""
+        if (package_type or "").lower() not in self._INTERVAL_ECOSYSTEMS:
+            return None, None
+        return interval_lookup_version(declared_version)
+
     def _range_floor(self, package_type, package_name, declared_version):
         """(version to look up, whether any published version satisfies).
 
         The second value is None when nothing was evaluated -- not a range, an
         ecosystem kospex doesn't evaluate, an unreadable range, or no version
         list -- and the version is then clean_version_spec()'s floor, as before.
+
+        Maven/NuGet interval notation is read off the text: `[1.5]` is 1.5 and
+        `[1.0,2.0)` is its inclusive floor 1.0. The version is None for an
+        interval kospex cannot evaluate -- no inclusive floor, or a union --
+        which lookup_dependency() records as `range_not_evaluated` (#414).
         """
+        interval_kind, interval_version = self._interval(package_type, declared_version)
+        if interval_kind == INTERVAL_NOT_EVALUATED:
+            return None, None
+        if interval_kind:
+            return interval_version, None
         cleaned = self.clean_version_spec(declared_version or "", package_type)
         if not self._is_range(package_type, declared_version) or not self.kospex_query:
             return cleaned, None
@@ -354,9 +377,14 @@ class KospexDependencies:
             return cleaned, None
         if package_type.lower() == "pypi":
             return self._pypi_range_floor(cleaned, versions, declared_version)
-        if cleaned in versions:
+        parsed = parse_range(declared_version)
+        # The written floor is kept only if the range allows it: `<4.0.0`'s
+        # only number is its ceiling (#414). A pre-release floor never
+        # `satisfies`, so it is kept as written, as before.
+        if cleaned in versions and (parsed is None or is_prerelease("npm", cleaned)
+                                    or satisfies(cleaned, parsed)):
             return cleaned, True
-        if parse_range(declared_version) is None:
+        if parsed is None:
             return cleaned, None
         chosen = min_satisfying(versions, declared_version)
         return (chosen, True) if chosen else (cleaned, False)
@@ -418,6 +446,15 @@ class KospexDependencies:
                 lookup_name, declared_version = target
             lookup_version, satisfiable = self._range_floor(
                 package_type, lookup_name, declared_version)
+        if lookup_version is None:
+            # Maven/NuGet interval with no inclusive floor (#414). Its lowest
+            # allowed version needs Maven's version ordering; sending the text
+            # to deps.dev would only 404 and read as yanked.
+            log.info(f"deps.dev unresolved [range_not_evaluated] {package_type} "
+                     f"{package_name} {declared_version!r}")
+            return {"package_name": package_name, "package_version": declared_version,
+                    "package_type": package_type, "versions_behind": None,
+                    "resolution": "range_not_evaluated"}, ""
         if satisfiable is False:
             # No published version is in the range. Looking up the written
             # floor anyway could resolve a version the range excludes --
@@ -436,6 +473,11 @@ class KospexDependencies:
             # 2**53, a peer-dependency sentinel, as no range at all) and
             # deps.dev 404'd its floor. A range cannot be yanked.
             record["resolution"] = "no_satisfying_version"
+        if (record.get("resolution") == "version_yanked" and not bom_version
+                and self._interval(package_type, declared_version)[0] == INTERVAL_FLOOR):
+            # `[1.0,2.0)` where 1.0 was never published: the range may still
+            # allow later versions, which kospex cannot order (#414).
+            record["resolution"] = "range_not_evaluated"
         if record.get("resolution") == "resolved" and depsdev_version:
             return record, depsdev_version
         return record, lookup_version
@@ -2089,6 +2131,13 @@ class KospexDependencies:
             "^1.2.3 || ^2.0.0" -> "1.2.3"
             ">=1.2.3 <=2.0.0" -> "1.2.3"
         """
+        # Maven/NuGet interval notation (#414): `[1.5]` -> 1.5, `[1.0,2.0)` ->
+        # 1.0. One with no inclusive floor is returned unchanged, never a
+        # fragment such as `2.0)`.
+        interval_kind, interval_version = self._interval(package_type, version)
+        if interval_kind:
+            return interval_version or version
+
         # Handle special references (git, file, etc.)
         if version.startswith(
             ("git+", "github:", "http:", "https:", "file:", "link:", "workspace:")

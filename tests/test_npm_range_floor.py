@@ -30,7 +30,10 @@ BASE = "https://api.deps.dev/v3alpha/systems"
 
 
 def _fixture(system, name):
-    return (DATA / (f"{system}__{name}".replace("@", "_").replace("/", "_") + ".json")).read_text()
+    stem = f"{system}__{name}"
+    for char in "@/:":
+        stem = stem.replace(char, "_")
+    return (DATA / (stem + ".json")).read_text()
 
 
 class _Query:

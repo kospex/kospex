@@ -74,7 +74,23 @@ _HYPHEN_RANGE = re.compile(r"^\S+\s+-\s+\S+$")
 
 # NuGet interval notation. Each end is independent: `[`/`]` inclusive,
 # `(`/`)` exclusive, so `[1.0,2.0)` is `>=1.0 <2.0` — the idiomatic "any 1.x".
-_NUGET_INTERVAL = re.compile(r"^([\[(])\s*([^,\]\)]*)\s*(?:,\s*([^,\]\)]*)\s*)?([\])])$")
+def _match_interval(text):
+    """(open, low, high, close) for interval text, else None.
+
+    `[`/`(`, at most one comma, no `]`/`)` inside, then `]`/`)`. `high` is
+    None when there is no comma. A linear scan: the regex this replaced,
+    `\\s*([^,\\]\\)]*)\\s*` on each side of the comma, could split a run of
+    spaces many ways, so a failed match backtracked polynomially -- a
+    163-character version took 5 s, and versions come from untrusted
+    manifests (CWE-1333).
+    """
+    if len(text) < 2 or text[0] not in "[(" or text[-1] not in "])":
+        return None
+    inner = text[1:-1]
+    if "]" in inner or ")" in inner or inner.count(",") > 1:
+        return None
+    low, comma, high = inner.partition(",")
+    return text[0], low.strip(), (high.strip() if comma else None), text[-1]
 
 # Resolution mechanisms, not version constraints. Prefix -> kind.
 _MECHANISM_PREFIXES = (
@@ -181,7 +197,7 @@ def classify_constraint(declared_version, package_type=None):
     # replaceable by dependency mediation, which is neither a floor nor quite
     # an equality, and the declaration itself names one version.
     if ecosystem in ("nuget", "maven", "gradle"):
-        interval = _NUGET_INTERVAL.match(text)
+        interval = _match_interval(text)
         if interval:
             return _classify_interval(interval, text)
 
@@ -255,6 +271,41 @@ def classify_constraint(declared_version, package_type=None):
     return ("none", "")
 
 
+# Interval notation's lookup version, for interval_lookup_version().
+INTERVAL_PIN, INTERVAL_FLOOR, INTERVAL_NOT_EVALUATED = "pin", "floor", "not_evaluated"
+
+
+def interval_lookup_version(declared_version):
+    """(kind, version) for Maven/NuGet interval notation, or (None, None).
+
+    * `[1.5]` -> (INTERVAL_PIN, "1.5"): an exact pin.
+    * `[1.0,2.0)`, `[1.0,)` -> (INTERVAL_FLOOR, "1.0"): an inclusive lower
+      bound, the lowest version the range can allow.
+    * Anything else in brackets -- an exclusive lower bound `(1.0,2.0)`, no
+      lower bound `(,2.0]`, a union `[1.0,2.0),[3.0,)`, malformed input ->
+      (INTERVAL_NOT_EVALUATED, None). Finding the lowest version those allow
+      needs Maven's version ordering, which kospex does not implement (#414).
+    * Text not in brackets -> (None, None).
+
+    Callers gate on ecosystem: PEP 508 allows `(>=2.0)` in pypi.
+    """
+    text = str(declared_version or "").strip()
+    if not text or text[0] not in "[(" or text[-1] not in "])":
+        return None, None
+    match = _match_interval(text)
+    if not match:
+        return INTERVAL_NOT_EVALUATED, None
+    open_br, low, _high, close_br = match
+    low = (low or "").strip()
+    if "," not in text:
+        if low and open_br == "[" and close_br == "]":
+            return INTERVAL_PIN, low
+        return INTERVAL_NOT_EVALUATED, None
+    if low and open_br == "[":
+        return INTERVAL_FLOOR, low
+    return INTERVAL_NOT_EVALUATED, None
+
+
 def _classify_interval(match, text):
     """Classify a NuGet interval like `[1.0]`, `[1.0,)` or `[1.0,2.0)`.
 
@@ -262,7 +313,7 @@ def _classify_interval(match, text):
     independent — so the bracket characters alone do not decide the kind.
     What matters is which bounds are actually present.
     """
-    open_br, low, high, close_br = match.groups()
+    open_br, low, high, close_br = match
     low = (low or "").strip()
     high = (high or "").strip()
 

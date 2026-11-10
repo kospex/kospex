@@ -373,3 +373,50 @@ class TestGradle:
         for declared in ("", None, "+", "!!", "latest.", ".+", "[", "1.2.3!!!!"):
             kind, operator = classify_constraint(declared, "gradle")
             assert isinstance(kind, str) and isinstance(operator, str)
+
+
+class TestIntervalParsingIsLinear:
+    """Interval text comes from untrusted manifests (CWE-1333).
+
+    The pattern that used to read intervals allowed optional whitespace on
+    both sides of a part that could itself contain whitespace, so a failed
+    match tried every way of splitting a run of spaces: 163 characters took
+    5 s, and each doubling about 27 times longer."""
+
+    HOSTILE = [
+        "[" + " " * 5000 + "," + " " * 5000 + "x",
+        "[" + " " * 5000 + "," + " " * 5000 + ")x",
+        "(" + "\t" * 5000 + "," + "\n" * 5000 + "]",
+    ]
+
+    @pytest.mark.parametrize("ecosystem", ["maven", "nuget", "gradle"])
+    def test_hostile_whitespace_is_fast(self, ecosystem):
+        import time
+        start = time.perf_counter()
+        for text in self.HOSTILE:
+            classify_constraint(text, ecosystem)
+        assert time.perf_counter() - start < 1.0
+
+    def test_same_result_as_the_pattern_it_replaced(self):
+        """Exhaustive over short strings of the characters that matter, using
+        the old pattern as the oracle (safe at this length)."""
+        import itertools
+        import re
+        from kospex.extractors.constraints import _match_interval
+
+        old = re.compile(r"^([\[(])\s*([^,\]\)]*)\s*(?:,\s*([^,\]\)]*)\s*)?([\])])$")
+
+        def by_pattern(text):
+            m = old.match(text)
+            if not m:
+                return None
+            o, low, high, c = m.groups()
+            return o, low.strip(), None if high is None else high.strip(), c
+
+        checked = 0
+        for length in range(7):
+            for chars in itertools.product("[]() ,1", repeat=length):
+                text = "".join(chars).strip()
+                assert _match_interval(text) == by_pattern(text), repr(text)
+                checked += 1
+        assert checked > 100_000

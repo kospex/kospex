@@ -1928,6 +1928,7 @@ UNRESOLVED_STATUS_LABELS = {
     "unresolved_spec": "Unresolved spec",
     "version_yanked": "Yanked",
     "no_satisfying_version": "No matching version",
+    "range_not_evaluated": "Range not evaluated",
     "package_not_found": "Not found",
     "no_version": "No version",
     "lookup_error": "Lookup error",
