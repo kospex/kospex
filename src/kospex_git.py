@@ -479,9 +479,9 @@ class KospexGit:
 
         Returns:
             dict: Dictionary containing:
-                - total: Total disk usage of directory in bytes
-                - git: Disk usage of .git directory in bytes
-                - workspace: Workspace disk usage (total - git) in bytes
+                - total: Total disk usage of directory in kilobytes (du -sk, 1024-byte units)
+                - git: Disk usage of .git directory in kilobytes (du -sk, 1024-byte units)
+                - workspace: Workspace disk usage (total - git) in kilobytes (du -sk, 1024-byte units)
 
         Raises:
             ValueError: If directory is not a git repository

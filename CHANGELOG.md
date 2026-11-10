@@ -4,6 +4,11 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+### Changed
+
+- **`krunner repo-size` prints a summary after the table** (#420): the number
+  of repos, the total size in GB and MB, and the median repo size in MB.
+
 ### Fixed
 
 - **Maven and NuGet version ranges are looked up at a version** (#414).

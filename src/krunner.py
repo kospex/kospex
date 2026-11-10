@@ -8,6 +8,7 @@ import os
 import os.path
 import shlex
 import shutil
+import statistics
 import subprocess
 import sys
 from itertools import count
@@ -361,6 +362,22 @@ def branches(save, csv, verbose, strict, request_id):
         sys.exit(1)
 
 
+def repo_size_summary(results):
+    """
+    Summarise repo-size results. Sizes come from `du -sk`, so are in kilobytes.
+
+    Returns a dict with repo count, total size in MB and GB, and median size in MB.
+    """
+    sizes_kb = [r["total_size"] for r in results]
+    total_kb = sum(sizes_kb)
+    return {
+        "repos": len(sizes_kb),
+        "total_mb": total_kb / 1024,
+        "total_gb": total_kb / 1024**2,
+        "median_mb": statistics.median(sizes_kb) / 1024 if sizes_kb else 0,
+    }
+
+
 @cli.command("repo-size")
 @click.option("-save", is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
 @click.option("-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)")
@@ -429,6 +446,14 @@ def repo_size(save, csv, request_id, verbose):
         )
 
     console.print(table)
+
+    summary = repo_size_summary(results)
+    console.print(f"# Repos: {summary['repos']}", markup=False)
+    console.print(
+        f"Total repo size: {summary['total_gb']:,.2f} GB ({summary['total_mb']:,.1f} MB)",
+        markup=False,
+    )
+    console.print(f"Median repo size: {summary['median_mb']:,.1f} MB", markup=False)
 
     if csv:
         filename = "repo-sizes.csv"
