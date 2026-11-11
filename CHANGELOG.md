@@ -11,6 +11,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Fixed
 
+- **`versions_behind` no longer counts Guava twice** (#415). Guava publishes
+  every release in two flavours, `33.8.0-jre` and `33.8.0-android`, and both
+  were counted, so a project read about twice as far behind as it is
+  (`32.1.3-jre`: 42, now 21). A Maven version ending in `-jre` or `-android`
+  now counts only releases of the same flavour, and the default's own twin is
+  never counted as behind. Versions without a flavour, such as `22.0` from
+  before the split, are unchanged.
 - **Maven and NuGet version ranges are looked up at a version** (#414).
   `clean_version_spec` read interval notation as if it were npm, so
   `[1.0,2.0)` was sent to deps.dev as `2.0)`, `(,2.0]` as `2.0]`, and `[1.0,)`
