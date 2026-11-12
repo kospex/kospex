@@ -166,7 +166,7 @@ def test_printed_summary_lines(printed):
     assert "P25 / Median / P75:" in text
     assert "P90:" in text
     assert "Max: 1,100.0 MB (github.com~acme~huge)" in text
-    assert "Top-7 share: 100.0% of total" in text
+    assert "Top-7 by size share: 100.0% of total" in text
     assert ".git share:" in text
     assert "Top 7 largest repos:" in text
     assert "History-heavy repos (above P75 and .git >= 10x checkout): 1" in text
