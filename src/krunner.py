@@ -8,6 +8,7 @@ import os
 import os.path
 import shlex
 import shutil
+import sqlite3
 import statistics
 import subprocess
 import sys
@@ -126,7 +127,7 @@ _REQ_TO_USE = KospexSchema.REQ_TO_PACKAGE_USE
 ENRICH_PROGRESS_EVERY = 50
 
 
-def enrich_dependency_records(results, kdeps, echo=None, progress=None):
+def enrich_dependency_records(results, kdeps, echo=None, progress=None, enrich=True):
     """Add deps.dev data and canonical DB values to pooled osi records.
 
     Extracted from `osi` so it is reachable without a synced database — the
@@ -147,7 +148,17 @@ def enrich_dependency_records(results, kdeps, echo=None, progress=None):
     The size of the work is reported BEFORE the first lookup, because that single
     line is what makes the duration explicable. Progress then comes every
     ENRICH_PROGRESS_EVERY packages rather than per package.
+
+    enrich=False contacts nothing -- no deps.dev lookup, no Maven BOM fetch --
+    and records each row as parsed but not checked (not_checked_fields()).
     """
+    if not enrich:
+        for d in results:
+            d.update(KospexDependencies.not_checked_fields())
+            d["package_use"] = _REQ_TO_USE.get(
+                d.get("requirements_type", ""), KospexSchema.PACKAGE_USE_UNKNOWN)
+        return results
+
     def _say(message):
         if not progress:
             return
@@ -846,7 +857,7 @@ def _record_osi_outcomes(outcomes_by_repo):
             log.warning("could not record the osi outcome for %s: %s", repo_id, e)
 
 
-def _run_osi_next(limit, request_id, write_csv, max_seconds=None):
+def _run_osi_next(limit, request_id, write_csv, max_seconds=None, enrich=True):
     """Run one batched osi pass. Always exits 0 unless something is genuinely wrong.
 
     Separate from osi() because the exit contract differs. `osi -all` exits 1 on
@@ -870,7 +881,7 @@ def _run_osi_next(limit, request_id, write_csv, max_seconds=None):
         result = run_next_batch(
             kospex.kospex_db, limit, request_id=params,
             write_csv=write_csv, max_seconds=max_seconds,
-            kospex_query=kospex.kospex_query, echo=console.print,
+            kospex_query=kospex.kospex_query, echo=console.print, enrich=enrich,
         )
     except ValueError as e:
         # An unhonourable scope, e.g. an author email. Refused rather than
@@ -937,10 +948,13 @@ def _echo_staleness_bound(batch_size, request_id):
                    "a tick can overshoot by the cost of one repo -- sometimes a "
                    "lot (a 10s budget gave a 109s tick on a 1101-package "
                    "monorepo). The run says so when that happens.")
+@click.option("-enrich/-no-enrich", "enrich", default=None,
+              help="Look packages up on deps.dev, or only parse and save them. "
+                   "Overrides KOSPEX_DEPS_ENRICH (default: enrich).")
 # @click.option('-save', is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
 # @click.option('-verbose', is_flag=True, default=False, help="Verbose output. (Default: False)")
 @click.argument("request_id", required=False, type=click.STRING)
-def osi(all, next_, write_csv, max_seconds, request_id):
+def osi(all, next_, write_csv, max_seconds, enrich, request_id):
     """
     Run an opensource inventory process.
     Find all dependency files, extract their names and versions,
@@ -948,7 +962,21 @@ def osi(all, next_, write_csv, max_seconds, request_id):
 
     A request_id can be GIT_SERVER, GIT_SERVER~ORG, GIT_SERVER~ORG~REPO
 
+    With -no-enrich, or KOSPEX_DEPS_ENRICH=false, nothing is looked up: rows
+    are saved as not checked, except that rows already looked up at the same
+    commit keep that lookup. The run first reports how many current rows in
+    its scope were looked up before. -enrich overrides the setting.
+
     """
+
+    try:
+        enrich, why_not = KospexDependencies.enrich_decision(enrich)
+    except ValueError as e:
+        console.log(f"Error: {e}")
+        sys.exit(1)
+    if not enrich:
+        console.log(f"Not looking packages up ({why_not}): parsing and saving only, "
+                    "rows are marked not checked. Use -enrich to look them up.")
 
     if next_ is not None and all:
         console.log("Error: -next and -all are mutually exclusive")
@@ -956,9 +984,11 @@ def osi(all, next_, write_csv, max_seconds, request_id):
         sys.exit(1)
 
     if next_ is not None:
+        if not enrich:
+            _report_earlier_lookups(kospex.kospex_query, request_id)
         # Batched path: its own exit contract. Nothing due and a busy lock are
         # both success, because a scheduler must not see a failure for either.
-        _run_osi_next(next_, request_id, write_csv, max_seconds)
+        _run_osi_next(next_, request_id, write_csv, max_seconds, enrich=enrich)
         return
 
     if write_csv:
@@ -1006,6 +1036,9 @@ def osi(all, next_, write_csv, max_seconds, request_id):
     repos = kospex.kospex_query.get_repos(**params)
     results = []
 
+    if not enrich:
+        _report_earlier_lookups(kospex.kospex_query, request_id)
+
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kospex.kospex_query)
 
     # One extraction loop, shared with `-next`. This used to be an inline copy
@@ -1028,7 +1061,7 @@ def osi(all, next_, write_csv, max_seconds, request_id):
 
     enrich_dependency_records(
         results, kdeps, echo=console.print,
-        progress=lambda m: log.info("osi: %s", m))
+        progress=lambda m: log.info("osi: %s", m), enrich=enrich)
 
     # Recorded before the no-results exit below, because "examined and found
     # nothing" is exactly the fact worth keeping -- an estate with no parseable
@@ -1063,6 +1096,30 @@ def osi(all, next_, write_csv, max_seconds, request_id):
     assessments_path = AssessmentTypes.get_assessments_path(AssessmentTypes.OSI, scope)
     console.log(f"Writing dependencies to {assessments_path}")
     KrunnerUtils.write_dict_to_csv(str(assessments_path), results)
+
+
+def _report_earlier_lookups(kospex_query, request_id):
+    """Before a run with lookups off, say whether the scope already holds
+    looked-up rows. On a machine set up with lookups off from the start this
+    should always be none; anything else means lookups ran here at some point.
+    Those rows keep their data while their commit is unchanged."""
+    try:
+        params = KospexWeb.get_id_params(request_id) if request_id else None
+        summary = kospex_query.looked_up_dependencies(params)
+    except ValueError:
+        return  # An unusable scope; the run itself reports it.
+    except sqlite3.Error as e:
+        # e.g. a DB behind the migration that added last_checked. The report
+        # is advice; it must not stop the run.
+        console.log(f"Could not check for earlier lookups: {e}")
+        return
+    if not summary["rows"]:
+        console.log("No current dependency rows in this scope have been looked up.")
+        return
+    console.log(f"Warning: {summary['rows']} current dependency rows in this scope "
+                f"were looked up before (most recently {summary['last_checked']} UTC). "
+                "Rows for an unchanged commit keep that lookup; rows for new commits "
+                "are saved not checked.", style="yellow")
 
 
 @cli.command("devs-by-tag")

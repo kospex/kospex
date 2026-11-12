@@ -56,7 +56,14 @@ class HabitatConfig:
         'KOSPEX_KRUNNER_DIRNAME': 'krunner',
         'KOSPEX_STAGING_DIRNAME': '_sync-staging',
         'KOSPEX_ASSESSMENTS_DIRNAME': 'assessments',
+        'KOSPEX_DEPS_ENRICH': 'true',
     }
+
+    # Accepted spellings for an on/off setting. Anything else is refused rather
+    # than guessed: for KOSPEX_DEPS_ENRICH one wrong guess sends package names to
+    # third parties and the other silently drops the advisory data.
+    _TRUE_VALUES = frozenset({'true', '1', 'yes', 'on'})
+    _FALSE_VALUES = frozenset({'false', '0', 'no', 'off'})
 
     def __init__(self) -> None:
         """Initialize HabitatConfig.
@@ -363,6 +370,30 @@ class HabitatConfig:
 
         return self.home / self._get_value('KOSPEX_ASSESSMENTS_DIRNAME')
 
+    @property
+    def deps_enrich(self) -> bool:
+        """Whether dependency scans look packages up (deps.dev, PyPI).
+
+        False means `kospex sca` and `krunner osi` parse dependency files and
+        save the rows without contacting anything; the rows are recorded as not
+        checked. A command's -enrich / -no-enrich flag overrides this.
+
+        Default: true
+        Override: KOSPEX_DEPS_ENRICH in the environment or kospex.env.
+
+        Raises:
+            ValueError: the value is not a recognised true/false spelling.
+        """
+        raw = self._get_value('KOSPEX_DEPS_ENRICH')
+        value = str(raw).strip().lower()
+        if value in self._TRUE_VALUES:
+            return True
+        if value in self._FALSE_VALUES:
+            return False
+        raise ValueError(
+            f"KOSPEX_DEPS_ENRICH={raw!r} is not a recognised value; "
+            "use true or false")
+
     # =========================================================================
     # Validation and Directory Management
     # =========================================================================
@@ -528,6 +559,10 @@ class HabitatConfig:
 
 # KOSPEX_CODE=~/code
 # KOSPEX_HOME=~/kospex
+
+# Look dependencies up on deps.dev and PyPI during kospex sca / krunner osi.
+# false = parse and save only, nothing is sent (override with -enrich).
+# KOSPEX_DEPS_ENRICH=true
 """
                 self.config_file.write_text(default_config)
                 result['created'].append(str(self.config_file))

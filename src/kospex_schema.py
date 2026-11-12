@@ -57,6 +57,12 @@ PACKAGE_USE_VALUES = frozenset({
 # directly, and "" is indistinguishable from a parser that produced no value.
 PACKAGE_USE_UNKNOWN = None
 
+# dependency_data.resolution for a row saved with enrichment off
+# (KOSPEX_DEPS_ENRICH=false or -no-enrich): parsed from the file, never looked
+# up. Distinct from every lookup outcome, so a package nobody checked can't
+# read as "up to date".
+RESOLUTION_NOT_CHECKED = "not_checked"
+
 # requirements_type, as the parsers report it -> the package_use value stored.
 #
 # ONE table, imported by both scan paths (`KospexDependencies`, for `sca`, and

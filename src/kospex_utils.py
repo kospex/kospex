@@ -33,6 +33,10 @@ KOSPEX_DB_FILENAME="kospex.db"
 
 KOSPEX_DEFAULT_ENV = """
 #KOSPEX_CODE=ENTER_YOUR_CODE_DIRECTORY
+
+# Look dependencies up on deps.dev and PyPI during kospex sca / krunner osi.
+# false = parse and save only, nothing is sent (override with -enrich).
+#KOSPEX_DEPS_ENRICH=true
 """
 
 KOSPEX_CONFIG_ITEMS = [

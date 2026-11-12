@@ -834,8 +834,11 @@ def _sca_package(package_spec, file_path, save, out, as_json):
 @click.option("-package", "package_spec", metavar="TYPE:NAME",
               help="Look up one package instead of a file, e.g. pypi:requests or "
               "maven:io.netty:netty-handler. Shows its first release.")
+@click.option("-enrich/-no-enrich", "enrich", default=None,
+              help="Look packages up on deps.dev, or only parse the file. "
+                   "Overrides KOSPEX_DEPS_ENRICH (default: enrich).")
 @click.argument("file_path", required=False, type=click.Path(exists=True))
-def sca(repo, scope, save, malware, as_json, out, package_spec, file_path):
+def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_path):
     """
     Run a lightweight software composition analysis (SCA) of a dependency file
     (e.g. requirements.txt, package.json), using deps.dev.
@@ -849,10 +852,25 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, file_path):
     stable release (alphas, betas, release candidates and other pre-releases
     excluded) and the first version of any kind. Versions deps.dev lists
     without a publish date are counted, since any of them may be older.
+
+    With -no-enrich, or KOSPEX_DEPS_ENRICH=false, nothing is looked up: the
+    file is parsed and its packages listed (and saved with -save) as not
+    checked. -enrich overrides the setting.
     """
     err = Console(stderr=True, soft_wrap=True)
 
+    try:
+        enrich, why_not = KospexDependencies.enrich_decision(enrich)
+    except ValueError as e:
+        err.print(f"Error: {e}", style="red", markup=False)
+        exit(1)
+
     if package_spec:
+        if not enrich:
+            # -package is nothing but a lookup, so there is no parse-only form.
+            err.print(f"-package looks a package up on deps.dev, and lookups are off "
+                      f"({why_not}). Add -enrich to look it up anyway.", markup=False)
+            exit(1)
         _sca_package(package_spec, file_path=file_path, save=save, out=out,
                      as_json=as_json)
         return
@@ -888,7 +906,13 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, file_path):
                 err.print(f"  - {problem}", markup=False)
             exit(1)
 
-    results = kdeps.assess(file_path, save=save, source="kospex sca", quiet=True)
+    if not enrich:
+        err.print(f"Not looking packages up ({why_not}): the file is parsed only, "
+                  "and lookup columns are empty. Use -enrich to look them up.",
+                  markup=False)
+
+    results = kdeps.assess(file_path, save=save, source="kospex sca", quiet=True,
+                           enrich=enrich)
 
     if results is None:
         err.print(f"\n{file_path} is not a supported package manager\n", style="red")
