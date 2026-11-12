@@ -115,6 +115,11 @@ Kospex is a CLI tool for analyzing git repositories and code to understand devel
 - `kospex summary` - Overview of all synced repositories
 - `kospex stats REPO_ID` - Show developer stats for a repo (key person analysis, Rich table)
 - `kospex sca -package TYPE:NAME` - Look up one package on deps.dev instead of a file; shows its first stable release and first version of any kind (TYPE from `registry.package_types()`)
+- `krunner key-person REPO_ID|-all|-org ORG_KEY|-server SERVER [-top N|-all-authors] [-days 90]` - Key people per repo across a scope. Shows the top N all time plus the top N active, so up to 2N people per repo.
+- `krunner bus-factor SCOPE [-threshold 50[,80[,90]]] [-days 90]` - Fewest authors reaching each threshold % of commits, for all time and the active window. Merges are excluded. The table shows the bots-excluded figure; the CSV has both.
+  - **Output:** both commands show a table by default. `-out FILE [-overwrite]` also writes the CSV, and `-stdout` writes only the CSV.
+  - **Spreadsheet-safe CSV:** values are escaped by default (CWE-1236, `krunner_utils.spreadsheet_safe`). `-raw` writes them as stored.
+  - **Code:** the logic is pure functions in `src/kospex/authorship.py` over `KospexQuery.author_commit_aggregates()`.
 
 ### Logging Control (Global Options)
 - `kospex --debug COMMAND` - Enable debug-level logging for detailed troubleshooting
