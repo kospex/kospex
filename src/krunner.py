@@ -453,7 +453,7 @@ def print_repo_size_summary(summary):
     out(f"P90: {summary['p90_mb']:,.1f} MB")
     out(f"Max: {summary['max_mb']:,.1f} MB ({summary['max_repo']})")
     top_n = len(summary["top"])
-    out(f"Top-{top_n} share: {summary['top_share']:.1%} of total")
+    out(f"Top-{top_n} by size share: {summary['top_share']:.1%} of total")
     out(f".git share: {summary['git_share']:.1%} of total ({summary['git_gb']:,.2f} GB)")
 
     def repo_line(r):
