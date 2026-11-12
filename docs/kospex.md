@@ -208,7 +208,22 @@ kospex sca -save requirements.txt
 - `-json` — print the results as JSON on stdout
 - `-out` — write the table to a CSV file
 - `-save` — save the results to the kospex database
+- `-no-enrich` — parse the file without looking anything up (see below)
+- `-enrich` — look packages up even when `KOSPEX_DEPS_ENRICH=false`
 - `-malware` — deprecated and ignored
+
+**Parsing without lookups.** With `-no-enrich`, or `KOSPEX_DEPS_ENRICH=false`
+in the environment or `~/kospex/kospex.env`, sca lists the file's packages
+and contacts nothing: no deps.dev, no PyPI. The lookup columns are empty and
+the resolution is `not_checked`; with `-save` the rows are stored that way,
+except that a row already looked up at the repo's current commit keeps that
+lookup.
+`-package` is a lookup and nothing else, so it refuses unless you add
+`-enrich`.
+
+```bash
+kospex sca -no-enrich package-lock.json
+```
 
 ## orphans
 

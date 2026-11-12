@@ -825,7 +825,45 @@ class KospexDependencies:
     # KospexSchema.REQ_TO_PACKAGE_USE for why it is not defined here.
     _REQ_TO_USE = KospexSchema.REQ_TO_PACKAGE_USE
 
-    def _enrich_dependency_records(self, records, extractor):
+    # The lookup results a row carries, and what they hold when nothing was
+    # looked up. save_dependencies() writes every one of them explicitly for an
+    # unchecked row: the upsert keeps any column a record doesn't carry, so a
+    # re-save over a previously enriched row would otherwise keep its old
+    # `resolved` answer next to empty counts.
+    _NOT_CHECKED_FIELDS = {
+        "resolution": KospexSchema.RESOLUTION_NOT_CHECKED,
+        "advisories": None,
+        "versions_behind": None,
+        "resolved_version": "",
+        "published_at": "",
+        "source_repo": "",
+        "default": None,
+        "last_checked": None,
+    }
+
+    @classmethod
+    def not_checked_fields(cls):
+        """The lookup columns of a row that was parsed but not looked up."""
+        return dict(cls._NOT_CHECKED_FIELDS)
+
+    @staticmethod
+    def enrich_decision(flag):
+        """(enrich, reason) for a scan, from its -enrich/-no-enrich flag.
+
+        `flag` is True, False, or None when neither was given, in which case
+        KOSPEX_DEPS_ENRICH decides (environment, then kospex.env, default true).
+        `reason` says where an off came from, for the line a command prints.
+
+        Raises ValueError for an unrecognised KOSPEX_DEPS_ENRICH value.
+        """
+        if flag is not None:
+            return bool(flag), "" if flag else "-no-enrich"
+        from kospex.habitat_config import HabitatConfig
+        if HabitatConfig.get_instance().deps_enrich:
+            return True, ""
+        return False, "KOSPEX_DEPS_ENRICH=false"
+
+    def _enrich_dependency_records(self, records, extractor, enrich=True):
         """Add deps.dev data and canonical DB fields to parsed records.
 
         One enrichment path for every ecosystem. Previously each *_assess()
@@ -839,12 +877,17 @@ class KospexDependencies:
         re-sync instead of updating — the same rule
         parse_pypi_package_declaration() follows for names and multi-specifier
         versions.
+
+        enrich=False records what the file says and contacts nothing: no
+        deps.dev lookup, no Maven BOM fetch, no PyPI source repo. The lookup
+        columns are set to not_checked_fields().
         """
         package_type = extractor.package_type
         enriched = []
         # Versions an imported Maven BOM supplies to blank-version rows (tier 3).
+        # The BOM is itself fetched from deps.dev, so not when enrichment is off.
         bom_versions = self.maven_bom_versions(
-            [{**rec, "package_type": package_type} for rec in records])
+            [{**rec, "package_type": package_type} for rec in records]) if enrich else {}
 
         for index, rec in enumerate(records):
             out = dict(rec)
@@ -871,10 +914,14 @@ class KospexDependencies:
             # looking: depsdev_record already short-circuits a version it cannot
             # resolve, so a `workspace:*` entry still costs no round trip, and
             # making the lookups themselves faster is #226.
-            record, lookup_version = self.lookup_dependency(
-                package_type, out.get("package_name"), declared_version or "",
-                bom_version=bom_versions.get(index))
-            out.update(record)
+            if enrich:
+                record, lookup_version = self.lookup_dependency(
+                    package_type, out.get("package_name"), declared_version or "",
+                    bom_version=bom_versions.get(index))
+                out.update(record)
+            else:
+                out.update(self.not_checked_fields())
+                lookup_version = ""
             # depsdev_record echoes back the version it was given; restore
             # the declared text so the primary key matches the manifest.
             out["package_version"] = declared_version
@@ -901,14 +948,15 @@ class KospexDependencies:
 
             # Written on every save. NOT a column default: created_at is
             # DEFAULT CURRENT_TIMESTAMP and so never updates on an upsert.
-            out["last_checked"] = self._utc_now_iso()
+            # Left empty when nothing was checked.
+            out["last_checked"] = self._utc_now_iso() if enrich else None
 
             if package_type == "npm":
                 # The ~ / ^ prefix is recorded separately; npm consumers use it
                 # to show how far an upgrade may drift.
                 out["semantic"] = self._semantic_prefix(declared_version)
 
-            if package_type == "pypi" and not out.get("source_repo"):
+            if enrich and package_type == "pypi" and not out.get("source_repo"):
                 # deps.dev frequently has no source repo for pypi packages.
                 out["source_repo"] = self.get_pypi_source_repo(out.get("package_name"))
 
@@ -952,8 +1000,11 @@ class KospexDependencies:
         quiet : informational lines are suppressed and errors go to stderr, so
             a caller can own stdout (`kospex sca -json`)
         source : the [source] stamp for saved rows
+        enrich : False parses and saves without any lookup (see
+            _enrich_dependency_records). Default True.
         """
         print_table = kwargs.get("print_table", False)
+        enrich = kwargs.get("enrich", True)
         dev_deps = kwargs.get("dev_deps", False)
         save = kwargs.get("save", False)
         quiet = kwargs.get("quiet", False)
@@ -1024,7 +1075,7 @@ class KospexDependencies:
             error(f"Error: could not parse {basefile}: {e}")
             return None
 
-        results = self._enrich_dependency_records(parsed, extractor)
+        results = self._enrich_dependency_records(parsed, extractor, enrich=enrich)
 
         # dev_deps controls DISPLAY only. Extraction is always complete: a
         # partial result is what made `sca -dev` inert (#181), made the two scan
@@ -1168,6 +1219,33 @@ class KospexDependencies:
 
         return problems
 
+    _ROW_KEY = ("_repo_id", "hash", "file_path", "package_type", "package_name",
+                "package_version")
+
+    @classmethod
+    def _row_key(cls, rec):
+        return tuple(rec.get(column) for column in cls._ROW_KEY)
+
+    def _earlier_lookups(self, records):
+        """{row key: lookup columns} for rows already saved, and looked up,
+        under the key of an incoming not_checked record. "Looked up" means a
+        last_checked date: a legacy row without one carries no proof of a
+        lookup, and a not_checked row never has one."""
+        table = KospexSchema.TBL_DEPENDENCY_DATA
+        files = {(r.get("_repo_id"), r.get("hash"), r.get("file_path")) for r in records
+                 if r.get("resolution") == KospexSchema.RESOLUTION_NOT_CHECKED}
+        if not files or table not in self.kospex_db.table_names():
+            return {}
+        columns = ", ".join(f"[{c}]" for c in self._ROW_KEY + tuple(self._NOT_CHECKED_FIELDS))
+        earlier = {}
+        for repo_id, commit, file_path in files:
+            for row in self.kospex_db.query(
+                    f"SELECT {columns} FROM {table} WHERE _repo_id = ? AND hash = ? "
+                    "AND file_path = ? AND last_checked IS NOT NULL",
+                    [repo_id, commit, file_path]):
+                earlier[self._row_key(row)] = {c: row[c] for c in self._NOT_CHECKED_FIELDS}
+        return earlier
+
     def save_dependencies(self, records, source=None):
         """
         Save pre-parsed dependency records to TBL_DEPENDENCY_DATA.
@@ -1224,6 +1302,8 @@ class KospexDependencies:
             for r in records
         }
 
+        earlier = self._earlier_lookups(records)
+
         cleaned = []
         for r in records:
             rec = dict(r)
@@ -1265,7 +1345,17 @@ class KospexDependencies:
             for column in ("advisories", "versions_behind"):
                 if rec.get(column, "") == "":
                     rec[column] = None
-            rec["last_checked"] = self._utc_now_iso()
+            if rec.get("resolution") == KospexSchema.RESOLUTION_NOT_CHECKED:
+                # Parsed, never looked up. A row already saved under the same
+                # key (same commit, so the same content) keeps its earlier
+                # lookup whole, old last_checked included, so it ages into the
+                # staleness warning instead of losing data a lookup paid for.
+                # Otherwise every lookup column is written empty, and
+                # last_checked stays NULL rather than attesting a check that
+                # did not happen. Never a mix of the two.
+                rec.update(earlier.get(self._row_key(rec)) or self.not_checked_fields())
+            else:
+                rec["last_checked"] = self._utc_now_iso()
             if source is not None:
                 rec["source"] = source
             # Derive the _git_* columns from _repo_id when not supplied.

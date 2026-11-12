@@ -367,6 +367,7 @@ affected that the corpus does not exercise.
   (`KospexGithub.TOKEN_ENV_VARS`); empty values are skipped and whitespace stripped. Run
   `tests/manual/github_token_matrix.py` with a real read-only token after changing that lookup.
 - `KOSPEX_CLONE_FORKS_DEFAULT` - `true` makes `kgit sync --org` / `--user` sync forks by default (default `false`: forks are recorded as skipped). A value that isn't true or false is an error, not a guess.
+- `KOSPEX_DEPS_ENRICH` - `false` makes `kospex sca` and `krunner osi` parse dependency files without looking anything up (rows saved as `not_checked`); `-enrich` / `-no-enrich` override it per run. Default `true`. Only those two commands read it: other routes that call deps.dev (e.g. kweb's supply-chain page) do not. A value that isn't true or false is an error.
 - `KOSPEX_URL_CACHE_SECONDS` - TTL for cached external responses (deps.dev, PyPI), in
   seconds. Default **86400** (one day). Was effectively one hour, which is fine for a
   single full-estate sweep but wrong for a batched one — every cron tick started cold

@@ -551,6 +551,23 @@ class KospexQuery:
 
         return results
 
+    def looked_up_dependencies(self, request_id=None):
+        """How many current dependency rows in scope carry a lookup, and when
+        the most recent was made: {"rows": n, "last_checked": str or None}.
+        Rows parsed with lookups off have no last_checked, so they never count.
+        """
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_DEPENDENCY_DATA)
+        # COUNT and MAX of a column both skip NULLs.
+        kd.select_as("COUNT(last_checked)", "rows")
+        kd.select_as("MAX(last_checked)", "last_checked")
+        kd.where("latest", "=", 1)
+
+        self._apply_request_scope(kd, request_id)
+
+        (summary,) = kd.execute()
+        return summary
+
     def extracted_dependency_file_keys(self, request_id=None):
         """Return the set of (repo_id, file_path) that have extracted dependency
         rows (latest=1) in dependency_data, scoped like get_dependencies. Used by

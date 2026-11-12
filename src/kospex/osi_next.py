@@ -74,7 +74,7 @@ def _run_id():
 
 
 def run_next_batch(db, limit, request_id=None, write_csv=False, max_seconds=None,
-                   kospex_query=None, kdeps=None, echo=None):
+                   kospex_query=None, kdeps=None, echo=None, enrich=True):
     """Process the `limit` repositories most due for extraction.
 
     `max_seconds` bounds the batch in the dimension `limit` cannot. Measured on a
@@ -90,6 +90,9 @@ def run_next_batch(db, limit, request_id=None, write_csv=False, max_seconds=None
 
     `db` is the kospex database. `kospex_query` and `kdeps` are injectable for
     testing; by default they are built on `db`.
+
+    enrich=False parses and saves without any lookup (KOSPEX_DEPS_ENRICH=false
+    or -no-enrich); the rows are recorded as not checked.
 
     Returns a BatchResult. Never raises for an empty queue or a busy lock -- both
     are ordinary outcomes a scheduler should see as success.
@@ -120,7 +123,7 @@ def run_next_batch(db, limit, request_id=None, write_csv=False, max_seconds=None
         for repo_id in queue:
             result.repos.append(
                 _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo,
-                              run_id=result.run_id))
+                              run_id=result.run_id, enrich=enrich))
 
             # Checked after, never before: the first repository always runs, so a
             # budget can slow the schedule but can never stall it to zero
@@ -178,7 +181,8 @@ def _warn_on_budget_overshoot(result, max_seconds, echo):
              f"{slowest.repo_id} alone took {slowest.duration_ms / 1000:.0f}s")
 
 
-def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo, run_id=None):
+def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo, run_id=None,
+                  enrich=True):
     """One repository: extract, enrich, save, then record the outcome."""
     from krunner import enrich_dependency_records
 
@@ -201,7 +205,8 @@ def _process_repo(db, repo_id, kospex_query, kdeps, write_csv, echo, run_id=None
         # where someone looks when a run seems stuck (#224).
         enrich_dependency_records(
             rows, kdeps,
-            progress=lambda m: log.info("osi -next:   %s %s", repo_id, m))
+            progress=lambda m: log.info("osi -next:   %s %s", repo_id, m),
+            enrich=enrich)
         kdeps.save_dependencies(rows, source=SOURCE)
 
         if write_csv:

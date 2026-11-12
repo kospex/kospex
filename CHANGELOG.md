@@ -4,6 +4,23 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+### Added
+
+- **Parse dependencies without looking them up.** `kospex sca` and
+  `krunner osi` (including `-next`) take `-no-enrich`, which extracts and
+  saves the dependencies without contacting deps.dev or PyPI. Set
+  `KOSPEX_DEPS_ENRICH=false` in the environment or `~/kospex/kospex.env` to
+  make that the default; `-enrich` overrides it for one run. The rows are
+  saved with the new resolution `not_checked` and no lookup data, and kweb
+  shows them as **Not checked** rather than up to date, and lists them under
+  *No check date recorded* as parsed with lookups off. A later run with
+  lookups on replaces them. Rows already looked up at the same commit keep
+  that lookup, and `krunner osi` reports how many current rows in its scope
+  were looked up before it starts. `kospex sca -package` refuses while lookups are
+  off, unless given `-enrich`. An unrecognised `KOSPEX_DEPS_ENRICH` value is
+  an error. The `kospex init` config template lists the setting, commented
+  out.
+
 ### Changed
 
 - **`krunner repo-size` prints a summary after the table** (#420): the number

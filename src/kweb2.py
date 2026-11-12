@@ -1932,6 +1932,8 @@ UNRESOLVED_STATUS_LABELS = {
     "package_not_found": "Not found",
     "no_version": "No version",
     "lookup_error": "Lookup error",
+    # Parsed with enrichment off (KOSPEX_DEPS_ENRICH=false / -no-enrich).
+    "not_checked": "Not checked",
 }
 
 
