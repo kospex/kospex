@@ -596,7 +596,11 @@ def _scope_options(f):
 
 
 def _output_options(f):
-    """-out FILENAME [-overwrite] | -stdout, shared by key-person and bus-factor."""
+    """-out FILENAME [-overwrite] | -stdout, and -raw, shared by key-person and bus-factor."""
+    f = click.option("-raw", is_flag=True, default=False,
+                     help="Write CSV values exactly as stored. By default a value "
+                          "starting with = + - @ tab or CR gets a leading ' so a "
+                          "spreadsheet cannot run it as a formula.")(f)
     f = click.option("-stdout", "to_stdout", is_flag=True, default=False,
                      help="Write only the CSV, to stdout, instead of the table. "
                           "Progress goes to stderr.")(f)
@@ -607,12 +611,14 @@ def _output_options(f):
     return f
 
 
-def _check_output_options(out_file, overwrite, to_stdout):
+def _check_output_options(out_file, overwrite, to_stdout, raw):
     """Validate the output options before any work is done."""
     if out_file and to_stdout:
         raise click.UsageError("Give either -out FILENAME or -stdout, not both.")
     if overwrite and not out_file:
         raise click.UsageError("-overwrite only applies to -out FILENAME.")
+    if raw and not (out_file or to_stdout):
+        raise click.UsageError("-raw only applies to the CSV: add -out FILENAME or -stdout.")
     if out_file and os.path.exists(out_file) and not overwrite:
         raise click.UsageError(f"{out_file} already exists. Add -overwrite to replace it.")
 
@@ -663,11 +669,19 @@ def _cell(value, pct=False):
     return Text(f"{value:.1f}%" if pct else str(value))
 
 
-def _emit_csv(rows, fieldnames, out_file, to_stdout, progress):
+def _emit_csv(rows, fieldnames, out_file, to_stdout, raw, progress):
+    """Write the CSV, spreadsheet-safe unless raw (CSV formula injection, CWE-1236).
+
+    Author emails and repo names are git metadata, which anyone with commit
+    access controls, and a CSV is often opened in a spreadsheet.
+    """
+    safe = not raw
     if to_stdout:
-        KrunnerUtils.write_dict_to_csv(sys.stdout, rows, fieldnames)
+        KrunnerUtils.write_dict_to_csv(sys.stdout, rows, fieldnames,
+                                       spreadsheet_safe_cells=safe)
     elif out_file:
-        KrunnerUtils.write_dict_to_csv(out_file, rows, fieldnames)
+        KrunnerUtils.write_dict_to_csv(out_file, rows, fieldnames,
+                                       spreadsheet_safe_cells=safe)
         progress.print(f"Wrote {len(rows)} rows to {out_file}")
 
 
@@ -681,7 +695,7 @@ def _emit_csv(rows, fieldnames, out_file, to_stdout, progress):
               help="The active window, in days.")
 @_output_options
 def key_person(repo_id, all_repos, org_key, server, top, all_authors, days,
-               out_file, overwrite, to_stdout):
+               out_file, overwrite, to_stdout, raw):
     """
     Key people (by commits) for each repo in scope.
 
@@ -693,9 +707,13 @@ def key_person(repo_id, all_repos, org_key, server, top, all_authors, days,
 
     Shows a table by default. -out FILENAME also writes the CSV; -stdout writes
     only the CSV, to stdout, for another process to read. CSV columns are fixed:
-    repo_id first, then raw values (numbers without %, ISO-8601 UTC dates).
+    repo_id first, numbers without %, and ISO-8601 UTC dates.
+
+    The CSV is safe to open in a spreadsheet: a value starting with = + - @ tab
+    or CR gets a leading ' so it cannot run as a formula. -raw writes values
+    exactly as stored, for a program that needs them to match the kospex DB.
     """
-    _check_output_options(out_file, overwrite, to_stdout)
+    _check_output_options(out_file, overwrite, to_stdout, raw)
     progress = Console(markup=False, stderr=True) if to_stdout else console
     repos = _resolve_people_scope(repo_id, all_repos, org_key, server)
 
@@ -732,7 +750,7 @@ def key_person(repo_id, all_repos, org_key, server, top, all_authors, days,
                           _cell(r["last_commit"].split("T")[0]))
         KospexUtils.print_table(table, console)
 
-    _emit_csv(rows, KospexAuthorship.KEY_PERSON_FIELDS, out_file, to_stdout, progress)
+    _emit_csv(rows, KospexAuthorship.KEY_PERSON_FIELDS, out_file, to_stdout, raw, progress)
     progress.print(f"{len(repos)} repos in scope, {no_commits} with no commits, "
                    f"{len(rows)} key people. Active window: {days} days.")
 
@@ -745,7 +763,7 @@ def key_person(repo_id, all_repos, org_key, server, top, all_authors, days,
               help="The active window, in days.")
 @_output_options
 def bus_factor(repo_id, all_repos, org_key, server, threshold, days,
-               out_file, overwrite, to_stdout):
+               out_file, overwrite, to_stdout, raw):
     """
     Bus factor for each repo in scope: the fewest authors whose commits make up
     at least THRESHOLD% of the repo's commits.
@@ -761,12 +779,16 @@ def bus_factor(repo_id, all_repos, org_key, server, threshold, days,
 
     Shows a table by default. -out FILENAME also writes the CSV; -stdout writes
     only the CSV, to stdout, for another process to read.
+
+    The CSV is safe to open in a spreadsheet: a value starting with = + - @ tab
+    or CR gets a leading ' so it cannot run as a formula. -raw writes values
+    exactly as stored, for a program that needs them to match the kospex DB.
     """
     try:
         thresholds = KospexAuthorship.parse_thresholds(threshold)
     except ValueError as e:
         raise click.UsageError(str(e))
-    _check_output_options(out_file, overwrite, to_stdout)
+    _check_output_options(out_file, overwrite, to_stdout, raw)
     progress = Console(markup=False, stderr=True) if to_stdout else console
     repos = _resolve_people_scope(repo_id, all_repos, org_key, server)
 
@@ -803,7 +825,7 @@ def bus_factor(repo_id, all_repos, org_key, server, threshold, days,
             )
         KospexUtils.print_table(table, console)
 
-    _emit_csv(rows, KospexAuthorship.bus_factor_fields(thresholds), out_file, to_stdout,
+    _emit_csv(rows, KospexAuthorship.bus_factor_fields(thresholds), out_file, to_stdout, raw,
               progress)
 
     inactive = sum(1 for r in rows if not r["active_commits"])

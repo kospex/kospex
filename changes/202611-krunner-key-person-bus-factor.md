@@ -303,6 +303,20 @@ scoring. Interpreting those numbers belongs outside the OSS data layer.
   commits in that window, so the active medians cover 140 repos.
 - The key-person table for `kospex~kospex` shows the identity limitation
   directly: the same person appears under a noreply address and a personal one.
+- **The CSV is spreadsheet-safe by default; `-raw` opts out** (decided
+  2026-11-13, after a security review of the pushed branch). The design above
+  did not cover this.
+  - The risk is CSV formula injection (CWE-1236). `author`, `top_author` and
+    `active_top_author` are git author emails, which any committer controls.
+  - `krunner_utils.spreadsheet_safe()` prefixes `'` to a **str** starting with
+    `= + - @ \t \r` (OWASP's list). Numbers are untouched, so `-5` stays a
+    number.
+  - `write_dict_to_csv` gained a `spreadsheet_safe_cells` parameter, and these
+    commands pass it unless `-raw` is given.
+  - The tradeoff: an escaped value no longer equals `commits.author_email`. A
+    consumer that joins back to the DB passes `-raw`.
+  - `-raw` without `-out`/`-stdout` is a usage error, because the on-screen
+    table is never escaped. It is Rich `Text`, already literal (CWE-150).
 
 ## Decisions (2026-11-12)
 

@@ -145,9 +145,31 @@ krunner bus-factor -all -threshold 50,80 -stdout > bus-factor.csv
 krunner key-person -org github.com~kospex -out key-people.csv
 ```
 
-`repo_id` is the first column. Values are raw: numbers without `%`, and dates in
-ISO-8601 UTC. Every row carries the window (`active_days`) and a `generated_at`
-time.
+`repo_id` is the first column. Numbers have no `%`, and dates are ISO-8601 UTC.
+Every row carries the window (`active_days`) and a `generated_at` time.
+
+#### Spreadsheet-safe by default, and `-raw`
+
+Author emails come from git commits, and anyone who can commit can put any text
+there, including a spreadsheet formula such as `=HYPERLINK(...)`. Opening such a
+CSV in Excel, Google Sheets or LibreOffice could run that formula (CSV formula
+injection, CWE-1236).
+
+So by default, any text value starting with `=`, `+`, `-`, `@`, a tab or a
+carriage return gets a leading `'`. A spreadsheet then shows it as text.
+Numbers, including negative ones, are never changed.
+
+The cost is that an escaped value no longer matches the kospex DB exactly. A
+program that joins the CSV back to `commits.author_email` should ask for the
+values as stored, with `-raw`:
+
+```bash
+krunner key-person -all -stdout -raw | other-tool
+```
+
+Don't open a `-raw` file in a spreadsheet unless you trust every committer in
+scope. `-raw` needs `-out` or `-stdout`, because the on-screen table is never
+escaped. It shows every value literally.
 
 ## find-docker
 

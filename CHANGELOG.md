@@ -37,10 +37,16 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   always writes `key-people*.csv`. `-out FILENAME` also writes the CSV (it will
   not replace an existing file without `-overwrite`), and `-stdout` writes only
   the CSV, to stdout, for another process to read. The CSV columns are new and
-  fixed: `repo_id` comes first, values are raw (numbers without `%`, ISO-8601 UTC
-  dates), and `is_bot`, `rank` and the repo totals are included. New options are
-  `-days` and `-all-authors`. Both `key-person` and `bus-factor` read one grouped
-  query rather than copying the commits table into memory.
+  fixed: `repo_id` comes first, numbers have no `%`, dates are ISO-8601 UTC, and
+  `is_bot`, `rank` and the repo totals are included. New options are `-days` and
+  `-all-authors`. Both `key-person` and `bus-factor` read one grouped query
+  rather than copying the commits table into memory.
+- **The CSV from `key-person` and `bus-factor` is spreadsheet-safe by default**
+  (CSV formula injection, CWE-1236). Author emails are free text in git, so a
+  text value starting with `=`, `+`, `-`, `@`, a tab or a carriage return gets a
+  leading `'`, and a spreadsheet shows it rather than running it. `-raw` writes
+  values exactly as stored, for a program that joins the CSV back to the kospex
+  DB. It needs `-out` or `-stdout`.
 - `KospexQuery.key_person(days=...)` now uses `days`; it was always 90. A repo
   whose only commits are merges no longer divides by zero.
 
