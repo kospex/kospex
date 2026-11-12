@@ -735,7 +735,10 @@ def key_person(repo_id, all_repos, org_key, server, top, all_authors, days,
         rows.extend(repo_rows)
 
     if not to_stdout:
-        title = "Key people (all authors)" if all_authors else f"Key people (top {top})"
+        if all_authors:
+            title = "Key people (all authors)"
+        else:
+            title = f"Key people: top {top} all time + top {top} active (last {days} days)"
         table = Table(title=Text(title))
         table.add_column("repo_id", style="cyan", no_wrap=True)
         table.add_column("author", no_wrap=True)
@@ -749,6 +752,13 @@ def key_person(repo_id, all_repos, org_key, server, top, all_authors, days,
                           _cell(r["pct_active"], pct=True),
                           _cell(r["last_commit"].split("T")[0]))
         KospexUtils.print_table(table, console)
+        if not all_authors:
+            # Two lists are merged, so a repo can show more than -top people.
+            console.print(
+                f"Up to {2 * top} people per repo: the top {top} by commits of all time, "
+                f"plus any of the top {top} by active commits (last {days} days) not "
+                "already listed. Fewer when the two lists overlap. In the CSV, "
+                "in_top_all_time and in_top_active say which list each person is from.")
 
     _emit_csv(rows, KospexAuthorship.KEY_PERSON_FIELDS, out_file, to_stdout, raw, progress)
     progress.print(f"{len(repos)} repos in scope, {no_commits} with no commits, "

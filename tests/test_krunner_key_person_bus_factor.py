@@ -497,3 +497,25 @@ def test_table_shows_formula_author_literally(krunner_formula_author):
     result = _invoke(krunner_formula_author, "key-person", "github.com~acme~web")
     assert result.exit_code == 0, result.output
     assert FORMULA in result.output     # the table is not a spreadsheet; no quote
+
+
+# --- table heading and note: -top N can list up to 2N people per repo ------------
+
+def test_key_person_table_heading_and_note_explain_two_lists(krunner):
+    result = _invoke(krunner, "key-person", "-all", "-top", "3", "-days", "45")
+    assert result.exit_code == 0, result.output
+    assert "top 3 all time + top 3 active (last 45 days)" in result.output
+    assert "Up to 6 people per repo" in result.output
+
+
+def test_key_person_all_authors_has_no_two_list_note(krunner):
+    result = _invoke(krunner, "key-person", "-all", "-all-authors")
+    assert result.exit_code == 0, result.output
+    assert "Key people (all authors)" in result.output
+    assert "people per repo" not in result.output
+
+
+def test_key_person_note_is_not_in_stdout_csv(krunner):
+    result = _invoke(krunner, "key-person", "-all", "-stdout")
+    assert result.exit_code == 0, result.stderr
+    assert "people per repo" not in result.stdout
