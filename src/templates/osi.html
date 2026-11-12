@@ -36,9 +36,11 @@
                 class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8"
             >
                 <div class="p-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-4">
+                    {% if git_server %}{% include '_breadcrumb.html' %}{% endif %}
+                    <h1 class="text-3xl font-bold text-gray-900">
                         Open Source Inventory
                     </h1>
+                    {% include '_scope_label.html' %}
                     <p class="text-gray-700">
                         See the dependencies and opensource across your
                         landscape.
