@@ -23,6 +23,11 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 
+- **`/osi/` has the server / org / repo breadcrumb** that the repo,
+  dependencies and tenure pages already show, plus the scope label under the
+  heading. On `/osi/github.com~square~retrofit` it reads
+  `github.com / square / retrofit / Open Source Inventory`, each segment
+  linking back to its own view. The all-repositories `/osi/` page has none.
 - **`krunner repo-size` prints a summary after the table** (#420): the number
   of repos, the total size in GB and MB, and the median repo size in MB.
   The summary also shows the mean, P25 / P75 / P90, the largest repo, the
