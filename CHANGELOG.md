@@ -8,6 +8,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 - **`krunner repo-size` prints a summary after the table** (#420): the number
   of repos, the total size in GB and MB, and the median repo size in MB.
+  The summary also shows the mean, P25 / P75 / P90, the largest repo, the
+  share of the total held by the 10 largest repos and the share that is
+  `.git` (#424). It then lists the 10 largest repos and the history-heavy
+  ones: above P75 in size with a `.git` at least 10x the checkout. The table
+  and the `-csv` output gain a `.git ratio` column (`.git` size ÷ checkout
+  size). `-top N` sets how many of the largest repos are listed (default 10),
+  and `-heavy-ratio X` sets the history-heavy threshold (default 10).
 
 ### Fixed
 
