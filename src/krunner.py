@@ -373,28 +373,138 @@ def branches(save, csv, verbose, strict, request_id):
         sys.exit(1)
 
 
-def repo_size_summary(results):
+# repo-size defaults (-top, -heavy-ratio): how many of the largest repos to list,
+# and the .git-to-checkout ratio at or above which a large repo is history-heavy.
+REPO_SIZE_TOP_N = 10
+HISTORY_HEAVY_RATIO = 10
+
+
+def git_ratio(git_kb, workspace_kb):
+    """
+    Size of .git relative to the checkout (e.g. 32.0 = history is 32x the code).
+
+    Returns None when the checkout is empty, where the ratio is unbounded.
+    """
+    if workspace_kb <= 0:
+        return None
+    return round(git_kb / workspace_kb, 2)
+
+
+def format_git_ratio(ratio):
+    """Display form of git_ratio(): '32.0x', or 'n/a' for an empty checkout."""
+    return "n/a" if ratio is None else f"{ratio:,.1f}x"
+
+
+def _percentiles_kb(sizes_kb):
+    """P25, P75 and P90 of sizes_kb, using statistics.quantiles(method="inclusive")."""
+    if not sizes_kb:
+        return 0, 0, 0
+    if len(sizes_kb) == 1:
+        # quantiles() needs two data points on Python 3.12
+        return sizes_kb[0], sizes_kb[0], sizes_kb[0]
+    q = statistics.quantiles(sizes_kb, n=100, method="inclusive")
+    return q[24], q[74], q[89]
+
+
+def repo_size_summary(results, top_n=REPO_SIZE_TOP_N, heavy_ratio=HISTORY_HEAVY_RATIO):
     """
     Summarise repo-size results. Sizes come from `du -sk`, so are in kilobytes.
 
-    Returns a dict with repo count, total size in MB and GB, and median size in MB.
+    Each result needs total_size, git_size, workspace_size and repo_id.
+    Returns a dict of the summary figures (sizes in MB/GB, shares as 0-1
+    fractions), the largest top_n results, and the history-heavy results:
+    above P75 in size with a .git ratio of heavy_ratio or more (an empty
+    checkout counts as history-heavy).
     """
     sizes_kb = [r["total_size"] for r in results]
     total_kb = sum(sizes_kb)
+    git_kb = sum(r["git_size"] for r in results)
+    p25, p75, p90 = _percentiles_kb(sizes_kb)
+
+    by_size = sorted(results, key=lambda r: r["total_size"], reverse=True)
+    top = by_size[:top_n]
+
+    def history_heavy(r):
+        ratio = git_ratio(r["git_size"], r["workspace_size"])
+        return r["total_size"] > p75 and (ratio is None or ratio >= heavy_ratio)
+
     return {
         "repos": len(sizes_kb),
         "total_mb": total_kb / 1024,
         "total_gb": total_kb / 1024**2,
+        "mean_mb": total_kb / len(sizes_kb) / 1024 if sizes_kb else 0,
+        "p25_mb": p25 / 1024,
         "median_mb": statistics.median(sizes_kb) / 1024 if sizes_kb else 0,
+        "p75_mb": p75 / 1024,
+        "p90_mb": p90 / 1024,
+        "max_mb": top[0]["total_size"] / 1024 if top else 0,
+        "max_repo": top[0]["repo_id"] if top else None,
+        "top_share": sum(r["total_size"] for r in top) / total_kb if total_kb else 0,
+        "git_share": git_kb / total_kb if total_kb else 0,
+        "git_gb": git_kb / 1024**2,
+        "top": top,
+        "heavy_ratio": heavy_ratio,
+        "history_heavy": [r for r in by_size if history_heavy(r)],
     }
+
+
+def print_repo_size_summary(summary):
+    """Print the repo-size summary, top repos and history-heavy repos under the table."""
+    out = lambda text: console.print(text, markup=False, highlight=False)
+
+    out(f"# Repos: {summary['repos']}")
+    if not summary["repos"]:
+        return
+    out(f"Total repo size: {summary['total_gb']:,.2f} GB ({summary['total_mb']:,.1f} MB)")
+    out(f"Mean repo size: {summary['mean_mb']:,.1f} MB")
+    out(
+        f"P25 / Median / P75: {summary['p25_mb']:,.2f} / "
+        f"{summary['median_mb']:,.2f} / {summary['p75_mb']:,.2f} MB"
+    )
+    out(f"P90: {summary['p90_mb']:,.1f} MB")
+    out(f"Max: {summary['max_mb']:,.1f} MB ({summary['max_repo']})")
+    top_n = len(summary["top"])
+    out(f"Top-{top_n} by size share: {summary['top_share']:.1%} of total")
+    out(f".git share: {summary['git_share']:.1%} of total ({summary['git_gb']:,.2f} GB)")
+
+    def repo_line(r):
+        ratio = format_git_ratio(git_ratio(r["git_size"], r["workspace_size"]))
+        return f"  {r['total_size'] / 1024:>10,.1f} MB  .git {ratio:>7}  {r['repo_id']}"
+
+    out(f"\nTop {top_n} largest repos:")
+    for r in summary["top"]:
+        out(repo_line(r))
+
+    heavy = summary["history_heavy"]
+    out(
+        f"\nHistory-heavy repos (above P75 and .git >= {summary['heavy_ratio']:g}x checkout): "
+        f"{len(heavy)}"
+    )
+    for r in heavy:
+        out(repo_line(r))
 
 
 @cli.command("repo-size")
 @click.option("-save", is_flag=True, default=False, help="Save to kospex DB. (Default: False)")
 @click.option("-csv", is_flag=True, default=False, help="Save to CSV file. (Default: False)")
 @click.option("-verbose", is_flag=True, default=False, help="Verbose output. (Default: False)")
+@click.option(
+    "-top",
+    type=click.IntRange(min=1),
+    default=REPO_SIZE_TOP_N,
+    show_default=True,
+    help="How many of the largest repos to list after the summary.",
+)
+@click.option(
+    "-heavy-ratio",
+    "heavy_ratio",
+    type=click.FloatRange(min=0, min_open=True),
+    default=HISTORY_HEAVY_RATIO,
+    show_default=True,
+    help="Flag repos above P75 in size whose .git is at least this many times the checkout.",
+)
 @click.argument("request_id", required=False, type=click.STRING)
-def repo_size(save, csv, request_id, verbose):
+def repo_size(save, csv, request_id, verbose, top, heavy_ratio):
     """
     View the current repo size for the in-scope repos.
     Calculate total, .git directory and working directory sizes.
@@ -421,6 +531,7 @@ def repo_size(save, csv, request_id, verbose):
             "total_size": sizes["total"],
             "git_size": sizes["git"],
             "workspace_size": sizes["workspace"],
+            "git_ratio": git_ratio(sizes["git"], sizes["workspace"]),
         }
         results.append(entry)
 
@@ -446,6 +557,7 @@ def repo_size(save, csv, request_id, verbose):
     table.add_column("total (kb)", style="magenta", justify="right")
     table.add_column(".git (kb)", style="magenta", justify="right")
     table.add_column("workspace (kb)", style="magenta", justify="right")
+    table.add_column(".git ratio", style="magenta", justify="right")
 
     for r in results:
         table.add_row(
@@ -454,17 +566,12 @@ def repo_size(save, csv, request_id, verbose):
             str(r["total_size"]),
             str(r["git_size"]),
             str(r["workspace_size"]),
+            format_git_ratio(r["git_ratio"]),
         )
 
     console.print(table)
 
-    summary = repo_size_summary(results)
-    console.print(f"# Repos: {summary['repos']}", markup=False)
-    console.print(
-        f"Total repo size: {summary['total_gb']:,.2f} GB ({summary['total_mb']:,.1f} MB)",
-        markup=False,
-    )
-    console.print(f"Median repo size: {summary['median_mb']:,.1f} MB", markup=False)
+    print_repo_size_summary(repo_size_summary(results, top_n=top, heavy_ratio=heavy_ratio))
 
     if csv:
         filename = "repo-sizes.csv"
