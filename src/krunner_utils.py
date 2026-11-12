@@ -348,19 +348,55 @@ def count_dict_keyvalues(records, keyname):
     return base_image_count
 
 
-def write_dict_to_csv(filename, data):
+# A spreadsheet treats a cell starting with one of these as a formula (or, for
+# tab and CR, strips them and then may). OWASP's CSV injection guidance.
+FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def spreadsheet_safe(value):
+    """A CSV cell that a spreadsheet will show as text, not run as a formula.
+
+    CSV formula injection (CWE-1236): git metadata such as an author email is
+    free text, so a committer can make it "=HYPERLINK(...)". A str starting with
+    a formula trigger gets a leading single quote. Other types are unchanged,
+    so a negative number stays a number.
     """
-    Write a dictionary to a CSV file.
+    if isinstance(value, str) and value.startswith(FORMULA_TRIGGERS):
+        return "'" + value
+    return value
+
+
+def write_dict_to_csv(dest, data, fieldnames=None, spreadsheet_safe_cells=False):
     """
-    with open(filename, "w", newline="", encoding="utf-8") as csvfile:
-        # Get column names from the keys of the first dictionary
+    Write a list of dicts as CSV to dest, a filename or an open text stream
+    (e.g. sys.stdout).
+
+    fieldnames fixes the header and its order. Without it the header comes from
+    the first row's keys, and empty data writes nothing at all. With it, empty
+    data still writes the header, so a consumer always gets the columns.
+
+    spreadsheet_safe_cells passes every cell through spreadsheet_safe(), so the
+    file is safe to open in Excel, Sheets or LibreOffice. It changes values that
+    start with a formula trigger, which a program reading the CSV then sees.
+    """
+    if fieldnames is None:
+        if not data:
+            if not hasattr(dest, "write"):
+                open(dest, "w", encoding="utf-8").close()
+            return
         fieldnames = data[0].keys()
 
-        # Create DictWriter object
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    if spreadsheet_safe_cells:
+        data = [{k: spreadsheet_safe(v) for k, v in row.items()} for row in data]
 
-        # Write header row
+    def write(stream):
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
-
-        # Write data rows
         writer.writerows(data)
+
+    if hasattr(dest, "write"):
+        write(dest)
+        dest.flush()
+    else:
+        with open(dest, "w", newline="", encoding="utf-8") as csvfile:
+            write(csvfile)

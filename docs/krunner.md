@@ -91,6 +91,86 @@ are listed under **No check date recorded** as *Parsed with lookups off*.
 Rows that kept an earlier lookup show its date and go orange as it ages, as
 they do when `krunner osi` hasn't run for a while.
 
+## key-person
+
+The `kospex key-person` table for every repo in scope: the top N authors by
+commits (default 4), plus any of the top N active authors (last 90 days) not
+already listed. Give exactly one scope:
+
+```bash
+krunner key-person -all
+krunner key-person -org github.com~kospex
+krunner key-person -server github.com
+krunner key-person github.com~kospex~kospex
+```
+
+Merge commits are counted in their own `merges` column, not as commits.
+`-days N` changes the active window, `-top N` changes N, and `-all-authors`
+lists every author.
+
+## bus-factor
+
+The bus factor of each repo in scope: the fewest authors whose commits make up
+at least 50% of the repo's commits. It is calculated for all time and for the
+last 90 days.
+
+```bash
+krunner bus-factor -all
+krunner bus-factor -org github.com~kospex -threshold 50,80 -days 180
+```
+
+- `-threshold` takes up to three whole-number percentages.
+- Merge commits are not counted.
+- A repo with no commits in the window has no active bus factor, which is shown
+  as `-` and left blank in the CSV.
+
+The table shows the bus factor **with bots excluded**, next to the bots' share
+of commits (`bot %`). The CSV has both variants for each threshold:
+`bus_factor_50` counts every author, and `human_bus_factor_50` leaves bots out.
+
+Authors are counted by email address. One person who commits under two
+addresses counts as two authors, which raises the bus factor.
+
+### CSV output
+
+`key-person` and `bus-factor` both show a table by default and write no file.
+
+- `-out FILENAME` also writes the CSV. An existing file is kept unless you add
+  `-overwrite`.
+- `-stdout` writes **only** the CSV, to stdout, so another process can read it.
+  Progress and the summary go to stderr.
+
+```bash
+krunner bus-factor -all -threshold 50,80 -stdout > bus-factor.csv
+krunner key-person -org github.com~kospex -out key-people.csv
+```
+
+`repo_id` is the first column. Numbers have no `%`, and dates are ISO-8601 UTC.
+Every row carries the window (`active_days`) and a `generated_at` time.
+
+#### Spreadsheet-safe by default, and `-raw`
+
+Author emails come from git commits, and anyone who can commit can put any text
+there, including a spreadsheet formula such as `=HYPERLINK(...)`. Opening such a
+CSV in Excel, Google Sheets or LibreOffice could run that formula (CSV formula
+injection, CWE-1236).
+
+So by default, any text value starting with `=`, `+`, `-`, `@`, a tab or a
+carriage return gets a leading `'`. A spreadsheet then shows it as text.
+Numbers, including negative ones, are never changed.
+
+The cost is that an escaped value no longer matches the kospex DB exactly. A
+program that joins the CSV back to `commits.author_email` should ask for the
+values as stored, with `-raw`:
+
+```bash
+krunner key-person -all -stdout -raw | other-tool
+```
+
+Don't open a `-raw` file in a spreadsheet unless you trust every committer in
+scope. `-raw` needs `-out` or `-stdout`, because the on-screen table is never
+escaped. It shows every value literally.
+
 ## find-docker
 
 This command finds files with the naming convention of `Dockerfile` and `docker-*.yml`.

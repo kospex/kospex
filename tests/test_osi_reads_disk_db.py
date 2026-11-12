@@ -117,8 +117,8 @@ def test_osi_does_not_copy_the_estate_into_memory(osi_env, tmp_path, monkeypatch
     """osi must not build an in-memory copy of the estate to scan one repo.
 
     Fails if anything in the osi path calls create_memory_kospex_query(). The
-    other krunner commands (key-person, developer-tech, dependencies,
-    devs-by-tag, authors) legitimately still use it -- this guards osi only.
+    other krunner commands (developer-tech, dependencies, devs-by-tag,
+    authors) legitimately still use it -- this guards osi only.
     """
     from kospex_query import KospexQuery
 
