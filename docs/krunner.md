@@ -108,6 +108,11 @@ Merge commits are counted in their own `merges` column, not as commits.
 `-days N` changes the active window, `-top N` changes N, and `-all-authors`
 lists every author.
 
+Because two lists are merged, a repo can show **up to 2N people**: 8 with the
+default `-top 4`. There are fewer when the same people lead both lists, or when
+fewer than N authors committed in the window. In the CSV, `in_top_all_time` and
+`in_top_active` show which list each person came from (1 for yes, 0 for no).
+
 ## bus-factor
 
 The bus factor of each repo in scope: the fewest authors whose commits make up
