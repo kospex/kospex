@@ -685,6 +685,7 @@ def osi(request: Request, id: Optional[str] = None):
                 "commentary": commentary,
                 "unsupported": unsupported,
                 **KospexWeb.osi_fix_commands(id, params.get("repo_id")),
+                **KospexWeb.scope_context(params, "Open Source Inventory"),
                 "status_days": {"active": KospexUtils.DEV_STATUS_ACTIVE_DAYS,
                                 "aging": KospexUtils.DEV_STATUS_AGING_DAYS,
                                 "stale": KospexUtils.DEV_STATUS_STALE_DAYS},
