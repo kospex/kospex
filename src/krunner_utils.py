@@ -348,19 +348,30 @@ def count_dict_keyvalues(records, keyname):
     return base_image_count
 
 
-def write_dict_to_csv(filename, data):
+def write_dict_to_csv(dest, data, fieldnames=None):
     """
-    Write a dictionary to a CSV file.
+    Write a list of dicts as CSV to dest, a filename or an open text stream
+    (e.g. sys.stdout).
+
+    fieldnames fixes the header and its order. Without it the header comes from
+    the first row's keys, and empty data writes nothing at all. With it, empty
+    data still writes the header, so a consumer always gets the columns.
     """
-    with open(filename, "w", newline="", encoding="utf-8") as csvfile:
-        # Get column names from the keys of the first dictionary
+    if fieldnames is None:
+        if not data:
+            if not hasattr(dest, "write"):
+                open(dest, "w", encoding="utf-8").close()
+            return
         fieldnames = data[0].keys()
 
-        # Create DictWriter object
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-        # Write header row
+    def write(stream):
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
-
-        # Write data rows
         writer.writerows(data)
+
+    if hasattr(dest, "write"):
+        write(dest)
+        dest.flush()
+    else:
+        with open(dest, "w", newline="", encoding="utf-8") as csvfile:
+            write(csvfile)

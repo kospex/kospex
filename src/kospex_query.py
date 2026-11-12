@@ -2209,14 +2209,57 @@ class KospexQuery:
 
         return kd.execute()
 
+    def author_commit_aggregates(self, repo_ids, days=90, chunk_size=500):
+        """Per-author commit counts for many repos, one grouped query per chunk.
+
+        Returns {repo_id: [row, ...]}, each row with author, commits, merges,
+        active_commits, first_commit and last_commit. The counts follow
+        commit_stats(): ``commits`` is authorship (merges excluded, #170),
+        ``active_commits`` is authorship within the last ``days`` by committer
+        time, and first/last commit are author time as ISO-8601 UTC.
+
+        Shared by `krunner key-person` and `krunner bus-factor`. repo_ids is
+        chunked to stay under SQLite's 999-variable limit (the default before
+        3.32; kospex supports 3.26).
+        """
+        since = KospexUtils.days_ago_iso_date(days)
+        fmt = KospexData._UTC_ISO
+        repo_ids = list(repo_ids)
+        results = {repo_id: [] for repo_id in repo_ids}
+        for start in range(0, len(repo_ids), chunk_size):
+            chunk = repo_ids[start:start + chunk_size]
+            placeholders = ", ".join("?" for _ in chunk)
+            sql = f"""
+                SELECT _repo_id, author_email,
+                    SUM(CASE WHEN {AUTHORSHIP_COMMIT} THEN 1 ELSE 0 END) AS commits,
+                    SUM(CASE WHEN {AUTHORSHIP_COMMIT} THEN 0 ELSE 1 END) AS merges,
+                    SUM(CASE WHEN {AUTHORSHIP_COMMIT} AND committer_when > ?
+                        THEN 1 ELSE 0 END) AS active_commits,
+                    strftime('{fmt}', MIN(CAST(strftime('%s', author_when) AS INTEGER)),
+                        'unixepoch') AS first_commit,
+                    strftime('{fmt}', MAX(CAST(strftime('%s', author_when) AS INTEGER)),
+                        'unixepoch') AS last_commit
+                FROM {KospexSchema.TBL_COMMITS}
+                WHERE _repo_id IN ({placeholders})
+                GROUP BY _repo_id, author_email
+            """
+            for row in self.kospex_db.execute(sql, [since, *chunk]).fetchall():
+                results[row[0]].append({
+                    "author": row[1], "commits": row[2], "merges": row[3],
+                    "active_commits": row[4], "first_commit": row[5],
+                    "last_commit": row[6],
+                })
+        return results
+
     def key_person(self, days=None, repo_id=None, top=None):
         """
         Return a high level key person based on commits
         Top is the number of "top" authors to return
-        Days is the number of preceding days to consider "active"for the key person default is 90 days
+        Days is the number of preceding days to consider "active" for the key
+        person. The default is 90 days.
         """
 
-        active = self.commit_stats(repo_id=repo_id, days=90)
+        active = self.commit_stats(repo_id=repo_id, days=days or 90)
         active_dict = {d["author"]: d for d in active}
         key = "commits"
         total_active_commits = sum(item[key] for item in active if key in item)
@@ -2227,7 +2270,11 @@ class KospexQuery:
 
         for a in authors:
             a["active_commits"] = active_dict.get(a["author"], {}).get("commits", 0)
-            a["% commits"] = f"{a['commits'] / total_commits * 100:.1f}%"
+            # A repo whose only commits are merges has no authorship commits.
+            if total_commits > 0:
+                a["% commits"] = f"{a['commits'] / total_commits * 100:.1f}%"
+            else:
+                a["% commits"] = "0%"
 
             # TODO - We only want to do this if we're printing the table, modify if we're dumping to CSV
             a["last_commit"] = KospexUtils.extract_db_date(a["last_commit"])

@@ -12,13 +12,17 @@ import sqlite3
 import statistics
 import subprocess
 import sys
+from datetime import datetime, timezone
 from itertools import count
 
 import click
 from click.types import BOOL
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
+import kospex.authorship as KospexAuthorship
+import kospex_rebuild as KospexRebuild
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 import kospex_web as KospexWeb
@@ -26,6 +30,7 @@ import krunner_utils as KrunnerUtils
 from kospex_core import Kospex, RepoPathConflict
 from kospex_query import KospexQuery
 from kospex_dependencies import KospexDependencies
+from kospex_email import EmailAnalyzer
 from kospex_git import KospexGit
 from kospex_utils import KospexTimer
 from kospex.assessment_types import AssessmentTypes
@@ -579,54 +584,238 @@ def repo_size(save, csv, request_id, verbose, top, heavy_ratio):
         KrunnerUtils.write_dict_to_csv(filename, results)
 
 
+def _scope_options(f):
+    """REPO_ID | -all | -org ORG_KEY | -server SERVER, as `kospex rebuild` takes."""
+    f = click.option("-server", default=None, help="Every repo on a git server, e.g. github.com")(f)
+    f = click.option("-org", "org_key", default=None,
+                     help="Every repo in an ORG_KEY, e.g. github.com~kospex")(f)
+    f = click.option("-all", "all_repos", is_flag=True, default=False,
+                     help="Every repo in the DB.")(f)
+    f = click.argument("repo_id", required=False, type=click.STRING)(f)
+    return f
+
+
+def _output_options(f):
+    """-out FILENAME [-overwrite] | -stdout, shared by key-person and bus-factor."""
+    f = click.option("-stdout", "to_stdout", is_flag=True, default=False,
+                     help="Write only the CSV, to stdout, instead of the table. "
+                          "Progress goes to stderr.")(f)
+    f = click.option("-overwrite", is_flag=True, default=False,
+                     help="Allow -out to replace an existing file.")(f)
+    f = click.option("-out", "out_file", default=None, type=click.Path(dir_okay=False),
+                     help="Also write the CSV to this file.")(f)
+    return f
+
+
+def _check_output_options(out_file, overwrite, to_stdout):
+    """Validate the output options before any work is done."""
+    if out_file and to_stdout:
+        raise click.UsageError("Give either -out FILENAME or -stdout, not both.")
+    if overwrite and not out_file:
+        raise click.UsageError("-overwrite only applies to -out FILENAME.")
+    if out_file and os.path.exists(out_file) and not overwrite:
+        raise click.UsageError(f"{out_file} already exists. Add -overwrite to replace it.")
+
+
+def _resolve_people_scope(repo_id, all_repos, org_key, server):
+    """The repos in scope, or a UsageError that says what to do instead."""
+    try:
+        repos = KospexRebuild.resolve_scope(kospex.kospex_query, repo_id=repo_id,
+                                            all_repos=all_repos, org_key=org_key,
+                                            server=server)
+    except ValueError as e:
+        raise click.UsageError(str(e))
+    if repos:
+        return repos
+    if repo_id:
+        # The old command took a server or org positionally; say how to now.
+        if KospexUtils.parse_org_key(repo_id):
+            raise click.UsageError(
+                f"'{repo_id}' is not a repo_id in the kospex DB. For an org use -org {repo_id}")
+        if "~" not in repo_id:
+            raise click.UsageError(
+                f"'{repo_id}' is not a repo_id in the kospex DB. For a server use -server {repo_id}")
+        raise click.UsageError(f"'{repo_id}' is not a repo_id in the kospex DB.")
+    scope = "-all" if all_repos else f"-org {org_key}" if org_key else f"-server {server}"
+    raise click.UsageError(f"No repos in scope for {scope}.")
+
+
+def _generated_at():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _is_bot():
+    analyzer = EmailAnalyzer()
+    cache = {}
+
+    def is_bot(email):
+        if email not in cache:
+            cache[email] = analyzer.analyze(email).is_bot
+        return cache[email]
+
+    return is_bot
+
+
+def _cell(value, pct=False):
+    """A table cell: Text (cells hold git metadata, CWE-150), '-' for blank."""
+    if value == "" or value is None:
+        return Text("-")
+    return Text(f"{value:.1f}%" if pct else str(value))
+
+
+def _emit_csv(rows, fieldnames, out_file, to_stdout, progress):
+    if to_stdout:
+        KrunnerUtils.write_dict_to_csv(sys.stdout, rows, fieldnames)
+    elif out_file:
+        KrunnerUtils.write_dict_to_csv(out_file, rows, fieldnames)
+        progress.print(f"Wrote {len(rows)} rows to {out_file}")
+
+
 @cli.command("key-person")
-@click.option("-top", type=int, default=4, help="The number of top authors to assess.")
-@click.option(
-    "-overwrite", is_flag=True, default=False, help="Overwrite results CSV file. (Default: False)"
-)
-@click.argument("request_id", required=False, type=click.STRING)
-def key_person(top, overwrite, request_id):
+@_scope_options
+@click.option("-top", type=click.IntRange(min=1), default=4, show_default=True,
+              help="Top N authors of all time, plus any of the top N active authors.")
+@click.option("-all-authors", "all_authors", is_flag=True, default=False,
+              help="Every author in every repo, instead of the top N.")
+@click.option("-days", type=click.IntRange(min=1), default=90, show_default=True,
+              help="The active window, in days.")
+@_output_options
+def key_person(repo_id, all_repos, org_key, server, top, all_authors, days,
+               out_file, overwrite, to_stdout):
     """
-    Run a key person analysis (commits based) for the in-scope repos.
+    Key people (by commits) for each repo in scope.
+
+    Give exactly one scope: a REPO_ID, -all, -org ORG_KEY or -server SERVER.
+
+    For each repo this is what `kospex key-person` shows: the top N authors of
+    all time, plus any of the top N active authors (last -days) not already
+    listed. Merge commits are counted separately, not as commits.
+
+    Shows a table by default. -out FILENAME also writes the CSV; -stdout writes
+    only the CSV, to stdout, for another process to read. CSV columns are fixed:
+    repo_id first, then raw values (numbers without %, ISO-8601 UTC dates).
     """
-    key_people = []
-    memory_kq = None
-    filename = KrunnerUtils.generate_krunner_csv_filename("key-people", request_id)
+    _check_output_options(out_file, overwrite, to_stdout)
+    progress = Console(markup=False, stderr=True) if to_stdout else console
+    repos = _resolve_people_scope(repo_id, all_repos, org_key, server)
 
-    console.log("Creating memory database ...")
-    with KospexTimer("Loading data to in memory database") as load_memory:
-        memory_kq = kospex.kospex_query.create_memory_kospex_query(["commits"])
-    console.log(f"Loaded tables to memory db {load_memory}")
+    with KospexTimer("key-person query") as timer:
+        aggregates = kospex.kospex_query.author_commit_aggregates(
+            [r["_repo_id"] for r in repos], days=days)
+    log.info("key-person: %d repos, %s", len(repos), timer)
 
-    console.log("Creating indexes ...")
-    with KospexTimer("creating indexes") as index_timer:
-        memory_kq.kospex_db["commits"].create_index(["author_email"])
-        # memory_kq.kospex_db["commit_files"].create_index(["hash", "committer_when"])
-        # memory_kq.kospex_db["commit_files"].create_index(['committer_when'])
-    console.log(f"{index_timer}")
+    generated_at = _generated_at()
+    is_bot = _is_bot()
+    rows = []
+    no_commits = 0
+    for repo in repos:
+        repo_rows = KospexAuthorship.key_person_rows(
+            repo, aggregates[repo["_repo_id"]], None if all_authors else top,
+            days, generated_at, is_bot)
+        if not repo_rows:
+            no_commits += 1
+        rows.extend(repo_rows)
 
-    repos = get_repos(request_id)
-    for r in repos:
-        console.log(f"{r['_repo_id']}")
-        # Should consider checking if we've got a result for this repo_id and hash
-        repo_id = r["_repo_id"]
-        authors = memory_kq.key_person(repo_id=repo_id, top=top)
-        for dev in authors:
-            dev["repo_id"] = repo_id
-        # console.print(authors)
-        key_people.extend(authors)
+    if not to_stdout:
+        title = "Key people (all authors)" if all_authors else f"Key people (top {top})"
+        table = Table(title=Text(title))
+        table.add_column("repo_id", style="cyan", no_wrap=True)
+        table.add_column("author", no_wrap=True)
+        for header in ["rank", "commits", "merges", "% commits", "active", "% active"]:
+            table.add_column(header, justify="right")
+        table.add_column("last_commit")
+        for r in rows:
+            table.add_row(_cell(r["repo_id"]), _cell(r["author"]), _cell(r["rank"]),
+                          _cell(r["commits"]), _cell(r["merges"]),
+                          _cell(r["pct_commits"], pct=True), _cell(r["active_commits"]),
+                          _cell(r["pct_active"], pct=True),
+                          _cell(r["last_commit"].split("T")[0]))
+        KospexUtils.print_table(table, console)
 
-    console.print(f"# of Key people: {len(key_people)}, who are top ({top})")
+    _emit_csv(rows, KospexAuthorship.KEY_PERSON_FIELDS, out_file, to_stdout, progress)
+    progress.print(f"{len(repos)} repos in scope, {no_commits} with no commits, "
+                   f"{len(rows)} key people. Active window: {days} days.")
 
-    # TODO add as CLI option
-    # Check if filename exists, exit if it does unless -overwrite is passed
-    csv = True
-    if csv:
-        filename = KrunnerUtils.generate_krunner_csv_filename("key-people", request_id)
-        if request_id:
-            filename = f"key-people-{request_id}.csv"
-        console.log(f"Writing {len(key_people)} people to {filename}")
-        KrunnerUtils.write_dict_to_csv(filename, key_people)
+
+@cli.command("bus-factor")
+@_scope_options
+@click.option("-threshold", "threshold", default="50", show_default=True,
+              help="Up to 3 comma-separated whole-number percentages, e.g. 50,80.")
+@click.option("-days", type=click.IntRange(min=1), default=90, show_default=True,
+              help="The active window, in days.")
+@_output_options
+def bus_factor(repo_id, all_repos, org_key, server, threshold, days,
+               out_file, overwrite, to_stdout):
+    """
+    Bus factor for each repo in scope: the fewest authors whose commits make up
+    at least THRESHOLD% of the repo's commits.
+
+    Give exactly one scope: a REPO_ID, -all, -org ORG_KEY or -server SERVER.
+
+    Calculated for all time and for the last -days. Merge commits are not
+    counted. A window with no commits has no bus factor (blank, not 0).
+
+    The table shows the bus factor with bots excluded, next to the share of
+    commits made by bots. The CSV has both variants (bus_factor_T and
+    human_bus_factor_T) for each threshold T.
+
+    Shows a table by default. -out FILENAME also writes the CSV; -stdout writes
+    only the CSV, to stdout, for another process to read.
+    """
+    try:
+        thresholds = KospexAuthorship.parse_thresholds(threshold)
+    except ValueError as e:
+        raise click.UsageError(str(e))
+    _check_output_options(out_file, overwrite, to_stdout)
+    progress = Console(markup=False, stderr=True) if to_stdout else console
+    repos = _resolve_people_scope(repo_id, all_repos, org_key, server)
+
+    with KospexTimer("bus-factor query") as timer:
+        aggregates = kospex.kospex_query.author_commit_aggregates(
+            [r["_repo_id"] for r in repos], days=days)
+    log.info("bus-factor: %d repos, %s", len(repos), timer)
+
+    generated_at = _generated_at()
+    is_bot = _is_bot()
+    rows = [KospexAuthorship.bus_factor_row(repo, aggregates[repo["_repo_id"]], thresholds,
+                                            days, generated_at, is_bot)
+            for repo in repos]
+
+    if not to_stdout:
+        table = Table(title=Text(f"Bus factor, bots excluded (active = last {days} days)"))
+        table.add_column("repo_id", style="cyan", no_wrap=True)
+        table.add_column("commits", justify="right")
+        for t in thresholds:
+            table.add_column(f"bf {t}%", justify="right")
+        table.add_column("active", justify="right")
+        for t in thresholds:
+            table.add_column(f"active bf {t}%", justify="right")
+        table.add_column("bot %", justify="right")
+        table.add_column("last_commit")
+        for r in rows:
+            table.add_row(
+                _cell(r["repo_id"]), _cell(r["commits"]),
+                *[_cell(r[f"human_bus_factor_{t}"]) for t in thresholds],
+                _cell(r["active_commits"]),
+                *[_cell(r[f"active_human_bus_factor_{t}"]) for t in thresholds],
+                _cell(r["bot_commit_pct"], pct=True),
+                _cell(r["last_commit"].split("T")[0]),
+            )
+        KospexUtils.print_table(table, console)
+
+    _emit_csv(rows, KospexAuthorship.bus_factor_fields(thresholds), out_file, to_stdout,
+              progress)
+
+    inactive = sum(1 for r in rows if not r["active_commits"])
+    progress.print(f"{len(repos)} repos in scope, {inactive} with no commits in the "
+                   f"last {days} days.")
+    for t in thresholds:
+        for label, prefix in (("all time", "human_bus_factor"),
+                              ("active", "active_human_bus_factor")):
+            values = [r[f"{prefix}_{t}"] for r in rows if r[f"{prefix}_{t}"] != ""]
+            if values:
+                progress.print(f"Median bus factor at {t}% ({label}, bots excluded): "
+                               f"{statistics.median(values):g} across {len(values)} repos")
 
 
 @cli.command("developer-tech")

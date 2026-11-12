@@ -20,8 +20,29 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   off, unless given `-enrich`. An unrecognised `KOSPEX_DEPS_ENRICH` value is
   an error. The `kospex init` config template lists the setting, commented
   out.
+- **`krunner bus-factor`**: for each repo in scope, the fewest authors whose
+  commits make up at least a given share of the repo's commits. It is calculated
+  for all time and for the last `-days` (default 90). `-threshold` takes up to
+  three percentages (default `50`, e.g. `-threshold 50,80`). Merge commits are
+  not counted. The table shows the bus factor with bots excluded, next to the
+  bots' share of commits. The CSV has both the bots-excluded and the
+  all-authors bus factor for each threshold, with one row per repo.
 
 ### Changed
+
+- **`krunner key-person` reworked, a breaking change.** It now needs exactly one
+  scope (`REPO_ID`, `-all`, `-org ORG_KEY` or `-server SERVER`), as
+  `kospex rebuild` does. Previously no argument meant every repo, and a server or
+  org could be given positionally. It shows a table by default and no longer
+  always writes `key-people*.csv`. `-out FILENAME` also writes the CSV (it will
+  not replace an existing file without `-overwrite`), and `-stdout` writes only
+  the CSV, to stdout, for another process to read. The CSV columns are new and
+  fixed: `repo_id` comes first, values are raw (numbers without `%`, ISO-8601 UTC
+  dates), and `is_bot`, `rank` and the repo totals are included. New options are
+  `-days` and `-all-authors`. Both `key-person` and `bus-factor` read one grouped
+  query rather than copying the commits table into memory.
+- `KospexQuery.key_person(days=...)` now uses `days`; it was always 90. A repo
+  whose only commits are merges no longer divides by zero.
 
 - **`krunner repo-size` prints a summary after the table** (#420): the number
   of repos, the total size in GB and MB, and the median repo size in MB.

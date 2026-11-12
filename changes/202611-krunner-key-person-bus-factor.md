@@ -1,6 +1,7 @@
 # krunner key-person (rework) and krunner bus-factor
 
-Status: **draft / design** — no code yet.
+Status: **implemented**. See "Implementation notes" at the end for where the
+build differs from this design.
 
 ## Overview
 
@@ -271,6 +272,37 @@ scoring. Interpreting those numbers belongs outside the OSS data layer.
   - Parity: `kospex key-person` and `krunner key-person` agree on one repo.
   - An empty scope gives a header-only CSV.
 - `docs/` krunner page plus CHANGELOG entry at release.
+
+## Implementation notes
+
+- **Files.**
+  - `src/kospex/authorship.py`: pure functions `parse_thresholds`,
+    `bus_factors`, `key_person_rows`, `bus_factor_row` and `bus_factor_fields`,
+    plus `KEY_PERSON_FIELDS`. It sits in the package rather than as a flat
+    module so `pyproject.toml`'s `py-modules` list need not change.
+  - `KospexQuery.author_commit_aggregates()`.
+  - `src/krunner.py`: both commands and the shared option and scope helpers.
+  - `krunner_utils.write_dict_to_csv(dest, data, fieldnames=None)`. `dest` may be
+    a stream, and empty data writes the header when `fieldnames` is given.
+    Existing callers are unchanged.
+- **`KospexQuery.key_person()` was not rebuilt on the aggregate**, as proposed
+  above. It only gained the `days` and zero-commit fixes. A parity test
+  (`test_key_person_rows_agree_with_kospex_key_person`) drives both through a
+  seeded DB and compares counts, `% commits`, tenure and first commit. That
+  keeps the two from drifting without touching the kweb and `kospex
+  key-person` paths.
+- **Active authors need at least one authorship commit in the window.** The
+  old code could list a merge-only author with 0 active commits when fewer than
+  N authors were active. The parity test avoids that case.
+- **Scope**: `kospex_rebuild.resolve_scope` is imported, not moved. An empty
+  scope is a usage error (exit 2). A scope whose repos have no commits is not an
+  error: the key-person CSV is then header-only.
+- **Measured on the dev DB** (403 repos, about 1.1M commits): `bus-factor -all
+  -threshold 50,80,90 -stdout` took 14.3s for the grouped query. Of the 403
+  repos, 260 had no commits in the last 90 days, and 3 more had only bot
+  commits in that window, so the active medians cover 140 repos.
+- The key-person table for `kospex~kospex` shows the identity limitation
+  directly: the same person appears under a noreply address and a personal one.
 
 ## Decisions (2026-11-12)
 
