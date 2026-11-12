@@ -2,7 +2,28 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## Unreleased
+## 0.3.1 - 2026-11-13
+
+### Highlights
+
+**No database migration.** Upgrading from 0.3.0 needs no `kospex upgrade-db`.
+Stored dependency rows keep their old Maven and NuGet range, npm ceiling and
+Guava `versions_behind` results until `krunner osi` (or `kospex sca -save`)
+reads their repo again.
+
+**Changes that scripts will notice:**
+
+- `krunner key-person` needs exactly one scope (`REPO_ID`, `-all`, `-org` or
+  `-server`), shows a table instead of always writing `key-people*.csv`, and
+  has new, fixed CSV columns. Use `-out FILENAME` or `-stdout` for the CSV.
+- In the CSV from `key-person` and `bus-factor`, a text value starting with
+  `=`, `+`, `-` or `@` gets a leading `'`. `-raw` writes values as stored.
+
+**New:**
+
+- `-no-enrich`, or `KOSPEX_DEPS_ENRICH=false`, parses dependencies without
+  contacting deps.dev or PyPI.
+- `krunner bus-factor`, and a summary after the `krunner repo-size` table.
 
 ### Added
 
