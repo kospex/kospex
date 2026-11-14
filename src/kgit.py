@@ -363,7 +363,13 @@ def clone(ctx, sync, filename, force, repo):
               help="Sync at most N repos from the run, then stop. For schedules.")
 @click.option('-status', is_flag=True, default=False,
               help="Show the latest run from the DB. No network.")
-@click.option('-relist', is_flag=True, default=False,
+@click.option('-active', 'active', type=click.INT, is_flag=False,
+              flag_value=OrgSync.ACTIVE_DAYS_DEFAULT, default=None, metavar="[DAYS]",
+              help="Only sync repos pushed to in the last DAYS (90 if no number). "
+                   "Put the target first: --org acme -active 365.")
+@click.option('-refresh', is_flag=True, default=False,
+              help="List the owner again and merge it into the unfinished run, keeping progress.")
+@click.option('-restart', is_flag=True, default=False,
               help="Close the unfinished run and start again from a fresh listing.")
 @click.option('-retry-failed', is_flag=True, default=False,
               help="Also retry repos that failed earlier in the unfinished run.")
@@ -380,8 +386,8 @@ def clone(ctx, sync, filename, force, repo):
               help="No GitHub token: public repos only, 60 API requests an hour.")
 @click.option('-sync-db', is_flag=True, default=True, help="Sync the repositories to the database (Default)")
 @click.argument('url', metavar="URL|TARGET", type=click.STRING, required=True)
-def sync(org, user, inventory, next_, status, relist, retry_failed, include_forks,
-         skip_forks, skip_archived, ssh, no_prompt, no_auth, sync_db, url):
+def sync(org, user, inventory, next_, status, active, refresh, restart, retry_failed,
+         include_forks, skip_forks, skip_archived, ssh, no_prompt, no_auth, sync_db, url):
     """
     Sync one repository, or every repository of a GitHub organisation or user.
 
@@ -392,9 +398,13 @@ def sync(org, user, inventory, next_, status, relist, retry_failed, include_fork
     kgit sync --org acme -inventory              list and save the repos, clone nothing
     kgit sync --org acme -next 10                sync the next 10, then stop
     kgit sync --org acme -status                 progress so far, from the DB
+    kgit sync --org acme -active 365             only repos pushed to in the last year
+    kgit sync --org acme -inventory -refresh     list again into the unfinished run
 
     An org sync saves the listing as a run in the DB and records each repo's
-    progress, so an interrupted sync resumes where it stopped. Forks are
+    progress, so an interrupted sync resumes where it stopped. A resumed run
+    isn't listed again unless -refresh, or -active finds the listing older
+    than KOSPEX_ORG_SYNC_REFRESH_DAYS (default 2). Forks are
     recorded but skipped unless -include-forks or KOSPEX_CLONE_FORKS_DEFAULT=true.
     TARGET can be `acme`, `github.com/acme`, `https://github.com/acme` or
     `github.com~acme`.
@@ -404,15 +414,17 @@ def sync(org, user, inventory, next_, status, relist, retry_failed, include_fork
     if org or user:
         _sync_owner(
             owner_kind="org" if org else "user", both=org and user, target=url,
-            inventory=inventory, next_=next_, status=status, relist=relist,
-            retry_failed=retry_failed, include_forks=include_forks,
-            skip_forks=skip_forks, skip_archived=skip_archived, ssh=ssh,
+            inventory=inventory, next_=next_, status=status, active=active,
+            refresh=refresh, restart=restart, retry_failed=retry_failed,
+            include_forks=include_forks, skip_forks=skip_forks,
+            skip_archived=skip_archived, ssh=ssh,
             no_prompt=no_prompt, no_auth=no_auth)
         return
 
     owner_only = [name for name, value in (
         ("-inventory", inventory), ("-next", next_ is not None), ("-status", status),
-        ("-relist", relist), ("-retry-failed", retry_failed),
+        ("-active", active is not None), ("-refresh", refresh), ("-restart", restart),
+        ("-retry-failed", retry_failed),
         ("-include-forks", include_forks), ("-skip-forks", skip_forks),
         ("-skip-archived", skip_archived), ("-ssh", ssh), ("-no-prompt", no_prompt),
         ("-no-auth", no_auth)) if value]
@@ -437,9 +449,9 @@ def _error(message):
     exit(1)
 
 
-def _sync_owner(owner_kind, both, target, inventory, next_, status, relist,
-                retry_failed, include_forks, skip_forks, skip_archived, ssh,
-                no_prompt, no_auth):
+def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed,
+                include_forks, skip_forks, skip_archived, ssh, no_prompt, no_auth,
+                active=None, refresh=False, restart=False):
     """`kgit sync --org` / `--user`. See changes/202610-kgit-sync-org.md."""
     if both:
         raise click.UsageError("Use --org or --user, not both.")
@@ -449,10 +461,20 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, relist,
         raise click.UsageError("-next needs a positive number of repositories.")
     if include_forks and skip_forks:
         raise click.UsageError("Use -include-forks or -skip-forks, not both.")
+    if refresh and restart:
+        raise click.UsageError("Use -refresh or -restart, not both.")
+    if status and (refresh or restart):
+        raise click.UsageError("-status reads the DB only: it can't -refresh or -restart.")
+    if active is not None and active < 1:
+        raise click.UsageError("-active needs a positive number of days.")
+    if active is not None and inventory:
+        raise click.UsageError("-inventory saves the whole listing; -active chooses what "
+                               "to sync from it. Run them separately.")
 
     try:
         host, owner = OrgSync.parse_target(target)
         forks = OrgSync.forks_default()
+        refresh_days = OrgSync.refresh_days()
     except ValueError as e:
         raise click.UsageError(str(e))
     forks = (forks or include_forks) and not skip_forks
@@ -461,7 +483,7 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, relist,
     db = kospex.kospex_db
 
     if status:
-        _print_status(db, key, owner, flag)
+        _print_status(db, key, owner, flag, active=active)
         return
 
     gh = KospexGithub()
@@ -491,8 +513,9 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, relist,
 
     try:
         _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
-                           relist, retry_failed, forks, skip_archived, ssh,
-                           no_prompt, no_auth)
+                           retry_failed, forks, skip_archived, ssh, no_prompt, no_auth,
+                           active=active, refresh=refresh, restart=restart,
+                           refresh_days=refresh_days)
     finally:
         lock.release()
 
@@ -531,14 +554,46 @@ def _list_items(gh, owner, forks, skip_archived, no_auth):
     return items
 
 
+def _days(n):
+    """`1 day`, `90 days`."""
+    return f"{n} day{'s' if n != 1 else ''}"
+
+
+def _age_text(days):
+    """`3 days`, `5 hours`, `a few minutes`: how old a listing is."""
+    if days is None:
+        return "an unknown time"
+    if days >= 1:
+        return f"{days:.0f} day{'s' if round(days) != 1 else ''}"
+    hours = days * 24
+    if hours >= 1:
+        return f"{hours:.0f} hour{'s' if round(hours) != 1 else ''}"
+    return "a few minutes"
+
+
+def _refresh_run(db, gh, run_id, key, owner, forks, skip_archived, no_auth):
+    """List the owner again and merge it into the run. Prints what changed."""
+    items = _list_items(gh, owner, forks, skip_archived, no_auth)
+    changed = OrgSyncManifest.refresh_listing(db, run_id, items)
+    console.print(
+        f"Refreshed run {run_id} for {key} from a new listing of {len(items):,}: "
+        f"{changed['new']} new, {changed['gone']} gone"
+        + (f", {changed['back']} back" if changed["back"] else "") + ".")
+
+
 def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
-                       relist, retry_failed, forks, skip_archived, ssh,
-                       no_prompt, no_auth):
+                       retry_failed, forks, skip_archived, ssh, no_prompt, no_auth,
+                       active=None, refresh=False, restart=False,
+                       refresh_days=OrgSync.REFRESH_DAYS_DEFAULT):
     run = OrgSyncManifest.unfinished_run(db, key)
 
     if inventory:
+        if run and refresh:
+            _refresh_run(db, gh, run["run_id"], key, owner, forks, skip_archived, no_auth)
+            _print_inventory(db, run["run_id"], key, saved=False)
+            return
         items = _list_items(gh, owner, forks, skip_archived, no_auth)
-        if run and not relist:
+        if run and not restart:
             new, gone = OrgSync.compare_with_run(db, run["run_id"], items)
             counts = OrgSyncManifest.run_counts(db, run["run_id"])
             console.print(f"Listed {len(items):,} repos for {key} (not saved)")
@@ -548,8 +603,9 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                 f"{counts['pending'] + counts['in_progress']} pending.")
             console.print(f"  {len(new)} repos are new since that run, {len(gone)} are gone. "
                           "Kept the unfinished run.")
-            console.print(f"To replace it with this listing: "
-                          f"kgit sync {flag} {owner} -inventory -relist")
+            console.print(f"To merge this listing into it: "
+                          f"kgit sync {flag} {owner} -inventory -refresh")
+            console.print(f"To replace it: kgit sync {flag} {owner} -inventory -restart")
             return
         run_id = OrgSyncManifest.save_listing(db, key, items, owner_type=owner_kind,
                                               replace=bool(run))
@@ -558,22 +614,45 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                       "to start syncing.")
         return
 
-    if run and not relist:
+    window = f" -active {active}" if active is not None else ""
+    if run and not restart:
         run_id = run["run_id"]
+        listed_at = OrgSyncManifest.listed_at(db, run_id)
+        age = OrgSync.listing_age_days(listed_at)
+        stale = active is not None and OrgSync.listing_is_stale(listed_at, refresh_days)
+        if refresh or stale:
+            if stale and not refresh:
+                console.print(f"Run {run_id} was listed {_age_text(age)} ago, "
+                              f"over {OrgSync.ENV_REFRESH_DAYS}={refresh_days}: listing again.")
+            _refresh_run(db, gh, run_id, key, owner, forks, skip_archived, no_auth)
+            age = 0
         counts = OrgSyncManifest.run_counts(db, run_id)
         console.print(
             f"Resuming run {run_id} for {key}: {counts['synced']} synced, "
-            f"{counts['skipped']} skipped, {counts['failed']} failed, "
-            f"{counts['pending'] + counts['in_progress']} to do.")
+            f"{counts['skipped']} skipped, {counts['failed']} failed"
+            + (f", {counts['gone']} gone" if counts["gone"] else "")
+            + f", {counts['pending'] + counts['in_progress']} to do.")
+        if active is not None:
+            inside, outside = OrgSyncManifest.window_counts(
+                db, run_id, active, retry_failed=retry_failed)
+            console.print(f"  {inside} to do in the last {_days(active)}, {outside} pending "
+                          f"outside it. Listed {_age_text(age)} ago.")
     else:
         items = _list_items(gh, owner, forks, skip_archived, no_auth)
         run_id = OrgSyncManifest.save_listing(db, key, items, owner_type=owner_kind,
                                               replace=bool(run))
         _print_inventory(db, run_id, key, saved=True)
+        if active is not None:
+            inside, outside = OrgSyncManifest.window_counts(
+                db, run_id, active, retry_failed=retry_failed)
+            console.print(f"  {inside} to do in the last {_days(active)}, "
+                          f"{outside} pending outside it.")
 
-    todo = OrgSyncManifest.next_items(db, run_id, n=next_, retry_failed=retry_failed)
+    todo = OrgSyncManifest.next_items(db, run_id, n=next_, retry_failed=retry_failed,
+                                      active_days=active)
     if not todo:
-        console.print("Nothing to sync in this run.")
+        console.print("Nothing to sync in this run"
+                      + (f" in the last {_days(active)}." if active is not None else "."))
     else:
         console.print(f"\nSyncing {len(todo)} repos\n")
 
@@ -608,7 +687,7 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
         done = OrgSync.sync_items(db, run_id, todo, clone=clone, sync=sync_one,
                                   conflict=conflict, use_ssh=ssh, on_item=on_item)
     except KeyboardInterrupt:
-        console.print(f"\nInterrupted. Resume with: kgit sync {flag} {owner}",
+        console.print(f"\nInterrupted. Resume with: kgit sync {flag} {owner}{window}",
                       style="yellow")
         raise SystemExit(130)
     finally:
@@ -627,6 +706,17 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
     if closed:
         console.print(f"Run {run_id} is finished: {counts['synced']} synced, "
                       f"{counts['skipped']} skipped, {counts['failed']} failed.")
+    elif active is not None:
+        inside, outside = OrgSyncManifest.window_counts(
+            db, run_id, active, retry_failed=retry_failed)
+        more = f" -next {next_}" if next_ else ""
+        if inside:
+            console.print(f"{inside} repos still to do in the last {_days(active)}. "
+                          f"Continue with: kgit sync {flag} {owner}{window}{more}")
+        else:
+            console.print(f"Nothing left to do in the last {_days(active)}.")
+        console.print(f"{outside} repos are pending outside the window. "
+                      f"A wider -active, or none, syncs them.")
     else:
         more = f" -next {next_}" if next_ else ""
         console.print(f"{remaining} repos still to do. Continue with: "
@@ -647,8 +737,8 @@ def _print_inventory(db, run_id, key, saved):
         console.print(f"  in kospex but not in this listing: {len(inv['gone'])}    (see -status)")
 
 
-def _print_status(db, key, owner, flag):
-    """The latest run, from the DB only."""
+def _print_status(db, key, owner, flag, active=None):
+    """The latest run, from the DB only. With `active`, also the window's split."""
     run = OrgSyncManifest.latest_run(db, key)
     if not run:
         console.print(f"No sync runs for {key}. Start one with: "
@@ -657,11 +747,20 @@ def _print_status(db, key, owner, flag):
     run_id = run["run_id"]
     counts = OrgSyncManifest.run_counts(db, run_id)
     state = f"finished {run['finished_at']}" if run["finished_at"] else "unfinished"
+    listed_at = run.get("listed_at") or run["started_at"]
     console.print(f"Run {run_id} for {key} ({run['owner_type']}), "
                   f"started {run['started_at']}, {state}")
+    if listed_at != run["started_at"]:
+        console.print(f"  listed again {listed_at}")
     console.print(f"  synced {counts['synced']}, skipped {counts['skipped']}, "
                   f"failed {counts['failed']}, pending {counts['pending']}, "
-                  f"in progress {counts['in_progress']}")
+                  f"in progress {counts['in_progress']}"
+                  + (f", gone {counts['gone']}" if counts["gone"] else ""))
+    if active is not None and not run["finished_at"]:
+        inside, outside = OrgSyncManifest.window_counts(db, run_id, active)
+        age = OrgSync.listing_age_days(listed_at)
+        console.print(f"  {inside} to do in the last {_days(active)}, {outside} pending "
+                      f"outside it (pushed dates from a listing {_age_text(age)} old)")
     _print_inventory(db, run_id, key, saved=False)
 
     skipped = list(db.query(
@@ -1036,7 +1135,7 @@ def github(no_auth, sync, include_member, test_auth, out_repo_list, ssh_clone_ur
             _error(f"Couldn't find a GitHub organisation or user called {owner!r}.")
         console.print(f"Running: kgit sync --{kind} {owner}{' -no-auth' if no_auth else ''}")
         _sync_owner(owner_kind=kind, both=False, target=owner, inventory=False,
-                    next_=None, status=False, relist=False, retry_failed=False,
+                    next_=None, status=False, retry_failed=False,
                     include_forks=False, skip_forks=False, skip_archived=False,
                     ssh=False, no_prompt=False, no_auth=no_auth)
         return

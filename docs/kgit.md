@@ -62,7 +62,7 @@ within GitHub's 60 requests an hour.
 ### Resuming, and syncing a few at a time
 
 The listing is saved in the kospex database as a **run**, with a status for each
-repository: `pending`, `in_progress`, `synced`, `skipped` or `failed`. If a sync is
+repository: `pending`, `in_progress`, `synced`, `skipped`, `failed` or `gone`. If a sync is
 interrupted, or one repository fails, run the same command again and it carries on
 from the saved run rather than listing and syncing everything again.
 
@@ -76,14 +76,22 @@ kgit sync --org acme -status      # progress so far, from the database only
   with what kospex already holds: active, archived, forks, already in kospex,
   changed since kospex last fetched, and in kospex but no longer listed. It needs
   only the token, not git credentials. If a run is already partway through, it
-  prints the comparison but keeps that run; add `-relist` to replace it.
+  prints the comparison but keeps that run: add `-refresh` to merge the new
+  listing into it, or `-restart` to replace it.
 - **`-next N`** syncs the next N repositories, most recently pushed first, so a
   large organisation can be synced from a schedule. A 1,000-repo organisation at
   `-next 10` takes 100 runs. Once every repository is done, the next run lists the
   organisation again.
 - **`-status`** shows the latest run: counts, the failures with their reasons, and
   repositories kospex has that the listing didn't include. No network.
-- **`-relist`** closes the unfinished run and starts from a fresh listing.
+- **`-refresh`** lists the organisation again and merges it into the unfinished
+  run, keeping each repository's progress. New repositories are added as
+  `pending`; ones no longer listed become `gone` (deleted, renamed, transferred,
+  or no longer visible to the token), with what they were in the detail; and
+  everything else gets its new pushed date and flags. A repository archived since
+  keeps its status. Without `-refresh`, resuming a run never lists again.
+- **`-restart`** closes the unfinished run and starts from a fresh listing, with
+  every repository pending again.
 - **`-retry-failed`** retries repositories that failed earlier in the unfinished
   run. Without it, a failure is retried on the next listing.
 
@@ -92,6 +100,34 @@ says so, and exits 0, so overlapping scheduled runs are harmless. A sync is
 never interrupted for taking a long time. If a sync crashes, the next one
 notices its process has gone and takes over the lock. The lock file is
 `org-sync-<org>.lock` in `~/kospex`.
+
+### Only active repositories: `-active`
+
+A large organisation is mostly dormant. `-active` syncs only the repositories
+pushed to in the last 90 days, or `-active N` for the last N days:
+
+```bash
+kgit sync --org acme -inventory              # list and save every repo
+kgit sync --org acme -status -active 365     # how many were pushed to in a year
+kgit sync --org acme -active 365             # sync those
+kgit sync --org acme -active 365 -next 50    # or 50 at a time, from a schedule
+```
+
+- **Put the organisation before `-active`.** The number is optional, so in
+  `kgit sync --org -active acme` the `acme` is read as the number of days.
+- **The rest stay `pending`**, not skipped, so a later run with a wider window,
+  or without `-active`, syncs them. The run stays unfinished until then.
+- **Inside the window, a repository is cloned if it's new to kospex and pulled
+  if it isn't.** Outside it, the run leaves repositories alone, including ones
+  cloned earlier: keep those up to date with `kgit pull --org acme`.
+- **The window counts back from now**, using the pushed dates from the listing.
+  If the run's listing is more than 2 days old, `-active` lists the organisation
+  again and merges it in, as `-refresh` does, so a scheduled run picks up new
+  repositories and ones that have come back to life. Set
+  `KOSPEX_ORG_SYNC_REFRESH_DAYS` to change the 2 days; `0` lists every time.
+- **The pushed date counts a push to any branch or tag**, not only commits to
+  the default branch. Bots that push branches, such as Dependabot and Renovate,
+  make some dormant repositories look active. No active repository is left out.
 
 ### Forks, archived repositories and other options
 

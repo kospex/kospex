@@ -255,7 +255,7 @@ def test_inventory_saves_the_listing_and_clones_nothing(env):
                                  "c": (M.SKIPPED, "fork")}
 
 
-def test_inventory_keeps_an_unfinished_run_unless_relist(env):
+def test_inventory_keeps_an_unfinished_run_unless_restart(env):
     FakeGitHub.listing = [_repo("a"), _repo("b")]
     run("--org", "acme", "-inventory")
     first = M.unfinished_run(env["db"], ORG)["run_id"]
@@ -266,13 +266,191 @@ def test_inventory_keeps_an_unfinished_run_unless_relist(env):
     assert "Listed 3 repos for github.com~acme (not saved)" in result.output
     assert f"Run {first} is unfinished" in result.output
     assert "2 repos are new since that run, 1 are gone. Kept the unfinished run." in result.output
-    assert "kgit sync --org acme -inventory -relist" in result.output
+    assert "To merge this listing into it: kgit sync --org acme -inventory -refresh" in result.text
+    assert "To replace it: kgit sync --org acme -inventory -restart" in result.text
     assert env["db"][M.TBL_ORG_SYNC_RUNS].count == 1
 
-    result = run("--org", "acme", "-inventory", "-relist")
+    result = run("--org", "acme", "-inventory", "-restart")
     assert result.exit_code == 0, result.output
     assert M.unfinished_run(env["db"], ORG)["run_id"] != first
     assert env["db"][M.TBL_ORG_SYNC_RUNS].count == 2
+
+
+def test_relist_is_gone_restart_replaces_it(env):
+    result = run("--org", "acme", "-relist")
+    assert result.exit_code == 2
+    assert "No such option" in result.output  # Click names it as '-r'
+
+
+def test_inventory_refresh_merges_into_the_unfinished_run(env):
+    FakeGitHub.listing = [_repo("a"), _repo("b")]
+    run("--org", "acme", "-next", "1")          # a synced, b pending
+    first = M.unfinished_run(env["db"], ORG)["run_id"]
+    assert _items(env["db"]) == {"a": (M.SYNCED, None), "b": (M.PENDING, None)}
+
+    FakeGitHub.listing = [_repo("b", "2026-11-10T00:00:00Z"), _repo("c")]
+    result = run("--org", "acme", "-inventory", "-refresh")
+    assert result.exit_code == 0, result.output
+    assert f"Refreshed run {first} for github.com~acme from a new listing of 2: " \
+           "1 new, 1 gone." in result.text
+    assert env["db"][M.TBL_ORG_SYNC_RUNS].count == 1
+    assert M.unfinished_run(env["db"], ORG)["run_id"] == first
+    assert _items(env["db"]) == {"a": (M.GONE, "was synced"), "b": (M.PENDING, None),
+                                 "c": (M.PENDING, None)}
+    b = env["db"].execute(f"SELECT pushed_at FROM {M.TBL_ORG_SYNC_ITEMS} "
+                          "WHERE _repo_id = 'github.com~acme~b'").fetchone()[0]
+    assert b == "2026-11-10T00:00:00Z"
+    assert env["calls"]["cloned"] == [env["calls"]["cloned"][0]]  # nothing more cloned
+
+
+def test_refresh_with_no_unfinished_run_just_lists(env):
+    FakeGitHub.listing = [_repo("a")]
+    result = run("--org", "acme", "-refresh")
+    assert result.exit_code == 0, result.output
+    assert "saved as run" in result.output
+    assert env["calls"]["synced"] == ["github.com~acme~a"]
+
+
+def test_a_plain_resume_never_lists_again_however_old(env):
+    FakeGitHub.listing = [_repo("a"), _repo("b")]
+    run("--org", "acme", "-next", "1")
+    _age_listing(env["db"], days=30)
+    result = run("--org", "acme", "-next", "1")
+    assert result.exit_code == 0, result.output
+    assert "Resuming run" in result.output
+    assert FakeGitHub.list_calls == 1
+
+
+# --- -active -----------------------------------------------------------------
+
+def _days_ago(days):
+    return _hours_ago(days * 24)
+
+
+def _age_listing(db, days):
+    db.execute(f"UPDATE {M.TBL_ORG_SYNC_RUNS} SET listed_at = ?", [_days_ago(days)])
+    db.conn.commit()
+
+
+def _active_listing():
+    return [_repo("fresh", _days_ago(10)), _repo("recent", _days_ago(200)),
+            _repo("old", _days_ago(900)), _repo("empty", None)]
+
+
+@pytest.mark.parametrize("args, message", [
+    (["--org", "acme", "-active", "0"], "positive number of days"),
+    (["--org", "acme", "-inventory", "-active"], "Run them separately"),
+    (["--org", "acme", "-refresh", "-restart"], "-refresh or -restart, not both"),
+    (["--org", "acme", "-status", "-refresh"], "-status reads the DB only"),
+    (["--org", "-active", "acme"], "'acme' is not a valid integer"),
+    (["https://github.com/acme/app", "-active"], "only apply with --org or --user"),
+])
+def test_active_option_mistakes(env, args, message):
+    result = run(*args)
+    assert result.exit_code == 2, result.output
+    assert message in result.text
+
+
+def test_active_defaults_to_90_days_and_leaves_the_rest_pending(env):
+    FakeGitHub.listing = _active_listing()
+    run("--org", "acme", "-inventory")
+    result = run("--org", "acme", "-active")
+    assert result.exit_code == 0, result.output
+    assert FakeGitHub.list_calls == 1            # listed minutes ago: not stale
+    assert "1 to do in the last 90 days, 3 pending outside it." in result.text
+    assert env["calls"]["synced"] == ["github.com~acme~fresh"]
+    assert _items(env["db"])["recent"] == (M.PENDING, None)
+    assert "Nothing left to do in the last 90 days." in result.text
+    assert "3 repos are pending outside the window." in result.text
+    assert M.unfinished_run(env["db"], ORG) is not None
+
+
+def test_a_wider_window_later_picks_up_what_was_left(env):
+    FakeGitHub.listing = _active_listing()
+    run("--org", "acme", "-active")
+    result = run("--org", "acme", "-active", "365")
+    assert result.exit_code == 0, result.output
+    assert env["calls"]["synced"] == ["github.com~acme~fresh", "github.com~acme~recent"]
+    assert "Nothing to sync" not in result.output
+
+    result = run("--org", "acme")                 # no window: the rest
+    assert env["calls"]["synced"][2:] == ["github.com~acme~old", "github.com~acme~empty"]
+    assert M.unfinished_run(env["db"], ORG) is None
+
+
+def test_active_with_next_continues_with_the_same_window(env):
+    FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "abc"] + [_repo("z", _days_ago(400))]
+    result = run("--org", "acme", "-active", "30", "-next", "2")
+    assert result.exit_code == 0, result.output
+    assert len(env["calls"]["synced"]) == 2
+    assert "1 repos still to do in the last 30 days. Continue with: " \
+           "kgit sync --org acme -active 30 -next 2" in result.text
+
+
+def test_active_refreshes_a_stale_listing_in_place(env):
+    FakeGitHub.listing = _active_listing()
+    run("--org", "acme", "-inventory")
+    first = M.unfinished_run(env["db"], ORG)["run_id"]
+    _age_listing(env["db"], days=3)
+
+    # Since the inventory, `old` was pushed to and a new repo appeared.
+    FakeGitHub.listing = [_repo("fresh", _days_ago(10)), _repo("recent", _days_ago(200)),
+                          _repo("old", _days_ago(1)), _repo("empty", None),
+                          _repo("brandnew", _days_ago(2))]
+    result = run("--org", "acme", "-active")
+    assert result.exit_code == 0, result.output
+    assert FakeGitHub.list_calls == 2
+    assert "was listed 3 days ago, over KOSPEX_ORG_SYNC_REFRESH_DAYS=2: listing again." \
+        in result.text
+    assert "1 new, 0 gone." in result.text
+    assert M.unfinished_run(env["db"], ORG)["run_id"] == first
+    assert sorted(env["calls"]["synced"]) == ["github.com~acme~brandnew",
+                                              "github.com~acme~fresh", "github.com~acme~old"]
+
+
+def test_refresh_days_setting(env, monkeypatch):
+    FakeGitHub.listing = _active_listing()
+    run("--org", "acme", "-inventory")
+    _age_listing(env["db"], days=3)
+    monkeypatch.setenv("KOSPEX_ORG_SYNC_REFRESH_DAYS", "7")
+    run("--org", "acme", "-active")
+    assert FakeGitHub.list_calls == 1             # 3 days old is fresh enough
+
+    monkeypatch.setenv("KOSPEX_ORG_SYNC_REFRESH_DAYS", "0")
+    run("--org", "acme", "-active")
+    assert FakeGitHub.list_calls == 2             # 0: every time
+
+    monkeypatch.setenv("KOSPEX_ORG_SYNC_REFRESH_DAYS", "two")
+    result = run("--org", "acme", "-active")
+    assert result.exit_code == 2
+    assert "isn't a whole number of days" in result.text
+
+
+def test_a_failed_refresh_leaves_the_run_untouched(env):
+    from kospex_github import GitHubListingIncomplete
+    FakeGitHub.listing = _active_listing()
+    run("--org", "acme", "-inventory")
+    _age_listing(env["db"], days=5)
+    before = _items(env["db"])
+    FakeGitHub.listing_error = GitHubListingIncomplete("u", 2, 100, "HTTP 502")
+    result = run("--org", "acme", "-active")
+    assert result.exit_code == 1
+    assert "Nothing was saved or synced" in result.output
+    assert _items(env["db"]) == before
+    assert env["calls"]["cloned"] == []
+
+
+def test_status_with_active_shows_the_window_offline(env, monkeypatch):
+    FakeGitHub.listing = _active_listing()
+    run("--org", "acme", "-inventory")
+
+    class NoNetwork:
+        def __init__(self):
+            raise AssertionError("-status must not touch GitHub")
+    monkeypatch.setattr(kgit_module, "KospexGithub", NoNetwork)
+    result = run("--org", "acme", "-status", "-active", "365")
+    assert result.exit_code == 0, result.output
+    assert "2 to do in the last 365 days, 2 pending outside it" in result.text
 
 
 # --- syncing -----------------------------------------------------------------

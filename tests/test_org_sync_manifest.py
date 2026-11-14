@@ -16,6 +16,7 @@ import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 from kospex.org_sync_manifest import (
     FAILED,
+    GONE,
     IN_PROGRESS,
     PENDING,
     SKIPPED,
@@ -27,13 +28,16 @@ from kospex.org_sync_manifest import (
     close_run_if_done,
     inventory,
     latest_run,
+    listed_at,
     mark,
     new_run_id,
     next_items,
     record_provider_ids,
+    refresh_listing,
     run_counts,
     save_listing,
     unfinished_run,
+    window_counts,
 )
 
 ORG = "github.com~acme"
@@ -85,8 +89,26 @@ def test_the_new_tables_and_columns_are_not_in_the_baseline_schema():
     both places fails with `duplicate column name` on every clean install.
     """
     baseline = " ".join(KospexSchema.DB_CREATE_STATEMENTS.values())
-    for name in ("org_sync_runs", "org_sync_items", "provider_repo_id", "provider_checked_at"):
+    for name in ("org_sync_runs", "org_sync_items", "provider_repo_id", "provider_checked_at",
+                 "listed_at"):
         assert name not in baseline, name
+
+
+def test_listed_at_is_backfilled_from_started_at_for_older_runs(tmp_path):
+    """0013 on a DB that already has runs from 0012."""
+    from kospex.db.migrator import Migrator
+    db = sqlite_utils.Database(str(tmp_path / "k.db"))
+    for create_sql in KospexSchema.DB_CREATE_STATEMENTS.values():
+        db.execute(create_sql)
+    migrator = Migrator(db)
+    pending = [m for m in migrator.pending() if m.sequence <= 12]
+    for migration in pending:
+        migrator.apply(migration)
+    assert "listed_at" not in _columns(db, TBL_ORG_SYNC_RUNS)
+    db[TBL_ORG_SYNC_RUNS].insert({"run_id": "20261101T000000Z", "org_key": ORG,
+                                  "started_at": "2026-11-01T00:00:00Z"})
+    Migrator(db).apply_pending()
+    assert listed_at(db, "20261101T000000Z") == "2026-11-01T00:00:00Z"
 
 
 # --- save_listing ------------------------------------------------------------
@@ -149,7 +171,7 @@ def test_a_second_listing_is_refused_while_a_run_is_unfinished():
 
 
 def test_replace_closes_the_old_run_and_keeps_its_items():
-    """`-relist`: the old run is closed, and its items stay as a record."""
+    """`-restart`: the old run is closed, and its items stay as a record."""
     db = _db()
     first = save_listing(db, ORG, [_item(A), _item(B)], run_id="20261106T000000Z")
     mark(db, first, A, SYNCED)
@@ -160,7 +182,8 @@ def test_replace_closes_the_old_run_and_keeps_its_items():
     assert unfinished_run(db, ORG)["run_id"] == second
     old = next(iter(db.query(f"SELECT * FROM {TBL_ORG_SYNC_RUNS} WHERE run_id = ?", [first])))
     assert old["finished_at"] is not None
-    assert run_counts(db, first) == {PENDING: 1, IN_PROGRESS: 0, SYNCED: 1, SKIPPED: 0, FAILED: 0}
+    assert run_counts(db, first) == {PENDING: 1, IN_PROGRESS: 0, SYNCED: 1, SKIPPED: 0,
+                                     FAILED: 0, GONE: 0}
 
 
 def test_another_orgs_unfinished_run_does_not_block_a_listing():
@@ -403,3 +426,138 @@ def test_inventory_counts_a_never_fetched_repo_as_changed():
 def test_inventory_of_an_unknown_run_raises():
     with pytest.raises(KeyError):
         inventory(_db(), "nope")
+
+
+# --- -active: the window --------------------------------------------------------
+
+NOW = "2026-11-15T00:00:00Z"
+
+
+def _windowed_run(db):
+    return save_listing(db, ORG, [
+        _item(A, "2026-11-10T00:00:00Z"),       # 5 days before NOW
+        _item(B, "2026-06-01T00:00:00+00:00"),  # 167 days, in kospex's own form
+        _item(C, None),                         # an empty repository
+    ], run_id="20261106T000000Z")
+
+
+def test_next_items_with_a_window_keeps_only_recently_pushed():
+    db = _db()
+    run_id = _windowed_run(db)
+    ids = lambda **kw: [r["_repo_id"] for r in next_items(db, run_id, now=NOW, **kw)]
+    assert ids(active_days=90) == [A]
+    assert ids(active_days=365) == [A, B]
+    assert ids() == [A, B, C]                # no window: everything, empty last
+    assert ids(active_days=5) == [A]         # the boundary is inclusive
+    assert ids(active_days=4) == []
+
+
+def test_the_window_counts_back_from_now_not_from_the_listing():
+    db = _db()
+    run_id = _windowed_run(db)
+    assert [r["_repo_id"] for r in next_items(db, run_id, active_days=90,
+                                               now="2027-11-15T00:00:00Z")] == []
+
+
+def test_next_items_rejects_a_non_positive_window():
+    db = _db()
+    run_id = _windowed_run(db)
+    with pytest.raises(ValueError):
+        next_items(db, run_id, active_days=0)
+
+
+def test_window_counts_split_open_items_and_respect_retry_failed():
+    db = _db()
+    run_id = _windowed_run(db)
+    assert window_counts(db, run_id, 90, now=NOW) == (1, 2)
+    mark(db, run_id, A, FAILED, "boom")
+    assert window_counts(db, run_id, 90, now=NOW) == (0, 2)
+    assert window_counts(db, run_id, 90, retry_failed=True, now=NOW) == (1, 2)
+
+
+def test_items_outside_the_window_keep_the_run_open():
+    db = _db()
+    run_id = _windowed_run(db)
+    for row in next_items(db, run_id, active_days=90, now=NOW):
+        mark(db, run_id, row["_repo_id"], SYNCED)
+    assert not close_run_if_done(db, run_id)
+    assert unfinished_run(db, ORG)["run_id"] == run_id
+
+
+# --- refresh_listing ------------------------------------------------------------
+
+def test_refresh_keeps_progress_adds_new_and_marks_gone():
+    db = _db()
+    D = "github.com~acme~d"
+    run_id = save_listing(db, ORG, [_item(A), _item(B), _item(C)], run_id="20261106T000000Z")
+    mark(db, run_id, A, SYNCED)
+    mark(db, run_id, B, FAILED, "clone failed")
+
+    counts = refresh_listing(db, run_id, [
+        _item(A, "2026-11-12T00:00:00Z", archived=True),
+        _item(B), _item(D), _item(D)])
+
+    assert counts == {"new": 1, "updated": 2, "back": 0, "gone": 1}
+    rows = {r["_repo_id"]: r for r in db.query(
+        f"SELECT * FROM {TBL_ORG_SYNC_ITEMS} WHERE run_id = ?", [run_id])}
+    assert (rows[A]["status"], rows[A]["pushed_at"], rows[A]["archived"]) == \
+        (SYNCED, "2026-11-12T00:00:00Z", 1)        # archived since: flag only
+    assert (rows[B]["status"], rows[B]["detail"]) == (FAILED, "clone failed")
+    assert (rows[C]["status"], rows[C]["detail"]) == (GONE, "was pending")
+    assert rows[D]["status"] == PENDING
+    run = latest_run(db, ORG)
+    assert run["listed"] == 3
+    assert run["listed_at"] >= run["started_at"]
+    assert db[TBL_ORG_SYNC_RUNS].count == 1
+
+
+def test_a_gone_repo_listed_again_comes_back_and_gone_is_never_picked():
+    db = _db()
+    run_id = save_listing(db, ORG, [_item(A), _item(B)], run_id="20261106T000000Z")
+    refresh_listing(db, run_id, [_item(A)])
+    assert [r["_repo_id"] for r in next_items(db, run_id)] == [A]
+    assert run_counts(db, run_id)[GONE] == 1
+    assert refresh_listing(db, run_id, [_item(A)])["gone"] == 0   # not counted twice
+
+    counts = refresh_listing(db, run_id, [_item(A), _item(B)])
+    assert counts["back"] == 1
+    assert [r["_repo_id"] for r in next_items(db, run_id)] == [A, B]
+
+
+def test_a_run_whose_open_items_are_all_gone_can_close():
+    db = _db()
+    run_id = save_listing(db, ORG, [_item(A), _item(B)], run_id="20261106T000000Z")
+    mark(db, run_id, A, SYNCED)
+    refresh_listing(db, run_id, [_item(A)])
+    assert close_run_if_done(db, run_id)
+
+
+def test_a_failure_part_way_through_a_refresh_changes_nothing(monkeypatch):
+    import kospex.org_sync_manifest as M
+    db = _db()
+    run_id = save_listing(db, ORG, [_item(A), _item(B)], run_id="20261106T000000Z")
+    before = list(db.query(f"SELECT * FROM {TBL_ORG_SYNC_ITEMS}"))
+
+    def boom(*a, **k):
+        raise RuntimeError("disk full")
+    monkeypatch.setattr(M, "record_provider_ids", boom)
+    with pytest.raises(RuntimeError):
+        refresh_listing(db, run_id, [_item(A, "2026-11-12T00:00:00Z"), _item(C)])
+    assert list(db.query(f"SELECT * FROM {TBL_ORG_SYNC_ITEMS}")) == before
+    assert latest_run(db, ORG)["listed"] == 2
+
+
+def test_refresh_of_an_unknown_run_raises():
+    with pytest.raises(KeyError):
+        refresh_listing(_db(), "nope", [_item(A)])
+
+
+def test_inventory_leaves_gone_items_out_and_reports_them_if_in_kospex():
+    db = _db()
+    run_id = save_listing(db, ORG, [_item(A), _item(B)], run_id="20261106T000000Z")
+    db["repos"].insert({"_repo_id": B, "_git_server": "github.com",
+                        "_git_owner": "acme", "_git_repo": "b"})
+    refresh_listing(db, run_id, [_item(A)])
+    inv = inventory(db, run_id)
+    assert inv["listed"] == 1
+    assert inv["gone"] == [B]

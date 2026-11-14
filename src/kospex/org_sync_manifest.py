@@ -1,13 +1,17 @@
 """The manifest behind `kgit sync --org` / `--user`: what an owner's listing held,
 and how far the sync has got through it.
 
-Design: changes/202610-kgit-sync-org.md (#335)
-Tables: migration 0012
+Design: changes/202610-kgit-sync-org.md (#335),
+        changes/202611-kgit-sync-active.md (-active, -refresh, `gone`)
+Tables: migrations 0012, 0013
 
 A run is one complete listing of an owner's repositories. Each repository in it
 is an item with a status:
 
     pending -> in_progress -> synced | skipped | failed
+
+and `gone` for a repository a later listing of the same run no longer has
+(`refresh_listing`). `gone` isn't a step in the sync: nothing picks it.
 
 `in_progress` is committed before the work on a repository starts, so a crash or
 `kill -9` leaves it `in_progress`, and the next invocation treats it as pending.
@@ -15,7 +19,8 @@ Redoing it is cheap: a clone becomes a pull, and the sync is incremental.
 
 A run is finished once nothing in it is pending or in progress. Until then it is
 the org's unfinished run, which `-next N` keeps working through and `-inventory`
-refuses to replace without `-relist`.
+refuses to replace without `-restart`. `-refresh` lists the org again into the
+same run, keeping each item's progress.
 
 This module only reads and writes the manifest. Listing the provider, cloning
 and syncing are the caller's.
@@ -33,12 +38,22 @@ IN_PROGRESS = "in_progress"
 SYNCED = "synced"
 SKIPPED = "skipped"
 FAILED = "failed"
+# In the run, but missing from a later complete listing: deleted, renamed,
+# transferred, or no longer visible to the listing token.
+GONE = "gone"
 
-STATUSES = (PENDING, IN_PROGRESS, SYNCED, SKIPPED, FAILED)
+STATUSES = (PENDING, IN_PROGRESS, SYNCED, SKIPPED, FAILED, GONE)
 # Statuses a run still has work in. `in_progress` is here because it means the
 # process doing it died: nothing else leaves an item in that state.
 OPEN_STATUSES = (PENDING, IN_PROGRESS)
 DONE_STATUSES = (SYNCED, SKIPPED, FAILED)
+
+# What a listing says about a repository, as opposed to how far the sync got
+# with it. A refresh overwrites these and leaves the status alone.
+LISTING_FIELDS = (
+    "clone_url", "ssh_url", "provider_repo_id", "archived", "fork",
+    "fork_parent", "fork_source", "private", "pushed_at",
+)
 
 ITEM_FIELDS = (
     "clone_url", "ssh_url", "provider_repo_id", "archived", "fork",
@@ -145,6 +160,7 @@ def save_listing(db, org_key, items, provider="github", owner_type="org",
             "owner_type": owner_type,
             "listed": len(rows),
             "started_at": now,
+            "listed_at": now,
             "finished_at": None,
         }, pk="run_id")
         if rows:
@@ -210,7 +226,26 @@ def latest_run(db, org_key):
     """, [org_key])), None)
 
 
-def next_items(db, run_id, n=None, retry_failed=False):
+def _window(active_days, now):
+    """SQL and params limiting items to ones pushed in the last `active_days`.
+
+    Counted back from `now` (default: the current time), not from when the run
+    was listed. An item with no `pushed_at` (an empty repository) is outside
+    every window. Epoch seconds, so `...Z` and `...+00:00` compare correctly,
+    and strftime, so it runs on SQLite 3.26.
+    """
+    if active_days is None:
+        return "", []
+    if active_days < 1:
+        raise ValueError("active_days must be a positive number of days")
+    return (
+        " AND CAST(strftime('%s', pushed_at) AS INTEGER) >= "
+        "CAST(strftime('%s', ?, ?) AS INTEGER)",
+        [now or _utc_now_iso(), f"-{int(active_days)} days"],
+    )
+
+
+def next_items(db, run_id, n=None, retry_failed=False, active_days=None, now=None):
     """The next items to work on, most recently pushed first.
 
     Pending and in-progress items, plus failed ones with `retry_failed`.
@@ -219,20 +254,25 @@ def next_items(db, run_id, n=None, retry_failed=False):
     reaches its active repositories early. Items with no `pushed_at` go last,
     then ties break on `_repo_id` so the order is stable.
 
+    `active_days` keeps only items pushed in the last N days (`-active`). The
+    rest stay pending: a filter on what's picked, not a status, so a later run
+    with a wider window, or none, still finds them.
+
     `n=None` returns all of them.
     """
     statuses = list(OPEN_STATUSES) + ([FAILED] if retry_failed else [])
     marks = ", ".join("?" for _ in statuses)
+    window_sql, window_params = _window(active_days, now)
     # `pushed_at IS NULL` first in the ORDER BY puts NULLs last. NULLS LAST
     # itself needs SQLite 3.30, and kospex has to run on 3.26.
     sql = f"""
         SELECT * FROM {TBL_ORG_SYNC_ITEMS}
-         WHERE run_id = ? AND status IN ({marks})
+         WHERE run_id = ? AND status IN ({marks}){window_sql}
          ORDER BY pushed_at IS NULL,
                   CAST(strftime('%s', pushed_at) AS INTEGER) DESC,
                   _repo_id
     """
-    params = [run_id] + statuses
+    params = [run_id] + statuses + window_params
     if n is not None:
         if n < 1:
             raise ValueError("n must be a positive number of repositories")
@@ -278,7 +318,7 @@ def _close(db, run_id, finished_at):
 
 
 def close_run(db, run_id):
-    """Close a run whatever its items say. For `-relist`, which abandons it."""
+    """Close a run whatever its items say. For `-restart`, which abandons it."""
     with db.atomic():
         _close(db, run_id, _utc_now_iso())
 
@@ -313,6 +353,102 @@ def run_counts(db, run_id):
     return counts
 
 
+def window_counts(db, run_id, active_days, retry_failed=False, now=None):
+    """`(inside, outside)`: items still to do, inside and outside the window.
+
+    Inside is what `next_items` with the same arguments would return; outside
+    is the rest of the open items, which the window leaves pending.
+    """
+    statuses = list(OPEN_STATUSES) + ([FAILED] if retry_failed else [])
+    marks = ", ".join("?" for _ in statuses)
+    window_sql, window_params = _window(active_days, now)
+    base = (f"SELECT COUNT(*) FROM {TBL_ORG_SYNC_ITEMS} "
+            f"WHERE run_id = ? AND status IN ({marks})")
+    total = db.execute(base, [run_id] + statuses).fetchone()[0]
+    inside = db.execute(base + window_sql, [run_id] + statuses + window_params).fetchone()[0]
+    return inside, total - inside
+
+
+def listed_at(db, run_id):
+    """When the run's listing was last taken (`started_at` for a run from
+    before migration 0013 that wasn't backfilled)."""
+    row = db.execute(
+        f"SELECT COALESCE(listed_at, started_at) FROM {TBL_ORG_SYNC_RUNS} WHERE run_id = ?",
+        [run_id]).fetchone()
+    if row is None:
+        raise KeyError(f"No run {run_id}")
+    return row[0]
+
+
+def refresh_listing(db, run_id, items):
+    """Merge a new complete listing into an existing run, keeping its progress.
+
+    * A repository new to the run is added with the status the caller gave it
+      (`pending`, or `skipped` for a fork or archived repository).
+    * One already in the run gets the listing's fields (`pushed_at`,
+      `archived`, URLs...) and keeps its status. A fork or archived flag that
+      changed is recorded but doesn't change the status.
+    * One that had gone and is listed again goes back to the status the caller
+      gave it.
+    * One the listing no longer has becomes `gone`, with its previous status
+      in `detail` (`was synced`). Its row stays.
+
+    Call this only with a complete listing: a partial one would mark real
+    repositories gone. Everything is written in one transaction, and the run's
+    `listed` and `listed_at` are updated. Returns counts: `new`, `updated`,
+    `back`, `gone`.
+    """
+    listed, seen = [], set()
+    for item in items:
+        if item["_repo_id"] not in seen:
+            seen.add(item["_repo_id"])
+            listed.append(item)
+
+    now = _utc_now_iso()
+    counts = {"new": 0, "updated": 0, "back": 0, "gone": 0}
+    with db.atomic():
+        run = db.execute(f"SELECT finished_at FROM {TBL_ORG_SYNC_RUNS} WHERE run_id = ?",
+                         [run_id]).fetchone()
+        if run is None:
+            raise KeyError(f"No run {run_id}")
+        existing = {row["_repo_id"]: row["status"] for row in db.query(
+            f"SELECT _repo_id, status FROM {TBL_ORG_SYNC_ITEMS} WHERE run_id = ?", [run_id])}
+
+        for item in listed:
+            row = _item_row(run_id, item)
+            repo_id = row["_repo_id"]
+            if repo_id not in existing:
+                db[TBL_ORG_SYNC_ITEMS].insert(row, pk=["run_id", "_repo_id"])
+                counts["new"] += 1
+                continue
+            fields = {f: row[f] for f in LISTING_FIELDS if f in row}
+            if existing[repo_id] == GONE:
+                fields.update(status=row["status"], detail=row.get("detail"),
+                              started_at=None, finished_at=None)
+                counts["back"] += 1
+            else:
+                counts["updated"] += 1
+            sets = ", ".join(f"{f} = ?" for f in fields)
+            db.execute(
+                f"UPDATE {TBL_ORG_SYNC_ITEMS} SET {sets} WHERE run_id = ? AND _repo_id = ?",
+                list(fields.values()) + [run_id, repo_id])
+
+        for repo_id, status in existing.items():
+            if repo_id in seen or status == GONE:
+                continue
+            db.execute(
+                f"UPDATE {TBL_ORG_SYNC_ITEMS} SET status = ?, detail = ?, finished_at = ? "
+                "WHERE run_id = ? AND _repo_id = ?",
+                [GONE, f"was {status}", now, run_id, repo_id])
+            counts["gone"] += 1
+
+        db.execute(
+            f"UPDATE {TBL_ORG_SYNC_RUNS} SET listed = ?, listed_at = ? WHERE run_id = ?",
+            [len(listed), now, run_id])
+        record_provider_ids(db, run_id, checked_at=now)
+    return counts
+
+
 def inventory(db, run_id):
     """What a run's listing holds, compared with what kospex already has.
 
@@ -325,6 +461,9 @@ def inventory(db, run_id):
       `...Z` and kospex's `...+00:00` timestamps don't compare as strings.
     * `gone`: repositories kospex has under this org that the listing doesn't
       include, as a list of `_repo_id`s (the drift report, #12).
+
+    Items a refresh marked `gone` aren't in the listing any more, so they're
+    left out of the totals and counted in `gone` if kospex has them.
     """
     run = next(iter(db.query(
         f"SELECT * FROM {TBL_ORG_SYNC_RUNS} WHERE run_id = ?", [run_id])), None)
@@ -344,8 +483,8 @@ def inventory(db, run_id):
                    CAST(strftime('%s', r.last_fetch) AS INTEGER))), 0) AS changed_since_fetch
           FROM {TBL_ORG_SYNC_ITEMS} i
           LEFT JOIN {TBL_REPOS} r ON r._repo_id = i._repo_id
-         WHERE i.run_id = ?
-    """, [run_id])))
+         WHERE i.run_id = ? AND i.status != ?
+    """, [run_id, GONE])))
 
     # The org's repos by their parsed columns, as KospexQuery.where_org_key
     # scopes an org, not by slicing _repo_id. A nested group under this org has
@@ -356,9 +495,9 @@ def inventory(db, run_id):
         SELECT r._repo_id FROM {TBL_REPOS} r
          WHERE lower(r._git_server) = ? AND lower(r._git_owner) = ?
            AND r._repo_id NOT IN (
-               SELECT _repo_id FROM {TBL_ORG_SYNC_ITEMS} WHERE run_id = ?)
+               SELECT _repo_id FROM {TBL_ORG_SYNC_ITEMS} WHERE run_id = ? AND status != ?)
          ORDER BY r._repo_id
-    """, [parsed["git_server"].lower(), parsed["org"].lower(), run_id])]
+    """, [parsed["git_server"].lower(), parsed["org"].lower(), run_id, GONE])]
 
     result = dict(totals)
     result["not_in_kospex"] = result["listed"] - result["in_kospex"]

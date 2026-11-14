@@ -2,6 +2,32 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+**Database migration `0013`.** Run `kospex upgrade-db -apply` after upgrading.
+
+### Added
+
+- **`kgit sync --org` / `--user` can sync only active repositories.**
+  `-active` syncs the repositories pushed to in the last 90 days, or
+  `-active N` in the last N days, from the saved listing. The rest stay
+  `pending` for a later run with a wider window or none, so one inventory can
+  be synced in stages. `-status -active N` shows the split without syncing.
+  Put the owner before `-active`: the number is optional, so
+  `--org -active acme` reads `acme` as the days.
+- **`-refresh`** lists the owner again and merges it into the unfinished run,
+  keeping each repository's progress. `-active` does this by itself when the
+  run's listing is older than `KOSPEX_ORG_SYNC_REFRESH_DAYS` (default 2; `0`
+  lists every time). A plain resume still never lists again.
+- **A `gone` status** for a repository that a refreshed listing no longer has.
+  Its previous status is kept in the detail (`was synced`). Migration `0013`
+  adds `org_sync_runs.listed_at`, the time of the run's latest listing.
+
+### Changed
+
+- **`kgit sync`: `-relist` is now `-restart`.** It closes the unfinished run
+  and starts again from a fresh listing, as before.
+
 ## 0.3.1 - 2026-11-13
 
 ### Highlights

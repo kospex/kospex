@@ -1,6 +1,6 @@
 # `kgit sync --org -active [DAYS]` — sync only recently active repos
 
-Design doc. No code yet. Builds on `kgit sync --org` / `--user`
+Design doc, now built (see [Implementation](#implementation)). Builds on `kgit sync --org` / `--user`
 ([202610-kgit-sync-org.md](202610-kgit-sync-org.md)).
 
 ## Why
@@ -50,6 +50,17 @@ kgit sync --org acme -active 365 -next 50    # or in batches, on a schedule
    item with the same `provider_repo_id`), transferred, or made private or
    no longer visible to the listing token ([#403](https://github.com/kospex/kospex/issues/403)). It isn't a progress state:
    `next_items` never picks it, and it doesn't keep a run open.
+8. **A fork or archived flag that changes on refresh is recorded, and the
+   status left alone.** The run doesn't record which flags it was started
+   with. An archived repo can't be pushed to, so it ages out of any window by
+   itself; one archived recently may still be synced once more.
+
+   There's no archive date in the REST listing: `mergestat/blocks-legacy`
+   returns `archived: true`, `pushed_at` 2022-12-09 and `updated_at`
+   2023-09-22 (later than the archiving, so no stand-in). GraphQL has
+   `archivedAt` (2022-12-18T00:07:55Z for the same repo). If kospex adds
+   GraphQL for the default-branch commit date ([Limits](#limits)),
+   `archivedAt` comes in the same query.
 
 ## Design
 
@@ -153,20 +164,9 @@ Help text and docs examples put the target first.
 
 ## Open questions
 
-1. **A fork or archived flag that changes on refresh.** Proposed: the refresh
-   updates the `archived` / `fork` flags and leaves the status alone, and the
-   run doesn't record which flags it was started with. An archived repo can't
-   be pushed to, so it ages out of any window by itself; one archived recently
-   may still be synced once more.
+None left from the design.
 
-   There's no archive date in the REST listing: `mergestat/blocks-legacy`
-   returns `archived: true`, `pushed_at` 2022-12-09 and `updated_at`
-   2023-09-22 (later than the archiving, so no stand-in). GraphQL has
-   `archivedAt` (2022-12-18T00:07:55Z for the same repo). If kospex adds
-   GraphQL for the default-branch commit date ([Limits](#limits)),
-   `archivedAt` comes in the same query.
-
-## Files (expected)
+## Files
 
 - `src/kgit.py`: `-active`, `-refresh`, `-restart` (replacing `-relist`), resume/status output.
 - `src/kospex/org_sync_manifest.py`: window filter in `next_items`, window
@@ -178,3 +178,24 @@ Help text and docs examples put the target first.
   that suggest it, `org_sync_manifest.py` docstrings,
   `tests/test_kgit_sync_org_cli.py`, `tests/test_org_sync_manifest.py` and
   `docs/kgit.md`. `202610-kgit-sync-org.md` is left as written, as a record.
+
+## Implementation
+
+As designed, plus these details settled while building it:
+
+- **`-inventory -refresh`** merges a new listing into the unfinished run and
+  prints the inventory, without syncing: the way to update an inventory
+  without starting over. With an unfinished run, a plain `-inventory` now
+  suggests both `-inventory -refresh` and `-inventory -restart`.
+- **`-refresh` with no unfinished run** just lists, as a first run would.
+- **`-status` with `-refresh` or `-restart` is an error**: `-status` reads the
+  DB only.
+- **A `gone` item keeps its previous status in `detail`** (`was synced`), so
+  a refresh doesn't lose that a repo was synced before it disappeared.
+- **A gone repo that's listed again comes back** with the status the new
+  listing gives it (`pending`, or `skipped` for a fork), counted as `back`.
+- **`inventory()` leaves gone items out of its totals**, and lists them under
+  "in kospex but not in this listing" if kospex has them.
+- **Window boundary:** a repo pushed exactly N days ago is inside `-active N`.
+- **The refresh is one transaction** with the run's `listed` / `listed_at`
+  update and the provider-id copy, so a failure part way changes nothing.
