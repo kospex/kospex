@@ -37,6 +37,18 @@ kgit sync --org acme -active 365 -next 50    # or in batches, on a schedule
    older than `KOSPEX_ORG_SYNC_REFRESH_DAYS` (default **2**), `-active` lists
    the org again and merges the result into the same run before choosing what
    to sync. A run started straight after `-inventory` doesn't list twice.
+5. **`-refresh` updates the run, `-restart` replaces it.** `-refresh` lists the
+   org again and merges into the unfinished run, whatever its age. `-restart`
+   is today's `-relist`: close the run and start a new one. `-relist` stays as
+   a hidden alias of `-restart`, and the rename is noted in the CHANGELOG.
+6. **A plain resume doesn't change.** Without `-active` or `-refresh`, resuming
+   a run never lists again, as today. The staleness check applies only to
+   `-active`.
+7. **`gone` is a new item status:** in the run, but missing from a later
+   complete listing. Usually deleted, renamed (the new name arrives as a new
+   item with the same `provider_repo_id`), transferred, or made private or
+   no longer visible to the listing token ([#403](https://github.com/kospex/kospex/issues/403)). It isn't a progress state:
+   `next_items` never picks it, and it doesn't keep a run open.
 
 ## Design
 
@@ -84,7 +96,7 @@ the run and its progress:
 |---|---|---|
 | new | absent | adds it, `pending` (or `skipped` for a fork/archived, as `build_items` decides) |
 | still there | any status | updates `pushed_at`, `archived`, `private`, URLs; keeps the status |
-| gone | present | marks it gone (see open question 3); keeps the row |
+| gone | present | sets status `gone`; keeps the row |
 
 It needs to know when the run was last listed, which `started_at` stops being
 after the first refresh. So a migration (the next free number, `0013` at the
@@ -102,7 +114,8 @@ sync stops: a partial listing must not mark repos gone.
 - `KOSPEX_ORG_SYNC_REFRESH_DAYS`, default `2`. A non-integer or negative value
   is an error, not a guess, as with `KOSPEX_CLONE_FORKS_DEFAULT`. `0` refreshes
   every time.
-- A flag forces the refresh regardless of age (name: open question 1).
+- `-refresh` forces the refresh regardless of age, with or without `-active`.
+- `-restart` replaces the run (today's `-relist`, kept as a hidden alias).
 - `-active` with `-inventory` is an error: the inventory is the whole listing.
 
 **Argument order trap.** Click consumes the next token as the optional value,
@@ -139,31 +152,24 @@ Help text and docs examples put the target first.
 
 ## Open questions
 
-1. **Naming.** With refresh in place there are two operations: *update* the
-   run (new) and *replace* it (today's `-relist`). Options:
-   - **A (recommended):** `-refresh` updates, `-restart` replaces.
-   - **B:** `-refresh` updates, `-new-run` replaces.
-   - **C:** `-refresh` updates, `-relist` keeps its name and meaning.
+1. **A fork or archived flag that changes on refresh.** Proposed: the refresh
+   updates the `archived` / `fork` flags and leaves the status alone, and the
+   run doesn't record which flags it was started with. An archived repo can't
+   be pushed to, so it ages out of any window by itself; one archived recently
+   may still be synced once more.
 
-   `-relist` has shipped since 0.3.0, so A or B keep it as a hidden alias and
-   note the rename in the CHANGELOG.
-2. **Should the refresh apply without `-active`?** A plain resume of a run
-   listed weeks ago has the same staleness. Applying the same threshold
-   everywhere is simpler to explain, but changes today's resume behaviour.
-3. **How a gone repo is recorded.** A status (`gone`) is visible in
-   `-status` and `run_counts` but isn't a progress state; `skipped` with
-   `detail = 'gone'` needs no new status but hides it among forks. Either
-   feeds the gone-repo work ([#12](https://github.com/kospex/kospex/issues/12),
-   `202611-repo-lineage.md`).
-4. **A fork or archived flag that changes on refresh.** A repo archived since
-   the listing: leave its status, or mark it skipped if the run was started
-   with `-skip-archived`? The run doesn't record its flags today.
+   There's no archive date in the REST listing: `mergestat/blocks-legacy`
+   returns `archived: true`, `pushed_at` 2022-12-09 and `updated_at`
+   2023-09-22 (later than the archiving, so no stand-in). GraphQL has
+   `archivedAt` (2022-12-18T00:07:55Z for the same repo). If kospex adds
+   GraphQL for the default-branch commit date ([Limits](#limits)),
+   `archivedAt` comes in the same query.
 
 ## Files (expected)
 
-- `src/kgit.py`: `-active`, the refresh flag, resume/status output.
+- `src/kgit.py`: `-active`, `-refresh`, `-restart` (with `-relist` hidden), resume/status output.
 - `src/kospex/org_sync_manifest.py`: window filter in `next_items`, window
-  counts, `refresh_listing`, `listed_at`.
+  counts, `refresh_listing`, `listed_at`, the `gone` status.
 - `src/kospex/org_sync.py`: refresh threshold setting.
 - `src/kospex/db/migrations/0013_org_sync_listed_at.sql` (or next free number).
 - Tests; `docs/kgit.md`; CHANGELOG; CLAUDE.md command line.
