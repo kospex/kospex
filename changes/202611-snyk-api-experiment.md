@@ -127,19 +127,61 @@ limited to 20 starts per hour, and its plan restriction is unknown. **Decide aft
 probe:** if Export works on the target accounts, it may be the better engine for the
 estate-wide aggregate, with live issue fetches for targeted queries.
 
-## Proposed CLI shape (draft, not agreed)
+## CLI shape
 
-A command group with subcommands, following `kgit github` / `kgit bitbucket`, which
-already wrap vendor REST APIs with `requests`. Where it goes (`kospex snyk ...` vs
-`kgit snyk ...`) is still open.
+**Decided:** a `kospex snyk` command group, the same pattern as `kospex rebuild`. It
+sits next to the related `sca`, `deps` and `advisory-history` commands, and adds one
+top-level name rather than several.
+
+Rejected:
+- `kgit snyk`: kgit's vendor commands list a host's *repos* so they can be cloned, and
+  Snyk is not a repo source.
+- `krunner`: every krunner command runs over a kospex scope (`REPO_ID|-all|-org|-server`),
+  which Snyk queries do not take.
+- A `ksnyk` entry point: it would need its own logger and banner wiring, and suggests
+  one command per vendor.
+- An option on `kospex sca`: different inputs and output.
+
+Subcommands (names still a draft):
 
 ```
-snyk orgs                                    # list orgs the token can see
-snyk projects  [-org ORG]                    # projects + latest issue counts
-snyk issues    [-org ORG] [-package NAME] [-severity high,critical] [-project ID]
-snyk vulns     [-org ORG] [-package NAME]    # aggregate: vuln -> project count
-snyk probe                                   # which endpoints this token/plan can reach
+kospex snyk orgs                                    # list orgs the token can see
+kospex snyk projects  [-org ORG]                    # projects + latest issue counts
+kospex snyk issues    [-org ORG] [-package NAME] [-severity high,critical] [-project ID]
+kospex snyk vulns     [-org ORG] [-package NAME]    # aggregate: vuln -> project count
+kospex snyk probe                                   # which endpoints this token/plan can reach
 ```
+
+## Code layout
+
+**Decided:** vendor integrations live in their own subpackage, so they don't add to the
+flat `src/kospex_*.py` modules or to the top level of `src/kospex/`:
+
+```
+src/kospex/integrations/
+  __init__.py            # empty: keep it import-light (see the lazy __getattr__
+                         #   note in kospex/__init__.py on circular imports)
+  snyk/
+    __init__.py
+    client.py            # SnykClient: token, base URL/region, pinned REST version,
+                         #   cursor paging, 403 -> a clear "not available" error
+    queries.py           # pure functions: filter by package, vuln -> project counts
+                         #   (same pattern as kospex/authorship.py)
+    cli.py               # the `snyk` Click group
+```
+
+- `kospex_cli.py` only does `cli.add_command(snyk)`. The command code stays in the
+  subpackage.
+- No `pyproject.toml` change is needed: `packages.find` already includes `kospex*`.
+  The hand-maintained `py-modules` list is only for flat modules. Still, check the
+  **built wheel** contains `kospex/integrations/snyk/`, because an editable install
+  hides packaging gaps.
+- A later integration (e.g. Checkmarx) gets `kospex/integrations/<vendor>/` with the
+  same three files.
+- No optional extra (`kospex[snyk]`) and no entry-point plugins for now. Snyk needs only
+  `requests`, which kospex already depends on. Revisit if an integration needs its own SDK.
+- The existing `src/kospex/github_dependabot.py` / `github_properties.py` are left
+  where they are. Moving them under `integrations/github/` is a separate follow-up.
 
 Common behaviour:
 
@@ -162,7 +204,8 @@ of the phase 1 plumbing carries over.
 - [ ] Probe results on the free account: which endpoints return 200 and which 403?
 - [ ] Is the Export API available on Enterprise accounts by default, or a separate entitlement?
 - [ ] Confirm the regional base URLs and how a user selects one (env var such as `SNYK_API`?).
-- [ ] Command placement: `kospex snyk` vs `kgit snyk` vs a new entry point.
+- [x] Command placement: `kospex snyk` group (see CLI shape).
+- [x] Code layout: `src/kospex/integrations/snyk/` (see Code layout).
 - [ ] Is an issue returned once per project, or once per project *and* version? Count
       distinct projects either way, but confirm before reporting counts.
 
