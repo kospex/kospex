@@ -54,6 +54,31 @@ Design rules that follow from this:
    (`https://api.snyk.io/rest/openapi/<version>`). Then the code is testable even if
    the free account can't reach an endpoint.
 
+### Probe results: free plan (2026-11-15)
+
+Six GET requests, `version=2024-10-15`, `limit=10`, API token from the web UI:
+
+| Endpoint | Result |
+|---|---|
+| `GET /self` | 200 |
+| `GET /orgs` | 200 (one org) |
+| `GET /orgs/{org_id}/targets` | 200, empty |
+| `GET /orgs/{org_id}/projects` | **403** |
+| `GET /orgs/{org_id}/issues` | **403** |
+| `GET /orgs/{org_id}/packages/{purl}/issues` | **403** |
+
+- **On the free plan, every endpoint this experiment needs is forbidden.** Only identity
+  and org listing work. So the queries can only be developed against fixtures here, and
+  checked live on an Enterprise account (by running `kospex snyk probe` first).
+- The 403 body is a bare `"title": "Forbidden", "detail": "Forbidden"`, with no reason
+  or error code. The client can't tell "plan doesn't include this" from "token lacks
+  permission", so the error message has to say both are possible.
+- Rate-limit headers (`X-RateLimit-Limit`) are per principal: **192/second, 1,944/minute,
+  116,640/hour**. They're returned on every response, so the client can read
+  `X-RateLimit-Remaining` rather than guess. No monthly quota appeared in the headers.
+  The free plan's 200-a-month limit is on `snyk test` runs, not on API reads, though
+  that is not confirmed from Snyk docs.
+
 ## API surface (as of spec `2026-09-09`)
 
 Basics:
@@ -201,11 +226,11 @@ of the phase 1 plumbing carries over.
 
 ## Open questions
 
-- [ ] Probe results on the free account: which endpoints return 200 and which 403?
+- [x] Probe results on the free account: see "Probe results: free plan" above.
 - [ ] Is the Export API available on Enterprise accounts by default, or a separate entitlement?
 - [ ] Confirm the regional base URLs and how a user selects one (env var such as `SNYK_API`?).
-- [x] Command placement: `kospex snyk` group (see CLI shape).
-- [x] Code layout: `src/kospex/integrations/snyk/` (see Code layout).
+- [ ] Command placement: `kospex snyk` group (see CLI shape).
+- [ ] Code layout: `src/kospex/integrations/snyk/` (see Code layout).
 - [ ] Is an issue returned once per project, or once per project *and* version? Count
       distinct projects either way, but confirm before reporting counts.
 
