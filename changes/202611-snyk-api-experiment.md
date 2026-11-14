@@ -1,6 +1,40 @@
 # Snyk API experiment (SCA first)
 
-Status: **exploration / pre-code**. Nothing implemented yet.
+Status: **phase 1 implemented** (`kospex snyk probe|orgs|projects|issues|vulns`).
+It's tested against fixtures built from the OpenAPI spec, and live only for `probe` and
+the 403 path, because the free plan forbids projects and issues. The first live
+`issues` / `vulns` run will be on an Enterprise account, and response shapes should be
+checked against the fixtures then.
+
+### Files
+
+- `src/kospex/integrations/__init__.py`: empty package marker
+- `src/kospex/integrations/snyk/client.py`: `SnykClient`. `SNYK_TOKEN` / `SNYK_API`,
+  pinned `REST_VERSION = "2025-11-05"`, cursor paging, 401/403/429 mapping,
+  retries on 429 honouring `Retry-After`, refuses a paging link to another host (CWE-201),
+  request counter, `probe()`
+- `src/kospex/integrations/snyk/queries.py`: pure functions `issue_rows`,
+  `matches_package`, `vuln_summary`, `project_rows`
+- `src/kospex/integrations/snyk/cli.py`: the `snyk` Click group. Output is a table,
+  or CSV with `-out` / `-stdout`, spreadsheet-safe unless `-raw` (CWE-1236)
+- `src/kospex_cli.py`: `cli.add_command(snyk)`
+- `tests/snyk_fixtures.py`, `tests/test_snyk_client.py`, `tests/test_snyk_queries.py`,
+  `tests/test_snyk_cli.py`
+
+### Usage
+
+```
+kospex snyk probe                                   # what this token/plan can reach
+kospex snyk orgs
+kospex snyk projects [-org ORG] [-out FILE|-stdout]
+kospex snyk issues -package jackson-databind [-org ORG] [-severity high ...]
+kospex snyk vulns [-package NAME] [-severity critical -severity high] -out vulns.csv
+```
+
+`-package` is case-insensitive. A name without `:` also matches a Maven artifactId,
+so `jackson-databind` finds `com.fasterxml.jackson.core:jackson-databind`. Each
+command ends by printing how many API requests it made. `-max-issues N` caps the
+issues read per org.
 
 ## Overview
 
