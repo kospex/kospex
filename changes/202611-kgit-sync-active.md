@@ -39,8 +39,9 @@ kgit sync --org acme -active 365 -next 50    # or in batches, on a schedule
    to sync. A run started straight after `-inventory` doesn't list twice.
 5. **`-refresh` updates the run, `-restart` replaces it.** `-refresh` lists the
    org again and merges into the unfinished run, whatever its age. `-restart`
-   is today's `-relist`: close the run and start a new one. `-relist` stays as
-   a hidden alias of `-restart`, and the rename is noted in the CHANGELOG.
+   is today's `-relist`: close the run and start a new one. `-relist` is
+   removed outright, with no alias: it was never announced, so nobody else is
+   using it. The CHANGELOG notes the rename.
 6. **A plain resume doesn't change.** Without `-active` or `-refresh`, resuming
    a run never lists again, as today. The staleness check applies only to
    `-active`.
@@ -115,7 +116,7 @@ sync stops: a partial listing must not mark repos gone.
   is an error, not a guess, as with `KOSPEX_CLONE_FORKS_DEFAULT`. `0` refreshes
   every time.
 - `-refresh` forces the refresh regardless of age, with or without `-active`.
-- `-restart` replaces the run (today's `-relist`, kept as a hidden alias).
+- `-restart` replaces the run (today's `-relist`, which is removed).
 - `-active` with `-inventory` is an error: the inventory is the whole listing.
 
 **Argument order trap.** Click consumes the next token as the optional value,
@@ -167,9 +168,13 @@ Help text and docs examples put the target first.
 
 ## Files (expected)
 
-- `src/kgit.py`: `-active`, `-refresh`, `-restart` (with `-relist` hidden), resume/status output.
+- `src/kgit.py`: `-active`, `-refresh`, `-restart` (replacing `-relist`), resume/status output.
 - `src/kospex/org_sync_manifest.py`: window filter in `next_items`, window
   counts, `refresh_listing`, `listed_at`, the `gone` status.
 - `src/kospex/org_sync.py`: refresh threshold setting.
 - `src/kospex/db/migrations/0013_org_sync_listed_at.sql` (or next free number).
 - Tests; `docs/kgit.md`; CHANGELOG; CLAUDE.md command line.
+- Every `-relist` mention moves to `-restart`: the messages in `src/kgit.py`
+  that suggest it, `org_sync_manifest.py` docstrings,
+  `tests/test_kgit_sync_org_cli.py`, `tests/test_org_sync_manifest.py` and
+  `docs/kgit.md`. `202610-kgit-sync-org.md` is left as written, as a record.
