@@ -29,11 +29,27 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   also records `first_listed_at`, `archived_seen_at` and GitHub's
   `created_at`, so weekly listings show which repositories were added or
   archived, whether or not they were synced. Existing runs are backfilled.
+- **Each `kgit sync --org` / `--user` command is recorded** in
+  `org_sync_commands`: its options as typed, what it listed and synced, and
+  the GitHub token it used (login, kind, source variable and expiry, never the
+  token). A run done over several commands with different options, or a
+  listing that shrank after a change of token, can be traced.
+- **`kgit pull --stale DAYS`** pulls only the repos not refreshed in DAYS
+  days: last fetched, or last synced if kgit never fetched them. With `--check`
+  it shows only those.
 
 ### Changed
 
 - **`kgit sync`: `-relist` is now `-restart`.** It closes the unfinished run
   and starts again from a fresh listing, as before.
+- **`kgit sync`'s suggestions repeat every option.** `Continue with`,
+  `Resume with` and the other suggested commands now carry `-ssh`,
+  `-no-prompt`, `-skip-archived` and the fork options as well as `-active`,
+  `-next` and `-no-auth`, in a fixed order, so a copied suggestion does what
+  was asked. `-no-auth` now comes after `-next`.
+- **`kgit pull --check` ages a repo by its last refresh**: `last_fetch`, or
+  `last_sync` for a repo kgit never fetched. Those repos used to sort first as
+  `never` however recently they were synced.
 - **Gradle settings files and every other Gradle script are recognised.**
   panopticas 0.0.24 tags every `*.gradle` and `*.gradle.kts` file as a
   dependency file, settings files included. kospex only knew

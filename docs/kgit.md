@@ -198,6 +198,46 @@ renamed repository's old name is one of them, with its new name in the detail:
 A repository missing from the listing after a `-restart` has no row in the
 new run. `-history` still counts it as gone.
 
+### What each command records
+
+A run is often worked through over several commands with different options:
+`-inventory`, then `-next 10` a few times, then `-active 90`. Each
+`kgit sync --org` / `--user` command that lists or syncs gets a row in
+`org_sync_commands`:
+
+- the command and its options, as typed, ready to copy;
+- the listing it saved (`first`, `refresh` or `restart`) and what it changed;
+- how many repositories it synced, skipped and failed;
+- the GitHub token it used: the login it belongs to, its kind (`fine-grained`,
+  `classic`, `app` or `oauth`, from its prefix), the environment variable it
+  came from, and its expiry as GitHub reports it. `-no-auth` is recorded as
+  `none`. **The token itself is never stored.**
+
+`finished_at` is empty for a command that is still running or was stopped,
+for example with Ctrl-C, and `error` says why a command stopped early. Reads
+(`-status`, `-history`) aren't recorded, and nor is a command refused before it
+did anything: a rejected token, an owner that doesn't exist, or a run already
+in progress.
+
+The token matters because a fine-grained token limited to some of an
+organisation's repositories lists fewer of them: after a `-refresh` with a
+different token, the repositories it can't see are `gone`. To see which token
+listed each time:
+
+```sql
+SELECT started_at, command, listing, [new], gone, auth_login, auth_kind,
+       auth_source, auth_expires_at
+  FROM org_sync_commands
+ WHERE org_key = 'github.com~acme'
+ ORDER BY started_at;
+```
+
+Suggestions kgit prints, such as `Continue with: ...` and `Resume with: ...`,
+repeat every option the command was given (`-active`, `-next`, `-ssh`,
+`-no-prompt`, `-skip-archived`, the fork options and `-no-auth`), so a copied
+suggestion does what was asked. `-retry-failed`, `-inventory`, `-refresh` and
+`-restart` aren't carried over.
+
 ### Forks, archived repositories and other options
 
 - **Forks are skipped, but recorded** with their parent and the root of their fork
@@ -314,10 +354,29 @@ kgit pull --org acme             # every repo of an org in kospex
 kgit pull --server gitlab.com    # every repo on a git server
 kgit pull --all                  # every repo
 kgit pull --org acme --check     # how stale each clone is; no network
+kgit pull --all --stale 30       # only repos not refreshed in 30 days
 ```
 
 The pull is fast-forward only: a clone that can't be fast-forwarded is left as
 it was, reported, and not synced.
+
+### Only stale repos: `--stale DAYS`
+
+`--stale DAYS` narrows any scope to the repos whose last refresh was more than
+DAYS days ago. The last refresh is `last_fetch`, the time kgit last pulled or
+cloned the repo. A repo that kgit never fetched (one synced before kospex
+recorded fetches, or with `kospex sync-directory`) uses `last_sync` instead,
+and a repo with neither always counts as stale.
+
+```bash
+kgit pull --check --all --stale 30   # which ones, offline
+kgit pull --all --stale 30           # Pulling 14 of 403 repos not refreshed in 30 days.
+```
+
+With `--check`, the report shows only those repos. When none are stale, kgit
+says so and exits successfully, so `--stale` is safe in a schedule. The
+`fetch_age` column in `--check` uses the same rule: a repo's `last_fetch` says
+`never` when it fell back to `last_sync`.
 
 `--org` accepts the same forms as `kgit sync --org`: `acme`, `github.com/acme`,
 `https://github.com/acme` or the org key `github.com~acme`. Unlike `kgit sync`,

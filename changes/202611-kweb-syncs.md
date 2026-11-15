@@ -285,3 +285,43 @@ The URL then returns kweb's 404.
 Module layout for the shared staleness rule and the page's queries; template
 structure and JavaScript for tabs, picker and copy buttons; time display format;
 exact wording of messages within the tone of existing kgit output.
+
+## Implementation
+
+Built on the `worktree-kgit-sync-active` branch, following
+[202611-kweb-syncs-plan.md](202611-kweb-syncs-plan.md).
+
+| File | What |
+|---|---|
+| `src/kospex/staleness.py` | the staleness rule; `kgit._staleness_rows` delegates to it |
+| `src/kospex/org_sync_command.py` | `options()`, `command()`, `suggestion()`, `continuing()`, `parse()` |
+| `src/kospex/syncs_view.py` | query-string rules, pull command, picker, Repos and Org syncs data |
+| `src/kospex/org_sync_manifest.py` | `start_command`, `finish_command`, `commands`, `RESTART` |
+| `src/kospex/db/migrations/0013_org_sync_listings.sql` | `org_sync_commands` table |
+| `src/kospex_github.py` | `token_kind()`, `auth_identity()`; `test_auth()` uses it |
+| `src/kgit.py` | `pull --stale`; command recording; suggestions via the builder |
+| `src/kweb2.py`, `src/templates/syncs.html` | the `/syncs/` route and page; `/recent/` removed |
+
+Where it differs from the plan, or settled what the plan left open:
+
+- **Org keys are quoted in the page's commands** (`kgit pull --org
+  'github.com~acme'`), unlike the examples above: zsh with `extendedglob` reads
+  a `~` inside a word as a glob operator.
+- **`suggestion(flag, owner, typed, **changes)`** was added to the command
+  builder, so kgit can change one option (`-next 10`) or add listing flags
+  without re-parsing a list. "Resume with" now keeps `-next` too.
+- **An `-inventory` that lists without saving** (an unfinished run kept) is
+  recorded, with `listing` NULL: it ran and used the token.
+- **A command stopped with Ctrl-C** records 0 synced, failed and skipped: the
+  sync loop doesn't return its counts when interrupted. The run's items still
+  show the progress.
+- **The token expiry header name** (`GitHub-Authentication-Token-Expiration`)
+  is unverified against a real fine-grained token: no token was available while
+  building. If `auth_expires_at` stays NULL for a token that expires, check the
+  header GitHub sends.
+
+Checked live against public `mergestat` with `-no-auth` in a throwaway home:
+three commands recorded with the right listing kinds and counts, the page's
+continue command identical to kgit's, and on the dev DB
+`kgit pull --check --all --stale 30` listing the same 331 of 403 repos the
+page counts.
