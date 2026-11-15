@@ -113,6 +113,26 @@ def test_repo_view_all_days_lists_every_repo():
     assert view["command"] == "kgit pull --all"
 
 
+@pytest.mark.parametrize("days, label", [
+    (10, "Active"), (90, "Active"), (91, "Aging"), (181, "Stale"), (366, "Dormant"),
+])
+def test_repo_status_comes_from_the_last_commit(days, label):
+    repo = _repo("github.com", "acme", "x", fetched=_ago(1)) | {"last_seen": _ago(days)}
+    [row] = V.repo_view([repo], org=None, server=None, days=None, now=NOW)["rows"]
+    assert row["status"] == label
+
+
+def test_repo_status_without_a_commit_is_unknown():
+    [row] = V.repo_view([_repo("github.com", "acme", "x", fetched=_ago(1))],
+                        org=None, server=None, days=None, now=NOW)["rows"]
+    assert row["status"] == "Unknown"
+
+
+def test_repo_statuses_sort_from_active_to_unknown():
+    ranks = [V.STATUS_BADGES[s][0] for s in ("Active", "Aging", "Stale", "Dormant", "Unknown")]
+    assert ranks == sorted(ranks)
+
+
 def test_picker():
     servers = {s["server"]: s for s in V.picker(REPOS, 30, NOW)}
     assert [s["server"] for s in V.picker(REPOS, 30, NOW)] == [

@@ -28,7 +28,7 @@ def db(tmp_path, monkeypatch):
     db = KospexSchema.connect_or_create_kospex_db()
     db["repos"].insert_all([
         {"_repo_id": "github.com~acme~old", "_git_server": "github.com",
-         "_git_owner": "acme", "_git_repo": "old", "last_fetch": _ago(40),
+         "_git_owner": "acme", "_git_repo": "old", "last_fetch": _ago(40), "last_seen": _ago(10),
          "last_sync": _ago(40)},
         {"_repo_id": "github.com~acme~fresh", "_git_server": "github.com",
          "_git_owner": "acme", "_git_repo": "fresh", "last_fetch": _ago(1),
@@ -64,6 +64,13 @@ def test_an_org_and_days_narrow_the_table_and_the_command(db):
     assert status == 200
     assert "kgit pull --org &#39;github.com~acme&#39;" in body
     assert "github.com~acme~fresh" in body
+
+
+def test_repo_status_is_a_pill(db):
+    status, body = _get(days="all")
+    table = body.split("<tbody")[1]
+    assert 'rounded-full bg-green-100 text-green-800">Active</span>' in table
+    assert 'rounded-full bg-gray-100 text-gray-500">Unknown</span>' in table
 
 
 def test_nothing_stale_says_all_repos_are_refreshed(db):

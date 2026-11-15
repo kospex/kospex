@@ -21,6 +21,19 @@ DEFAULT_DAYS = 30
 # A token expiring within this many days is highlighted.
 EXPIRY_WARNING_DAYS = 14
 
+# A repo's development status from its last commit, as /summary/ counts it
+# (KospexUtils.development_status). Label: (sort rank, pill classes). The hues
+# are the summary circles' (kospex_web.SUMMARY_STATUSES), tinted like /osi/'s
+# pills so the text stays readable; "Unmaintained" shows as "Dormant" there too.
+STATUS_BADGES = {
+    "Active": (1, "bg-green-100 text-green-800"),
+    "Aging": (2, "bg-yellow-100 text-yellow-800"),
+    "Stale": (3, "bg-orange-100 text-orange-800"),
+    "Dormant": (4, "bg-gray-100 text-gray-700"),
+    "Unknown": (5, "bg-gray-100 text-gray-500"),
+}
+_STATUS_LABELS = {"Unmaintained": "Dormant"}
+
 
 def parse_params(tab, org, server, days):
     """Validate the query string. Raises ValueError with a message for a 400."""
@@ -108,11 +121,24 @@ def picker(repos, days, now):
     return result
 
 
+def repo_status(repo, now):
+    """Active, Aging, Stale, Dormant, or Unknown when there's no last commit."""
+    last_commit = staleness.parse_time(repo.get("last_seen"))
+    if not last_commit:
+        return "Unknown"
+    status = KospexUtils.development_status((now - last_commit).total_seconds() / 86400)
+    return _STATUS_LABELS.get(status, status)
+
+
 def repo_view(repos, *, org, server, days, now):
     """The Repos tab: the stale repos in scope, the counts, and the commands."""
     scoped = _in_scope(repos, org, server)
     shown = [r for r in scoped if _is_shown(r, days, now)]
     rows = staleness.staleness_rows(shown, now)
+    by_id = {r["_repo_id"]: r for r in shown}
+    for row in rows:
+        row["status"] = repo_status(by_id[row["repo_id"]], now)
+        row["status_rank"], row["status_classes"] = STATUS_BADGES[row["status"]]
     return {"rows": rows, "total": len(scoped), "stale": len(shown),
             "fell_back": sum(1 for row in rows if row["fell_back"]),
             "command": pull_command(org=org, server=server, days=days),
