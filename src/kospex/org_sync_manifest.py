@@ -67,6 +67,9 @@ ITEM_FIELDS = LISTING_FIELDS + ("status", "detail")
 # A listing's `kind` in org_sync_listings.
 FIRST = "first"
 REFRESH = "refresh"
+# A recorded command's listing when it replaced the run (-restart). The new
+# run's org_sync_listings row is still kind FIRST.
+RESTART = "restart"
 
 
 class UnfinishedRunExists(Exception):

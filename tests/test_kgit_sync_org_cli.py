@@ -46,6 +46,12 @@ class FakeGitHub:
     def test_auth(self):
         return self.auth_ok
 
+    def auth_identity(self):
+        if not self.auth_ok:
+            return None
+        return {"login": "octocat", "kind": "fine-grained", "source": self.token_source,
+                "expires_at": "2027-05-20T00:00:00Z"}
+
     def _make_request(self, url, params=None, method="GET"):
         if self.account_type is None:
             return None, FakeResponse(404)
@@ -750,3 +756,132 @@ def test_end_to_end_with_real_clones(env, tmp_path, monkeypatch):
     assert [(r[0], r[1]) for r in rows] == [
         ("github.com~acme~one", "github.com:1"), ("github.com~acme~two", "github.com:2")]
     assert all(r[2] for r in rows)
+
+
+# --- each command is recorded (org_sync_commands) ----------------------------
+
+def _commands(db):
+    return list(db.query(f"SELECT * FROM {M.TBL_ORG_SYNC_COMMANDS} ORDER BY command_id"))
+
+
+def test_each_working_command_is_recorded(env):
+    FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "abc"]
+    assert run("--org", "acme", "-inventory").exit_code == 0
+    assert run("--org", "acme", "-next", "1", "-ssh").exit_code == 0
+    assert run("--org", "acme").exit_code == 0
+
+    rows = _commands(env["db"])
+    run_id = env["db"].execute(f"SELECT run_id FROM {M.TBL_ORG_SYNC_RUNS}").fetchone()[0]
+    assert [r["run_id"] for r in rows] == [run_id] * 3
+    assert [r["listing"] for r in rows] == ["first", None, None]
+    assert [r["synced_any"] for r in rows] == [0, 1, 1]
+    assert [r["synced"] for r in rows] == [0, 1, 2]
+    assert [r["options"] for r in rows] == ["-inventory", "-next 1 -ssh", ""]
+    assert [r["command"] for r in rows] == [
+        "kgit sync --org acme -inventory", "kgit sync --org acme -next 1 -ssh",
+        "kgit sync --org acme"]
+    assert (rows[0]["new"], rows[0]["gone"]) == (3, 0)
+    assert all(r["finished_at"] and r["error"] is None for r in rows)
+    assert {(r["auth_login"], r["auth_kind"], r["auth_source"], r["auth_expires_at"])
+            for r in rows} == {("octocat", "fine-grained", "GH_TOKEN",
+                                "2027-05-20T00:00:00Z")}
+
+
+@pytest.mark.parametrize("args, setup", [
+    (["--org", "acme", "-status"], None),
+    (["--org", "acme", "-history"], None),
+    (["--org", "acme"], "rejected token"),
+    (["--org", "acme"], "no such owner"),
+])
+def test_reads_and_refusals_leave_no_row(env, args, setup):
+    FakeGitHub.listing = [_repo("a")]
+    if setup == "rejected token":
+        FakeGitHub.auth_ok = False
+    if setup == "no such owner":
+        FakeGitHub.account_type = None
+    run(*args)
+    assert _commands(env["db"]) == []
+
+
+def test_a_held_lock_leaves_no_row(env):
+    import logging
+    import kospex.org_sync as OrgSync
+    from kospex.run_lock import RunLock
+    FakeGitHub.listing = [_repo("a")]
+    with RunLock(OrgSync.lock_path(env["home"], ORG), "x", 60, logging.getLogger("t")):
+        run("--org", "acme")
+    assert _commands(env["db"]) == []
+
+
+def test_no_auth_is_recorded_as_none(env):
+    FakeGitHub.listing = [_repo("a")]
+    assert run("--org", "acme", "-no-auth").exit_code == 0
+    [row] = _commands(env["db"])
+    assert (row["auth_kind"], row["auth_login"], row["auth_source"],
+            row["auth_expires_at"]) == ("none", None, None, None)
+    assert row["options"] == "-no-auth"
+
+
+def test_refresh_restart_and_active_relisting_are_recorded(env):
+    FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "ab"]
+    run("--org", "acme", "-inventory")
+    FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "abc"]
+    run("--org", "acme", "-inventory", "-refresh")
+    run("--org", "acme", "-inventory", "-restart")
+    _age_listing(env["db"], 30)
+    run("--org", "acme", "-active", "-next", "1")
+
+    rows = _commands(env["db"])
+    assert [r["listing"] for r in rows] == ["first", "refresh", "restart", "refresh"]
+    assert (rows[1]["new"], rows[1]["gone"]) == (1, 0)
+    assert rows[3]["synced_any"] == 1
+
+
+def test_an_unsaved_listing_is_recorded_without_a_listing(env):
+    FakeGitHub.listing = [_repo("a"), _repo("b")]
+    run("--org", "acme", "-next", "1")
+    run("--org", "acme", "-inventory")
+    rows = _commands(env["db"])
+    assert rows[1]["listing"] is None
+    assert rows[1]["synced_any"] == 0
+
+
+def test_an_incomplete_listing_records_the_error(env):
+    from kospex_github import GitHubListingIncomplete
+    FakeGitHub.listing = [_repo("a"), _repo("b")]
+    run("--org", "acme", "-inventory")
+    FakeGitHub.listing_error = GitHubListingIncomplete("u", 2, 100, "HTTP 502")
+    result = run("--org", "acme", "-inventory", "-refresh")
+    assert result.exit_code == 1
+    row = _commands(env["db"])[-1]
+    assert "page 2" in row["error"]
+    assert row["finished_at"] is not None
+    assert row["run_id"] is not None
+
+
+def test_a_first_listing_that_fails_has_no_run(env):
+    from kospex_github import GitHubListingIncomplete
+    FakeGitHub.listing_error = GitHubListingIncomplete("u", 2, 100, "HTTP 502")
+    run("--org", "acme")
+    [row] = _commands(env["db"])
+    assert row["run_id"] is None
+    assert "page 2" in row["error"]
+
+
+def test_interrupted_command_is_left_unfinished(env):
+    FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "ab"]
+
+    def interrupted(path, **kw):
+        raise KeyboardInterrupt
+
+    original = kgit_module.kospex.sync_repo
+    kgit_module.kospex.sync_repo = interrupted
+    try:
+        result = run("--org", "acme")
+    finally:
+        kgit_module.kospex.sync_repo = original
+    assert result.exit_code == 130
+    [row] = _commands(env["db"])
+    assert row["finished_at"] is None
+    assert row["run_id"] is not None
+    assert row["listing"] == "first"

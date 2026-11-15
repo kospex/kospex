@@ -427,9 +427,17 @@ def sync(org, user, inventory, next_, status, history, active, refresh, restart,
     console.print(f"Synced {len(commits)} commits")
 
 
+class _Stopped(SystemExit):
+    """`_error`'s exit: code 1, carrying the message for the recorded command."""
+
+    def __init__(self, message):
+        super().__init__(1)
+        self.message = message
+
+
 def _error(message):
     console.print(Text.assemble(("Error:", "bold red"), f" {message}"))
-    exit(1)
+    raise _Stopped(message)
 
 
 def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed,
@@ -484,6 +492,7 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed
     if no_auth:
         console.print("No token: public repositories only, 60 API requests an hour.",
                       style="yellow")
+        identity = {"login": None, "kind": "none", "source": None, "expires_at": None}
     else:
         if not gh.get_env_credentials():
             _error("Could not find a GitHub token in the environment.\n"
@@ -491,8 +500,10 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed
                    "(checked in that order), or use -no-auth for public repos only.")
         # The variable's name only, never the token.
         console.print(f"Using token from {gh.token_source}")
-        if not gh.test_auth():
+        identity = gh.auth_identity()
+        if not identity:
             _error(f"GitHub rejected the token in {gh.token_source}.")
+        console.print(f"Authenticated as: {identity['login']}")
 
     _check_owner_type(gh, owner, owner_kind)
 
@@ -505,11 +516,36 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed
         console.print(f"{busy}. Nothing to do.", style="yellow")
         return
 
+    # From here the command does something, so it's recorded (org_sync_commands):
+    # before any listing or syncing, so a stopped command still shows.
+    opts = OrgSyncCommand.options(**typed)
+    command_id = OrgSyncManifest.start_command(
+        db, key, OrgSyncCommand.command(flag, owner, opts), " ".join(opts), identity)
+    record = {"run_id": None, "listing": None, "synced_any": False, "synced": 0,
+              "failed": 0, "skipped": 0, "new": None, "gone": None}
+
+    def finish(**kw):
+        OrgSyncManifest.finish_command(db, command_id, **record, **kw)
+
     try:
         _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                            retry_failed, forks, skip_archived, ssh, no_prompt, no_auth,
                            active=active, refresh=refresh, restart=restart,
-                           refresh_days=refresh_days, typed=typed)
+                           refresh_days=refresh_days, typed=typed, record=record)
+    except _Stopped as stopped:
+        finish(error=stopped.message)
+        raise
+    except SystemExit as stop:
+        if stop.code == 130:  # Ctrl-C: stopped, not finished
+            finish(finished=False)
+        else:
+            finish(error=f"exited with {stop.code}")
+        raise
+    except Exception as e:
+        finish(error=f"{type(e).__name__}: {e}")
+        raise
+    else:
+        finish()
     finally:
         lock.release()
 
@@ -573,6 +609,12 @@ def _refresh_run(db, gh, run_id, key, owner, forks, skip_archived, no_auth):
                   f"{len(items):,}: {_changes_text(changed)}.")
 
 
+def _note_listing(db, key, record, run_id, kind):
+    """Put the listing this command saved, and what it changed, in `record`."""
+    last = OrgSyncManifest.listings(db, key)[-1]
+    record.update(run_id=run_id, listing=kind, new=last["new"], gone=last["gone"])
+
+
 def _changes_text(changed):
     """`3 new, 1 gone, 2 newly archived`: new and gone always, the rest if any."""
     parts = [f"{changed['new']} new", f"{changed['gone']} gone"]
@@ -586,8 +628,12 @@ def _changes_text(changed):
 def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                        retry_failed, forks, skip_archived, ssh, no_prompt, no_auth,
                        active=None, refresh=False, restart=False,
-                       refresh_days=OrgSync.REFRESH_DAYS_DEFAULT, typed=None):
+                       refresh_days=OrgSync.REFRESH_DAYS_DEFAULT, typed=None, record=None):
+    """record: what this command did, filled in as it goes (org_sync_commands)."""
+    record = {} if record is None else record
     run = OrgSyncManifest.unfinished_run(db, key)
+    if run:
+        record["run_id"] = run["run_id"]
 
     def suggest(**changes):
         # Every suggestion repeats the options as typed (-no-auth, -ssh, the
@@ -597,6 +643,7 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
     if inventory:
         if run and refresh:
             _refresh_run(db, gh, run["run_id"], key, owner, forks, skip_archived, no_auth)
+            _note_listing(db, key, record, run["run_id"], OrgSyncManifest.REFRESH)
             _print_inventory(db, run["run_id"], key, saved=False)
             return
         items = _list_items(gh, owner, forks, skip_archived, no_auth)
@@ -616,6 +663,7 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
             return
         run_id = OrgSyncManifest.save_listing(db, key, items, owner_type=owner_kind,
                                               replace=bool(run))
+        _note_listing(db, key, record, run_id, OrgSyncManifest.RESTART if run else OrgSyncManifest.FIRST)
         _print_inventory(db, run_id, key, saved=True)
         console.print(f"Nothing cloned. Run `{suggest(next_=10)}` to start syncing.")
         return
@@ -630,6 +678,7 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                 console.print(f"Run {run_id} was listed {_age_text(age)} ago, "
                               f"over {OrgSync.ENV_REFRESH_DAYS}={refresh_days}: listing again.")
             _refresh_run(db, gh, run_id, key, owner, forks, skip_archived, no_auth)
+            _note_listing(db, key, record, run_id, OrgSyncManifest.REFRESH)
             age = 0
         counts = OrgSyncManifest.run_counts(db, run_id)
         console.print(
@@ -646,6 +695,7 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
         items = _list_items(gh, owner, forks, skip_archived, no_auth)
         run_id = OrgSyncManifest.save_listing(db, key, items, owner_type=owner_kind,
                                               replace=bool(run))
+        _note_listing(db, key, record, run_id, OrgSyncManifest.RESTART if run else OrgSyncManifest.FIRST)
         _print_inventory(db, run_id, key, saved=True)
         if active is not None:
             inside, outside = OrgSyncManifest.window_counts(
@@ -653,6 +703,7 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
             console.print(f"  {inside} to do in the last {_days(active)}, "
                           f"{outside} pending outside it.")
 
+    record["synced_any"] = True
     todo = OrgSyncManifest.next_items(db, run_id, n=next_, retry_failed=retry_failed,
                                       active_days=active)
     if not todo:
@@ -701,6 +752,7 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
             else:
                 os.environ[name] = value
 
+    record.update(synced=done["synced"], failed=done["failed"], skipped=done["skipped"])
     closed = OrgSyncManifest.close_run_if_done(db, run_id)
     counts = OrgSyncManifest.run_counts(db, run_id)
     remaining = counts["pending"] + counts["in_progress"]
