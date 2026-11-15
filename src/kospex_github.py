@@ -2,6 +2,7 @@
 import json
 import os
 import time
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 import requests
 from kospex_utils import timer
@@ -480,21 +481,60 @@ class KospexGithub:
 
         return None
 
-    def test_auth(self):
-        """
-        Test the authentication token
+    # GitHub's response header carrying the token's expiry, e.g.
+    # "2027-05-20 00:00:00 UTC". Absent for a token with no expiry.
+    TOKEN_EXPIRY_HEADER = 'GitHub-Authentication-Token-Expiration'
+
+    @staticmethod
+    def token_kind(token):
+        """The kind of GitHub token, from its prefix. Never sent anywhere."""
+        if not token:
+            return "none"
+        for prefix, kind in (("github_pat_", "fine-grained"), ("ghp_", "classic"),
+                             ("ghs_", "app"), ("gho_", "oauth")):
+            if token.startswith(prefix):
+                return kind
+        return "unknown"
+
+    @staticmethod
+    def _expiry_iso(value):
+        """`2027-05-20 00:00:00 UTC` as `2027-05-20T00:00:00Z`; None if unreadable."""
+        try:
+            parsed = datetime.strptime(value.replace(" UTC", "").strip(),
+                                       "%Y-%m-%d %H:%M:%S")
+        except (AttributeError, ValueError):
+            return None
+        return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def auth_identity(self):
+        """Who the token belongs to, from one GET /user, or None if rejected.
+
+        Returns `login`, `kind` (by prefix), `source` (the environment
+        variable) and `expires_at` (from GitHub's response header, None when
+        the token doesn't expire). Never the token itself.
         """
         url = f'{self.base_url}/user'
         data, response = self._make_request(url)
 
         if data and 'login' in data:
-            # Successfully authenticated
-            print(f"Authenticated as: {data.get('login')}")
-            return True
+            return {"login": data.get('login'),
+                    "kind": self.token_kind(self.access_token),
+                    "source": self.token_source,
+                    "expires_at": self._expiry_iso(
+                        response.headers.get(self.TOKEN_EXPIRY_HEADER))}
         # Not `elif response`: a 4xx Response is falsy, so that never matched.
-        elif response is not None and response.status_code == 401:
+        if response is not None and response.status_code == 401:
             print("Authentication failed: Invalid token")
-            return False
         else:
             print("No data returned or request failed")
-            return False
+        return None
+
+    def test_auth(self):
+        """
+        Test the authentication token
+        """
+        identity = self.auth_identity()
+        if identity:
+            print(f"Authenticated as: {identity['login']}")
+            return True
+        return False
