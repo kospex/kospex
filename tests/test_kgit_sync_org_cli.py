@@ -404,15 +404,54 @@ def test_suggested_commands_keep_no_auth(env):
 
     result = run("--org", "acme", "-next", "1", "-no-auth")
     assert result.exit_code == 0, result.output
-    assert "Continue with: kgit sync --org acme -no-auth -next 1" in result.text
+    assert "Continue with: kgit sync --org acme -next 1 -no-auth" in result.text
 
     result = run("--org", "acme", "-active", "30", "-next", "1", "-no-auth")
     assert result.exit_code == 0, result.output
-    assert "Continue with: kgit sync --org acme -active 30 -no-auth -next 1" in result.text
+    assert "Continue with: kgit sync --org acme -active 30 -next 1 -no-auth" in result.text
 
     result = run("--org", "acme", "-next", "1")
     assert "Continue with: kgit sync --org acme -next 1" in result.text
     assert "-no-auth" not in result.text
+
+
+def test_suggestions_carry_every_option(env):
+    # A copied suggestion must repeat the command that was run: -ssh, the fork
+    # and archive choices and -no-prompt as well as -active and -no-auth.
+    FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "abcd"]
+    typed = ("-active", "90", "-ssh", "-skip-archived", "-no-prompt", "-include-forks",
+             "-no-auth")
+    result = run("--org", "acme", "-inventory", "-ssh", "-skip-archived", "-no-auth")
+    assert "kgit sync --org acme -next 10 -skip-archived -ssh -no-auth" in result.text
+
+    result = run("--org", "acme", "-inventory", "-ssh", "-no-auth")
+    assert "kgit sync --org acme -inventory -refresh -ssh -no-auth" in result.text
+    assert "kgit sync --org acme -inventory -restart -ssh -no-auth" in result.text
+
+    result = run("--org", "acme", "-next", "1", *typed)
+    assert result.exit_code == 0, result.output
+    assert ("Continue with: kgit sync --org acme -active 90 -next 1 -include-forks "
+            "-skip-archived -ssh -no-prompt -no-auth") in result.text
+
+    result = run("--org", "acme", "-next", "1", "-retry-failed", "-ssh", "-no-auth")
+    assert "Continue with: kgit sync --org acme -next 1 -ssh -no-auth" in result.text
+
+
+def test_interrupted_sync_resumes_with_every_option(env):
+    FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "abcd"]
+
+    def interrupted(path, **kw):
+        raise KeyboardInterrupt
+
+    env_kospex = kgit_module.kospex
+    original = env_kospex.sync_repo
+    env_kospex.sync_repo = interrupted
+    try:
+        result = run("--org", "acme", "-next", "2", "-ssh", "-no-auth")
+    finally:
+        env_kospex.sync_repo = original
+    assert result.exit_code == 130
+    assert "Resume with: kgit sync --org acme -next 2 -ssh -no-auth" in result.text
 
 
 def test_active_refreshes_a_stale_listing_in_place(env):

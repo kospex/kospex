@@ -19,6 +19,7 @@ import kospex.github_properties as GitHubProperties
 import kospex.github_dependabot as GitHubDependabot
 import kospex.org_sync as OrgSync
 import kospex.org_sync_manifest as OrgSyncManifest
+import kospex.org_sync_command as OrgSyncCommand
 from kospex import staleness
 from kospex.habitat_config import HabitatConfig
 from kospex.run_lock import LockBusy, RunLock
@@ -465,6 +466,11 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed
     forks = (forks or include_forks) and not skip_forks
     key = KospexGit.generate_org_key(host, owner)
     flag = f"--{owner_kind}"
+    # The options as typed: every suggestion repeats them (org_sync_command).
+    typed = dict(inventory=inventory, refresh=refresh, restart=restart, active=active,
+                 next_=next_, retry_failed=retry_failed, include_forks=include_forks,
+                 skip_forks=skip_forks, skip_archived=skip_archived, ssh=ssh,
+                 no_prompt=no_prompt, no_auth=no_auth)
     db = kospex.kospex_db
 
     if status:
@@ -503,7 +509,7 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed
         _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                            retry_failed, forks, skip_archived, ssh, no_prompt, no_auth,
                            active=active, refresh=refresh, restart=restart,
-                           refresh_days=refresh_days)
+                           refresh_days=refresh_days, typed=typed)
     finally:
         lock.release()
 
@@ -580,11 +586,13 @@ def _changes_text(changed):
 def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                        retry_failed, forks, skip_archived, ssh, no_prompt, no_auth,
                        active=None, refresh=False, restart=False,
-                       refresh_days=OrgSync.REFRESH_DAYS_DEFAULT):
+                       refresh_days=OrgSync.REFRESH_DAYS_DEFAULT, typed=None):
     run = OrgSyncManifest.unfinished_run(db, key)
-    # Carried into every suggested command that lists or syncs again: without
-    # it, the next run would use the token.
-    auth = " -no-auth" if no_auth else ""
+
+    def suggest(**changes):
+        # Every suggestion repeats the options as typed (-no-auth, -ssh, the
+        # fork and archive choices...), so a copied one does what was asked.
+        return OrgSyncCommand.suggestion(flag, owner, typed or {}, **changes)
 
     if inventory:
         if run and refresh:
@@ -602,18 +610,16 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                 f"{counts['pending'] + counts['in_progress']} pending.")
             console.print(f"  {len(new)} repos are new since that run, {len(gone)} are gone. "
                           "Kept the unfinished run.")
-            console.print(f"To merge this listing into it: "
-                          f"kgit sync {flag} {owner} -inventory -refresh{auth}")
-            console.print(f"To replace it: kgit sync {flag} {owner} -inventory -restart{auth}")
+            console.print("To merge this listing into it: "
+                          + suggest(inventory=True, refresh=True))
+            console.print("To replace it: " + suggest(inventory=True, restart=True))
             return
         run_id = OrgSyncManifest.save_listing(db, key, items, owner_type=owner_kind,
                                               replace=bool(run))
         _print_inventory(db, run_id, key, saved=True)
-        console.print(f"Nothing cloned. Run `kgit sync {flag} {owner} -next 10{auth}` "
-                      "to start syncing.")
+        console.print(f"Nothing cloned. Run `{suggest(next_=10)}` to start syncing.")
         return
 
-    window = (f" -active {active}" if active is not None else "") + auth
     if run and not restart:
         run_id = run["run_id"]
         listed_at = OrgSyncManifest.listed_at(db, run_id)
@@ -686,8 +692,7 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
         done = OrgSync.sync_items(db, run_id, todo, clone=clone, sync=sync_one,
                                   conflict=conflict, use_ssh=ssh, on_item=on_item)
     except KeyboardInterrupt:
-        console.print(f"\nInterrupted. Resume with: kgit sync {flag} {owner}{window}",
-                      style="yellow")
+        console.print(f"\nInterrupted. Resume with: {suggest()}", style="yellow")
         raise SystemExit(130)
     finally:
         for name, value in saved_env.items():
@@ -708,18 +713,15 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
     elif active is not None:
         inside, outside = OrgSyncManifest.window_counts(
             db, run_id, active, retry_failed=retry_failed)
-        more = f" -next {next_}" if next_ else ""
         if inside:
             console.print(f"{inside} repos still to do in the last {_days(active)}. "
-                          f"Continue with: kgit sync {flag} {owner}{window}{more}")
+                          f"Continue with: {suggest()}")
         else:
             console.print(f"Nothing left to do in the last {_days(active)}.")
         console.print(f"{outside} repos are pending outside the window. "
                       f"A wider -active, or none, syncs them.")
     else:
-        more = f" -next {next_}" if next_ else ""
-        console.print(f"{remaining} repos still to do. Continue with: "
-                      f"kgit sync {flag} {owner}{window}{more}")
+        console.print(f"{remaining} repos still to do. Continue with: {suggest()}")
     if counts["failed"]:
         console.print(f"See the failures with: kgit sync {flag} {owner} -status")
 
