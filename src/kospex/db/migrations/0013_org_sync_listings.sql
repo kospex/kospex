@@ -22,7 +22,13 @@
 --
 -- The Python step backfills the existing runs, oldest first.
 --
--- Design: changes/202611-kgit-sync-active.md
+-- org_sync_commands has a row for each `kgit sync --org/--user` command that
+-- listed or synced: the options as typed, what it did, and which GitHub token
+-- it used (the login, the kind read from its prefix, the environment variable
+-- and the expiry GitHub reports, never the token itself). A run is often done
+-- over several commands with different options. Runs from before this have none.
+--
+-- Design: changes/202611-kgit-sync-active.md, changes/202611-kweb-syncs.md
 
 ALTER TABLE [org_sync_runs] ADD COLUMN [listed_at] TEXT;
 
@@ -52,3 +58,27 @@ CREATE TABLE IF NOT EXISTS [org_sync_listings] (
     );
 
 CREATE INDEX IF NOT EXISTS idx_org_sync_listings_org ON org_sync_listings (org_key, listed_at);
+
+CREATE TABLE IF NOT EXISTS [org_sync_commands] (
+    [command_id] INTEGER PRIMARY KEY,
+    [run_id] TEXT,            -- NULL only if a new run's first listing failed
+    [org_key] TEXT,
+    [started_at] TEXT,        -- UTC
+    [finished_at] TEXT,       -- NULL while running, or if it was stopped
+    [listing] TEXT,           -- the listing it saved: first, refresh, restart, or NULL
+    [synced_any] INTEGER,     -- 1 if it cloned or synced items, 0 for -inventory
+    [options] TEXT,           -- as typed, in kgit's fixed order
+    [command] TEXT,           -- the whole command, ready to copy
+    [synced] INTEGER,         -- items this command moved to each status
+    [failed] INTEGER,
+    [skipped] INTEGER,
+    [new] INTEGER,            -- from the listing it saved, if any
+    [gone] INTEGER,
+    [auth_login] TEXT,        -- the GitHub login the token belongs to
+    [auth_kind] TEXT,         -- fine-grained, classic, app, oauth, none or unknown
+    [auth_source] TEXT,       -- the environment variable the token came from
+    [auth_expires_at] TEXT,   -- UTC, from GitHub, NULL if it has no expiry
+    [error] TEXT              -- why it stopped early, after it started
+    );
+
+CREATE INDEX IF NOT EXISTS idx_org_sync_commands_run ON org_sync_commands (run_id, started_at);

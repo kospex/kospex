@@ -37,6 +37,7 @@ import kospex_utils as KospexUtils
 TBL_ORG_SYNC_RUNS = "org_sync_runs"
 TBL_ORG_SYNC_ITEMS = "org_sync_items"
 TBL_ORG_SYNC_LISTINGS = "org_sync_listings"
+TBL_ORG_SYNC_COMMANDS = "org_sync_commands"
 TBL_REPOS = "repos"
 
 PENDING = "pending"
@@ -307,6 +308,44 @@ def listings(db, org_key):
         SELECT * FROM {TBL_ORG_SYNC_LISTINGS}
          WHERE org_key = ? ORDER BY listed_at, rowid
     """, [org_key]))
+
+
+def start_command(db, org_key, command, options, auth, now=None):
+    """Record that a `kgit sync` command has started; returns its command_id.
+
+    auth: `login`, `kind`, `source` and `expires_at` of the GitHub token, or
+    their -no-auth equivalents. Never the token.
+    """
+    cur = db.execute(f"""
+        INSERT INTO {TBL_ORG_SYNC_COMMANDS}
+               (org_key, started_at, command, options, auth_login, auth_kind,
+                auth_source, auth_expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, [org_key, now or _utc_now_iso(), command, options, auth.get("login"),
+          auth.get("kind"), auth.get("source"), auth.get("expires_at")])
+    db.conn.commit()
+    return cur.lastrowid
+
+
+def finish_command(db, command_id, *, run_id, listing, synced_any, synced, failed, skipped,
+                   new, gone, error=None, finished=True, now=None):
+    """Record what the command did. `finished=False` (stopped) leaves finished_at NULL."""
+    db.execute(f"""
+        UPDATE {TBL_ORG_SYNC_COMMANDS}
+           SET run_id = ?, listing = ?, synced_any = ?, synced = ?, failed = ?,
+               skipped = ?, [new] = ?, gone = ?, error = ?, finished_at = ?
+         WHERE command_id = ?
+    """, [run_id, listing, 1 if synced_any else 0, synced, failed, skipped, new, gone, error,
+          (now or _utc_now_iso()) if finished else None, command_id])
+    db.conn.commit()
+
+
+def commands(db, run_id):
+    """The run's recorded commands, oldest first, as dicts."""
+    return list(db.query(f"""
+        SELECT * FROM {TBL_ORG_SYNC_COMMANDS}
+         WHERE run_id = ? ORDER BY started_at, command_id
+    """, [run_id]))
 
 
 def record_provider_ids(db, run_id, repo_id=None, checked_at=None):
