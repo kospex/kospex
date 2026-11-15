@@ -157,7 +157,7 @@
                                             <table class="min-w-full mt-2">
                                                 <thead><tr>
                                                     {% for h in ["Started", "Command", "Listing", "Synced", "Failed", "Skipped", "Took", "State", "Token"] %}
-                                                    <th class="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
+                                                    <th class="px-2 py-1 {% if 4 <= loop.index <= 6 %}text-center{% else %}text-left{% endif %} text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
                                                     {% endfor %}
                                                 </tr></thead>
                                                 <tbody>
@@ -166,9 +166,9 @@
                                                         <td class="px-2 py-1 font-mono text-xs">{{ cmd.started_at }}</td>
                                                         <td class="px-2 py-1"><code class="font-mono text-xs bg-gray-100 rounded px-1">{{ cmd.command }}</code>{% if cmd.error %}<div class="text-xs text-red-700">{{ cmd.error }}</div>{% endif %}</td>
                                                         <td class="px-2 py-1 text-xs">{{ cmd.listing or "" }}</td>
-                                                        <td class="px-2 py-1 text-xs text-right">{{ cmd.synced if cmd.synced is not none else "" }}</td>
-                                                        <td class="px-2 py-1 text-xs text-right">{{ cmd.failed if cmd.failed is not none else "" }}</td>
-                                                        <td class="px-2 py-1 text-xs text-right">{{ cmd.skipped if cmd.skipped is not none else "" }}</td>
+                                                        <td class="px-2 py-1 text-xs text-center">{{ cmd.synced if cmd.synced is not none else "" }}</td>
+                                                        <td class="px-2 py-1 text-xs text-center">{{ cmd.failed if cmd.failed is not none else "" }}</td>
+                                                        <td class="px-2 py-1 text-xs text-center">{{ cmd.skipped if cmd.skipped is not none else "" }}</td>
                                                         <td class="px-2 py-1 text-xs">{{ cmd.took }}</td>
                                                         <td class="px-2 py-1 text-xs">{{ cmd.state }}</td>
                                                         <td class="px-2 py-1 text-xs {% if cmd.expiring %}text-red-700 font-semibold{% endif %}">{{ cmd.token_text }}</td>
@@ -183,7 +183,7 @@
                                             <table class="min-w-full mt-2">
                                                 <thead><tr>
                                                     {% for h in ["Listed at", "Kind", "Repos", "New", "Gone", "Back", "Renamed", "Archived+", "Unarchived"] %}
-                                                    <th class="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
+                                                    <th class="px-2 py-1 {% if loop.index > 2 %}text-center{% else %}text-left{% endif %} text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
                                                     {% endfor %}
                                                 </tr></thead>
                                                 <tbody>
@@ -192,7 +192,7 @@
                                                         <td class="px-2 py-1 font-mono text-xs">{{ l.listed_at }}</td>
                                                         <td class="px-2 py-1 text-xs">{{ l.kind }}</td>
                                                         {% for k in ["listed", "new", "gone", "back", "renamed", "newly_archived", "unarchived"] %}
-                                                        <td class="px-2 py-1 text-xs text-right">{{ l[k] if l[k] is not none else "" }}</td>
+                                                        <td class="px-2 py-1 text-xs text-center">{{ l[k] if l[k] is not none else "" }}</td>
                                                         {% endfor %}
                                                     </tr>
                                                     {% endfor %}
