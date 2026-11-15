@@ -43,3 +43,30 @@ def test_a_shell_kospex_db_is_not_used_by_the_tests(tmp_path):
 
     assert run.returncode == 0, run.stdout + run.stderr
     assert _migration_rows(shell_db) == before
+
+
+def test_the_default_home_db_is_not_used_by_the_tests(tmp_path):
+    # With no KOSPEX_* set at all, kospex defaults to ~/kospex/kospex.db. A test
+    # that imports kospex_cli before setting KOSPEX_HOME gets KOSPEX_DB written
+    # into os.environ by the import, pointing at that default.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("KOSPEX_")}
+    env["PYTHONPATH"] = str(ROOT / "src")
+    env["HOME"] = str(tmp_path)
+    home_kospex = tmp_path / "kospex"
+    home_kospex.mkdir()
+    subprocess.run(
+        [sys.executable, "-c", "import kospex_schema; kospex_schema.connect_or_create_kospex_db()"],
+        env=env | {"KOSPEX_HOME": str(home_kospex)}, cwd=ROOT, check=True,
+    )
+    home_db = home_kospex / "kospex.db"
+    before = _migration_rows(home_db)
+    assert before > 0
+
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+         "tests/test_migration_banner_cli.py"],
+        env=env, cwd=ROOT, capture_output=True, text=True,
+    )
+
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert _migration_rows(home_db) == before
