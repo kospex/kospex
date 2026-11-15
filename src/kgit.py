@@ -586,6 +586,9 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                        active=None, refresh=False, restart=False,
                        refresh_days=OrgSync.REFRESH_DAYS_DEFAULT):
     run = OrgSyncManifest.unfinished_run(db, key)
+    # Carried into every suggested command that lists or syncs again: without
+    # it, the next run would use the token.
+    auth = " -no-auth" if no_auth else ""
 
     if inventory:
         if run and refresh:
@@ -604,17 +607,17 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
             console.print(f"  {len(new)} repos are new since that run, {len(gone)} are gone. "
                           "Kept the unfinished run.")
             console.print(f"To merge this listing into it: "
-                          f"kgit sync {flag} {owner} -inventory -refresh")
-            console.print(f"To replace it: kgit sync {flag} {owner} -inventory -restart")
+                          f"kgit sync {flag} {owner} -inventory -refresh{auth}")
+            console.print(f"To replace it: kgit sync {flag} {owner} -inventory -restart{auth}")
             return
         run_id = OrgSyncManifest.save_listing(db, key, items, owner_type=owner_kind,
                                               replace=bool(run))
         _print_inventory(db, run_id, key, saved=True)
-        console.print(f"Nothing cloned. Run `kgit sync {flag} {owner} -next 10` "
+        console.print(f"Nothing cloned. Run `kgit sync {flag} {owner} -next 10{auth}` "
                       "to start syncing.")
         return
 
-    window = f" -active {active}" if active is not None else ""
+    window = (f" -active {active}" if active is not None else "") + auth
     if run and not restart:
         run_id = run["run_id"]
         listed_at = OrgSyncManifest.listed_at(db, run_id)
@@ -720,7 +723,7 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
     else:
         more = f" -next {next_}" if next_ else ""
         console.print(f"{remaining} repos still to do. Continue with: "
-                      f"kgit sync {flag} {owner}{more}")
+                      f"kgit sync {flag} {owner}{window}{more}")
     if counts["failed"]:
         console.print(f"See the failures with: kgit sync {flag} {owner} -status")
 

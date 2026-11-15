@@ -387,6 +387,29 @@ def test_active_with_next_continues_with_the_same_window(env):
            "kgit sync --org acme -active 30 -next 2" in result.text
 
 
+def test_suggested_commands_keep_no_auth(env):
+    # A suggestion without -no-auth would list with the token next time.
+    FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "abcd"]
+    result = run("--org", "acme", "-inventory", "-no-auth")
+    assert "kgit sync --org acme -next 10 -no-auth" in result.text
+
+    result = run("--org", "acme", "-inventory", "-no-auth")
+    assert "kgit sync --org acme -inventory -refresh -no-auth" in result.text
+    assert "kgit sync --org acme -inventory -restart -no-auth" in result.text
+
+    result = run("--org", "acme", "-next", "1", "-no-auth")
+    assert result.exit_code == 0, result.output
+    assert "Continue with: kgit sync --org acme -no-auth -next 1" in result.text
+
+    result = run("--org", "acme", "-active", "30", "-next", "1", "-no-auth")
+    assert result.exit_code == 0, result.output
+    assert "Continue with: kgit sync --org acme -active 30 -no-auth -next 1" in result.text
+
+    result = run("--org", "acme", "-next", "1")
+    assert "Continue with: kgit sync --org acme -next 1" in result.text
+    assert "-no-auth" not in result.text
+
+
 def test_active_refreshes_a_stale_listing_in_place(env):
     FakeGitHub.listing = _active_listing()
     run("--org", "acme", "-inventory")
