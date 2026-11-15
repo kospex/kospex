@@ -48,14 +48,14 @@ CASES = [
     ("build.mill", Kind.PACKAGE, False),
     ("package.mill.yaml", Kind.PACKAGE, False),
     ("build.sc", Kind.PACKAGE, False),
-    # Newly tagged `dependencies` in panopticas 0.0.24: settings files, and
-    # every other Gradle script. Recognised, not yet read.
-    ("settings.gradle", Kind.PACKAGE, False),
-    ("settings.gradle.kts", Kind.PACKAGE, False),
-    ("firebase-ai.gradle.kts", Kind.PACKAGE, False),
-    ("gradle/publish.gradle", Kind.PACKAGE, False),
-    ("buildSrc/src/main/kotlin/okhttp.base-conventions.gradle.kts", Kind.PACKAGE, False),
-    ("dependency-fetcher-init.gradle", Kind.PACKAGE, False),
+    # Tagged `dependencies` from panopticas 0.0.24: settings files, and every
+    # other Gradle script. Read with the build-file parser (#436).
+    ("settings.gradle", Kind.PACKAGE, True),
+    ("settings.gradle.kts", Kind.PACKAGE, True),
+    ("firebase-ai.gradle.kts", Kind.PACKAGE, True),
+    ("gradle/publish.gradle", Kind.PACKAGE, True),
+    ("buildSrc/src/main/kotlin/okhttp.base-conventions.gradle.kts", Kind.PACKAGE, True),
+    ("dependency-fetcher-init.gradle", Kind.PACKAGE, True),
     ("Cargo.toml", Kind.PACKAGE, False),
     ("Cargo.lock", Kind.PACKAGE, False),
     ("Gemfile", Kind.PACKAGE, False),
@@ -149,6 +149,44 @@ def test_gradle_scripts_are_split_three_ways():
     for name, entry in expected.items():
         hits = [e.name for e in REGISTRY if e.matches(name)]
         assert hits == [entry], f"{name!r} matched {hits}"
+
+
+def test_every_gradle_script_is_read_by_the_build_file_parser():
+    # #436: settings files and every other script use the same parser and
+    # scan paths as build.gradle(.kts).
+    for name in ("build.gradle", "settings.gradle.kts", "firebase-ai.gradle.kts",
+                 "errorProne.gradle", "dependency-fetcher-init.gradle"):
+        entry = classify(name).extractor
+        assert entry.parse_ref == "kospex.extractors.gradle:extract_build_gradle", name
+        assert entry.scanners == ("sca", "osi"), name
+
+
+def test_pylock_and_nuget_lock_are_delegated_to_panopticas():
+    """panopticas 0.0.24 exports is_pylock and is_nuget_project_lock (#110),
+    so the registry no longer copies their patterns.
+    """
+    assert classify("pylock.toml").extractor.name == "pylock"
+    assert classify("pylock.dev.toml").extractor.name == "pylock"
+    assert classify("pylock.a.b.toml").extractor is None
+    assert classify("packages.MyApp.Core.lock.json").extractor.name == "nuget-lock"
+    # The default lock file is an exact-filename rule in panopticas, not
+    # is_nuget_project_lock, so the entry matches it itself.
+    assert classify("packages.lock.json").extractor.name == "nuget-lock"
+    assert classify("package-lock.json").extractor.name == "npm-lock"
+
+
+@pytest.mark.parametrize("predicate,name,entry", [
+    ("is_pylock", "pylock.toml", "pylock"),
+    ("is_nuget_project_lock", "packages.MyApp.lock.json", "nuget-lock"),
+    ("is_gradle_script", "errorProne.gradle", "gradle-script"),
+])
+def test_recognition_follows_the_panopticas_predicate(monkeypatch, predicate, name, entry):
+    # Proves the entry asks panopticas rather than a local copy of its
+    # pattern: when the predicate says no, the entry doesn't match.
+    import panopticas
+    assert classify(name).extractor.name == entry
+    monkeypatch.setattr(panopticas, predicate, lambda _name: False)
+    assert classify(name).extractor is None or classify(name).extractor.name != entry
 
 
 def test_gradle_lookalikes_are_not_scripts():
