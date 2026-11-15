@@ -72,6 +72,8 @@ class TestWebEndpoints:
             "/orgs/",
             "/recent/",
             "/repos/",
+            "/syncs/",
+            "/syncs/?tab=orgs",
             "/landscape/",
             "/tags/",
             "/graph/",
