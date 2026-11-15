@@ -1,6 +1,9 @@
 """`kospex snyk` commands, driven through Click with a fake client."""
 import csv
 import io
+import json
+import os
+import stat
 
 import pytest
 from click.testing import CliRunner
@@ -136,6 +139,80 @@ class TestIssues:
         assert result.exit_code == 1
         assert "Enterprise" in result.output
         assert "Traceback" not in result.output
+
+
+class TestIssuesJson:
+    def read_jsonl(self, path):
+        return [json.loads(line) for line in path.read_text().splitlines()]
+
+    def test_saves_every_issue_read_before_package_filter(self, fake, tmp_path):
+        out = tmp_path / "raw.jsonl"
+        result = run("issues", "-package", "express", "-json", str(out), "-stdout")
+        assert result.exit_code == 0, result.output
+        saved = self.read_jsonl(out)
+        # All four issues read, though only i3 matches -package express.
+        assert [i["id"] for i in saved] == ["i1", "i2", "i3", "i4"]
+        assert saved == ESTATE["issues_by_org"]["o1"] + ESTATE["issues_by_org"]["o2"]
+        assert {r["issue_id"] for r in csv_rows(result.stdout)} == {"i3"}
+        assert "raw.jsonl" in result.stderr
+
+    def test_file_is_owner_only(self, fake, tmp_path):
+        out = tmp_path / "raw.jsonl"
+        assert run("issues", "-json", str(out)).exit_code == 0
+        assert stat.S_IMODE(os.stat(out).st_mode) == 0o600
+
+    def test_refuses_existing_file_unless_overwrite(self, fake, tmp_path):
+        out = tmp_path / "raw.jsonl"
+        out.write_text("keep\n")
+        result = run("issues", "-json", str(out))
+        assert result.exit_code == 2 and "-overwrite" in result.output
+        assert out.read_text() == "keep\n"
+        assert fake.requests == 0
+        assert run("issues", "-json", str(out), "-overwrite").exit_code == 0
+        assert len(self.read_jsonl(out)) == 4
+
+    def test_overwrite_tightens_an_existing_files_mode(self, fake, tmp_path):
+        """CWE-732: os.open's mode applies only on create."""
+        out = tmp_path / "raw.jsonl"
+        out.write_text("old\n")
+        os.chmod(out, 0o644)
+        assert run("issues", "-json", str(out), "-overwrite").exit_code == 0
+        assert stat.S_IMODE(os.stat(out).st_mode) == 0o600
+
+    @pytest.mark.parametrize("overwrite", [False, True])
+    def test_refuses_a_symlink(self, fake, tmp_path, overwrite):
+        """CWE-59: a link at the path must not redirect the write."""
+        target = tmp_path / "elsewhere"
+        target.write_text("keep\n")
+        link = tmp_path / "raw.jsonl"
+        link.symlink_to(target)
+        args = ["issues", "-json", str(link)] + (["-overwrite"] if overwrite else [])
+        result = run(*args)
+        assert result.exit_code == 2, result.output
+        assert target.read_text() == "keep\n"
+
+    def test_json_and_out_must_differ(self, fake, tmp_path):
+        out = tmp_path / "same"
+        result = run("issues", "-json", str(out), "-out", str(out))
+        assert result.exit_code == 2
+        assert not out.exists()
+
+    def test_keeps_what_was_read_before_an_error(self, monkeypatch, tmp_path):
+        client = FakeClient(**ESTATE)
+
+        def issues(org_id, **kw):
+            client.requests += 1
+            if org_id == "o2":
+                raise SnykNotAvailable("/orgs/o2/issues: 403 Forbidden", 403,
+                                       "/orgs/o2/issues")
+            yield from ESTATE["issues_by_org"][org_id]
+
+        client.issues = issues
+        monkeypatch.setattr(snyk_cli, "_client", lambda: client)
+        out = tmp_path / "raw.jsonl"
+        result = run("issues", "-json", str(out))
+        assert result.exit_code == 1
+        assert [i["id"] for i in self.read_jsonl(out)] == ["i1", "i2", "i3"]
 
 
 class TestVulns:

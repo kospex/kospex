@@ -1,4 +1,5 @@
 """`kospex snyk`: read-only Snyk queries. Nothing is written to the kospex DB."""
+import json
 import os
 import sys
 
@@ -46,15 +47,33 @@ def _output_options(f):
     return f
 
 
-def _check_output_options(out_file, overwrite, to_stdout, raw):
+def _check_output_options(out_file, overwrite, to_stdout, raw, json_file=None):
     if out_file and to_stdout:
         raise click.UsageError("Give either -out FILENAME or -stdout, not both.")
-    if overwrite and not out_file:
-        raise click.UsageError("-overwrite only applies to -out FILENAME.")
+    if overwrite and not (out_file or json_file):
+        raise click.UsageError("-overwrite only applies to -out FILENAME or -json FILENAME.")
     if raw and not (out_file or to_stdout):
         raise click.UsageError("-raw only applies to the CSV: add -out FILENAME or -stdout.")
-    if out_file and os.path.exists(out_file) and not overwrite:
-        raise click.UsageError(f"{out_file} already exists. Add -overwrite to replace it.")
+    if json_file and out_file and os.path.abspath(json_file) == os.path.abspath(out_file):
+        raise click.UsageError("-json and -out must be different files.")
+    for path in (out_file, json_file):
+        if path and os.path.exists(path) and not overwrite:
+            raise click.UsageError(f"{path} already exists. Add -overwrite to replace it.")
+
+
+def _open_private(path, overwrite):
+    """Open for writing, owner-only (CWE-732): the raw API data names the client's
+    orgs, projects and file paths. fchmod covers a replaced file, whose old mode
+    os.open would keep. O_NOFOLLOW refuses a symlink at the path (CWE-59), and
+    O_EXCL without -overwrite closes the gap after the exists check (CWE-367)."""
+    flags = os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    flags |= os.O_TRUNC if overwrite else os.O_EXCL
+    try:
+        fd = os.open(path, flags, 0o600)
+    except OSError as e:
+        raise click.UsageError(f"Cannot write -json {path}: {e.strerror}")
+    os.fchmod(fd, 0o600)
+    return os.fdopen(fd, "w", encoding="utf-8")
 
 
 def _emit_csv(rows, fieldnames, out_file, to_stdout, raw, progress):
@@ -114,15 +133,21 @@ def _projects_by_id(client, org_id, project_ids):
 
 
 def _collect_issue_rows(client, orgs, package, severities, project_id, status,
-                        exclude_ignored, max_issues, progress):
+                        exclude_ignored, max_issues, progress, raw_out=None):
+    """raw_out, if given, receives every issue read (before the -package filter)
+    as one JSON object per line, written as it arrives."""
     orgs_by_id = queries.index_by_id(orgs)
     rows = []
     for org in orgs:
         org_id = org["id"]
-        issues = list(client.issues(org_id, statuses=STATUS_CHOICES[status],
-                                    severities=severities or None, project_id=project_id,
-                                    ignored=False if exclude_ignored else None,
-                                    max_items=max_issues))
+        issues = []
+        for item in client.issues(org_id, statuses=STATUS_CHOICES[status],
+                                  severities=severities or None, project_id=project_id,
+                                  ignored=False if exclude_ignored else None,
+                                  max_items=max_issues):
+            issues.append(item)
+            if raw_out is not None:
+                raw_out.write(json.dumps(item) + "\n")
         org_rows = queries.issue_rows(issues, orgs_by_id=orgs_by_id, package=package)
         projects = _projects_by_id(client, org_id, {r["project_id"] for r in org_rows})
         for r in org_rows:
@@ -245,24 +270,34 @@ def projects(org_names, out_file, overwrite, to_stdout, raw):
 @click.option("-package", default=None,
               help="Only this package. Case-insensitive; a name without ':' also "
                    "matches a Maven artifactId (jackson-databind).")
+@click.option("-json", "json_file", default=None, type=click.Path(dir_okay=False),
+              help="Also save every issue read, exactly as the API returned it, one JSON "
+                   "object per line (before -package filtering). For diagnosing missing "
+                   "columns. Contains client data: created owner-only, keep it on site.")
 @_issue_filter_options
 @_output_options
-def issues(package, org_names, severities, project_id, status, exclude_ignored,
+def issues(package, json_file, org_names, severities, project_id, status, exclude_ignored,
            max_issues, out_file, overwrite, to_stdout, raw):
     """Open SCA issues: one row per project, package version and vulnerability.
 
     Snyk has no server-side package filter, so -package reads every issue in
     each org (100 per request) and filters here.
     """
-    _check_output_options(out_file, overwrite, to_stdout, raw)
+    _check_output_options(out_file, overwrite, to_stdout, raw, json_file)
     progress = Console(markup=False, stderr=True) if to_stdout else console
     client = _client()
+    raw_out = _open_private(json_file, overwrite) if json_file else None
     try:
         orgs_list = _resolve_orgs(client, org_names)
         rows = _collect_issue_rows(client, orgs_list, package, severities, project_id,
-                                   status, exclude_ignored, max_issues, progress)
+                                   status, exclude_ignored, max_issues, progress, raw_out)
     except SnykError as e:
         raise click.ClickException(str(e))
+    finally:
+        if raw_out is not None:
+            raw_out.close()
+            # Also on error: what was read before it is what diagnoses it.
+            progress.print(f"Raw issues saved to {json_file}")
     rows.sort(key=lambda r: (-queries.SEVERITY_RANK.get(r["severity"], -1),
                              r["package"], r["vuln_id"], r["org"], r["project"]))
     if not to_stdout:

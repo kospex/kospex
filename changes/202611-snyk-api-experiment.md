@@ -36,6 +36,14 @@ so `jackson-databind` finds `com.fasterxml.jackson.core:jackson-databind`. Each
 command ends by printing how many API requests it made. `-max-issues N` caps the
 issues read per org.
 
+`issues -json FILE` also saves every issue read, exactly as the API returned it,
+one JSON object per line and before `-package` filtering. It makes no extra
+requests. It is there for diagnosis: the issue parsing is built from the OpenAPI
+spec, so if real data puts a field elsewhere, the CSV shows blank columns and the
+raw file shows why. The file is created owner-only (0600), since it names orgs,
+projects and file paths. It is written as issues arrive, so an error part-way
+keeps what was read before it. It refuses an existing file unless `-overwrite`.
+
 ## Overview
 
 Add read-only Snyk API queries to the kospex CLI, so you can ask an existing
