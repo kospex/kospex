@@ -90,6 +90,12 @@ _KOSPEX_ENV_KEYS = (
 # leaks.
 _PRISTINE_ENV = {k: os.environ.get(k) for k in _KOSPEX_ENV_KEYS}
 
+# Except KOSPEX_DB, which no test inherits from the shell. HabitatConfig checks
+# it before KOSPEX_HOME, so a test that points KOSPEX_HOME at tmp_path would
+# still open the DB the shell names. Two tests rewind their DB by deleting
+# every schema_migrations row: with KOSPEX_DB exported, that was the real one.
+_PRISTINE_ENV["KOSPEX_DB"] = None
+
 
 def _reset_habitat_singleton():
     try:
