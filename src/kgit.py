@@ -6,6 +6,7 @@ import time
 import os
 import json
 import subprocess
+from datetime import datetime, timezone
 import click
 from prettytable import PrettyTable
 from kospex_core import GitRepo, Kospex, RepoPathConflict, repo_path_conflict
@@ -864,12 +865,20 @@ def _git_pull(path, no_prompt=False):
               help="Offline staleness report; no pull, no network")
 @click.option("--no-prompt", "no_prompt", is_flag=True, default=False,
               help="Non-interactive auth (fail fast) for unattended runs")
+@click.option("--stale", "stale", type=click.INT, default=None, metavar="DAYS",
+              help="Only repos not refreshed in DAYS days (last fetch, else last sync).")
 @click.argument("repo_id", required=False, type=click.STRING)
-def pull(all_flag, org, server, check, no_prompt, repo_id):
+def pull(all_flag, org, server, check, no_prompt, stale, repo_id):
     """Refresh the local clones kospex already knows about (git pull + sync).
 
     Scope is required - a REPO_ID or one of --all / --org / --server.
+
+    \b
+    kgit pull --all --stale 30           only repos not refreshed in 30 days
+    kgit pull --check --org acme --stale 7   which ones, offline
     """
+    if stale is not None and stale < 1:
+        raise click.UsageError("--stale needs a whole number of days, 1 or more.")
     try:
         repos = _resolve_pull_repos(kospex.kospex_query, repo_id=repo_id,
                                     all_flag=all_flag, org=org, server=server)
@@ -879,6 +888,18 @@ def pull(all_flag, org, server, check, no_prompt, repo_id):
     if not repos:
         console.print("No matching repos in the kospex DB.", style="yellow")
         return
+
+    if stale is not None:
+        now = datetime.now(timezone.utc)
+        in_scope = len(repos)
+        repos = [r for r in repos if staleness.is_stale(r, stale, now)]
+        if not repos:
+            console.print(f"No repos in scope were last refreshed more than "
+                          f"{_days(stale)} ago.")
+            return
+        if not check:
+            console.print(f"Pulling {len(repos)} of {in_scope} repos not refreshed "
+                          f"in {_days(stale)}.")
 
     if check:
         table = Table(title="Repo Staleness")
