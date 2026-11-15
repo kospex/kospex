@@ -9,13 +9,18 @@
     <body class="bg-white">
         {% include '_header.html' %}
 
-        {# A link to this page with some of the query string changed. #}
-        {% macro url(tab=page.tab, org=page.org, server=page.server, days=page.days) -%}
+        {# This page's query string with some of it changed. #}
+        {% macro query(tab=page.tab, org=page.org, server=page.server, days=page.days) -%}
             {%- set q = {"tab": tab} -%}
             {%- if org %}{% set _ = q.update({"org": org}) %}{% endif -%}
             {%- if server %}{% set _ = q.update({"server": server}) %}{% endif -%}
             {%- set _ = q.update({"days": days if days is not none else "all"}) -%}
-            /syncs/?{{ q | urlencode }}
+            {{ q | urlencode }}
+        {%- endmacro %}
+
+        {# A link to this page with some of the query string changed. #}
+        {% macro url(tab=page.tab, org=page.org, server=page.server, days=page.days) -%}
+            /syncs/?{{ query(tab=tab, org=org, server=server, days=days) }}
         {%- endmacro %}
 
         {# An ISO timestamp with the time and offset after its date, in lighter gray. #}
@@ -47,13 +52,13 @@
 
                     <div class="flex flex-wrap items-end gap-6 mb-6">
                         <label class="text-sm text-gray-600">Server / org<br>
-                            <select class="border border-gray-300 rounded px-2 py-1 text-sm" onchange="window.location = this.value">
-                                <option value="{{ url(org=none, server=none) }}" {% if not page.org and not page.server %}selected{% endif %}>All</option>
+                            <select class="border border-gray-300 rounded px-2 py-1 text-sm" onchange="window.location.assign('/syncs/?' + this.value)">
+                                <option value="{{ query(org=none, server=none) }}" {% if not page.org and not page.server %}selected{% endif %}>All</option>
                                 {% for s in page.picker %}
                                 <optgroup label="{{ s.server }}">
-                                    <option value="{{ url(org=none, server=s.server) }}" {% if page.server == s.server %}selected{% endif %}>all of {{ s.server }} — {{ s.repos }} repos{% if s.stale is not none %} · {{ s.stale }} stale{% endif %}</option>
+                                    <option value="{{ query(org=none, server=s.server) }}" {% if page.server == s.server %}selected{% endif %}>all of {{ s.server }} — {{ s.repos }} repos{% if s.stale is not none %} · {{ s.stale }} stale{% endif %}</option>
                                     {% for o in s.orgs %}
-                                    <option value="{{ url(org=o.org_key, server=none) }}" {% if page.org and page.org.lower() == o.org_key %}selected{% endif %}>{{ s.server }} / {{ o.label }} — {{ o.repos }} repos{% if o.stale is not none %} · {{ o.stale }} stale{% endif %}</option>
+                                    <option value="{{ query(org=o.org_key, server=none) }}" {% if page.org and page.org.lower() == o.org_key %}selected{% endif %}>{{ s.server }} / {{ o.label }} — {{ o.repos }} repos{% if o.stale is not none %} · {{ o.stale }} stale{% endif %}</option>
                                     {% endfor %}
                                 </optgroup>
                                 {% endfor %}

@@ -74,6 +74,18 @@ def test_repo_status_is_a_pill(db):
     assert 'rounded-full bg-gray-100 text-gray-500">Unknown</span>' in table
 
 
+def test_the_picker_only_navigates_within_syncs(db):
+    # CWE-79 (DOM text reinterpreted as HTML): the select navigates to a fixed
+    # /syncs/? prefix plus the option's query string, never to the option's text
+    # alone, so no option value can become a javascript: URL.
+    import re
+    status, body = _get()
+    select = re.search(r"<select[^>]*>.*?</select>", body, re.S).group(0)
+    assert "window.location.assign('/syncs/?' + this.value)" in select
+    values = re.findall(r'<option value="([^"]*)"', select)
+    assert values and all(v.startswith("tab=") for v in values)
+
+
 def test_nothing_stale_says_all_repos_are_refreshed(db):
     message = "All repos refreshed within specified window."
     status, body = _get(days="100")
