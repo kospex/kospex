@@ -73,6 +73,7 @@
                     {% set view = page.repos %}
                     <div class="border border-gray-200 rounded-lg p-4 mb-6">
                         <p class="text-gray-900">
+                            {% if page.days is not none and view.stale == 0 %}All repos refreshed within specified window.{% endif %}
                             <span class="font-semibold">{{ view.stale }} of {{ view.total }}</span>
                             repos {% if page.days is not none %}not refreshed in {{ page.days }} day{{ "s" if page.days != 1 }}{% else %}in scope{% endif %}.
                         </p>

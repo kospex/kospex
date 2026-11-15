@@ -66,6 +66,16 @@ def test_an_org_and_days_narrow_the_table_and_the_command(db):
     assert "github.com~acme~fresh" in body
 
 
+def test_nothing_stale_says_all_repos_are_refreshed(db):
+    message = "All repos refreshed within specified window."
+    status, body = _get(days="100")
+    assert status == 200
+    assert message in body
+    assert "0 of 3" in body
+    assert message not in _get()[1]           # 2 of 3 are stale
+    assert message not in _get(days="all")[1]  # no window
+
+
 @pytest.mark.parametrize("params", [
     {"tab": "other"}, {"org": "github.com~acme", "server": "github.com"},
     {"org": "nope"}, {"days": "0"}, {"days": "soon"},
