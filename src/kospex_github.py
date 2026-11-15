@@ -420,6 +420,7 @@ class KospexGithub:
                 # listing includes other owners' repos (-include-member).
                 'type': (repo.get('owner') or {}).get('type') or owner_type,
                 'owner': (repo.get('owner') or {}).get('login') or repo_owner or username_or_org,
+                'created_at': repo.get('created_at'),
                 'updated_at': repo.get('updated_at'),
                 'pushed_at': repo.get('pushed_at'),
                 'archived': repo.get('archived'),

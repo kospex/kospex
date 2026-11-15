@@ -5,6 +5,11 @@ Design: changes/202610-kgit-sync-org.md (#335),
         changes/202611-kgit-sync-active.md (-active, -refresh, `gone`)
 Tables: migrations 0012, 0013
 
+Every saved listing, first or refresh, also gets a row in `org_sync_listings`
+saying what changed since the previous listing of the org, and each item
+carries `first_listed_at` and `archived_seen_at` across runs, so a weekly
+listing builds a history even though a refresh overwrites the run's items.
+
 A run is one complete listing of an owner's repositories. Each repository in it
 is an item with a status:
 
@@ -31,6 +36,7 @@ import kospex_utils as KospexUtils
 
 TBL_ORG_SYNC_RUNS = "org_sync_runs"
 TBL_ORG_SYNC_ITEMS = "org_sync_items"
+TBL_ORG_SYNC_LISTINGS = "org_sync_listings"
 TBL_REPOS = "repos"
 
 PENDING = "pending"
@@ -52,13 +58,14 @@ DONE_STATUSES = (SYNCED, SKIPPED, FAILED)
 # with it. A refresh overwrites these and leaves the status alone.
 LISTING_FIELDS = (
     "clone_url", "ssh_url", "provider_repo_id", "archived", "fork",
-    "fork_parent", "fork_source", "private", "pushed_at",
+    "fork_parent", "fork_source", "private", "pushed_at", "created_at",
 )
 
-ITEM_FIELDS = (
-    "clone_url", "ssh_url", "provider_repo_id", "archived", "fork",
-    "fork_parent", "fork_source", "private", "pushed_at", "status", "detail",
-)
+ITEM_FIELDS = LISTING_FIELDS + ("status", "detail")
+
+# A listing's `kind` in org_sync_listings.
+FIRST = "first"
+REFRESH = "refresh"
 
 
 class UnfinishedRunExists(Exception):
@@ -152,7 +159,15 @@ def save_listing(db, org_key, items, provider="github", owner_type="org",
                 raise UnfinishedRunExists(org_key, existing["run_id"])
             _close(db, existing["run_id"], now)
 
+        # Compared with the org's previous run, finished or just replaced.
+        previous_run = latest_run(db, org_key)
+        previous = set() if previous_run is None else _listed_ids(db, previous_run["run_id"])
+        item_rows = [_item_row(None, item) for item in rows]
+        changes, _ = _apply_history(item_rows, *_history(db, org_key), previous, now)
+
         run_id = _free_run_id(db, run_id)
+        for row in item_rows:
+            row["run_id"] = run_id
         db[TBL_ORG_SYNC_RUNS].insert({
             "run_id": run_id,
             "org_key": org_key,
@@ -163,15 +178,135 @@ def save_listing(db, org_key, items, provider="github", owner_type="org",
             "listed_at": now,
             "finished_at": None,
         }, pk="run_id")
-        if rows:
-            db[TBL_ORG_SYNC_ITEMS].insert_all(
-                [_item_row(run_id, item) for item in rows],
-                pk=["run_id", "_repo_id"],
-            )
+        if item_rows:
+            db[TBL_ORG_SYNC_ITEMS].insert_all(item_rows, pk=["run_id", "_repo_id"])
+        _record_listing(db, run_id, org_key, FIRST, now, item_rows, changes)
         record_provider_ids(db, run_id, checked_at=now)
         # A listing where every repository was skipped has nothing to do.
         close_run_if_done(db, run_id)
     return run_id
+
+
+def _listed_ids(db, run_id):
+    """The repositories a run's latest listing had: everything but `gone`."""
+    return {row["_repo_id"] for row in db.query(
+        f"SELECT _repo_id FROM {TBL_ORG_SYNC_ITEMS} WHERE run_id = ? AND status != ?",
+        [run_id, GONE])}
+
+
+def _history(db, org_key):
+    """What the org's listings so far said about each repository.
+
+    Returns `(by_repo_id, by_provider_id)`, two views of the same records:
+    `_repo_id`, `provider_repo_id`, `first` (the earliest `first_listed_at`),
+    `archived` and `archived_seen_at`, each from the repository's most recent
+    item. Runs are read oldest first, so a later run's item wins, and a
+    renamed repository's record carries over to its new name through
+    `provider_repo_id`. Within a run, `gone` items are read first, so a
+    renamed repository's old name doesn't stand in for its current one.
+    """
+    by_id, by_provider = {}, {}
+    for row in db.query(f"""
+        SELECT i._repo_id, i.provider_repo_id, i.archived, i.first_listed_at,
+               i.archived_seen_at, r.started_at
+          FROM {TBL_ORG_SYNC_ITEMS} i
+          JOIN {TBL_ORG_SYNC_RUNS} r ON r.run_id = i.run_id
+         WHERE r.org_key = ?
+         ORDER BY r.run_id, i.status = ? DESC
+    """, [org_key, GONE]):
+        earlier = _match(by_id, by_provider, row["_repo_id"], row["provider_repo_id"])
+        first = row["first_listed_at"] or row["started_at"]
+        if earlier and earlier["first"] and (first is None or earlier["first"] < first):
+            first = earlier["first"]
+        record = {"_repo_id": row["_repo_id"], "provider_repo_id": row["provider_repo_id"],
+                  "first": first, "archived": bool(row["archived"]),
+                  "archived_seen_at": row["archived_seen_at"]}
+        by_id[row["_repo_id"]] = record
+        if row["provider_repo_id"]:
+            by_provider[row["provider_repo_id"]] = record
+    return by_id, by_provider
+
+
+def _match(by_id, by_provider, repo_id, provider_repo_id):
+    """The earlier record for a repository: by provider id, then by name.
+
+    A name whose earlier record has a different provider id is a new
+    repository reusing the name, not the same one.
+    """
+    if provider_repo_id and provider_repo_id in by_provider:
+        return by_provider[provider_repo_id]
+    record = by_id.get(repo_id)
+    if record and provider_repo_id and record["provider_repo_id"] \
+            and record["provider_repo_id"] != provider_repo_id:
+        return None
+    return record
+
+
+def _apply_history(rows, by_id, by_provider, previous, now):
+    """Set `first_listed_at` and `archived_seen_at` on a listing's item rows,
+    and count what changed since the `previous` listing (a set of `_repo_id`s).
+    Returns `(counts, renamed)`, where `renamed` maps each old `_repo_id` to
+    its new one.
+
+    * `new`: in no earlier listing of the org. `first_listed_at` is now.
+    * `back`: listed before, but not in the previous listing.
+    * `renamed`: the same `provider_repo_id` under a new name. Its old name
+      isn't counted as gone.
+    * `newly_archived` / `unarchived`: the flag changed since the repository's
+      last listing. `archived_seen_at` is set to now when it becomes archived,
+      kept while it stays archived, and cleared when it's unarchived. One
+      already archived when first listed gets none: kospex can't know when.
+    * `gone`: in the previous listing and not in this one.
+    """
+    counts = dict.fromkeys(("new", "back", "renamed", "newly_archived", "unarchived"), 0)
+    listed, renamed = set(), {}
+    for row in rows:
+        repo_id = row["_repo_id"]
+        listed.add(repo_id)
+        prior = _match(by_id, by_provider, repo_id, row.get("provider_repo_id"))
+        archived = bool(row.get("archived"))
+        if prior is None:
+            counts["new"] += 1
+            row["first_listed_at"] = now
+            row["archived_seen_at"] = None
+            continue
+        row["first_listed_at"] = prior["first"] or now
+        if prior["_repo_id"] != repo_id:
+            counts["renamed"] += 1
+            renamed[prior["_repo_id"]] = repo_id
+        elif repo_id not in previous:
+            counts["back"] += 1
+        if not archived:
+            row["archived_seen_at"] = None
+            counts["unarchived"] += prior["archived"]
+        elif prior["archived"]:
+            row["archived_seen_at"] = prior["archived_seen_at"]
+        else:
+            row["archived_seen_at"] = now
+            counts["newly_archived"] += 1
+    counts["gone"] = len(previous - listed - set(renamed))
+    return counts, renamed
+
+
+def _record_listing(db, run_id, org_key, kind, now, rows, changes):
+    """Add the listing's row to org_sync_listings."""
+    db.execute(f"""
+        INSERT INTO {TBL_ORG_SYNC_LISTINGS}
+               (run_id, org_key, listed_at, kind, listed, [new], gone, back, renamed,
+                newly_archived, unarchived, archived, forks, private)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, [run_id, org_key, now, kind, len(rows), changes["new"], changes["gone"],
+          changes["back"], changes["renamed"], changes["newly_archived"],
+          changes["unarchived"], sum(1 for r in rows if r.get("archived")),
+          sum(1 for r in rows if r.get("fork")), sum(1 for r in rows if r.get("private"))])
+
+
+def listings(db, org_key):
+    """Every saved listing of the org, oldest first, as dicts (`-history`)."""
+    return list(db.query(f"""
+        SELECT * FROM {TBL_ORG_SYNC_LISTINGS}
+         WHERE org_key = ? ORDER BY listed_at, rowid
+    """, [org_key]))
 
 
 def record_provider_ids(db, run_id, repo_id=None, checked_at=None):
@@ -391,12 +526,14 @@ def refresh_listing(db, run_id, items):
     * One that had gone and is listed again goes back to the status the caller
       gave it.
     * One the listing no longer has becomes `gone`, with its previous status
-      in `detail` (`was synced`). Its row stays.
+      in `detail` (`was synced`), and its new name if it was renamed
+      (`was synced, renamed to github.com~acme~new`). Its row stays.
 
     Call this only with a complete listing: a partial one would mark real
-    repositories gone. Everything is written in one transaction, and the run's
-    `listed` and `listed_at` are updated. Returns counts: `new`, `updated`,
-    `back`, `gone`.
+    repositories gone. Everything is written in one transaction: the items,
+    the run's `listed` and `listed_at`, and a `refresh` row in
+    org_sync_listings. Returns that row's counts (see `_apply_history`) plus
+    `updated`, the items already in the run.
     """
     listed, seen = [], set()
     for item in items:
@@ -405,27 +542,30 @@ def refresh_listing(db, run_id, items):
             listed.append(item)
 
     now = _utc_now_iso()
-    counts = {"new": 0, "updated": 0, "back": 0, "gone": 0}
     with db.atomic():
-        run = db.execute(f"SELECT finished_at FROM {TBL_ORG_SYNC_RUNS} WHERE run_id = ?",
+        run = db.execute(f"SELECT org_key FROM {TBL_ORG_SYNC_RUNS} WHERE run_id = ?",
                          [run_id]).fetchone()
         if run is None:
             raise KeyError(f"No run {run_id}")
+        org_key = run[0]
         existing = {row["_repo_id"]: row["status"] for row in db.query(
             f"SELECT _repo_id, status FROM {TBL_ORG_SYNC_ITEMS} WHERE run_id = ?", [run_id])}
+        previous = {repo_id for repo_id, status in existing.items() if status != GONE}
+        rows = [_item_row(run_id, item) for item in listed]
+        counts, renamed = _apply_history(rows, *_history(db, org_key), previous, now)
+        counts["updated"] = 0
 
-        for item in listed:
-            row = _item_row(run_id, item)
+        for row in rows:
             repo_id = row["_repo_id"]
             if repo_id not in existing:
                 db[TBL_ORG_SYNC_ITEMS].insert(row, pk=["run_id", "_repo_id"])
-                counts["new"] += 1
                 continue
             fields = {f: row[f] for f in LISTING_FIELDS if f in row}
+            fields.update(first_listed_at=row["first_listed_at"],
+                          archived_seen_at=row["archived_seen_at"])
             if existing[repo_id] == GONE:
                 fields.update(status=row["status"], detail=row.get("detail"),
                               started_at=None, finished_at=None)
-                counts["back"] += 1
             else:
                 counts["updated"] += 1
             sets = ", ".join(f"{f} = ?" for f in fields)
@@ -436,15 +576,17 @@ def refresh_listing(db, run_id, items):
         for repo_id, status in existing.items():
             if repo_id in seen or status == GONE:
                 continue
+            detail = f"was {status}" + (f", renamed to {renamed[repo_id]}"
+                                        if repo_id in renamed else "")
             db.execute(
                 f"UPDATE {TBL_ORG_SYNC_ITEMS} SET status = ?, detail = ?, finished_at = ? "
                 "WHERE run_id = ? AND _repo_id = ?",
-                [GONE, f"was {status}", now, run_id, repo_id])
-            counts["gone"] += 1
+                [GONE, detail, now, run_id, repo_id])
 
         db.execute(
             f"UPDATE {TBL_ORG_SYNC_RUNS} SET listed = ?, listed_at = ? WHERE run_id = ?",
             [len(listed), now, run_id])
+        _record_listing(db, run_id, org_key, REFRESH, now, rows, counts)
         record_provider_ids(db, run_id, checked_at=now)
     return counts
 

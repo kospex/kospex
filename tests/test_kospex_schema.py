@@ -85,7 +85,7 @@ def test_fresh_db_records_migrations_as_applied(tmp_path, monkeypatch):
         "0010_osi_runs_finished_at",
         "0011_commits_covering_index",
         "0012_org_sync",
-        "0013_org_sync_listed_at",
+        "0013_org_sync_listings",
     ]
     assert KospexSchema.LAST_BOOTSTRAP["created"] is True
     assert KospexSchema.LAST_BOOTSTRAP["migrations_applied"] == 11

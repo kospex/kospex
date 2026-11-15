@@ -63,7 +63,8 @@ class FakeGitHub:
 
 def _repo(name, pushed_at="2026-11-01T00:00:00Z", **kw):
     return {
-        "id": 1000 + len(name), "name": f"acme/{name}",
+        # Distinct per name, as GitHub's are: a shared id reads as a rename.
+        "id": int.from_bytes(name.encode(), "big"), "name": f"acme/{name}",
         "clone_url": f"https://github.com/acme/{name}.git",
         "ssh_url": f"git@github.com:acme/{name}.git",
         "visibility": "public", "archived": False, "fork": False,
@@ -173,7 +174,11 @@ def test_a_rejected_token_stops_before_listing(env):
 
 @pytest.mark.parametrize("args, message", [
     (["--org", "--user", "acme"], "not both"),
-    (["--org", "acme", "-inventory", "-next", "5"], "one of -inventory, -next and -status"),
+    (["--org", "acme", "-inventory", "-next", "5"], "one of -inventory, -next, -status"),
+    (["--org", "acme", "-status", "-history"], "one of -inventory, -next, -status"),
+    (["--org", "acme", "-history", "-refresh"], "-history reads the DB only"),
+    (["--org", "acme", "-history", "-active"], "-history reads the DB only"),
+    (["https://github.com/acme/app", "-history"], "only apply with --org or --user"),
     (["--org", "acme", "-next", "0"], "positive number"),
     (["--org", "acme", "-include-forks", "-skip-forks"], "not both"),
     (["--org", "acme/app"], "looks like a repository"),
@@ -476,6 +481,46 @@ def test_status_with_active_shows_the_window_offline(env, monkeypatch):
     assert "2 to do in the last 365 days, 2 pending outside it" in result.text
 
 
+# --- listing history: -history -----------------------------------------------
+
+def test_history_shows_each_listing_and_what_changed_offline(env, monkeypatch):
+    FakeGitHub.listing = [_repo("a"), _repo("b"), _repo("c")]
+    run("--org", "acme", "-inventory")
+    FakeGitHub.listing = [_repo("a", archived=True), _repo("b"), _repo("d")]
+    result = run("--org", "acme", "-inventory", "-refresh")
+    assert "from a new listing of 3: 1 new, 1 gone, 1 newly archived." in result.text
+
+    class NoNetwork:
+        def __init__(self):
+            raise AssertionError("-history must not touch GitHub")
+    monkeypatch.setattr(kgit_module, "KospexGithub", NoNetwork)
+    result = run("--org", "acme", "-history")
+    assert result.exit_code == 0, result.output
+    lines = [line.split() for line in result.output.splitlines() if "│" in line]
+    rows = [[cell for cell in line if cell != "│"] for line in lines]
+    first, refresh = [r for r in rows if r and r[0].startswith("20")]
+    #        kind      repos new gone back renamed archived+ unarchived archived forks private
+    assert first[2:] == ["first", "3", "3", "0", "0", "0", "0", "0", "0", "0", "0"]
+    assert refresh[2:] == ["refresh", "3", "1", "1", "0", "0", "1", "0", "1", "0", "0"]
+
+    result = run("--org", "acme", "-status")
+    assert "github.com~acme listed 2 times since" in result.text
+    assert "kgit sync --org acme -history" in result.text
+
+
+def test_history_with_no_listings(env):
+    result = run("--org", "acme", "-history")
+    assert result.exit_code == 0, result.output
+    assert "No listings for github.com~acme" in result.output
+
+
+def test_created_at_from_the_listing_is_saved(env):
+    FakeGitHub.listing = [_repo("a", created_at="2019-05-01T00:00:00Z")]
+    run("--org", "acme", "-inventory")
+    assert env["db"].execute(f"SELECT created_at FROM {M.TBL_ORG_SYNC_ITEMS}").fetchone()[0] \
+        == "2019-05-01T00:00:00Z"
+
+
 # --- syncing -----------------------------------------------------------------
 
 def test_next_syncs_the_most_recently_pushed_and_resumes_without_relisting(env):
@@ -511,7 +556,7 @@ def test_synced_repos_get_last_fetch_and_their_provider_id(env):
     assert result.exit_code == 0, result.output
     row = env["db"].execute(
         "SELECT provider_repo_id, provider_checked_at, last_fetch FROM repos").fetchone()
-    assert row[0] == "github.com:1001" and row[1] and row[2]
+    assert row[0] == f"github.com:{_repo('a')['id']}" and row[1] and row[2]
 
 
 def test_forks_skipped_by_default_synced_on_request_or_by_default(env, monkeypatch):

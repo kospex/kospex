@@ -172,7 +172,8 @@ None left from the design.
 - `src/kospex/org_sync_manifest.py`: window filter in `next_items`, window
   counts, `refresh_listing`, `listed_at`, the `gone` status.
 - `src/kospex/org_sync.py`: refresh threshold setting.
-- `src/kospex/db/migrations/0013_org_sync_listed_at.sql` (or next free number).
+- `src/kospex/db/migrations/0013_org_sync_listings.sql` and `.py` (the backfill).
+- `src/kospex_github.py`: `created_at` in each listed repo.
 - Tests; `docs/kgit.md`; CHANGELOG; CLAUDE.md command line.
 - Every `-relist` mention moves to `-restart`: the messages in `src/kgit.py`
   that suggest it, `org_sync_manifest.py` docstrings,
@@ -199,3 +200,51 @@ As designed, plus these details settled while building it:
 - **Window boundary:** a repo pushed exactly N days ago is inside `-active N`.
 - **The refresh is one transaction** with the run's `listed` / `listed_at`
   update and the provider-id copy, so a failure part way changes nothing.
+
+## Listing history (added while building)
+
+A refresh overwrites the run's items, so weekly `-active` runs would keep
+only the latest listing. To answer "which repositories were added or
+archived in the last month" from kospex's own data, without asking GitHub,
+migration 0013 (named `0013_org_sync_listings` rather than
+`..._listed_at`, since it was unshipped) also adds:
+
+- **`org_sync_listings`**: one row per saved listing, first or refresh, with
+  the counts since the previous listing of the org: `new`, `gone`, `back`,
+  `renamed`, `newly_archived`, `unarchived`, and totals for `archived`,
+  `forks` and `private`. `kgit sync --org X -history` prints it; `-status`
+  says how many listings there have been. A plain `-inventory` that reports
+  "not saved" adds no row.
+- **`org_sync_items.first_listed_at`**: the first listing of the org that had
+  the repository, carried across runs, and across a rename by
+  `provider_repo_id`.
+- **`org_sync_items.archived_seen_at`**: the first listing that found the
+  repository archived after one that didn't. It's kept while it stays
+  archived and cleared if it's unarchived. A repository already archived when
+  first listed gets none, since kospex can't know when that happened.
+  Precision is the listing interval. GraphQL's `archivedAt` would be exact,
+  and isn't used.
+- **`org_sync_items.created_at`**: GitHub's creation date, which tells a new
+  repository from an older one transferred in or newly visible to the token.
+
+Rules settled while building it:
+
+- **Earlier record:** matched by `provider_repo_id` first, then by name. A
+  name whose earlier record has a different provider id is a new repository
+  reusing the name.
+- **A rename** counts as `renamed`, not as new or gone. The old name's row
+  becomes `gone` in the run, with `renamed to <new id>` added to its detail.
+  Within a run, `gone` rows are read
+  before live ones, so the old name never stands in for the new one and a
+  rename is counted once.
+- **`back`**: listed before, but not in the previous listing. That covers a
+  `gone` repository listed again, and one in an earlier run that the
+  previous run didn't have.
+- **A run's first listing compares with the org's previous run**, finished or
+  replaced by `-restart`, so history continues across runs.
+- **Backfill:** each existing run is one listing at its `started_at`, replayed
+  oldest first with the same rules. The rules are repeated in the migration's
+  Python rather than imported, so the shipped migration doesn't change when
+  the manifest does.
+- **Syncing doesn't matter.** Every listed repository is an item, whether
+  synced, pending outside the `-active` window, or skipped as a fork.

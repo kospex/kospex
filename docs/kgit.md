@@ -140,6 +140,64 @@ kgit sync --org acme -active 365 -next 50    # or 50 at a time, from a schedule
   the default branch. Bots that push branches, such as Dependabot and Renovate,
   make some dormant repositories look active. No active repository is left out.
 
+### What changed between listings: `-history`
+
+Every saved listing is recorded: the first one of each run, and each refresh,
+including the ones `-active` makes by itself. A weekly scheduled run therefore
+builds a history of the organisation. `-history` shows it, from the database
+only:
+
+```bash
+kgit sync --org acme -history
+```
+
+Each row counts the changes since the listing before: repositories that are
+`new` (in no earlier listing), `gone`, `back` (listed before, missing from the
+previous listing), `renamed`, newly archived (`archived+`) and `unarchived`, with
+the totals for archived, forks and private repositories. The counts are kept in
+`org_sync_listings`.
+
+To see which repositories changed, use three columns of `org_sync_items`.
+They're recorded for every repository in the listing, synced or not:
+
+- `first_listed_at`: the first listing of the organisation that had it. It
+  carries across runs, and across a rename.
+- `archived_seen_at`: the first listing that found it archived after one that
+  didn't. It's empty if it isn't archived, or if it was already archived when
+  first listed, because kospex can't know when that happened. It's as precise
+  as your listings: weekly listings date an archive to within a week.
+- `created_at`: when GitHub says the repository was created. A repository
+  first listed recently but created long ago was transferred in, or has only
+  just become visible to the token.
+
+For example, run against `~/kospex/kospex.db` with `sqlite3`, the repositories
+added in the last 30 days:
+
+```sql
+SELECT _repo_id, clone_url, provider_repo_id, created_at, first_listed_at
+  FROM org_sync_items
+ WHERE run_id = (SELECT MAX(run_id) FROM org_sync_runs WHERE org_key = 'github.com~acme')
+   AND status != 'gone'
+   AND first_listed_at >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 days')
+   AND first_listed_at > (SELECT MIN(listed_at) FROM org_sync_listings
+                           WHERE org_key = 'github.com~acme')
+ ORDER BY first_listed_at;
+```
+
+The last condition leaves out the organisation's first listing, where every
+repository is new.
+
+For the repositories archived in the last 30 days, use `archived_seen_at` in
+place of `first_listed_at` in the first condition, and drop the last one. For
+the repositories that have disappeared since the run began, use
+`status = 'gone'`. Those rows' `finished_at` says when a refresh first found
+them missing, and `detail` says what they were before, such as `was synced`. A
+renamed repository's old name is one of them, with its new name in the detail:
+`was synced, renamed to github.com~acme~new`.
+
+A repository missing from the listing after a `-restart` has no row in the
+new run. `-history` still counts it as gone.
+
 ### Forks, archived repositories and other options
 
 - **Forks are skipped, but recorded** with their parent and the root of their fork

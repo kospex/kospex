@@ -238,6 +238,7 @@ def build_items(repos, owner, include_forks=False, skip_archived=False,
             "fork_source": repo.get("fork_source"),
             "private": (repo.get("visibility") or "").lower() == "private",
             "pushed_at": repo.get("pushed_at"),
+            "created_at": repo.get("created_at"),
         }
         if item["fork"] and not include_forks:
             item["status"], item["detail"] = manifest.SKIPPED, SKIP_FORK

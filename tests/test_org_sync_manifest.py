@@ -29,6 +29,7 @@ from kospex.org_sync_manifest import (
     inventory,
     latest_run,
     listed_at,
+    listings,
     mark,
     new_run_id,
     next_items,
@@ -90,7 +91,7 @@ def test_the_new_tables_and_columns_are_not_in_the_baseline_schema():
     """
     baseline = " ".join(KospexSchema.DB_CREATE_STATEMENTS.values())
     for name in ("org_sync_runs", "org_sync_items", "provider_repo_id", "provider_checked_at",
-                 "listed_at"):
+                 "listed_at", "org_sync_listings", "first_listed_at", "archived_seen_at"):
         assert name not in baseline, name
 
 
@@ -497,7 +498,8 @@ def test_refresh_keeps_progress_adds_new_and_marks_gone():
         _item(A, "2026-11-12T00:00:00Z", archived=True),
         _item(B), _item(D), _item(D)])
 
-    assert counts == {"new": 1, "updated": 2, "back": 0, "gone": 1}
+    assert counts == {"new": 1, "updated": 2, "back": 0, "gone": 1, "renamed": 0,
+                      "newly_archived": 1, "unarchived": 0}
     rows = {r["_repo_id"]: r for r in db.query(
         f"SELECT * FROM {TBL_ORG_SYNC_ITEMS} WHERE run_id = ?", [run_id])}
     assert (rows[A]["status"], rows[A]["pushed_at"], rows[A]["archived"]) == \
@@ -545,6 +547,7 @@ def test_a_failure_part_way_through_a_refresh_changes_nothing(monkeypatch):
         refresh_listing(db, run_id, [_item(A, "2026-11-12T00:00:00Z"), _item(C)])
     assert list(db.query(f"SELECT * FROM {TBL_ORG_SYNC_ITEMS}")) == before
     assert latest_run(db, ORG)["listed"] == 2
+    assert len(listings(db, ORG)) == 1                 # only the first
 
 
 def test_refresh_of_an_unknown_run_raises():
@@ -561,3 +564,191 @@ def test_inventory_leaves_gone_items_out_and_reports_them_if_in_kospex():
     inv = inventory(db, run_id)
     assert inv["listed"] == 1
     assert inv["gone"] == [B]
+
+
+# --- listing history (org_sync_listings, first_listed_at, archived_seen_at) ---
+
+W1, W2, W3, W4 = ("2026-11-01T00:00:00Z", "2026-11-08T00:00:00Z",
+                  "2026-11-15T00:00:00Z", "2026-11-22T00:00:00Z")
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """Set the time the manifest records: `clock(W2)`."""
+    import kospex.org_sync_manifest as M
+
+    def at(when):
+        monkeypatch.setattr(M, "_utc_now_iso", lambda: when)
+    return at
+
+
+def _changes(row):
+    return {k: row[k] for k in ("new", "gone", "back", "renamed",
+                                "newly_archived", "unarchived")}
+
+
+def _hist(db, run_id=None):
+    """`{repo_id: (first_listed_at, archived_seen_at)}` for the latest run."""
+    run_id = run_id or latest_run(db, ORG)["run_id"]
+    return {r["_repo_id"]: (r["first_listed_at"], r["archived_seen_at"]) for r in db.query(
+        f"SELECT * FROM {TBL_ORG_SYNC_ITEMS} WHERE run_id = ?", [run_id])}
+
+
+def test_the_first_listing_is_recorded_with_every_repo_new(clock):
+    db = _db()
+    clock(W1)
+    run_id = save_listing(db, ORG, [
+        _item(A, created_at="2020-01-01T00:00:00Z"), _item(B, fork=True),
+        _item(C, archived=True, private=True)])
+    [row] = listings(db, ORG)
+    assert (row["run_id"], row["listed_at"], row["kind"], row["listed"]) == \
+        (run_id, W1, "first", 3)
+    assert _changes(row) == {"new": 3, "gone": 0, "back": 0, "renamed": 0,
+                             "newly_archived": 0, "unarchived": 0}
+    assert (row["archived"], row["forks"], row["private"]) == (1, 1, 1)
+    # C was archived before kospex first saw it: no date for that.
+    assert _hist(db) == {A: (W1, None), B: (W1, None), C: (W1, None)}
+    assert db.execute(f"SELECT created_at FROM {TBL_ORG_SYNC_ITEMS} WHERE _repo_id = ?",
+                      [A]).fetchone()[0] == "2020-01-01T00:00:00Z"
+
+
+def test_weekly_refreshes_record_new_gone_and_archive_changes(clock):
+    D = "github.com~acme~d"
+    db = _db()
+    clock(W1)
+    run_id = save_listing(db, ORG, [_item(A), _item(B), _item(C)])
+    clock(W2)
+    refresh_listing(db, run_id, [_item(A, archived=True), _item(B), _item(D)])
+    clock(W3)
+    refresh_listing(db, run_id, [_item(A, archived=True), _item(B), _item(C), _item(D)])
+    clock(W4)
+    refresh_listing(db, run_id, [_item(A), _item(B, archived=True), _item(C), _item(D)])
+
+    rows = listings(db, ORG)
+    assert [r["kind"] for r in rows] == ["first", "refresh", "refresh", "refresh"]
+    assert [r["listed_at"] for r in rows] == [W1, W2, W3, W4]
+    assert [_changes(r) for r in rows[1:]] == [
+        {"new": 1, "gone": 1, "back": 0, "renamed": 0, "newly_archived": 1, "unarchived": 0},
+        {"new": 0, "gone": 0, "back": 1, "renamed": 0, "newly_archived": 0, "unarchived": 0},
+        {"new": 0, "gone": 0, "back": 0, "renamed": 0, "newly_archived": 1, "unarchived": 1},
+    ]
+    assert [r["archived"] for r in rows] == [0, 1, 1, 1]
+    # D first listed in week 2; C keeps week 1 after being gone; A's archive
+    # date cleared when it was unarchived; B archived in week 4.
+    assert _hist(db) == {A: (W1, None), B: (W1, W4), C: (W1, None), D: (W2, None)}
+
+
+def test_an_archive_date_is_kept_while_the_repo_stays_archived(clock):
+    db = _db()
+    clock(W1)
+    run_id = save_listing(db, ORG, [_item(A)])
+    clock(W2)
+    refresh_listing(db, run_id, [_item(A, archived=True)])
+    clock(W3)
+    refresh_listing(db, run_id, [_item(A, archived=True)])
+    assert _hist(db)[A] == (W1, W2)
+    assert listings(db, ORG)[-1]["newly_archived"] == 0
+
+
+def test_history_carries_across_a_restart_and_a_finished_run(clock):
+    db = _db()
+    clock(W1)
+    save_listing(db, ORG, [_item(A), _item(B)])
+    first = latest_run(db, ORG)["run_id"]
+    clock(W2)
+    refresh_listing(db, first, [_item(A, archived=True), _item(B)])
+    clock(W3)
+    second = save_listing(db, ORG, [_item(A, archived=True), _item(C)], run_id="R2",
+                          replace=True)                           # -restart
+    assert _hist(db, second) == {A: (W1, W2), C: (W3, None)}
+    assert _changes(listings(db, ORG)[-1]) == {
+        "new": 1, "gone": 1, "back": 0, "renamed": 0, "newly_archived": 0, "unarchived": 0}
+
+    close_run(db, second)
+    clock(W4)
+    third = save_listing(db, ORG, [_item(A, archived=True), _item(B), _item(C)], run_id="R3")
+    # B was in the first run, not the second: back, with its first date.
+    assert _hist(db, third) == {A: (W1, W2), B: (W1, None), C: (W3, None)}
+    assert listings(db, ORG)[-1]["back"] == 1
+
+
+def test_a_rename_keeps_the_history_and_is_not_counted_as_new_or_gone(clock):
+    db = _db()
+    D = "github.com~acme~d"
+    clock(W1)
+    run_id = save_listing(db, ORG, [_item(A, provider_repo_id="github.com:7"), _item(B)])
+    clock(W2)
+    refresh_listing(db, run_id, [_item(D, provider_repo_id="github.com:7"), _item(B)])
+    assert _changes(listings(db, ORG)[-1]) == {
+        "new": 0, "gone": 0, "back": 0, "renamed": 1, "newly_archived": 0, "unarchived": 0}
+    assert _hist(db)[D] == (W1, None)
+    assert run_counts(db, run_id)[GONE] == 1           # the old name's row
+    assert db.execute(f"SELECT detail FROM {TBL_ORG_SYNC_ITEMS} WHERE _repo_id = ?",
+                      [A]).fetchone()[0] == f"was pending, renamed to {D}"
+    clock(W3)
+    refresh_listing(db, run_id, [_item(D, provider_repo_id="github.com:7"), _item(B)])
+    assert _changes(listings(db, ORG)[-1])["renamed"] == 0      # counted once
+
+
+def test_a_reused_name_with_a_new_provider_id_is_a_new_repo(clock):
+    db = _db()
+    clock(W1)
+    save_listing(db, ORG, [_item(A, provider_repo_id="github.com:7")], run_id="R1")
+    close_run(db, "R1")
+    clock(W2)
+    save_listing(db, ORG, [_item(A, provider_repo_id="github.com:8")], run_id="R2")
+    assert _hist(db, "R2")[A] == (W2, None)
+    assert listings(db, ORG)[-1]["new"] == 1
+
+
+def test_listings_are_per_org(clock):
+    db = _db()
+    clock(W1)
+    save_listing(db, ORG, [_item(A)])
+    save_listing(db, "github.com~other", [_item("github.com~other~x")])
+    assert [r["org_key"] for r in listings(db, ORG)] == [ORG]
+
+
+def test_0013_backfills_history_for_runs_from_0012(tmp_path):
+    from kospex.db.migrator import Migrator
+    db = sqlite_utils.Database(str(tmp_path / "k.db"))
+    for create_sql in KospexSchema.DB_CREATE_STATEMENTS.values():
+        db.execute(create_sql)
+    migrator = Migrator(db)
+    for migration in [m for m in migrator.pending() if m.sequence <= 12]:
+        migrator.apply(migration)
+    D = "github.com~acme~d"
+
+    def run(run_id, started_at, items, finished=True):
+        db[TBL_ORG_SYNC_RUNS].insert({"run_id": run_id, "org_key": ORG, "started_at": started_at,
+                                      "finished_at": started_at if finished else None,
+                                      "listed": len(items)})
+        for repo_id, pid, archived in items:
+            db[TBL_ORG_SYNC_ITEMS].insert({"run_id": run_id, "_repo_id": repo_id,
+                                           "provider_repo_id": pid, "archived": archived,
+                                           "fork": 0, "private": 0, "status": "synced"})
+    # A archived before the first run; B archived between runs 1 and 2;
+    # C gone in run 2; D is C renamed in run 3.
+    run("R1", W1, [(A, "p:a", 1), (B, "p:b", 0), (C, "p:c", 0)])
+    run("R2", W2, [(A, "p:a", 1), (B, "p:b", 1)])
+    run("R3", W3, [(A, "p:a", 1), (B, "p:b", 1), (D, "p:c", 0)], finished=False)
+    Migrator(db).apply_pending()
+
+    rows = listings(db, ORG)
+    assert [(r["run_id"], r["listed_at"], r["kind"], r["listed"]) for r in rows] == [
+        ("R1", W1, "first", 3), ("R2", W2, "first", 2), ("R3", W3, "first", 3)]
+    assert [_changes(r) for r in rows] == [
+        {"new": 3, "gone": 0, "back": 0, "renamed": 0, "newly_archived": 0, "unarchived": 0},
+        {"new": 0, "gone": 1, "back": 0, "renamed": 0, "newly_archived": 1, "unarchived": 0},
+        {"new": 0, "gone": 0, "back": 0, "renamed": 1, "newly_archived": 0, "unarchived": 0},
+    ]
+    assert _hist(db, "R3") == {A: (W1, None), B: (W1, W2), D: (W1, None)}
+    assert listed_at(db, "R3") == W3
+
+    # The live code carries on from the backfilled history.
+    counts = refresh_listing(db, "R3", [_item(A, provider_repo_id="p:a", archived=True),
+                                        _item(B, provider_repo_id="p:b", archived=True),
+                                        _item(D, provider_repo_id="p:c")])
+    assert {k: counts[k] for k in ("new", "gone", "renamed", "newly_archived")} == \
+        {"new": 0, "gone": 0, "renamed": 0, "newly_archived": 0}
+    assert _hist(db, "R3")[B] == (W1, W2)

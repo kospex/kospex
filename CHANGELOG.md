@@ -22,6 +22,13 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - **A `gone` status** for a repository that a refreshed listing no longer has.
   Its previous status is kept in the detail (`was synced`). Migration `0013`
   adds `org_sync_runs.listed_at`, the time of the run's latest listing.
+- **A history of listings.** Every saved listing, first or refresh, is
+  recorded in `org_sync_listings` with what changed since the one before:
+  new, gone, back, renamed, newly archived and unarchived.
+  `kgit sync --org acme -history` shows them, from the DB only. Each item
+  also records `first_listed_at`, `archived_seen_at` and GitHub's
+  `created_at`, so weekly listings show which repositories were added or
+  archived, whether or not they were synced. Existing runs are backfilled.
 
 ### Changed
 

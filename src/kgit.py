@@ -363,6 +363,8 @@ def clone(ctx, sync, filename, force, repo):
               help="Sync at most N repos from the run, then stop. For schedules.")
 @click.option('-status', is_flag=True, default=False,
               help="Show the latest run from the DB. No network.")
+@click.option('-history', is_flag=True, default=False,
+              help="Show every saved listing and what changed in each, from the DB. No network.")
 @click.option('-active', 'active', type=click.INT, is_flag=False,
               flag_value=OrgSync.ACTIVE_DAYS_DEFAULT, default=None, metavar="[DAYS]",
               help="Only sync repos pushed to in the last DAYS (90 if no number). "
@@ -386,7 +388,7 @@ def clone(ctx, sync, filename, force, repo):
               help="No GitHub token: public repos only, 60 API requests an hour.")
 @click.option('-sync-db', is_flag=True, default=True, help="Sync the repositories to the database (Default)")
 @click.argument('url', metavar="URL|TARGET", type=click.STRING, required=True)
-def sync(org, user, inventory, next_, status, active, refresh, restart, retry_failed,
+def sync(org, user, inventory, next_, status, history, active, refresh, restart, retry_failed,
          include_forks, skip_forks, skip_archived, ssh, no_prompt, no_auth, sync_db, url):
     """
     Sync one repository, or every repository of a GitHub organisation or user.
@@ -398,6 +400,7 @@ def sync(org, user, inventory, next_, status, active, refresh, restart, retry_fa
     kgit sync --org acme -inventory              list and save the repos, clone nothing
     kgit sync --org acme -next 10                sync the next 10, then stop
     kgit sync --org acme -status                 progress so far, from the DB
+    kgit sync --org acme -history                every listing and what changed
     kgit sync --org acme -active 365             only repos pushed to in the last year
     kgit sync --org acme -inventory -refresh     list again into the unfinished run
 
@@ -414,7 +417,7 @@ def sync(org, user, inventory, next_, status, active, refresh, restart, retry_fa
     if org or user:
         _sync_owner(
             owner_kind="org" if org else "user", both=org and user, target=url,
-            inventory=inventory, next_=next_, status=status, active=active,
+            inventory=inventory, next_=next_, status=status, history=history, active=active,
             refresh=refresh, restart=restart, retry_failed=retry_failed,
             include_forks=include_forks, skip_forks=skip_forks,
             skip_archived=skip_archived, ssh=ssh,
@@ -423,6 +426,7 @@ def sync(org, user, inventory, next_, status, active, refresh, restart, retry_fa
 
     owner_only = [name for name, value in (
         ("-inventory", inventory), ("-next", next_ is not None), ("-status", status),
+        ("-history", history),
         ("-active", active is not None), ("-refresh", refresh), ("-restart", restart),
         ("-retry-failed", retry_failed),
         ("-include-forks", include_forks), ("-skip-forks", skip_forks),
@@ -451,12 +455,15 @@ def _error(message):
 
 def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed,
                 include_forks, skip_forks, skip_archived, ssh, no_prompt, no_auth,
-                active=None, refresh=False, restart=False):
+                active=None, refresh=False, restart=False, history=False):
     """`kgit sync --org` / `--user`. See changes/202610-kgit-sync-org.md."""
     if both:
         raise click.UsageError("Use --org or --user, not both.")
-    if sum([inventory, next_ is not None, status]) > 1:
-        raise click.UsageError("Use one of -inventory, -next and -status.")
+    if sum([inventory, next_ is not None, status, history]) > 1:
+        raise click.UsageError("Use one of -inventory, -next, -status and -history.")
+    if history and (refresh or restart or active is not None):
+        raise click.UsageError("-history reads the DB only: use it without "
+                               "-active, -refresh or -restart.")
     if next_ is not None and next_ < 1:
         raise click.UsageError("-next needs a positive number of repositories.")
     if include_forks and skip_forks:
@@ -484,6 +491,9 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed
 
     if status:
         _print_status(db, key, owner, flag, active=active)
+        return
+    if history:
+        _print_history(db, key, owner, flag)
         return
 
     gh = KospexGithub()
@@ -575,10 +585,18 @@ def _refresh_run(db, gh, run_id, key, owner, forks, skip_archived, no_auth):
     """List the owner again and merge it into the run. Prints what changed."""
     items = _list_items(gh, owner, forks, skip_archived, no_auth)
     changed = OrgSyncManifest.refresh_listing(db, run_id, items)
-    console.print(
-        f"Refreshed run {run_id} for {key} from a new listing of {len(items):,}: "
-        f"{changed['new']} new, {changed['gone']} gone"
-        + (f", {changed['back']} back" if changed["back"] else "") + ".")
+    console.print(f"Refreshed run {run_id} for {key} from a new listing of "
+                  f"{len(items):,}: {_changes_text(changed)}.")
+
+
+def _changes_text(changed):
+    """`3 new, 1 gone, 2 newly archived`: new and gone always, the rest if any."""
+    parts = [f"{changed['new']} new", f"{changed['gone']} gone"]
+    for name, label in (("back", "back"), ("renamed", "renamed"),
+                        ("newly_archived", "newly archived"), ("unarchived", "unarchived")):
+        if changed.get(name):
+            parts.append(f"{changed[name]} {label}")
+    return ", ".join(parts)
 
 
 def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
@@ -740,6 +758,32 @@ def _print_inventory(db, run_id, key, saved):
         console.print(f"  in kospex but not in this listing: {len(inv['gone'])}    (see -status)")
 
 
+def _print_history(db, key, owner, flag):
+    """Every saved listing of the owner, oldest first, from the DB only."""
+    listings = OrgSyncManifest.listings(db, key)
+    if not listings:
+        console.print(f"No listings for {key}. Start with: "
+                      f"kgit sync {flag} {owner} -inventory")
+        return
+    table = Table(title=f"Listings of {key}")
+    table.add_column("listed at", no_wrap=True)
+    table.add_column("run", style="cyan", no_wrap=True)
+    table.add_column("kind")
+    columns = (("listed", "repos"), ("new", "new"), ("gone", "gone"), ("back", "back"),
+               ("renamed", "renamed"), ("newly_archived", "archived+"),
+               ("unarchived", "unarchived"), ("archived", "archived"),
+               ("forks", "forks"), ("private", "private"))
+    for _, label in columns:
+        table.add_column(label, justify="right")
+    for row in listings:
+        table.add_row(row["listed_at"], row["run_id"], row["kind"],
+                      *("" if row[name] is None else f"{row[name]:,}" for name, _ in columns))
+    KospexUtils.print_table(table, console)
+    console.print("Changes are since the listing before. archived+ is newly archived. "
+                  "Which repos: first_listed_at and archived_seen_at in org_sync_items "
+                  "(see docs/kgit.md).")
+
+
 def _print_status(db, key, owner, flag, active=None):
     """The latest run, from the DB only. With `active`, also the window's split."""
     run = OrgSyncManifest.latest_run(db, key)
@@ -755,6 +799,11 @@ def _print_status(db, key, owner, flag, active=None):
                   f"started {run['started_at']}, {state}")
     if listed_at != run["started_at"]:
         console.print(f"  listed again {listed_at}")
+    listings = OrgSyncManifest.listings(db, key)
+    if len(listings) > 1:
+        console.print(f"  {key} listed {len(listings)} times since "
+                      f"{listings[0]['listed_at']}. See them with: "
+                      f"kgit sync {flag} {owner} -history")
     console.print(f"  synced {counts['synced']}, skipped {counts['skipped']}, "
                   f"failed {counts['failed']}, pending {counts['pending']}, "
                   f"in progress {counts['in_progress']}"
