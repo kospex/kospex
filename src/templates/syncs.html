@@ -18,6 +18,12 @@
             /syncs/?{{ q | urlencode }}
         {%- endmacro %}
 
+        {# An ISO timestamp with the time and offset after its date, in lighter gray. #}
+        {% macro when(value) -%}
+            {%- set date, t, rest = value.partition("T") -%}
+            {{ date }}{% if t %}<span class="text-gray-400">T{{ rest }}</span>{% endif %}
+        {%- endmacro %}
+
         {% macro command_box(id, text) -%}
             <div class="flex items-center gap-2 mt-2">
                 <code id="{{ id }}" class="font-mono text-sm bg-gray-100 rounded px-2 py-1">{{ text }}</code>
@@ -93,9 +99,9 @@
                                 {% for row in view.rows %}
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-4 py-2 text-sm"><a href="/repo/{{ row.repo_id | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ row.repo_id }}</a></td>
-                                    <td class="px-4 py-2 text-sm font-mono {% if row.last_fetch == 'never' %}text-gray-400{% endif %}">{{ row.last_fetch }}</td>
-                                    <td class="px-4 py-2 text-sm font-mono">{{ row.last_sync }}</td>
-                                    <td class="px-4 py-2 text-sm font-mono">{{ row.last_commit }}</td>
+                                    <td class="px-4 py-2 text-sm font-mono {% if row.last_fetch == 'never' %}text-gray-400{% endif %}">{{ when(row.last_fetch) }}</td>
+                                    <td class="px-4 py-2 text-sm font-mono">{{ when(row.last_sync) }}</td>
+                                    <td class="px-4 py-2 text-sm font-mono">{{ when(row.last_commit) }}</td>
                                     <td class="px-4 py-2 text-sm text-right" data-order="{{ row.age_days if row.age_days is not none else 999999 }}">{{ row.fetch_age }}</td>
                                 </tr>
                                 {% endfor %}

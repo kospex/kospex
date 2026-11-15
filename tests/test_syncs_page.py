@@ -83,6 +83,16 @@ def test_repo_ids_are_escaped(db):
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in body
 
 
+def test_repo_dates_show_the_time_in_lighter_gray(db):
+    import re
+    status, body = _get(days="all")
+    table = body.split("<tbody")[1]
+    date = _ago(40)[:10]
+    assert re.search(date + r'<span class="text-gray-400">T\d\d:\d\d:\d\d', table)
+    # A value with no time stays as it is.
+    assert ">never<" in table and ">-<" in table
+
+
 def test_org_syncs_tab_shows_runs_and_commands(db):
     run_id = M.save_listing(db, "github.com~acme", [{
         "_repo_id": "github.com~acme~old", "clone_url": "https://github.com/acme/old.git",
