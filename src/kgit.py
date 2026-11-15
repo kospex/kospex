@@ -18,6 +18,7 @@ import kospex.github_properties as GitHubProperties
 import kospex.github_dependabot as GitHubDependabot
 import kospex.org_sync as OrgSync
 import kospex.org_sync_manifest as OrgSyncManifest
+from kospex import staleness
 from kospex.habitat_config import HabitatConfig
 from kospex.run_lock import LockBusy, RunLock
 from kospex_bitbucket import (
@@ -106,36 +107,12 @@ def _resolve_pull_repos(kospex_query, repo_id=None, all_flag=False, org=None, se
 
 
 def _staleness_rows(repos, now=None):
-    """Build offline staleness display rows, sorted stalest-first.
+    """Offline staleness display rows, stalest first, by the shared rule.
 
     now: ISO string reference time (defaults to now); used so the function is
-    deterministic under test.
+    deterministic under test. See kospex.staleness.
     """
-    if now is None:
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).astimezone().isoformat()
-
-    def _age_days(iso):
-        if not iso:
-            return None
-        return KospexUtils.days_between_datetimes(iso, now)
-
-    rows = []
-    for r in repos:
-        days = _age_days(r.get("last_fetch"))
-        rows.append({
-            "repo_id": r.get("_repo_id"),
-            "last_fetch": r.get("last_fetch") or "never",
-            "last_sync": r.get("last_sync") or "-",
-            "last_commit": r.get("last_seen") or "-",
-            "fetch_age": "never" if days is None else f"{int(days)}d",
-            "_sort": float("inf") if days is None else days,
-        })
-    # stalest first: never-fetched (inf) first, then largest age
-    rows.sort(key=lambda x: x["_sort"], reverse=True)
-    for x in rows:
-        del x["_sort"]
-    return rows
+    return staleness.staleness_rows(repos, staleness.parse_time(now) if now else None)
 
 
 def _pull_command(path, no_prompt=False):
