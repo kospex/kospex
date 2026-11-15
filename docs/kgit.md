@@ -95,6 +95,17 @@ kgit sync --org acme -status      # progress so far, from the database only
 - **`-retry-failed`** retries repositories that failed earlier in the unfinished
   run. Without it, a failure is retried on the next listing.
 
+A run's times are in `org_sync_runs`:
+
+- `started_at`: when the run was created (its first listing), not when syncing began.
+- `listed_at`: when the run was last listed. `-refresh` updates it, and so does
+  `-active` when it lists again.
+- `finished_at`: when every repository was done, or the run was replaced by
+  `-restart`. It's empty while the run is unfinished.
+
+Each repository in `org_sync_items` has its own `started_at` and `finished_at`
+for its clone and sync.
+
 Only one sync of an organisation runs at a time. A second one finds the lock,
 says so, and exits 0, so overlapping scheduled runs are harmless. A sync is
 never interrupted for taking a long time. If a sync crashes, the next one

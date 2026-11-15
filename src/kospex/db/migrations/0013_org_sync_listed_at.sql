@@ -2,6 +2,8 @@
 --
 -- When an org-sync run's listing was last taken.
 --
+-- started_at: when the run was created (its first listing), not when syncing began.
+--
 -- Until now a run was listed once, when it started, so `started_at` said how
 -- old its listing was. `kgit sync --org ... -refresh` (and `-active` on a
 -- stale run) lists the org again and merges the result into the same run, so
