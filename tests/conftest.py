@@ -10,9 +10,12 @@ This autouse fixture isolates those globals for every test: it snapshots and
 restores the KOSPEX_* env vars and resets the singleton before and after each
 test, so tests can't pollute one another regardless of run order.
 """
+import atexit
 import os
+import shutil
 import sqlite3
 import sys
+import tempfile
 
 import pytest
 
@@ -95,6 +98,17 @@ _PRISTINE_ENV = {k: os.environ.get(k) for k in _KOSPEX_ENV_KEYS}
 # still open the DB the shell names. Two tests rewind their DB by deleting
 # every schema_migrations row: with KOSPEX_DB exported, that was the real one.
 _PRISTINE_ENV["KOSPEX_DB"] = None
+
+# Nor KOSPEX_HOME. Unset, kospex falls back to ~/kospex, and importing kospex_cli
+# or kgit for the first time writes KOSPEX_DB=~/kospex/kospex.db into os.environ.
+# A test that imports first and sets KOSPEX_HOME second then opens the real DB.
+# Every test starts from a throwaway home instead, set now so that imports during
+# collection use it too.
+_THROWAWAY_HOME = tempfile.mkdtemp(prefix="kospex-tests-home-")
+atexit.register(shutil.rmtree, _THROWAWAY_HOME, ignore_errors=True)
+_PRISTINE_ENV["KOSPEX_HOME"] = _THROWAWAY_HOME
+os.environ["KOSPEX_HOME"] = _THROWAWAY_HOME
+os.environ.pop("KOSPEX_DB", None)
 
 
 def _reset_habitat_singleton():
