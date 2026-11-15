@@ -26,6 +26,7 @@ import krunner_utils as KrunnerUtils
 from kospex.db import Migrator
 from kospex.db.migrator import warn_if_behind
 from kospex.extractors.registry import package_types
+from kospex.integrations.snyk.cli import snyk
 from kospex_core import GitRepo, Kospex, RepoPathConflict
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
@@ -1864,6 +1865,10 @@ def connectivity(save):
     else:
         print("✓ Connectivity test completed successfully")
     print("=" * 60 + "\n")
+
+
+# Vendor integrations keep their commands in their own subpackage.
+cli.add_command(snyk)
 
 
 #
