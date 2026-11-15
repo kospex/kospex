@@ -123,7 +123,7 @@
                             <thead class="bg-gray-50">
                                 <tr>
                                     {% for h in ["Org", "Run", "State", "Listed", "Repos", "Synced", "Pending", "Skipped", "Failed", "Gone", "Archived", "Forks", "Finished"] %}
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
+                                    <th class="px-3 py-2 {% if loop.index > 4 %}text-center{% else %}text-left{% endif %} text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
                                     {% endfor %}
                                 </tr>
                             </thead>
@@ -135,15 +135,15 @@
                                     <td class="px-3 py-2 text-sm font-mono">{{ run.run_id }}</td>
                                     <td class="px-3 py-2 text-sm {% if run.finished_at %}text-green-700{% else %}text-yellow-700{% endif %}">{{ "finished" if run.finished_at else "in progress" }}</td>
                                     <td class="px-3 py-2 text-sm font-mono">{{ run.listed_at or run.started_at }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">{{ run.listed }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">{{ c.synced }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">{{ c.pending + c.in_progress }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">{{ c.skipped }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">{{ c.failed }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">{{ c.gone }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">{{ run.archived }}</td>
-                                    <td class="px-3 py-2 text-sm text-right">{{ run.forks }}</td>
-                                    <td class="px-3 py-2 text-sm font-mono">{{ run.finished_at or "—" }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ run.listed }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ c.synced }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ c.pending + c.in_progress }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ c.skipped }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ c.failed }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ c.gone }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ run.archived }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ run.forks }}</td>
+                                    <td class="px-3 py-2 text-sm font-mono text-center">{{ run.finished_at or "—" }}</td>
                                 </tr>
                                 <tr class="bg-gray-50">
                                     <td colspan="13" class="px-3 py-2 text-sm">
