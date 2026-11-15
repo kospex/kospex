@@ -875,31 +875,6 @@ def syncs(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.get("/recent/", response_class=HTMLResponse)
-def recent_syncs(request: Request):
-    """Display recently synced repositories"""
-    try:
-        logger.info("Recent syncs view requested")
-        kospex = KospexQuery()
-
-        # TODO: Implement proper query for last 10 syncs
-        # This is stubbed for now - will need to add database query for recent syncs
-        data = []  # Placeholder for recent sync data
-
-        return templates.TemplateResponse(
-            request, "recent-syncs.html",
-            {"data": data, "page": {"title": "Recent Syncs"}},
-        )
-    except HTTPException:
-        # Re-raise the route's own 4xx. The handler below converts any
-        # Exception to a 500, and HTTPException is an Exception, so a
-        # deliberate 404/400 was reported as a server error. (#210)
-        raise
-    except Exception as e:
-        logger.error(f"Error in recent syncs endpoint: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
 @app.get("/repos/", response_class=HTMLResponse)
 @app.get("/repos/{id}", response_class=HTMLResponse)
 def repos(request: Request, id: Optional[str] = None):

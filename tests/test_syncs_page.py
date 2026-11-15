@@ -110,6 +110,12 @@ def test_org_syncs_tab_on_a_db_behind_0013(db):
     assert "kospex upgrade-db" in body
 
 
+def test_recent_is_gone():
+    # /recent/ was a stub that always rendered an empty table.
+    import kweb2
+    assert "/recent/" not in {getattr(route, "path", None) for route in kweb2.app.routes}
+
+
 def test_not_linked_from_the_header():
     from pathlib import Path
     import kweb2

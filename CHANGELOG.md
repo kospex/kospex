@@ -53,6 +53,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   file-metadata` on an existing database to tag files synced with an older
   panopticas.
 
+### Removed
+
+- **The `/recent/` kweb page.** It was a stub that always showed an empty
+  table. `kgit pull --check --all` lists when each repo was last fetched and
+  synced.
+
 ## 0.3.1 - 2026-11-13
 
 ### Highlights

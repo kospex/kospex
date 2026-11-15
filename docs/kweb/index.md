@@ -103,7 +103,6 @@ These aren't all in the top menu, but are reachable by drilling down:
 | Commits | `/commits/{repo_id}` | Commit history and individual commit detail |
 | Tenure | `/tenure/` | How long contributors have been active |
 | Observations | `/observations/` | Stored analysis results |
-| Recent | `/recent/` | Recently synced repositories |
 
 ### Graphs and visualisations
 
@@ -123,8 +122,8 @@ These aren't all in the top menu, but are reachable by drilling down:
 
 - **No data showing** — the database may be empty. Sync at least one repo with
   `kgit clone` or `kospex sync`, and check `kospex summary` returns results from the CLI.
-- **Missing repositories** — confirm the repo synced successfully; `/recent/` shows what
-  was most recently ingested.
+- **Missing repositories** — confirm the repo synced successfully; `kgit pull --check --all`
+  lists every repo in the database with when it was last fetched and synced.
 - **Missing file types or complexity metrics** — check that `scc` is installed, as it
   drives file type detection and complexity analysis.
 - **Slow pages** — large estates produce large tables; filter by org or server rather than

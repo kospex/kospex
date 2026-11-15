@@ -70,7 +70,6 @@ class TestWebEndpoints:
             "/osi/",
             # "/collab/",
             "/orgs/",
-            "/recent/",
             "/repos/",
             "/syncs/",
             "/syncs/?tab=orgs",

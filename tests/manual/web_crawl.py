@@ -54,7 +54,7 @@ SKIP_PREFIXES = ("/clear-cache", "/static/", "/docs", "/redoc", "/openapi.json")
 START_PAGES = [
     "/", "/summary/", "/repos/", "/orgs/", "/servers/", "/developers/",
     "/landscape/", "/tenure/", "/osi/", "/dependencies/", "/commits/",
-    "/metadata/", "/metadata/repos/", "/orphans/", "/recent/", "/tags/",
+    "/metadata/", "/metadata/repos/", "/orphans/", "/tags/",
     "/graph/", "/files/repo/", "/supply-chain/", "/observations/",
     "/tech-change/", "/meta/author-domains", "/help/",
 ]
