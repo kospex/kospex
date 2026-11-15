@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Kospex Web - Syncs</title>
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+    </head>
+    <body class="bg-white">
+        {% include '_header.html' %}
+
+        {# This page's query string with some of it changed. #}
+        {% macro query(tab=page.tab, org=page.org, server=page.server, days=page.days) -%}
+            {%- set q = {"tab": tab} -%}
+            {%- if org %}{% set _ = q.update({"org": org}) %}{% endif -%}
+            {%- if server %}{% set _ = q.update({"server": server}) %}{% endif -%}
+            {%- set _ = q.update({"days": days if days is not none else "all"}) -%}
+            {{ q | urlencode }}
+        {%- endmacro %}
+
+        {# A link to this page with some of the query string changed. #}
+        {% macro url(tab=page.tab, org=page.org, server=page.server, days=page.days) -%}
+            /syncs/?{{ query(tab=tab, org=org, server=server, days=days) }}
+        {%- endmacro %}
+
+        {# An ISO timestamp with the time and offset after its date, in lighter gray. #}
+        {% macro when(value) -%}
+            {%- set date, t, rest = value.partition("T") -%}
+            {{ date }}{% if t %}<span class="text-gray-400">T{{ rest }}</span>{% endif %}
+        {%- endmacro %}
+
+        {% macro command_box(id, text) -%}
+            <div class="flex items-center gap-2 mt-2">
+                <code id="{{ id }}" class="font-mono text-sm bg-gray-100 rounded px-2 py-1">{{ text }}</code>
+                <button type="button" class="text-xs border border-gray-300 rounded px-2 py-1 hover:bg-gray-50"
+                        onclick="navigator.clipboard.writeText(document.getElementById('{{ id }}').textContent)">copy</button>
+            </div>
+        {%- endmacro %}
+
+        <div class="container mx-auto px-4 mt-12 mb-12">
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Syncs</h1>
+                    <p class="text-gray-600 mb-6">Which repos are out of date, and the kgit commands to refresh them. This page only shows commands: copy one and run it yourself.</p>
+
+                    <div class="flex gap-6 border-b border-gray-200 mb-6">
+                        {% for tab, label in [("repos", "Repos"), ("orgs", "Org syncs")] %}
+                        <a href="{{ url(tab=tab) }}"
+                           class="pb-2 text-sm {% if page.tab == tab %}border-b-2 border-blue-600 font-semibold text-gray-900{% else %}text-gray-500 hover:text-gray-700{% endif %}">{{ label }}</a>
+                        {% endfor %}
+                    </div>
+
+                    <div class="flex flex-wrap items-end gap-6 mb-6">
+                        <label class="text-sm text-gray-600">Server / org<br>
+                            {# Navigates by the selected option's position into URLs
+                               built here, never to text read from the page (CWE-79). #}
+                            {% set days_q = page.days if page.days is not none else "all" %}
+                            {% set picker_urls = ["/syncs/?" ~ ({"tab": page.tab, "days": days_q} | urlencode)] %}
+                            <select class="border border-gray-300 rounded px-2 py-1 text-sm" onchange="window.location.assign(syncsPickerUrls[this.selectedIndex])">
+                                <option {% if not page.org and not page.server %}selected{% endif %}>All</option>
+                                {% for s in page.picker %}
+                                <optgroup label="{{ s.server }}">
+                                    {% set _ = picker_urls.append("/syncs/?" ~ ({"tab": page.tab, "server": s.server, "days": days_q} | urlencode)) %}
+                                    <option {% if page.server == s.server %}selected{% endif %}>all of {{ s.server }} — {{ s.repos }} repos{% if s.stale is not none %} · {{ s.stale }} stale{% endif %}</option>
+                                    {% for o in s.orgs %}
+                                    {% set _ = picker_urls.append("/syncs/?" ~ ({"tab": page.tab, "org": o.org_key, "days": days_q} | urlencode)) %}
+                                    <option {% if page.org and page.org.lower() == o.org_key %}selected{% endif %}>{{ s.server }} / {{ o.label }} — {{ o.repos }} repos{% if o.stale is not none %} · {{ o.stale }} stale{% endif %}</option>
+                                    {% endfor %}
+                                </optgroup>
+                                {% endfor %}
+                            </select>
+                            <script>const syncsPickerUrls = {{ picker_urls | tojson }};</script>
+                        </label>
+                        {% if page.tab == "repos" %}
+                        <div class="text-sm text-gray-600">Not fetched in<br>
+                            {% for d, label in [(1, "1 day"), (7, "1 week"), (30, "30 days"), (none, "all")] %}
+                            <a href="{{ url(days=d) }}"
+                               class="inline-block px-3 py-1 rounded-full border text-xs {% if page.days == d %}bg-blue-600 text-white border-blue-600{% else %}border-gray-300 text-gray-700 hover:bg-gray-50{% endif %}">{{ label }}</a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if page.tab == "repos" %}
+                    {% set view = page.repos %}
+                    <div class="border border-gray-200 rounded-lg p-4 mb-6">
+                        <p class="text-gray-900">
+                            {% if page.days is not none and view.stale == 0 %}All repos refreshed within specified window.{% endif %}
+                            <span class="font-semibold">{{ view.stale }} of {{ view.total }}</span>
+                            repos {% if page.days is not none %}not refreshed in {{ page.days }} day{{ "s" if page.days != 1 }}{% else %}in scope{% endif %}.
+                        </p>
+                        {% if view.fell_back %}
+                        <p class="text-sm text-gray-500">{{ view.fell_back }} of them have never been fetched by kgit; their last sync is used.</p>
+                        {% endif %}
+                        {{ command_box("pull-command", view.command) }}
+                        <p class="text-sm text-gray-500 mt-2">Check first, offline:</p>
+                        {{ command_box("check-command", view.check_command) }}
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="reposTable">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Repo</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Last fetch</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Last sync</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Last commit</th>
+                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Sync Age (days)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for row in view.rows %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-2 text-sm"><a href="/repo/{{ row.repo_id | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ row.repo_id }}</a></td>
+                                    <td class="px-4 py-2 text-sm font-mono {% if row.last_fetch == 'never' %}text-gray-400{% endif %}">{{ when(row.last_fetch) }}</td>
+                                    <td class="px-4 py-2 text-sm font-mono">{{ when(row.last_sync) }}</td>
+                                    <td class="px-4 py-2 text-sm font-mono">{{ when(row.last_commit) }}</td>
+                                    <td class="px-4 py-2 text-sm text-center" data-order="{{ row.status_rank }}"><span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ row.status_classes }}">{{ row.status }}</span></td>
+                                    <td class="px-4 py-2 text-sm text-right" data-order="{{ row.age_days if row.age_days is not none else 999999 }}">{{ row.fetch_age }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    {% set orgs = page.orgs %}
+                    {% if not orgs.available %}
+                    <div class="border border-yellow-300 bg-yellow-50 rounded-lg p-4">
+                        <p class="text-gray-900">This database is from before org sync history was recorded. Back it up, then run:</p>
+                        {{ command_box("upgrade-command", "kospex upgrade-db -apply") }}
+                    </div>
+                    {% elif not orgs.runs %}
+                    <p class="text-gray-600">No org syncs yet. Start one with <code class="font-mono text-sm bg-gray-100 rounded px-1">kgit sync --org OWNER -inventory</code>.</p>
+                    {% else %}
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    {% for h in ["Org", "Run", "State", "Listed", "Repos", "Synced", "Pending", "Skipped", "Failed", "Gone", "Archived", "Forks", "Finished"] %}
+                                    <th class="px-3 py-2 {% if loop.index > 4 %}text-center{% else %}text-left{% endif %} text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for run in orgs.runs %}
+                                {% set c = run.counts %}
+                                <tr>
+                                    <td class="px-3 py-2 text-sm"><a href="/org/{{ run.org_key | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ run.org_key }}</a></td>
+                                    <td class="px-3 py-2 text-sm font-mono">{{ run.run_id }}</td>
+                                    <td class="px-3 py-2 text-sm {% if run.finished_at %}text-green-700{% else %}text-yellow-700{% endif %}">{{ "finished" if run.finished_at else "in progress" }}</td>
+                                    <td class="px-3 py-2 text-sm font-mono">{{ run.listed_at or run.started_at }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ run.listed }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ c.synced }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ c.pending + c.in_progress }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ c.skipped }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ c.failed }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ c.gone }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ run.archived }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ run.forks }}</td>
+                                    <td class="px-3 py-2 text-sm font-mono text-center">{{ run.finished_at or "—" }}</td>
+                                </tr>
+                                <tr class="bg-gray-50">
+                                    <td colspan="13" class="px-3 py-2 text-sm">
+                                        {% if run.continue_command %}
+                                        <span class="text-gray-600">Continue:</span>
+                                        {{ command_box("continue-" ~ loop.index, run.continue_command) }}
+                                        {% endif %}
+                                        <details class="mt-2">
+                                            <summary class="cursor-pointer text-gray-700">Commands ({{ run.commands | length }}) and listings ({{ run.listings | length }})</summary>
+                                            {% if run.commands %}
+                                            <table class="min-w-full mt-2">
+                                                <thead><tr>
+                                                    {% for h in ["Started", "Command", "Listing", "Synced", "Failed", "Skipped", "Took", "State", "Token"] %}
+                                                    <th class="px-2 py-1 {% if 4 <= loop.index <= 6 %}text-center{% else %}text-left{% endif %} text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
+                                                    {% endfor %}
+                                                </tr></thead>
+                                                <tbody>
+                                                    {% for cmd in run.commands %}
+                                                    <tr>
+                                                        <td class="px-2 py-1 font-mono text-xs">{{ cmd.started_at }}</td>
+                                                        <td class="px-2 py-1"><code class="font-mono text-xs bg-gray-100 rounded px-1">{{ cmd.command }}</code>{% if cmd.error %}<div class="text-xs text-red-700">{{ cmd.error }}</div>{% endif %}</td>
+                                                        <td class="px-2 py-1 text-xs">{{ cmd.listing or "" }}</td>
+                                                        <td class="px-2 py-1 text-xs text-center">{{ cmd.synced if cmd.synced is not none else "" }}</td>
+                                                        <td class="px-2 py-1 text-xs text-center">{{ cmd.failed if cmd.failed is not none else "" }}</td>
+                                                        <td class="px-2 py-1 text-xs text-center">{{ cmd.skipped if cmd.skipped is not none else "" }}</td>
+                                                        <td class="px-2 py-1 text-xs">{{ cmd.took }}</td>
+                                                        <td class="px-2 py-1 text-xs">{{ cmd.state }}</td>
+                                                        <td class="px-2 py-1 text-xs {% if cmd.expiring %}text-red-700 font-semibold{% endif %}">{{ cmd.token_text }}</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                            {% else %}
+                                            <p class="text-gray-500 mt-2">Commands not recorded: this run is from before they were.</p>
+                                            {% endif %}
+                                            {% if run.listings %}
+                                            <table class="min-w-full mt-2">
+                                                <thead><tr>
+                                                    {% for h in ["Listed at", "Kind", "Repos", "New", "Gone", "Back", "Renamed", "Archived+", "Unarchived"] %}
+                                                    <th class="px-2 py-1 {% if loop.index > 2 %}text-center{% else %}text-left{% endif %} text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
+                                                    {% endfor %}
+                                                </tr></thead>
+                                                <tbody>
+                                                    {% for l in run.listings %}
+                                                    <tr>
+                                                        <td class="px-2 py-1 font-mono text-xs">{{ l.listed_at }}</td>
+                                                        <td class="px-2 py-1 text-xs">{{ l.kind }}</td>
+                                                        {% for k in ["listed", "new", "gone", "back", "renamed", "newly_archived", "unarchived"] %}
+                                                        <td class="px-2 py-1 text-xs text-center">{{ l[k] if l[k] is not none else "" }}</td>
+                                                        {% endfor %}
+                                                    </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                            {% endif %}
+                                        </details>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %}
+        {% include '_datatable_scripts.html' %}
+        <script>
+            $(document).ready(function () {
+                if ($("#reposTable").length) {
+                    $("#reposTable").DataTable({
+                        order: [[5, "desc"]],
+                        pageLength: 50,
+                        lengthMenu: [[25, 50, 100, -1], [25, 50, 100, "All"]],
+                    });
+                }
+            });
+        </script>
+    </body>
+</html>

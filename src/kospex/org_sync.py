@@ -1,7 +1,8 @@
 """`kgit sync --org` / `--user`: list an owner's repositories, record them, sync them.
 
-Design: changes/202610-kgit-sync-org.md (#335)
-Manifest: kospex.org_sync_manifest (migration 0012)
+Design: changes/202610-kgit-sync-org.md (#335),
+        changes/202611-kgit-sync-active.md (-active, -refresh)
+Manifest: kospex.org_sync_manifest (migrations 0012, 0013)
 
 The CLI in kgit.py parses options and prints. This module holds the parts worth
 testing on their own: what a target means, which repositories are skipped and why,
@@ -10,6 +11,7 @@ survive one repository failing.
 """
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -26,6 +28,12 @@ GITHUB_USER = "User"
 ENV_CLONE_FORKS_DEFAULT = "KOSPEX_CLONE_FORKS_DEFAULT"
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"", "0", "false", "no", "off"}
+
+# How old a run's listing can be before `-active` lists the org again.
+ENV_REFRESH_DAYS = "KOSPEX_ORG_SYNC_REFRESH_DAYS"
+REFRESH_DAYS_DEFAULT = 2
+# What `-active` with no number means.
+ACTIVE_DAYS_DEFAULT = 90
 
 SKIP_FORK = "fork"
 SKIP_ARCHIVED = "archived"
@@ -159,6 +167,46 @@ def forks_default(environ=None):
         "isn't true or false.")
 
 
+def refresh_days(environ=None):
+    """Days a listing stays fresh for `-active`: KOSPEX_ORG_SYNC_REFRESH_DAYS, else 2.
+
+    `0` means list again every time. Raises ValueError for anything that isn't
+    a whole number of days, 0 or more, rather than guessing.
+    """
+    environ = os.environ if environ is None else environ
+    raw = environ.get(ENV_REFRESH_DAYS)
+    if raw is None or not raw.strip():
+        return REFRESH_DAYS_DEFAULT
+    try:
+        days = int(raw.strip())
+    except ValueError:
+        days = -1
+    if days < 0:
+        raise ValueError(f"{ENV_REFRESH_DAYS}={raw!r} isn't a whole number of days (0 or more).")
+    return days
+
+
+def listing_age_days(listed_at, now=None):
+    """Days since `listed_at` (a `...Z` timestamp), as a float. None if unknown."""
+    if not listed_at:
+        return None
+    try:
+        then = datetime.strptime(listed_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    now = now or datetime.now(timezone.utc)
+    return (now - then).total_seconds() / 86400
+
+
+def listing_is_stale(listed_at, max_days, now=None):
+    """Whether a listing taken at `listed_at` is older than `max_days`.
+
+    An unknown age counts as stale, and so does any age when `max_days` is 0.
+    """
+    age = listing_age_days(listed_at, now)
+    return age is None or max_days == 0 or age >= max_days
+
+
 def build_items(repos, owner, include_forks=False, skip_archived=False,
                 host=GITHUB_HOST):
     """Turn a listing into manifest items. Returns `(items, others)`.
@@ -190,6 +238,7 @@ def build_items(repos, owner, include_forks=False, skip_archived=False,
             "fork_source": repo.get("fork_source"),
             "private": (repo.get("visibility") or "").lower() == "private",
             "pushed_at": repo.get("pushed_at"),
+            "created_at": repo.get("created_at"),
         }
         if item["fork"] and not include_forks:
             item["status"], item["detail"] = manifest.SKIPPED, SKIP_FORK

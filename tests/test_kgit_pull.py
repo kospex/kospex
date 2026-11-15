@@ -87,16 +87,21 @@ def test_staleness_rows_formats_age_and_handles_null():
          "last_sync": "2026-07-08T00:00:00+00:00", "last_seen": "2026-07-01T00:00:00+00:00"},
         {"_repo_id": "s~o~stale", "last_fetch": "2026-05-10T00:00:00+00:00",
          "last_sync": "2026-05-10T00:00:00+00:00", "last_seen": "2026-05-01T00:00:00+00:00"},
-        {"_repo_id": "s~o~never", "last_fetch": None,
-         "last_sync": "2026-05-10T00:00:00+00:00", "last_seen": None},
+        {"_repo_id": "s~o~synced-only", "last_fetch": None,
+         "last_sync": "2026-07-01T00:00:00+00:00", "last_seen": None},
+        {"_repo_id": "s~o~never", "last_fetch": None, "last_sync": None, "last_seen": None},
     ]
 
     rows = _staleness_rows(repos, now=now)
 
-    # stalest first: never (no fetch) sorts first, then stale, then fresh
-    assert [r["repo_id"] for r in rows] == ["s~o~never", "s~o~stale", "s~o~fresh"]
+    # Stalest first by last refresh (last_fetch, else last_sync); a repo with
+    # neither sorts first. A never-fetched repo synced last week is not stale.
+    assert [r["repo_id"] for r in rows] == ["s~o~never", "s~o~stale", "s~o~synced-only",
+                                            "s~o~fresh"]
     assert rows[0]["fetch_age"] == "never"
-    assert rows[2]["fetch_age"] == "1d"
+    assert rows[2]["fetch_age"] == "8d"
+    assert rows[2]["last_fetch"] == "never"
+    assert rows[3]["fetch_age"] == "1d"
 
 
 from kgit import _pull_command

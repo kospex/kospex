@@ -62,7 +62,7 @@ within GitHub's 60 requests an hour.
 ### Resuming, and syncing a few at a time
 
 The listing is saved in the kospex database as a **run**, with a status for each
-repository: `pending`, `in_progress`, `synced`, `skipped` or `failed`. If a sync is
+repository: `pending`, `in_progress`, `synced`, `skipped`, `failed` or `gone`. If a sync is
 interrupted, or one repository fails, run the same command again and it carries on
 from the saved run rather than listing and syncing everything again.
 
@@ -76,22 +76,167 @@ kgit sync --org acme -status      # progress so far, from the database only
   with what kospex already holds: active, archived, forks, already in kospex,
   changed since kospex last fetched, and in kospex but no longer listed. It needs
   only the token, not git credentials. If a run is already partway through, it
-  prints the comparison but keeps that run; add `-relist` to replace it.
+  prints the comparison but keeps that run: add `-refresh` to merge the new
+  listing into it, or `-restart` to replace it.
 - **`-next N`** syncs the next N repositories, most recently pushed first, so a
   large organisation can be synced from a schedule. A 1,000-repo organisation at
   `-next 10` takes 100 runs. Once every repository is done, the next run lists the
   organisation again.
 - **`-status`** shows the latest run: counts, the failures with their reasons, and
   repositories kospex has that the listing didn't include. No network.
-- **`-relist`** closes the unfinished run and starts from a fresh listing.
+- **`-refresh`** lists the organisation again and merges it into the unfinished
+  run, keeping each repository's progress. New repositories are added as
+  `pending`; ones no longer listed become `gone` (deleted, renamed, transferred,
+  or no longer visible to the token), with what they were in the detail; and
+  everything else gets its new pushed date and flags. A repository archived since
+  keeps its status. Without `-refresh`, resuming a run never lists again.
+- **`-restart`** closes the unfinished run and starts from a fresh listing, with
+  every repository pending again.
 - **`-retry-failed`** retries repositories that failed earlier in the unfinished
   run. Without it, a failure is retried on the next listing.
+
+A run's times are in `org_sync_runs`:
+
+- `started_at`: when the run was created (its first listing), not when syncing began.
+- `listed_at`: when the run was last listed. `-refresh` updates it, and so does
+  `-active` when it lists again.
+- `finished_at`: when every repository was done, or the run was replaced by
+  `-restart`. It's empty while the run is unfinished.
+
+Each repository in `org_sync_items` has its own `started_at` and `finished_at`
+for its clone and sync.
 
 Only one sync of an organisation runs at a time. A second one finds the lock,
 says so, and exits 0, so overlapping scheduled runs are harmless. A sync is
 never interrupted for taking a long time. If a sync crashes, the next one
 notices its process has gone and takes over the lock. The lock file is
 `org-sync-<org>.lock` in `~/kospex`.
+
+### Only active repositories: `-active`
+
+A large organisation is mostly dormant. `-active` syncs only the repositories
+pushed to in the last 90 days, or `-active N` for the last N days:
+
+```bash
+kgit sync --org acme -inventory              # list and save every repo
+kgit sync --org acme -status -active 365     # how many were pushed to in a year
+kgit sync --org acme -active 365             # sync those
+kgit sync --org acme -active 365 -next 50    # or 50 at a time, from a schedule
+```
+
+- **Put the organisation before `-active`.** The number is optional, so in
+  `kgit sync --org -active acme` the `acme` is read as the number of days.
+- **The rest stay `pending`**, not skipped, so a later run with a wider window,
+  or without `-active`, syncs them. The run stays unfinished until then.
+- **Inside the window, a repository is cloned if it's new to kospex and pulled
+  if it isn't.** Outside it, the run leaves repositories alone, including ones
+  cloned earlier: keep those up to date with `kgit pull --org acme`.
+- **The window counts back from now**, using the pushed dates from the listing.
+  If the run's listing is more than 2 days old, `-active` lists the organisation
+  again and merges it in, as `-refresh` does, so a scheduled run picks up new
+  repositories and ones that have come back to life. Set
+  `KOSPEX_ORG_SYNC_REFRESH_DAYS` to change the 2 days; `0` lists every time.
+- **The pushed date counts a push to any branch or tag**, not only commits to
+  the default branch. Bots that push branches, such as Dependabot and Renovate,
+  make some dormant repositories look active. No active repository is left out.
+
+### What changed between listings: `-history`
+
+Every saved listing is recorded: the first one of each run, and each refresh,
+including the ones `-active` makes by itself. A weekly scheduled run therefore
+builds a history of the organisation. `-history` shows it, from the database
+only:
+
+```bash
+kgit sync --org acme -history
+```
+
+Each row counts the changes since the listing before: repositories that are
+`new` (in no earlier listing), `gone`, `back` (listed before, missing from the
+previous listing), `renamed`, newly archived (`archived+`) and `unarchived`, with
+the totals for archived, forks and private repositories. The counts are kept in
+`org_sync_listings`.
+
+To see which repositories changed, use three columns of `org_sync_items`.
+They're recorded for every repository in the listing, synced or not:
+
+- `first_listed_at`: the first listing of the organisation that had it. It
+  carries across runs, and across a rename.
+- `archived_seen_at`: the first listing that found it archived after one that
+  didn't. It's empty if it isn't archived, or if it was already archived when
+  first listed, because kospex can't know when that happened. It's as precise
+  as your listings: weekly listings date an archive to within a week.
+- `created_at`: when GitHub says the repository was created. A repository
+  first listed recently but created long ago was transferred in, or has only
+  just become visible to the token.
+
+For example, run against `~/kospex/kospex.db` with `sqlite3`, the repositories
+added in the last 30 days:
+
+```sql
+SELECT _repo_id, clone_url, provider_repo_id, created_at, first_listed_at
+  FROM org_sync_items
+ WHERE run_id = (SELECT MAX(run_id) FROM org_sync_runs WHERE org_key = 'github.com~acme')
+   AND status != 'gone'
+   AND first_listed_at >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 days')
+   AND first_listed_at > (SELECT MIN(listed_at) FROM org_sync_listings
+                           WHERE org_key = 'github.com~acme')
+ ORDER BY first_listed_at;
+```
+
+The last condition leaves out the organisation's first listing, where every
+repository is new.
+
+For the repositories archived in the last 30 days, use `archived_seen_at` in
+place of `first_listed_at` in the first condition, and drop the last one. For
+the repositories that have disappeared since the run began, use
+`status = 'gone'`. Those rows' `finished_at` says when a refresh first found
+them missing, and `detail` says what they were before, such as `was synced`. A
+renamed repository's old name is one of them, with its new name in the detail:
+`was synced, renamed to github.com~acme~new`.
+
+A repository missing from the listing after a `-restart` has no row in the
+new run. `-history` still counts it as gone.
+
+### What each command records
+
+A run is often worked through over several commands with different options:
+`-inventory`, then `-next 10` a few times, then `-active 90`. Each
+`kgit sync --org` / `--user` command that lists or syncs gets a row in
+`org_sync_commands`:
+
+- the command and its options, as typed, ready to copy;
+- the listing it saved (`first`, `refresh` or `restart`) and what it changed;
+- how many repositories it synced, skipped and failed;
+- the GitHub token it used: the login it belongs to, its kind (`fine-grained`,
+  `classic`, `app` or `oauth`, from its prefix), the environment variable it
+  came from, and its expiry as GitHub reports it. `-no-auth` is recorded as
+  `none`. **The token itself is never stored.**
+
+`finished_at` is empty for a command that is still running or was stopped,
+for example with Ctrl-C, and `error` says why a command stopped early. Reads
+(`-status`, `-history`) aren't recorded, and nor is a command refused before it
+did anything: a rejected token, an owner that doesn't exist, or a run already
+in progress.
+
+The token matters because a fine-grained token limited to some of an
+organisation's repositories lists fewer of them: after a `-refresh` with a
+different token, the repositories it can't see are `gone`. To see which token
+listed each time:
+
+```sql
+SELECT started_at, command, listing, [new], gone, auth_login, auth_kind,
+       auth_source, auth_expires_at
+  FROM org_sync_commands
+ WHERE org_key = 'github.com~acme'
+ ORDER BY started_at;
+```
+
+Suggestions kgit prints, such as `Continue with: ...` and `Resume with: ...`,
+repeat every option the command was given (`-active`, `-next`, `-ssh`,
+`-no-prompt`, `-skip-archived`, the fork options and `-no-auth`), so a copied
+suggestion does what was asked. `-retry-failed`, `-inventory`, `-refresh` and
+`-restart` aren't carried over.
 
 ### Forks, archived repositories and other options
 
@@ -209,10 +354,29 @@ kgit pull --org acme             # every repo of an org in kospex
 kgit pull --server gitlab.com    # every repo on a git server
 kgit pull --all                  # every repo
 kgit pull --org acme --check     # how stale each clone is; no network
+kgit pull --all --stale 30       # only repos not refreshed in 30 days
 ```
 
 The pull is fast-forward only: a clone that can't be fast-forwarded is left as
 it was, reported, and not synced.
+
+### Only stale repos: `--stale DAYS`
+
+`--stale DAYS` narrows any scope to the repos whose last refresh was more than
+DAYS days ago. The last refresh is `last_fetch`, the time kgit last pulled or
+cloned the repo. A repo that kgit never fetched (one synced before kospex
+recorded fetches, or with `kospex sync-directory`) uses `last_sync` instead,
+and a repo with neither always counts as stale.
+
+```bash
+kgit pull --check --all --stale 30   # which ones, offline
+kgit pull --all --stale 30           # Pulling 14 of 403 repos not refreshed in 30 days.
+```
+
+With `--check`, the report shows only those repos. When none are stale, kgit
+says so and exits successfully, so `--stale` is safe in a schedule. The
+`fetch_age` column in `--check` uses the same rule: a repo's `last_fetch` says
+`never` when it fell back to `last_sync`.
 
 `--org` accepts the same forms as `kgit sync --org`: `acme`, `github.com/acme`,
 `https://github.com/acme` or the org key `github.com~acme`. Unlike `kgit sync`,

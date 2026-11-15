@@ -85,6 +85,33 @@ def test_a_clone_forks_default_typo_is_an_error_not_a_guess():
         OrgSync.forks_default({OrgSync.ENV_CLONE_FORKS_DEFAULT: "ture"})
 
 
+# --- refresh_days / listing_is_stale -----------------------------------------
+
+@pytest.mark.parametrize("value, expected", [
+    (None, 2), ("", 2), ("  ", 2), ("0", 0), ("7", 7), (" 30 ", 30),
+])
+def test_refresh_days(value, expected):
+    env = {} if value is None else {OrgSync.ENV_REFRESH_DAYS: value}
+    assert OrgSync.refresh_days(env) == expected
+
+
+@pytest.mark.parametrize("value", ["two", "-1", "1.5"])
+def test_a_refresh_days_that_is_not_whole_days_is_an_error(value):
+    with pytest.raises(ValueError, match="isn't a whole number of days"):
+        OrgSync.refresh_days({OrgSync.ENV_REFRESH_DAYS: value})
+
+
+def test_listing_is_stale():
+    from datetime import datetime, timezone
+    now = datetime(2026, 11, 15, tzinfo=timezone.utc)
+    assert not OrgSync.listing_is_stale("2026-11-14T00:00:00Z", 2, now)
+    assert OrgSync.listing_is_stale("2026-11-13T00:00:00Z", 2, now)   # exactly 2 days
+    assert OrgSync.listing_is_stale("2026-11-14T23:00:00Z", 0, now)   # 0: always
+    assert OrgSync.listing_is_stale(None, 2, now)                     # unknown: stale
+    assert OrgSync.listing_is_stale("yesterday", 2, now)
+    assert OrgSync.listing_age_days("2026-11-12T00:00:00Z", now) == 3
+
+
 # --- build_items -------------------------------------------------------------
 
 def test_a_listing_becomes_pending_items_with_ids_and_urls():

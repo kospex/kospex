@@ -4,8 +4,39 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+**Database migration `0013`.** Run `kospex upgrade-db -apply` after upgrading.
+
 ### Added
 
+- **`kgit sync --org` / `--user` can sync only active repositories.**
+  `-active` syncs the repositories pushed to in the last 90 days, or
+  `-active N` in the last N days, from the saved listing. The rest stay
+  `pending` for a later run with a wider window or none, so one inventory can
+  be synced in stages. `-status -active N` shows the split without syncing.
+  Put the owner before `-active`: the number is optional, so
+  `--org -active acme` reads `acme` as the days.
+- **`-refresh`** lists the owner again and merges it into the unfinished run,
+  keeping each repository's progress. `-active` does this by itself when the
+  run's listing is older than `KOSPEX_ORG_SYNC_REFRESH_DAYS` (default 2; `0`
+  lists every time). A plain resume still never lists again.
+- **A `gone` status** for a repository that a refreshed listing no longer has.
+  Its previous status is kept in the detail (`was synced`). Migration `0013`
+  adds `org_sync_runs.listed_at`, the time of the run's latest listing.
+- **A history of listings.** Every saved listing, first or refresh, is
+  recorded in `org_sync_listings` with what changed since the one before:
+  new, gone, back, renamed, newly archived and unarchived.
+  `kgit sync --org acme -history` shows them, from the DB only. Each item
+  also records `first_listed_at`, `archived_seen_at` and GitHub's
+  `created_at`, so weekly listings show which repositories were added or
+  archived, whether or not they were synced. Existing runs are backfilled.
+- **Each `kgit sync --org` / `--user` command is recorded** in
+  `org_sync_commands`: its options as typed, what it listed and synced, and
+  the GitHub token it used (login, kind, source variable and expiry, never the
+  token). A run done over several commands with different options, or a
+  listing that shrank after a change of token, can be traced.
+- **`kgit pull --stale DAYS`** pulls only the repos not refreshed in DAYS
+  days: last fetched, or last synced if kgit never fetched them. With `--check`
+  it shows only those.
 - **Gradle settings files and every other Gradle script are read** (#436),
   with the same reader as `build.gradle(.kts)`.
   - Settings files: the top-level `plugins { }` block (settings plugins such
@@ -30,6 +61,16 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Changed
 
+- **`kgit sync`: `-relist` is now `-restart`.** It closes the unfinished run
+  and starts again from a fresh listing, as before.
+- **`kgit sync`'s suggestions repeat every option.** `Continue with`,
+  `Resume with` and the other suggested commands now carry `-ssh`,
+  `-no-prompt`, `-skip-archived` and the fork options as well as `-active`,
+  `-next` and `-no-auth`, in a fixed order, so a copied suggestion does what
+  was asked. `-no-auth` now comes after `-next`.
+- **`kgit pull --check` ages a repo by its last refresh**: `last_fetch`, or
+  `last_sync` for a repo kgit never fetched. Those repos used to sort first as
+  `never` however recently they were synced.
 - **Gradle settings files and every other Gradle script are recognised.**
   panopticas 0.0.24 tags every `*.gradle` and `*.gradle.kts` file as a
   dependency file, settings files included. kospex only knew
@@ -47,6 +88,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   `is_gradle_script()` is first exported in 0.0.24. Run `krunner
   file-metadata` on an existing database to tag files synced with an older
   panopticas.
+
+### Removed
+
+- **The `/recent/` kweb page.** It was a stub that always showed an empty
+  table. `kgit pull --check --all` lists when each repo was last fetched and
+  synced.
 
 ## 0.3.1 - 2026-11-13
 

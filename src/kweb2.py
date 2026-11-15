@@ -839,28 +839,39 @@ def orgs(request: Request, server: Optional[str] = None):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.get("/recent/", response_class=HTMLResponse)
-def recent_syncs(request: Request):
-    """Display recently synced repositories"""
+@app.get("/syncs/", response_class=HTMLResponse)
+def syncs(request: Request):
+    """Stale repos and org sync runs, with the kgit commands to refresh them.
+
+    Read-only, and not linked from the menus yet. See changes/202611-kweb-syncs.md.
+    """
+    from datetime import timezone
+    from kospex import syncs_view as SyncsView
     try:
-        logger.info("Recent syncs view requested")
+        query = request.query_params
+        try:
+            params = SyncsView.parse_params(query.get("tab"), query.get("org"),
+                                            query.get("server"), query.get("days"))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
         kospex = KospexQuery()
-
-        # TODO: Implement proper query for last 10 syncs
-        # This is stubbed for now - will need to add database query for recent syncs
-        data = []  # Placeholder for recent sync data
-
-        return templates.TemplateResponse(
-            request, "recent-syncs.html",
-            {"data": data, "page": {"title": "Recent Syncs"}},
-        )
+        now = datetime.now(timezone.utc)
+        repos = kospex.get_repos()
+        page = {"title": "Syncs", **params, "days_choices": SyncsView.DAYS_CHOICES,
+                "picker": SyncsView.picker(repos, params["days"], now)}
+        if params["tab"] == "repos":
+            page["repos"] = SyncsView.repo_view(repos, org=params["org"],
+                                                server=params["server"],
+                                                days=params["days"], now=now)
+        else:
+            page["orgs"] = SyncsView.org_runs(kospex.kospex_db, org=params["org"],
+                                              server=params["server"], now=now)
+        return templates.TemplateResponse(request, "syncs.html", {"page": page})
     except HTTPException:
-        # Re-raise the route's own 4xx. The handler below converts any
-        # Exception to a 500, and HTTPException is an Exception, so a
-        # deliberate 404/400 was reported as a server error. (#210)
         raise
     except Exception as e:
-        logger.error(f"Error in recent syncs endpoint: {e}")
+        logger.error(f"Error in syncs endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
