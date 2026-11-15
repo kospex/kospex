@@ -1261,12 +1261,61 @@ measure that against, so they have no parser yet. Pointing them at it is a one-l
 change after a measurement.
 
 **Two local patterns copy a panopticas predicate.** `is_pylock` and
-`is_nuget_project_lock` exist in `panopticas.core`, but the package does not export
-them, and `_panopticas_matcher` looks names up on the package, so it would always
-return False. The patterns are panopticas' own. Delegate once
-[kospex/panopticas#110](https://github.com/kospex/panopticas/issues/110) exports them.
+`is_nuget_project_lock` were not exported before panopticas 0.0.24, and
+`_panopticas_matcher` looks names up on the package, so it would always have returned
+False. The patterns are panopticas' own. 0.0.24 exports them
+([kospex/panopticas#110](https://github.com/kospex/panopticas/issues/110)), so they can
+now be delegated. `is_nuget_project_lock` matches only `packages.<project>.lock.json`:
+plain `packages.lock.json` is a separate exact-filename rule in panopticas, so the
+`nuget-lock` entry has to keep matching it itself.
+
+## Tagged by panopticas 0.0.24: Gradle settings files and scripts
+
+panopticas 0.0.24 tags every Gradle script `gradle, build, dependencies, Maven`
+([kospex/panopticas#112](https://github.com/kospex/panopticas/issues/112)): any
+`*.gradle` or `*.gradle.kts`, matched by its `is_gradle_script()` predicate,
+case-insensitively. That includes `settings.gradle(.kts)`, which before 0.0.24 had only
+`gradle, build`. Before this, `gradle-build` (`build\.gradle(\.kts)?`) was the only
+Gradle script entry, so every other script would have shown as `unclassified`.
+
+| entry | matches | parser |
+|---|---|---|
+| `gradle-build` | `build.gradle`, `build.gradle.kts` | `extract_build_gradle`, unchanged |
+| `gradle-settings` | `settings.gradle`, `settings.gradle.kts` (local pattern: Gradle fixes the name, and panopticas matches it exactly too) | none yet |
+| `gradle-script` | everything else `is_gradle_script` matches: build files renamed by `setBuildFileName` (`firebase-ai.gradle.kts`), script plugins (`apply from:`), precompiled script plugins (`*.conventions.gradle.kts`, `*.settings.gradle.kts`), init scripts | none yet |
+
+`gradle-script` excludes the two fixed names so each file matches one entry. It needs
+`is_gradle_script` exported from the package, so the floor is `panopticas>=0.0.24`:
+with an older panopticas it would match nothing, silently.
+
+Measured 2026-11-13 on the development estate (403 synced repositories, files git
+tracks): 77 settings files, and 148 other scripts in 11 repositories. The existing
+build-file parser was run over both sets to see what turning a parser on would give:
+
+- **Settings files:** 10 of 77 had rows (settings `plugins { }` or `buildscript`
+  classpath), none refused. `pluginManagement { plugins { } }` only sets default plugin
+  versions and the parser ignores it, which is right.
+- **Other scripts:** 85 of 148 had rows (about 1,060 dependencies, 982 of them in
+  firebase-android-sdk's renamed build files), 48 declared none, and 15 were refused,
+  mostly dependencies declared through helpers such as `libs.findLibrary(...)`.
+
+Pointing both entries at `extract_build_gradle` changes extraction results on the
+estate, so it is a separate change with its own before/after measurement.
+
+**The registry test doesn't catch function rules.**
+`test_every_panopticas_dependency_file_has_a_registry_entry` probes the exact-filename
+and extension rules, so it failed on the two settings files but not on the 148 scripts,
+which panopticas tags through a function rule. Those are covered by named cases in
+`CASES` and `test_gradle_scripts_are_split_three_ways`. A new `dependencies` function
+rule in a later panopticas release needs a case added by hand.
 
 **Upstream docs:** [Gradle dependency locking](https://docs.gradle.org/current/userguide/dependency_locking.html)
+· [Gradle settings file](https://docs.gradle.org/current/userguide/settings_file_basics.html)
+· [Gradle Kotlin DSL: script file names](https://docs.gradle.org/current/userguide/kotlin_dsl.html)
+· [Gradle `ProjectDescriptor.setBuildFileName`](https://docs.gradle.org/current/javadoc/org/gradle/api/initialization/ProjectDescriptor.html)
+· [Gradle script plugins](https://docs.gradle.org/current/userguide/plugins.html)
+· [Gradle precompiled script plugins](https://docs.gradle.org/current/userguide/implementing_gradle_plugins_precompiled.html)
+· [Gradle init scripts](https://docs.gradle.org/current/userguide/init_scripts.html)
 · [Gradle version catalogs](https://docs.gradle.org/current/userguide/version_catalogs.html)
 · [sbt library dependencies](https://www.scala-sbt.org/1.x/docs/Library-Dependencies.html)
 · [Mill](https://mill-build.org/)
