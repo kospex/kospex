@@ -52,17 +52,24 @@
 
                     <div class="flex flex-wrap items-end gap-6 mb-6">
                         <label class="text-sm text-gray-600">Server / org<br>
-                            <select class="border border-gray-300 rounded px-2 py-1 text-sm" onchange="window.location.assign('/syncs/?' + this.value)">
-                                <option value="{{ query(org=none, server=none) }}" {% if not page.org and not page.server %}selected{% endif %}>All</option>
+                            {# Navigates by the selected option's position into URLs
+                               built here, never to text read from the page (CWE-79). #}
+                            {% set days_q = page.days if page.days is not none else "all" %}
+                            {% set picker_urls = ["/syncs/?" ~ ({"tab": page.tab, "days": days_q} | urlencode)] %}
+                            <select class="border border-gray-300 rounded px-2 py-1 text-sm" onchange="window.location.assign(syncsPickerUrls[this.selectedIndex])">
+                                <option {% if not page.org and not page.server %}selected{% endif %}>All</option>
                                 {% for s in page.picker %}
                                 <optgroup label="{{ s.server }}">
-                                    <option value="{{ query(org=none, server=s.server) }}" {% if page.server == s.server %}selected{% endif %}>all of {{ s.server }} — {{ s.repos }} repos{% if s.stale is not none %} · {{ s.stale }} stale{% endif %}</option>
+                                    {% set _ = picker_urls.append("/syncs/?" ~ ({"tab": page.tab, "server": s.server, "days": days_q} | urlencode)) %}
+                                    <option {% if page.server == s.server %}selected{% endif %}>all of {{ s.server }} — {{ s.repos }} repos{% if s.stale is not none %} · {{ s.stale }} stale{% endif %}</option>
                                     {% for o in s.orgs %}
-                                    <option value="{{ query(org=o.org_key, server=none) }}" {% if page.org and page.org.lower() == o.org_key %}selected{% endif %}>{{ s.server }} / {{ o.label }} — {{ o.repos }} repos{% if o.stale is not none %} · {{ o.stale }} stale{% endif %}</option>
+                                    {% set _ = picker_urls.append("/syncs/?" ~ ({"tab": page.tab, "org": o.org_key, "days": days_q} | urlencode)) %}
+                                    <option {% if page.org and page.org.lower() == o.org_key %}selected{% endif %}>{{ s.server }} / {{ o.label }} — {{ o.repos }} repos{% if o.stale is not none %} · {{ o.stale }} stale{% endif %}</option>
                                     {% endfor %}
                                 </optgroup>
                                 {% endfor %}
                             </select>
+                            <script>const syncsPickerUrls = {{ picker_urls | tojson }};</script>
                         </label>
                         {% if page.tab == "repos" %}
                         <div class="text-sm text-gray-600">Not fetched in<br>

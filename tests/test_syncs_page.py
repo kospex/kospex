@@ -75,15 +75,19 @@ def test_repo_status_is_a_pill(db):
 
 
 def test_the_picker_only_navigates_within_syncs(db):
-    # CWE-79 (DOM text reinterpreted as HTML): the select navigates to a fixed
-    # /syncs/? prefix plus the option's query string, never to the option's text
-    # alone, so no option value can become a javascript: URL.
+    # CWE-79 (DOM text reinterpreted as HTML): the select navigates by the
+    # selected option's position into URLs the server rendered, never to text
+    # read from the page, so nothing in an option can become a javascript: URL.
+    import json
     import re
     status, body = _get()
     select = re.search(r"<select[^>]*>.*?</select>", body, re.S).group(0)
-    assert "window.location.assign('/syncs/?' + this.value)" in select
-    values = re.findall(r'<option value="([^"]*)"', select)
-    assert values and all(v.startswith("tab=") for v in values)
+    assert "this.value" not in select
+    assert "window.location.assign(syncsPickerUrls[this.selectedIndex])" in select
+    urls = json.loads(re.search(r"const syncsPickerUrls = (\[.*?\]);", body).group(1))
+    assert len(urls) == select.count("<option") > 1
+    assert all(u.startswith("/syncs/?tab=") for u in urls)
+    assert "/syncs/?tab=repos&org=github.com~acme&days=30" in urls
 
 
 def test_nothing_stale_says_all_repos_are_refreshed(db):
