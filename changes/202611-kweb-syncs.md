@@ -247,7 +247,8 @@ The URL then returns kweb's 404.
 - Command recording: a row per working command with the right action, options,
   counts; none for `-status` / `-history`; a stopped command leaves
   `finished_at` NULL; `-no-auth` records `none`; token kind by prefix; expiry
-  parsed from the header; a failing `/user` doesn't fail the sync. Use the fake
+  parsed from the header; a rejected token still stops the command, and leaves
+  no row. Use the fake
   GitHub of `tests/test_kgit_sync_org_cli.py`.
 - Page: call the handler directly (as `tests/test_generate_repo_id_endpoint.py`
   does), asserting the counts, that the command matches the rows, the 400s, the
@@ -315,6 +316,8 @@ Where it differs from the plan, or settled what the plan left open:
 - **A command stopped with Ctrl-C** records 0 synced, failed and skipped: the
   sync loop doesn't return its counts when interrupted. The run's items still
   show the progress.
+- **The picker is a native `<select>`** grouped by server. Browsers jump to an
+  entry as you type its first letters; there's no search box.
 - **The token expiry header name** (`GitHub-Authentication-Token-Expiration`)
   is unverified against a real fine-grained token: no token was available while
   building. If `auth_expires_at` stays NULL for a token that expires, check the

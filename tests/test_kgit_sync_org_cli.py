@@ -868,6 +868,19 @@ def test_a_first_listing_that_fails_has_no_run(env):
     assert "page 2" in row["error"]
 
 
+def test_ctrl_c_while_listing_keeps_the_run_on_the_row(env):
+    # A raw KeyboardInterrupt (not the sync loop's SystemExit(130)) during a
+    # refresh listing: the row must still name its run and read as stopped.
+    FakeGitHub.listing = [_repo("a"), _repo("b")]
+    run("--org", "acme", "-inventory")
+    FakeGitHub.listing_error = KeyboardInterrupt()
+    run("--org", "acme", "-inventory", "-refresh")
+    row = _commands(env["db"])[-1]
+    assert row["run_id"] is not None
+    assert row["finished_at"] is None
+    assert row["error"] is None
+
+
 def test_interrupted_command_is_left_unfinished(env):
     FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "ab"]
 

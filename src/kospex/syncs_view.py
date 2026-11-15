@@ -100,6 +100,10 @@ def picker(repos, days, now):
     for server in sorted(servers):
         entry = servers[server]
         entry["orgs"] = [entry["orgs"][key] for key in sorted(entry["orgs"])]
+        if days is None:  # every repo is shown: a stale count would just repeat it
+            entry["stale"] = None
+            for org in entry["orgs"]:
+                org["stale"] = None
         result.append(entry)
     return result
 
@@ -113,6 +117,25 @@ def repo_view(repos, *, org, server, days, now):
             "fell_back": sum(1 for row in rows if row["fell_back"]),
             "command": pull_command(org=org, server=server, days=days),
             "check_command": pull_command(org=org, server=server, days=days, check=True)}
+
+
+def duration_text(seconds):
+    """`3s`, `36m`, `1h 30m`: how long a command took."""
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m"
+    return f"{minutes // 60}h {minutes % 60}m"
+
+
+def _took(command):
+    started = staleness.parse_time(command.get("started_at"))
+    finished = staleness.parse_time(command.get("finished_at"))
+    if not (started and finished):
+        return ""
+    return duration_text((finished - started).total_seconds())
 
 
 def _token_text(command):
@@ -164,6 +187,7 @@ def org_runs(db, *, org, server, now):
         commands = OrgSyncManifest.commands(db, run_id)
         for command in commands:
             command["state"] = "finished" if command["finished_at"] else "stopped or running"
+            command["took"] = _took(command)
             command["token_text"] = _token_text(command)
             command["expiring"] = _expiring(command, now)
         totals = db.execute(f"""

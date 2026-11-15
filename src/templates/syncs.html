@@ -45,9 +45,9 @@
                                 <option value="{{ url(org=none, server=none) }}" {% if not page.org and not page.server %}selected{% endif %}>All</option>
                                 {% for s in page.picker %}
                                 <optgroup label="{{ s.server }}">
-                                    <option value="{{ url(org=none, server=s.server) }}" {% if page.server == s.server %}selected{% endif %}>all of {{ s.server }} — {{ s.repos }} repos · {{ s.stale }} stale</option>
+                                    <option value="{{ url(org=none, server=s.server) }}" {% if page.server == s.server %}selected{% endif %}>all of {{ s.server }} — {{ s.repos }} repos{% if s.stale is not none %} · {{ s.stale }} stale{% endif %}</option>
                                     {% for o in s.orgs %}
-                                    <option value="{{ url(org=o.org_key, server=none) }}" {% if page.org and page.org.lower() == o.org_key %}selected{% endif %}>{{ s.server }} / {{ o.label }} — {{ o.repos }} repos · {{ o.stale }} stale</option>
+                                    <option value="{{ url(org=o.org_key, server=none) }}" {% if page.org and page.org.lower() == o.org_key %}selected{% endif %}>{{ s.server }} / {{ o.label }} — {{ o.repos }} repos{% if o.stale is not none %} · {{ o.stale }} stale{% endif %}</option>
                                     {% endfor %}
                                 </optgroup>
                                 {% endfor %}
@@ -150,7 +150,7 @@
                                             {% if run.commands %}
                                             <table class="min-w-full mt-2">
                                                 <thead><tr>
-                                                    {% for h in ["Started", "Command", "Listing", "Synced", "Failed", "Skipped", "State", "Token"] %}
+                                                    {% for h in ["Started", "Command", "Listing", "Synced", "Failed", "Skipped", "Took", "State", "Token"] %}
                                                     <th class="px-2 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
                                                     {% endfor %}
                                                 </tr></thead>
@@ -163,6 +163,7 @@
                                                         <td class="px-2 py-1 text-xs text-right">{{ cmd.synced if cmd.synced is not none else "" }}</td>
                                                         <td class="px-2 py-1 text-xs text-right">{{ cmd.failed if cmd.failed is not none else "" }}</td>
                                                         <td class="px-2 py-1 text-xs text-right">{{ cmd.skipped if cmd.skipped is not none else "" }}</td>
+                                                        <td class="px-2 py-1 text-xs">{{ cmd.took }}</td>
                                                         <td class="px-2 py-1 text-xs">{{ cmd.state }}</td>
                                                         <td class="px-2 py-1 text-xs {% if cmd.expiring %}text-red-700 font-semibold{% endif %}">{{ cmd.token_text }}</td>
                                                     </tr>

@@ -2,7 +2,7 @@
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 import requests
 from kospex_utils import timer
@@ -498,13 +498,18 @@ class KospexGithub:
 
     @staticmethod
     def _expiry_iso(value):
-        """`2027-05-20 00:00:00 UTC` as `2027-05-20T00:00:00Z`; None if unreadable."""
-        try:
-            parsed = datetime.strptime(value.replace(" UTC", "").strip(),
-                                       "%Y-%m-%d %H:%M:%S")
-        except (AttributeError, ValueError):
+        """`2027-05-20 00:00:00 UTC` (or `-0800`) as UTC `2027-05-20T00:00:00Z`.
+
+        None if unreadable.
+        """
+        if not isinstance(value, str):
             return None
-        return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
+        text = value.strip().replace(" UTC", " +0000")
+        try:
+            parsed = datetime.strptime(text, "%Y-%m-%d %H:%M:%S %z")
+        except ValueError:
+            return None
+        return parsed.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def auth_identity(self):
         """Who the token belongs to, from one GET /user, or None if rejected.

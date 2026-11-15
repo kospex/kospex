@@ -536,10 +536,13 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed
         finish(error=stopped.message)
         raise
     except SystemExit as stop:
-        if stop.code == 130:  # Ctrl-C: stopped, not finished
+        if stop.code == 130:  # Ctrl-C during the sync loop: stopped, not finished
             finish(finished=False)
         else:
             finish(error=f"exited with {stop.code}")
+        raise
+    except KeyboardInterrupt:  # Ctrl-C anywhere else, e.g. while listing
+        finish(finished=False)
         raise
     except Exception as e:
         finish(error=f"{type(e).__name__}: {e}")

@@ -177,6 +177,33 @@ def test_org_runs_unfinished_run_continues_with_its_options():
     assert len(run["listings"]) == 1
 
 
+def test_command_duration():
+    db = _db()
+    run_id = M.save_listing(db, ORG, [_item("a")])
+    command_id = M.start_command(db, ORG, "kgit sync --org acme", "", AUTH,
+                                 now="2026-11-15T01:00:00Z")
+    M.finish_command(db, command_id, run_id=run_id, listing=None, synced_any=True, synced=1,
+                     failed=0, skipped=0, new=None, gone=None, now="2026-11-15T01:36:05Z")
+    stopped = M.start_command(db, ORG, "kgit sync --org acme", "", AUTH,
+                              now="2026-11-15T02:00:00Z")
+    M.finish_command(db, stopped, run_id=run_id, listing=None, synced_any=True, synced=0,
+                     failed=0, skipped=0, new=None, gone=None, finished=False)
+    [run] = V.org_runs(db, org=None, server=None, now=NOW)["runs"]
+    assert [c["took"] for c in run["commands"]] == ["36m", ""]
+
+
+@pytest.mark.parametrize("seconds, text", [(3, "3s"), (59, "59s"), (60, "1m"),
+                                           (3599, "59m"), (3600, "1h 0m"), (5400, "1h 30m")])
+def test_duration_text(seconds, text):
+    assert V.duration_text(seconds) == text
+
+
+def test_picker_has_no_stale_count_when_showing_all():
+    servers = V.picker(REPOS, None, NOW)
+    assert all(s["stale"] is None for s in servers)
+    assert all(o["stale"] is None for s in servers for o in s["orgs"])
+
+
 def test_org_runs_without_commands_continue_plainly():
     db = _db()
     M.save_listing(db, ORG, [_item("a")])

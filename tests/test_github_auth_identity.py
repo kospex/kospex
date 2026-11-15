@@ -58,6 +58,16 @@ def test_identity_without_expiry(github):
     assert gh.auth_identity()["expires_at"] is None
 
 
+@pytest.mark.parametrize("header, expected", [
+    ("2027-05-20 00:00:00 -0800", "2027-05-20T08:00:00Z"),
+    ("2027-05-20 10:00:00 +1100", "2027-05-19T23:00:00Z"),
+])
+def test_expiry_with_a_numeric_offset_is_converted_to_utc(github, header, expected):
+    gh = github(_response(200, {"login": "octocat"},
+                          {"GitHub-Authentication-Token-Expiration": header}))
+    assert gh.auth_identity()["expires_at"] == expected
+
+
 def test_unparseable_expiry_is_none(github):
     gh = github(_response(200, {"login": "octocat"},
                           {"GitHub-Authentication-Token-Expiration": "soon"}))
