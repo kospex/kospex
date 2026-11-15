@@ -503,6 +503,73 @@ class TestPlugins:
         assert extract_build_gradle(path) == []
 
 
+class TestSettingsFiles:
+    """#436: settings.gradle(.kts) is read with the same parser."""
+
+    def _settings(self, tmp_path, text, name="settings.gradle.kts"):
+        path = tmp_path / name
+        path.write_text(text)
+        return str(path)
+
+    def test_settings_plugins_are_rows(self, tmp_path):
+        path = self._settings(tmp_path, 'plugins {\n'
+                              '    id("org.gradle.toolchains.foojay-resolver-convention") version "0.9.0"\n}\n'
+                              'rootProject.name = "x"\ninclude(":app")\n')
+        row = _row(extract_build_gradle(path),
+                   "org.gradle.toolchains.foojay-resolver-convention:"
+                   "org.gradle.toolchains.foojay-resolver-convention.gradle.plugin")
+        assert row["package_version"] == "0.9.0"
+        assert row["declared_scope"] == "plugin"
+
+    def test_settings_buildscript_classpath_is_a_row(self, tmp_path):
+        path = self._settings(tmp_path, "buildscript {\n    dependencies {\n"
+                              "        classpath 'de.fayard.refreshVersions:refreshVersions:0.60.5'\n"
+                              "    }\n}\n", name="settings.gradle")
+        row = _row(extract_build_gradle(path), "de.fayard.refreshVersions:refreshVersions")
+        assert row["declared_scope"] == "classpath"
+
+    def test_plugin_management_only_sets_defaults(self, tmp_path):
+        # pluginManagement { plugins { } } sets default versions for the
+        # builds' own plugins blocks; it applies nothing.
+        path = self._settings(tmp_path, 'pluginManagement {\n    plugins {\n'
+                              '        id("org.jetbrains.kotlin.jvm") version "2.1.0"\n    }\n}\n')
+        assert extract_build_gradle(path) == []
+
+    def test_settings_with_only_includes_is_empty(self, tmp_path):
+        path = self._settings(tmp_path, 'rootProject.name = "x"\ninclude(":app", ":lib")\n')
+        assert extract_build_gradle(path) == []
+
+
+class TestOtherScripts:
+    """#436: any other *.gradle / *.gradle.kts is read like a build file."""
+
+    def test_renamed_build_file(self, tmp_path):
+        # A settings file can set project.buildFileName; firebase-android-sdk
+        # names each library's build file after the library.
+        path = _build(tmp_path, 'dependencies {\n    api("com.google.firebase:firebase-common:21.0.0")\n}\n',
+                      name="firebase-ai.gradle.kts", directory="firebase-ai")
+        assert _versions(extract_build_gradle(path)) == {
+            "com.google.firebase:firebase-common": "21.0.0"}
+
+    def test_script_plugin_without_dependencies_is_empty(self, tmp_path):
+        path = _build(tmp_path, "tasks.withType(JavaCompile) {\n"
+                                "    options.compilerArgs << '-Xlint:all'\n}\n",
+                      name="errorProne.gradle", directory="gradle")
+        assert extract_build_gradle(path) == []
+
+    def test_convention_plugin_with_only_helper_declarations_raises(self, tmp_path):
+        # Precompiled convention plugins reach the catalog through
+        # libs.findLibrary(...), which isn't read; with nothing readable the
+        # file is a parse_error, not empty.
+        path = _build(tmp_path, 'val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")\n'
+                                'dependencies {\n'
+                                '    implementation(libs.findLibrary("okio").get())\n}\n',
+                      name="okhttp.base-conventions.gradle.kts",
+                      directory="build-logic/src/main/kotlin")
+        with pytest.raises(UnreadableManifest):
+            extract_build_gradle(path)
+
+
 class TestSideFilesStayInTheRepository:
     """CWE-59: a cloned repository can commit a symlink. Values read from
     side files end up in versions sent to deps.dev, so a side file that

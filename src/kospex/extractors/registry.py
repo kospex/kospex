@@ -116,6 +116,15 @@ def _gradle_script(basename: str) -> bool:
     return _is_gradle_script(basename) and not _gradle_named_file(basename)
 
 
+_is_nuget_project_lock = _panopticas_matcher("is_nuget_project_lock")
+_nuget_default_lock = _matcher(r"packages\.lock\.json")
+
+
+def _nuget_lock(basename: str) -> bool:
+    """packages.lock.json, or a per-project packages.<project>.lock.json."""
+    return _nuget_default_lock(basename) or _is_nuget_project_lock(basename)
+
+
 REGISTRY: tuple[Extractor, ...] = (
     # --- package: supported by both scan paths ---
     # Delegated: panopticas.is_pip_requirements is the one per-type predicate it
@@ -164,8 +173,27 @@ REGISTRY: tuple[Extractor, ...] = (
     Extractor("gradle-version-catalog", Kind.PACKAGE, _matcher(r"libs\.versions\.toml"),
               ("sca", "osi"), "maven",
               "kospex.extractors.gradle:extract_version_catalog"),
-    # Groovy and Kotlin DSL build files: read, not evaluated.
+    # Groovy and Kotlin DSL scripts: read, not evaluated. The three entries
+    # share a parser; they are kept apart so outcomes say which kind of
+    # script a file is.
     Extractor("gradle-build", Kind.PACKAGE, _matcher(r"build\.gradle(\.kts)?"),
+              ("sca", "osi"), "maven",
+              "kospex.extractors.gradle:extract_build_gradle"),
+    # Settings files, tagged `dependencies` from panopticas 0.0.24: a settings
+    # `plugins { }` block applies settings plugins by id and version, and
+    # `buildscript { }` can add a classpath. `pluginManagement { plugins { } }`
+    # only sets defaults and is not read. Gradle fixes the name, and panopticas
+    # matches it exactly too, so there is no predicate to delegate to.
+    Extractor("gradle-settings", Kind.PACKAGE, _matcher(r"settings\.gradle(\.kts)?"),
+              ("sca", "osi"), "maven",
+              "kospex.extractors.gradle:extract_build_gradle"),
+    # Every other Gradle script, also tagged `dependencies` from panopticas
+    # 0.0.24: build files renamed by setBuildFileName, script plugins
+    # (`apply from:`), precompiled script plugins and init scripts. Recognised
+    # through panopticas' is_gradle_script, which needs panopticas>=0.0.24.
+    # build.gradle(.kts) and settings.gradle(.kts) are excluded so each file
+    # matches one entry.
+    Extractor("gradle-script", Kind.PACKAGE, _gradle_script,
               ("sca", "osi"), "maven",
               "kospex.extractors.gradle:extract_build_gradle"),
     # --- package: recognised but no parser yet (-> sub-project D) ---
@@ -173,19 +201,6 @@ REGISTRY: tuple[Extractor, ...] = (
     # sees "no parser yet" rather than an unrecognised file. package_type is
     # the deps.dev system a future parser would query, or None where deps.dev
     # has no such system (Packagist, Hex, Pub, Deno's JSR).
-    # Gradle settings files, tagged `dependencies` from panopticas 0.0.24: a
-    # settings `plugins { }` block declares settings plugins by id and version,
-    # and `buildscript { }` can add a classpath. Gradle fixes the name, and
-    # panopticas matches it exactly too, so there is no predicate to delegate to.
-    Extractor("gradle-settings", Kind.PACKAGE, _matcher(r"settings\.gradle(\.kts)?"),
-              (), "maven", None),
-    # Every other Gradle script, also tagged `dependencies` from panopticas
-    # 0.0.24: build files renamed by setBuildFileName, script plugins
-    # (`apply from:`), precompiled script plugins and init scripts. Recognised
-    # through panopticas' is_gradle_script, which needs panopticas>=0.0.24.
-    # build.gradle(.kts) and settings.gradle(.kts) are excluded so each file
-    # matches one entry.
-    Extractor("gradle-script", Kind.PACKAGE, _gradle_script, (), "maven", None),
     # Gradle's dependency lockfiles. Out of scope for the Gradle parser (#229):
     # one on the development estate.
     Extractor("gradle-lockfile", Kind.PACKAGE,
@@ -206,10 +221,8 @@ REGISTRY: tuple[Extractor, ...] = (
     Extractor("poetry-lock", Kind.PACKAGE, _matcher(r"poetry\.lock"), (), "pypi", None),
     Extractor("pdm-lock", Kind.PACKAGE, _matcher(r"pdm\.lock"), (), "pypi", None),
     # PEP 751: `pylock.toml` or `pylock.<name>.toml`, the name containing no
-    # dot. panopticas 0.0.22 has is_pylock in panopticas.core but does not
-    # export it from the package, so _panopticas_matcher would always return
-    # False. This is its pattern; delegate once it is exported.
-    Extractor("pylock", Kind.PACKAGE, _matcher(r"pylock\.([^.]+\.)?toml"), (), "pypi", None),
+    # dot. panopticas' is_pylock, exported from 0.0.24.
+    Extractor("pylock", Kind.PACKAGE, _panopticas_matcher("is_pylock"), (), "pypi", None),
     Extractor("mix-exs", Kind.PACKAGE, _matcher(r"mix\.exs"), (), None, None),
     Extractor("mix-lock", Kind.PACKAGE, _matcher(r"mix\.lock"), (), None, None),
     Extractor("pubspec", Kind.PACKAGE,
@@ -228,9 +241,9 @@ REGISTRY: tuple[Extractor, ...] = (
     Extractor("nuget-central-versions", Kind.PACKAGE, _matcher(r"directory\.packages\.props"),
               (), "nuget", None),
     # packages.lock.json, or packages.<project>.lock.json when projects share a
-    # directory: panopticas' is_nuget_project_lock, which it does not export.
-    Extractor("nuget-lock", Kind.PACKAGE, _matcher(r"packages(\..+)?\.lock\.json"), (),
-              "nuget", None),
+    # directory. panopticas matches the first by exact filename and the second
+    # with is_nuget_project_lock (exported from 0.0.24), so both are needed.
+    Extractor("nuget-lock", Kind.PACKAGE, _nuget_lock, (), "nuget", None),
     Extractor("dotnet-tools", Kind.PACKAGE, _matcher(r"dotnet-tools\.json"), (), "nuget", None),
     Extractor("paket", Kind.PACKAGE,
               _matcher(r"paket\.(dependencies|lock|references)"), (), "nuget", None),

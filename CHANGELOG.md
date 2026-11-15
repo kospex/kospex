@@ -4,6 +4,30 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+### Added
+
+- **Gradle settings files and every other Gradle script are read** (#436),
+  with the same reader as `build.gradle(.kts)`.
+  - Settings files: the top-level `plugins { }` block (settings plugins such
+    as foojay-resolver and develocity, by id and version) and `buildscript`
+    classpath. `pluginManagement { plugins { } }` only sets default versions
+    and is not read.
+  - Every other script: build files renamed by a settings file (such as
+    firebase-android-sdk's per-library `*.gradle.kts`), script plugins,
+    precompiled convention plugins in `buildSrc` or `build-logic`, and
+    committed init scripts. A script's rows belong to that script, not to each
+    module that applies it.
+
+  On a 403-repository development estate this adds about 1,060 dependency
+  rows from 95 files, 982 of them firebase-android-sdk's. 115 scripts declare
+  none and report `empty`. 15 report `parse_error`: they declare dependencies
+  only in forms kospex doesn't read, such as `libs.findLibrary(...)` helpers
+  or a computed jar path. No `build.gradle(.kts)` file's rows change. Rows
+  appear when `krunner osi` next reads each repository.
+- `pylock.toml` and NuGet's per-project `packages.<project>.lock.json` are
+  recognised through panopticas' `is_pylock()` and `is_nuget_project_lock()`
+  instead of copies of their patterns. Neither has a parser yet.
+
 ### Changed
 
 - **Gradle settings files and every other Gradle script are recognised.**
@@ -16,9 +40,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
     `is_gradle_script()`: build files renamed by a settings file (such as
     `firebase-ai.gradle.kts`), script plugins, precompiled script plugins and
     committed init scripts.
-  - Both are listed as having no parser yet, so they report "no parser yet"
-    rather than being read. `build.gradle(.kts)` is read as before, and no
-    dependency rows change.
+  - Both are read with the build-file reader (see Added above).
+    `build.gradle(.kts)` is read as before.
 
   kospex now requires `panopticas>=0.0.24` (was `>=0.0.23`), because
   `is_gradle_script()` is first exported in 0.0.24. Run `krunner
