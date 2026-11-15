@@ -34,6 +34,24 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 - **`kgit sync`: `-relist` is now `-restart`.** It closes the unfinished run
   and starts again from a fresh listing, as before.
+- **Gradle settings files and every other Gradle script are recognised.**
+  panopticas 0.0.24 tags every `*.gradle` and `*.gradle.kts` file as a
+  dependency file, settings files included. kospex only knew
+  `build.gradle(.kts)`, so after a re-sync the rest would have shown on
+  `/osi/` and `/dependencies/` as unrecognised files.
+  - `settings.gradle` and `settings.gradle.kts` have their own entry.
+  - Every other Gradle script is recognised through panopticas'
+    `is_gradle_script()`: build files renamed by a settings file (such as
+    `firebase-ai.gradle.kts`), script plugins, precompiled script plugins and
+    committed init scripts.
+  - Both are listed as having no parser yet, so they report "no parser yet"
+    rather than being read. `build.gradle(.kts)` is read as before, and no
+    dependency rows change.
+
+  kospex now requires `panopticas>=0.0.24` (was `>=0.0.23`), because
+  `is_gradle_script()` is first exported in 0.0.24. Run `krunner
+  file-metadata` on an existing database to tag files synced with an older
+  panopticas.
 
 ## 0.3.1 - 2026-11-13
 

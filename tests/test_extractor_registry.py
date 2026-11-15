@@ -48,6 +48,14 @@ CASES = [
     ("build.mill", Kind.PACKAGE, False),
     ("package.mill.yaml", Kind.PACKAGE, False),
     ("build.sc", Kind.PACKAGE, False),
+    # Newly tagged `dependencies` in panopticas 0.0.24: settings files, and
+    # every other Gradle script. Recognised, not yet read.
+    ("settings.gradle", Kind.PACKAGE, False),
+    ("settings.gradle.kts", Kind.PACKAGE, False),
+    ("firebase-ai.gradle.kts", Kind.PACKAGE, False),
+    ("gradle/publish.gradle", Kind.PACKAGE, False),
+    ("buildSrc/src/main/kotlin/okhttp.base-conventions.gradle.kts", Kind.PACKAGE, False),
+    ("dependency-fetcher-init.gradle", Kind.PACKAGE, False),
     ("Cargo.toml", Kind.PACKAGE, False),
     ("Cargo.lock", Kind.PACKAGE, False),
     ("Gemfile", Kind.PACKAGE, False),
@@ -119,6 +127,43 @@ def test_requirements_matching_is_delegated_to_panopticas():
         c = classify(name)
         assert c.extractor is None, f"{name} is not a pip requirements file"
         assert c.supported is False, name
+
+
+def test_gradle_scripts_are_split_three_ways():
+    """panopticas 0.0.24 tags every *.gradle / *.gradle.kts `dependencies`.
+    build.gradle(.kts) keeps its parser, settings.gradle(.kts) gets its own
+    entry, and every other script is recognised through panopticas'
+    is_gradle_script, so a renamed build file or script plugin is "no parser
+    yet" rather than an unrecognised dependency file.
+    """
+    expected = {
+        "build.gradle": "gradle-build",
+        "BUILD.GRADLE.KTS": "gradle-build",
+        "settings.gradle": "gradle-settings",
+        "Settings.gradle.kts": "gradle-settings",
+        "firebase-ai.gradle.kts": "gradle-script",
+        "errorProne.gradle": "gradle-script",
+        "java-library-conventions.settings.gradle.kts": "gradle-script",
+        "dependency-fetcher-init.gradle": "gradle-script",
+    }
+    for name, entry in expected.items():
+        hits = [e.name for e in REGISTRY if e.matches(name)]
+        assert hits == [entry], f"{name!r} matched {hits}"
+
+
+def test_gradle_lookalikes_are_not_scripts():
+    # Gradle files that aren't scripts, plain Kotlin scripts, and the bare
+    # .gradle cache directory name.
+    for name in ("gradle.properties", "script.kts", "build.gradle.bak",
+                 "build.gradle.kts.orig", ".gradle", "gradle-wrapper.properties"):
+        assert classify(name).extractor is None, name
+
+
+def test_gradle_script_needs_panopticas_is_gradle_script():
+    # The floor is panopticas>=0.0.24 because of this: without the exported
+    # predicate the gradle-script entry silently matches nothing.
+    import panopticas
+    assert callable(getattr(panopticas, "is_gradle_script", None))
 
 
 def test_package_json_matcher_is_exact_not_lockfile():

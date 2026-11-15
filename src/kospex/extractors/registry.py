@@ -103,6 +103,19 @@ def _panopticas_matcher(func_name: str) -> Callable[[str], bool]:
     return _match
 
 
+_is_gradle_script = _panopticas_matcher("is_gradle_script")
+_gradle_named_file = _matcher(r"(build|settings)\.gradle(\.kts)?")
+
+
+def _gradle_script(basename: str) -> bool:
+    """Any Gradle script other than build.gradle(.kts) and settings.gradle(.kts).
+
+    Those two have entries of their own. is_gradle_script matches them as
+    well, so without the exclusion they would match two entries.
+    """
+    return _is_gradle_script(basename) and not _gradle_named_file(basename)
+
+
 REGISTRY: tuple[Extractor, ...] = (
     # --- package: supported by both scan paths ---
     # Delegated: panopticas.is_pip_requirements is the one per-type predicate it
@@ -160,6 +173,19 @@ REGISTRY: tuple[Extractor, ...] = (
     # sees "no parser yet" rather than an unrecognised file. package_type is
     # the deps.dev system a future parser would query, or None where deps.dev
     # has no such system (Packagist, Hex, Pub, Deno's JSR).
+    # Gradle settings files, tagged `dependencies` from panopticas 0.0.24: a
+    # settings `plugins { }` block declares settings plugins by id and version,
+    # and `buildscript { }` can add a classpath. Gradle fixes the name, and
+    # panopticas matches it exactly too, so there is no predicate to delegate to.
+    Extractor("gradle-settings", Kind.PACKAGE, _matcher(r"settings\.gradle(\.kts)?"),
+              (), "maven", None),
+    # Every other Gradle script, also tagged `dependencies` from panopticas
+    # 0.0.24: build files renamed by setBuildFileName, script plugins
+    # (`apply from:`), precompiled script plugins and init scripts. Recognised
+    # through panopticas' is_gradle_script, which needs panopticas>=0.0.24.
+    # build.gradle(.kts) and settings.gradle(.kts) are excluded so each file
+    # matches one entry.
+    Extractor("gradle-script", Kind.PACKAGE, _gradle_script, (), "maven", None),
     # Gradle's dependency lockfiles. Out of scope for the Gradle parser (#229):
     # one on the development estate.
     Extractor("gradle-lockfile", Kind.PACKAGE,
