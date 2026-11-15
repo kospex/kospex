@@ -57,6 +57,7 @@ def test_repos_tab_shows_the_count_and_its_command(db):
     assert "kgit pull --check --all --stale 30" in body
     assert "github.com~acme~old" in body
     assert "github.com~acme~fresh" not in body.split("<tbody")[1]
+    assert ">Sync Age (days)</th>" in body
 
 
 def test_an_org_and_days_narrow_the_table_and_the_command(db):
