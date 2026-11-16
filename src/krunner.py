@@ -35,6 +35,7 @@ from kospex_git import KospexGit
 from kospex_utils import KospexTimer
 from kospex.assessment_types import AssessmentTypes
 from kospex.db.migrator import warn_if_behind
+from kospex.habitat_config import HabitatConfig
 from kospex.extractors.workflows import extract_workflow_actions
 from kospex.extractors.pnpm import extract_pnpm_lock
 from kospex.extractors.registry import resolve_parser
@@ -159,7 +160,8 @@ def enrich_dependency_records(results, kdeps, echo=None, progress=None, enrich=T
     """
     if not enrich:
         for d in results:
-            d.update(KospexDependencies.not_checked_fields())
+            d.update(KospexDependencies.unlooked_fields(
+                d.get("package_type"), d.get("package_name")))
             d["package_use"] = _REQ_TO_USE.get(
                 d.get("requirements_type", ""), KospexSchema.PACKAGE_USE_UNKNOWN)
         return results
@@ -1188,6 +1190,11 @@ def osi(all, next_, write_csv, max_seconds, enrich, request_id):
     commit keep that lookup. The run first reports how many current rows in
     its scope were looked up before. -enrich overrides the setting.
 
+    Package names matching KOSPEX_DEPS_PRIVATE (or GOPRIVATE, for Go) are
+    never looked up, with or without -enrich; their rows are saved as
+    private_skipped. The run first reports the prefixes and warns about any
+    current rows in scope that match one and were looked up before.
+
     """
 
     try:
@@ -1207,6 +1214,7 @@ def osi(all, next_, write_csv, max_seconds, enrich, request_id):
     if next_ is not None:
         if not enrich:
             _report_earlier_lookups(kospex.kospex_query, request_id)
+        _report_private_lookups(kospex.kospex_query, request_id)
         # Batched path: its own exit contract. Nothing due and a busy lock are
         # both success, because a scheduler must not see a failure for either.
         _run_osi_next(next_, request_id, write_csv, max_seconds, enrich=enrich)
@@ -1259,6 +1267,7 @@ def osi(all, next_, write_csv, max_seconds, enrich, request_id):
 
     if not enrich:
         _report_earlier_lookups(kospex.kospex_query, request_id)
+    _report_private_lookups(kospex.kospex_query, request_id)
 
     kdeps = KospexDependencies(kospex_db=kospex.kospex_db, kospex_query=kospex.kospex_query)
 
@@ -1341,6 +1350,34 @@ def _report_earlier_lookups(kospex_query, request_id):
                 f"were looked up before (most recently {summary['last_checked']} UTC). "
                 "Rows for an unchanged commit keep that lookup; rows for new commits "
                 "are saved not checked.", style="yellow")
+
+
+def _report_private_lookups(kospex_query, request_id):
+    """Before a run, when private prefixes are set, say what they are and
+    whether any current row in scope that matches one was looked up before:
+    those names have already been sent. On a machine set up with the prefixes
+    from the start this should always be none."""
+    private = HabitatConfig.get_instance().deps_private
+    if not private:
+        return
+    console.log(f"Private packages: {private.summary()}")
+    try:
+        params = KospexWeb.get_id_params(request_id) if request_id else None
+        looked_up = kospex_query.looked_up_dependency_names(params)
+    except ValueError:
+        return  # An unusable scope; the run itself reports it.
+    except sqlite3.Error as e:
+        console.log(f"Could not check private packages for earlier lookups: {e}")
+        return
+    matched = [r for r in looked_up if private.match(r["package_type"], r["package_name"])]
+    if not matched:
+        console.log("No current rows matching a private prefix have been looked up.")
+        return
+    rows = sum(r["rows"] for r in matched)
+    latest = max(r["last_checked"] for r in matched)
+    console.log(f"Warning: {rows} current dependency rows in this scope match a private "
+                f"prefix and were looked up before (most recently {latest} UTC).",
+                style="yellow")
 
 
 @cli.command("devs-by-tag")

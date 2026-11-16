@@ -91,6 +91,64 @@ are listed under **No check date recorded** as *Parsed with lookups off*.
 Rows that kept an earlier lookup show its date and go orange as it ages, as
 they do when `krunner osi` hasn't run for a while.
 
+### Private packages
+
+An organisation's own packages are usually named after it: a Maven groupId
+under its reverse domain, a Go module under its Git host. Those names mean
+nothing to deps.dev, and there's no reason to send them. List their prefixes
+in `KOSPEX_DEPS_PRIVATE`, in the environment or `~/kospex/kospex.env`:
+
+```
+KOSPEX_DEPS_PRIVATE=maven:com.example,go:github.com/example,go:git.example.internal
+```
+
+A package whose name matches is never looked up, with or without `-enrich`.
+Its rows are saved with the resolution `private_skipped` and no lookup data,
+and kweb shows them as **Private**.
+
+- **Entries** are `ecosystem:prefix`, comma-separated. `maven` and `go` are
+  supported; another ecosystem is an error, not ignored.
+- **A prefix matches at a boundary,** ignoring case. For Maven that is `.` or
+  `:`, so `com.example` matches `com.example:core` and
+  `com.example.platform:auth` but not `com.examples:x`. A whole
+  `group:artifact` matches only that artifact. For Go it is `/`, so
+  `github.com/example` matches `github.com/example/lib/v2` but not
+  `github.com/examples/x`.
+- **Gradle** is covered by `maven:` entries (`gradle:` is accepted too):
+  kospex records Gradle dependencies, platforms and plugins as Maven
+  coordinates. A plugin is named by its id, so `com.example.conventions` is
+  covered by `maven:com.example`, but a plugin id outside the domain, such as
+  `example-conventions`, needs its own entry.
+- **`GOPRIVATE`** in the environment is honoured for Go modules too, with
+  Go's own glob syntax (`*.example.internal,github.com/example/*`). Only the
+  environment is read: a value saved with `go env -w` is not, so export it
+  (`export GOPRIVATE=$(go env GOPRIVATE)`).
+- **Entries are prefixes, not globs.** An entry containing `*`, `?` or `[` is
+  an error; put Go globs in `GOPRIVATE`.
+- **Imported BOMs and platforms** are checked before they are fetched. A
+  private BOM is not fetched, so the rows that take their version from it
+  stay `no_version`.
+
+When prefixes are set, `krunner osi` reports them before it starts, and
+checks whether any current row in its scope that matches one was looked up
+before, which means the name was already sent:
+
+```
+Private packages: 3 prefixes (maven 1, go 2) from KOSPEX_DEPS_PRIVATE; GOPRIVATE set.
+No current rows matching a private prefix have been looked up.
+```
+
+or
+
+```
+Warning: 12 current dependency rows in this scope match a private prefix and were looked up before (most recently 2026-11-02 08:14 UTC).
+```
+
+The run goes ahead either way, and those rows are saved as `private_skipped`.
+To keep names private from the first run on a new machine, set the prefixes
+before running `krunner osi` with lookups on. If you don't know them yet,
+run with `-no-enrich` first and read the names from the saved rows.
+
 ## key-person
 
 The `kospex key-person` table for every repo in scope: the top N authors by

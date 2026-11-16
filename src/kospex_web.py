@@ -118,13 +118,17 @@ _NEVER_CHECKED_REASONS = {
 _LOOKUPS_OFF_REASON = ("Parsed with lookups off (KOSPEX_DEPS_ENRICH=false or -no-enrich), "
                        "so nothing was looked up; run krunner osi with lookups on to check them")
 
+_PRIVATE_REASON = ("Private (KOSPEX_DEPS_PRIVATE or GOPRIVATE): these names are never "
+                   "looked up")
+
 def never_checked_files(rows, outcomes):
     """
     Group rows with no last_checked by (repo, file) and explain each from the
     repo's latest extraction outcome. A file the latest extraction read, whose
     rows were all parsed with lookups off, is explained as that instead: its
-    outcome is the same as a normal run's, and nothing about it went wrong. Any
-    other outcome is explained as usual, since it is the more urgent fact.
+    outcome is the same as a normal run's, and nothing about it went wrong. So
+    is one whose rows are all private, or a mix of the two (lookups off, then).
+    Any other outcome is explained as usual, since it is the more urgent fact.
 
     outcomes: {repo_id: kospex.osi_queue.get_outcome() result, or None}.
     Returns a list of dicts: repo_id, file_path, rows, first_seen, reason.
@@ -135,11 +139,13 @@ def never_checked_files(rows, outcomes):
             continue
         key = (row.get("_repo_id"), row.get("file_path"))
         entry = files.setdefault(key, {"repo_id": key[0], "file_path": key[1],
-                                       "rows": 0, "not_checked": 0,
+                                       "rows": 0, "not_checked": 0, "private": 0,
                                        "first_seen": row.get("created_at")})
         entry["rows"] += 1
         if row.get("resolution") == KospexSchema.RESOLUTION_NOT_CHECKED:
             entry["not_checked"] += 1
+        elif row.get("resolution") == KospexSchema.RESOLUTION_PRIVATE_SKIPPED:
+            entry["private"] += 1
         if row.get("created_at") and (not entry["first_seen"] or row["created_at"] < entry["first_seen"]):
             entry["first_seen"] = row["created_at"]
 
@@ -154,7 +160,9 @@ def never_checked_files(rows, outcomes):
         if file_outcome is None:
             entry["reason"] = (f"Not in the latest extraction ({examined}) - the file may have "
                                "been removed or is no longer detected as a dependency file")
-        elif file_outcome == "extracted" and entry["not_checked"] == entry["rows"]:
+        elif file_outcome == "extracted" and entry["private"] == entry["rows"]:
+            entry["reason"] = _PRIVATE_REASON
+        elif file_outcome == "extracted" and entry["not_checked"] + entry["private"] == entry["rows"]:
             entry["reason"] = _LOOKUPS_OFF_REASON
         else:
             entry["reason"] = _NEVER_CHECKED_REASONS.get(

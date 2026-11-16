@@ -63,6 +63,11 @@ PACKAGE_USE_UNKNOWN = None
 # read as "up to date".
 RESOLUTION_NOT_CHECKED = "not_checked"
 
+# dependency_data.resolution for a row whose package name matches
+# KOSPEX_DEPS_PRIVATE or GOPRIVATE: never looked up, whatever -enrich says, so
+# the name is never sent to a public index. Lookup columns as for not_checked.
+RESOLUTION_PRIVATE_SKIPPED = "private_skipped"
+
 # requirements_type, as the parsers report it -> the package_use value stored.
 #
 # ONE table, imported by both scan paths (`KospexDependencies`, for `sca`, and
