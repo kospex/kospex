@@ -18,7 +18,10 @@ import os
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import TYPE_CHECKING, Dict, Optional, Any
+
+if TYPE_CHECKING:
+    from kospex.private_packages import PrivatePackages
 
 
 class HabitatConfig:
