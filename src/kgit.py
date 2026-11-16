@@ -440,6 +440,19 @@ def _error(message):
     raise _Stopped(message)
 
 
+def _sync_log(key):
+    """kgit.log prefix for an owner sync: `kgit sync github.com~acme: `, greppable per owner."""
+    return f"kgit sync {key}: "
+
+
+def _token_text(identity):
+    """`token octocat (classic, from GH_TOKEN, expires ...)`. Never the token itself."""
+    if identity.get("kind") == "none":
+        return "no token"
+    return (f"token {identity.get('login')} ({identity.get('kind')}, "
+            f"from {identity.get('source')}, expires {identity.get('expires_at') or 'never'})")
+
+
 def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed,
                 include_forks, skip_forks, skip_archived, ssh, no_prompt, no_auth,
                 active=None, refresh=False, restart=False, history=False):
@@ -514,13 +527,16 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed
     except LockBusy as busy:
         # Overlapping scheduled runs are normal, not an error (as osi -next).
         console.print(f"{busy}. Nothing to do.", style="yellow")
+        log.info(_sync_log(key) + "another run holds the lock, nothing to do")
         return
 
     # From here the command does something, so it's recorded (org_sync_commands):
     # before any listing or syncing, so a stopped command still shows.
     opts = OrgSyncCommand.options(**typed)
+    command = OrgSyncCommand.command(flag, owner, opts)
+    log.info(_sync_log(key) + f"started: {command}, {_token_text(identity)}")
     command_id = OrgSyncManifest.start_command(
-        db, key, OrgSyncCommand.command(flag, owner, opts), " ".join(opts), identity)
+        db, key, command, " ".join(opts), identity)
     record = {"run_id": None, "listing": None, "synced_any": False, "synced": 0,
               "failed": 0, "skipped": 0, "new": None, "gone": None}
 
@@ -533,18 +549,22 @@ def _sync_owner(owner_kind, both, target, inventory, next_, status, retry_failed
                            active=active, refresh=refresh, restart=restart,
                            refresh_days=refresh_days, typed=typed, record=record)
     except _Stopped as stopped:
+        log.warning(_sync_log(key) + f"stopped: {stopped.message}")
         finish(error=stopped.message)
         raise
     except SystemExit as stop:
-        if stop.code == 130:  # Ctrl-C during the sync loop: stopped, not finished
+        if stop.code == 130:  # Ctrl-C during the sync loop (logged there): not finished
             finish(finished=False)
         else:
+            log.warning(_sync_log(key) + f"stopped: exited with {stop.code}")
             finish(error=f"exited with {stop.code}")
         raise
     except KeyboardInterrupt:  # Ctrl-C anywhere else, e.g. while listing
+        log.warning(_sync_log(key) + "interrupted")
         finish(finished=False)
         raise
     except Exception as e:
+        log.error(_sync_log(key) + f"failed: {type(e).__name__}: {e}")
         finish(error=f"{type(e).__name__}: {e}")
         raise
     else:
@@ -616,6 +636,8 @@ def _note_listing(db, key, record, run_id, kind):
     """Put the listing this command saved, and what it changed, in `record`."""
     last = OrgSyncManifest.listings(db, key)[-1]
     record.update(run_id=run_id, listing=kind, new=last["new"], gone=last["gone"])
+    log.info(_sync_log(key) + f"{kind} listing: {last['listed']} repos, {last['new']} new, "
+                              f"{last['gone']} gone, run {run_id}")
 
 
 def _changes_text(changed):
@@ -660,6 +682,8 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                 f"{counts['pending'] + counts['in_progress']} pending.")
             console.print(f"  {len(new)} repos are new since that run, {len(gone)} are gone. "
                           "Kept the unfinished run.")
+            log.info(_sync_log(key) + f"listed {len(items)} repos, not saved: {len(new)} new, "
+                                      f"{len(gone)} gone since run {run['run_id']}")
             console.print("To merge this listing into it: "
                           + suggest(inventory=True, refresh=True))
             console.print("To replace it: " + suggest(inventory=True, restart=True))
@@ -738,6 +762,11 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
         style = {"synced": "green", "skipped": "yellow", "failed": "red"}[item_status]
         line = f"{item_status.upper():8} {item['_repo_id']}"
         console.print(line + (f": {detail}" if detail else ""), style=style)
+        message = f"{item_status.upper()} {item['_repo_id']}" + (f": {detail}" if detail else "")
+        if item_status == "synced":
+            log.info(_sync_log(key) + message)
+        else:
+            log.warning(_sync_log(key) + message)
 
     # clone_repo builds its own git command, so -no-prompt goes through the
     # environment, and only for this loop.
@@ -747,6 +776,7 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
                                   conflict=conflict, use_ssh=ssh, on_item=on_item)
     except KeyboardInterrupt:
         console.print(f"\nInterrupted. Resume with: {suggest()}", style="yellow")
+        log.warning(_sync_log(key) + f"interrupted. Resume with: {suggest()}")
         raise SystemExit(130)
     finally:
         for name, value in saved_env.items():
@@ -759,6 +789,10 @@ def _sync_owner_locked(db, gh, key, owner, owner_kind, flag, inventory, next_,
     closed = OrgSyncManifest.close_run_if_done(db, run_id)
     counts = OrgSyncManifest.run_counts(db, run_id)
     remaining = counts["pending"] + counts["in_progress"]
+    log.info(_sync_log(key) + f"synced {done['synced']}, skipped {done['skipped']}, "
+                              f"failed {done['failed']}; "
+             + (f"run {run_id} is finished" if closed
+                else f"{remaining} still to do in run {run_id}"))
     console.print(
         f"\nThis run: synced {done['synced']}, skipped {done['skipped']}, "
         f"failed {done['failed']}.")

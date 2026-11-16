@@ -898,3 +898,137 @@ def test_interrupted_command_is_left_unfinished(env):
     assert row["finished_at"] is None
     assert row["run_id"] is not None
     assert row["listing"] == "first"
+
+
+# --- kgit.log (#443) ---------------------------------------------------------
+# Every line of a run starts `kgit sync github.com~acme:`, so one owner's runs
+# can be grepped out of kgit.log.
+
+LOG_PREFIX = f"kgit sync {ORG}: "
+
+
+def _log(caplog):
+    return [(r.levelname, r.getMessage()) for r in caplog.records
+            if r.name == "kgit" and r.getMessage().startswith(LOG_PREFIX)]
+
+
+def _logged(caplog, level, text):
+    return any(lv == level and text in msg for lv, msg in _log(caplog))
+
+
+def test_the_start_is_logged_with_the_command_and_the_token_identity(env, caplog,
+                                                                   monkeypatch):
+    monkeypatch.setenv("GH_TOKEN", "ghp_not_a_real_token_value")
+    FakeGitHub.listing = [_repo("a")]
+    with caplog.at_level("INFO", logger="kgit"):
+        run("--org", "acme", "-next", "1")
+    assert _logged(caplog, "INFO", "started: kgit sync --org acme -next 1")
+    assert _logged(caplog, "INFO", "token octocat (fine-grained, from GH_TOKEN, "
+                                   "expires 2027-05-20T00:00:00Z)")
+    assert "ghp_not_a_real_token_value" not in caplog.text
+
+
+def test_no_auth_is_logged_as_no_token(env, caplog):
+    FakeGitHub.listing = [_repo("a")]
+    with caplog.at_level("INFO", logger="kgit"):
+        run("--org", "acme", "-no-auth")
+    assert _logged(caplog, "INFO", "started: kgit sync --org acme -no-auth, no token")
+
+
+def test_a_held_lock_is_logged(env, caplog):
+    import logging
+    import kospex.org_sync as OrgSync
+    from kospex.run_lock import RunLock
+    FakeGitHub.listing = [_repo("a")]
+    with RunLock(OrgSync.lock_path(env["home"], ORG), "x", 60, logging.getLogger("t")):
+        with caplog.at_level("INFO", logger="kgit"):
+            run("--org", "acme")
+    assert _logged(caplog, "INFO", "another run holds the lock, nothing to do")
+
+
+def test_each_listing_is_logged(env, caplog):
+    FakeGitHub.listing = [_repo("a"), _repo("b")]
+    with caplog.at_level("INFO", logger="kgit"):
+        run("--org", "acme", "-inventory")
+        FakeGitHub.listing = [_repo("a"), _repo("c")]
+        run("--org", "acme", "-inventory", "-refresh")
+    assert _logged(caplog, "INFO", "first listing: 2 repos, 2 new, 0 gone, run ")
+    assert _logged(caplog, "INFO", "refresh listing: 2 repos, 1 new, 1 gone, run ")
+
+
+def test_a_listing_that_is_not_saved_is_logged(env, caplog):
+    FakeGitHub.listing = [_repo("a"), _repo("b")]
+    run("--org", "acme", "-inventory")
+    FakeGitHub.listing = [_repo("a"), _repo("b"), _repo("c")]
+    with caplog.at_level("INFO", logger="kgit"):
+        run("--org", "acme", "-inventory")
+    assert _logged(caplog, "INFO", "listed 3 repos, not saved: 1 new, 0 gone since run ")
+
+
+def test_each_repo_is_logged_failures_and_skips_as_warnings(env, caplog, monkeypatch):
+    FakeGitHub.listing = [_repo("bad", "2026-11-05T00:00:00Z"), _repo("good"),
+                          _repo("other", "2026-10-01T00:00:00Z")]
+    monkeypatch.setattr(kgit_module.kgit, "clone_repo",
+                        lambda url: None if "bad" in url else f"/code/{url}")
+    monkeypatch.setattr(kgit_module, "clone_path_conflict",
+                        lambda kospex, url: "other" in url)
+    with caplog.at_level("INFO", logger="kgit"):
+        run("--org", "acme")
+    assert _logged(caplog, "WARNING", "FAILED github.com~acme~bad: clone or pull failed")
+    assert _logged(caplog, "INFO", "SYNCED github.com~acme~good")
+    assert _logged(caplog, "WARNING", "SKIPPED github.com~acme~other: "
+                                      "already synced from another directory")
+
+
+def test_the_totals_are_logged(env, caplog, monkeypatch):
+    FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "abc"]
+    with caplog.at_level("INFO", logger="kgit"):
+        run("--org", "acme", "-next", "2")
+        run("--org", "acme")
+    assert _logged(caplog, "INFO", "synced 2, skipped 0, failed 0; 1 still to do in run ")
+    assert _logged(caplog, "INFO", "synced 1, skipped 0, failed 0; run ")
+    assert _logged(caplog, "INFO", " is finished")
+
+
+def test_an_interrupted_sync_is_logged_with_the_resume_command(env, caplog):
+    FakeGitHub.listing = [_repo(n, _days_ago(5)) for n in "ab"]
+
+    def interrupted(path, **kw):
+        raise KeyboardInterrupt
+
+    original = kgit_module.kospex.sync_repo
+    kgit_module.kospex.sync_repo = interrupted
+    try:
+        with caplog.at_level("INFO", logger="kgit"):
+            run("--org", "acme", "-ssh")
+    finally:
+        kgit_module.kospex.sync_repo = original
+    assert _logged(caplog, "WARNING", "interrupted. Resume with: kgit sync --org acme -ssh")
+
+
+def test_ctrl_c_while_listing_is_logged(env, caplog):
+    FakeGitHub.listing_error = KeyboardInterrupt()
+    with caplog.at_level("INFO", logger="kgit"):
+        run("--org", "acme")
+    assert _logged(caplog, "WARNING", "interrupted")
+
+
+def test_a_stopped_command_is_logged_with_its_reason(env, caplog):
+    from kospex_github import GitHubListingIncomplete
+    FakeGitHub.listing_error = GitHubListingIncomplete("u", 2, 100, "HTTP 502")
+    with caplog.at_level("INFO", logger="kgit"):
+        run("--org", "acme")
+    assert _logged(caplog, "WARNING", "stopped: ")
+    assert _logged(caplog, "WARNING", "page 2")
+
+
+def test_an_unexpected_error_is_logged(env, caplog, monkeypatch):
+    import kospex.org_sync_manifest as manifest
+
+    def broken(*a, **k):
+        raise RuntimeError("db went away")
+    FakeGitHub.listing = [_repo("a")]
+    monkeypatch.setattr(manifest, "save_listing", broken)
+    with caplog.at_level("INFO", logger="kgit"):
+        run("--org", "acme")
+    assert _logged(caplog, "ERROR", "failed: RuntimeError: db went away")
