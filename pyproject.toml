@@ -11,11 +11,13 @@ license = "MIT"
 license-files = ["LICENSE"]
 
 dependencies = [
-    "click>=8.4.1,<9",
+    "click>=8.4.2,<9",
     # This was for a PoC, being further researched for feasibility and usefulness.
     # "duckdb>=1.5.6,<2",
     "prettytable>=3.17.0,<4",
-    "python-dateutil>=2.9",
+    # Capped at the next major. 3.0 and 4.0 both shipped in Oct/Nov 2026;
+    # kospex is tested on 4.0.0.
+    "python-dateutil>=2.9.0.post0,<5",
     # Uncapped: nearly every environment shares packaging, so a cap causes
     # resolver conflicts. kospex only uses Requirement and Version.
     "packaging>=26.1",
@@ -46,8 +48,12 @@ dependencies = [
     # Capped: FastAPI 0.x ships breaking changes in minors. 0.147-0.149 all
     # landed on 2026-10-19 and change form and parameter-default handling.
     "fastapi>=0.140.0,<0.147",
+    # Listed directly so upgrading kospex upgrades an older starlette already
+    # installed: every allowed fastapi accepts starlette 0.46.0, which has 14
+    # advisories. 1.3.1 is the first release with none (GHSA-82w8-qh3p-5jfq).
+    "starlette>=1.3.1,<2",
     # 0.50 changed the exit code for startup failures (e.g. port in use) to 3.
-    "uvicorn>=0.52.0,<0.55",
+    "uvicorn>=0.52.4,<0.55",
 ]
 
 requires-python = ">=3.12"
