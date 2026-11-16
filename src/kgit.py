@@ -17,6 +17,7 @@ from kospex_git import KospexGit
 from kospex_github import GitHubListingIncomplete, KospexGithub
 import kospex.github_properties as GitHubProperties
 import kospex.github_dependabot as GitHubDependabot
+import kospex.github_export as GitHubExport
 import kospex.org_sync as OrgSync
 import kospex.org_sync_manifest as OrgSyncManifest
 import kospex.org_sync_command as OrgSyncCommand
@@ -1032,52 +1033,124 @@ def pull(all_flag, org, server, check, no_prompt, stale, repo_id):
     )
 
 
-def _github_properties(gh, org, repo_id, filename, level):
-    """`kgit github --properties`: see kospex.github_properties."""
+def _github_export_checks(flag, org, repo_id, filename):
+    """The options every `kgit github` export needs: -filename and one of -org / -repo_id."""
     if not filename:
-        raise click.UsageError("--properties needs -filename.")
+        raise click.UsageError(f"{flag} needs -filename.")
     if bool(org) == bool(repo_id):
-        raise click.UsageError("--properties needs exactly one of -org or -repo_id.")
-    if repo_id and level == GitHubProperties.LEVEL_ORG:
-        raise click.UsageError("-repo_id is always repo level; drop -level org.")
+        raise click.UsageError(f"{flag} needs exactly one of -org or -repo_id.")
 
+
+def _require_github_token(gh, flag):
     if not gh.get_env_credentials():
         token_vars = ", ".join(KospexGithub.TOKEN_ENV_VARS)
-        raise click.ClickException(f"--properties needs a GitHub token. Set one of: {token_vars}")
+        raise click.ClickException(f"{flag} needs a GitHub token. Set one of: {token_vars}")
 
-    fetched_at = GitHubProperties.now_utc()
+
+def _github_export_targets(gh, flag, org, repo_id, listing_message):
+    """(owner, repo, github_repo_id) for -repo_id, or for every repo in -org's listing.
+
+    Nothing has been written yet, so a failure or Ctrl-C here says so.
+    """
     try:
         if repo_id:
             try:
                 owner, repo = GitHubProperties.parse_github_repo_id(repo_id)
             except ValueError as e:
                 raise click.UsageError(str(e))
-            target = GitHubProperties.lookup_repo(gh, owner, repo)
-            lines = GitHubProperties.repo_level_lines(gh, [target], fetched_at)
-        elif (level or GitHubProperties.LEVEL_ORG) == GitHubProperties.LEVEL_ORG:
-            console.print(f"Reading custom properties for {org} (org level)")
-            try:
-                lines = GitHubProperties.org_level_lines(gh, org, fetched_at)
-            except GitHubListingIncomplete as e:
-                if e.reason in ("HTTP 403", "HTTP 404"):
-                    raise click.ClickException(
-                        f"{e.reason} reading {org}'s properties at org level. Either the org "
-                        "doesn't exist or the token isn't an org member (a classic PAT also "
-                        "needs read:org). Nothing was written. Rerun with -level repo, which "
-                        "needs only read access to each repo.")
-                raise
-        else:
-            console.print(f"Listing {org}'s repos, then reading properties per repo (repo level)")
-            targets = GitHubProperties.list_org_repos(gh, org)
-            console.print(f"{len(targets)} repos")
-            lines = GitHubProperties.repo_level_lines(gh, targets, fetched_at)
+            return [GitHubProperties.lookup_repo(gh, owner, repo)]
+        console.print(listing_message)
+        targets = GitHubProperties.list_org_repos(gh, org)
     except GitHubListingIncomplete as e:
+        log.warning("kgit github %s: listing %s failed: %s", flag, org, e)
         raise click.ClickException(f"{e}. Nothing was written. Rerun to retry.")
     except GitHubProperties.RateLimited as e:
+        log.warning("kgit github %s: rate limit hit at %s before any repo was read", flag, e)
         raise click.ClickException(
             f"GitHub rate limit hit at {e}. Nothing was written. Rerun after the limit resets.")
+    except KeyboardInterrupt:
+        log.warning("kgit github %s: interrupted while listing %s", flag, org or repo_id)
+        raise click.ClickException("Interrupted while listing repos. Nothing was written.")
+    console.print(f"{len(targets)} repos")
+    return targets
 
+
+class _ExportProgress:
+    """Console and kgit.log reporting for a per-repo `kgit github` export."""
+
+    def __init__(self, flag, files, total, filename):
+        self.flag, self.files, self.total, self.filename = flag, files, total, filename
+
+    def repo(self, progress):
+        console.print(progress)
+        log.info("kgit github %s: %s", self.flag, progress)
+
+    def stopped(self, reason):
+        message = GitHubExport.stop_message(reason, self.files, self.total, self.filename)
+        log.warning("kgit github %s: %s", self.flag, message)
+        return message
+
+
+def _github_properties_org_level(gh, org, filename, fetched_at):
+    """-level org: one paginated org-wide query, written in one go (a failure writes nothing)."""
+    console.print(f"Reading custom properties for {org} (org level)")
+    log.info("kgit github --properties: reading %s at org level, writing %s", org, filename)
+    try:
+        lines = GitHubProperties.org_level_lines(gh, org, fetched_at)
+    except GitHubListingIncomplete as e:
+        log.warning("kgit github --properties: org level failed for %s: %s", org, e)
+        if e.reason in ("HTTP 403", "HTTP 404"):
+            raise click.ClickException(
+                f"{e.reason} reading {org}'s properties at org level. Either the org "
+                "doesn't exist or the token isn't an org member (a classic PAT also "
+                "needs read:org). Nothing was written. Rerun with -level repo, which "
+                "needs only read access to each repo.")
+        raise click.ClickException(f"{e}. Nothing was written. Rerun to retry.")
+    except KeyboardInterrupt:
+        log.warning("kgit github --properties: interrupted reading %s at org level", org)
+        raise click.ClickException("Interrupted. Nothing was written.")
     GitHubProperties.write_jsonl(filename, lines)
+    log.info("kgit github --properties: finished, %s repos in %s (org level)",
+             len(lines), filename)
+    return lines
+
+
+def _github_properties(gh, org, repo_id, filename, level):
+    """`kgit github --properties`: see kospex.github_properties."""
+    _github_export_checks("--properties", org, repo_id, filename)
+    if repo_id and level == GitHubProperties.LEVEL_ORG:
+        raise click.UsageError("-repo_id is always repo level; drop -level org.")
+    _require_github_token(gh, "--properties")
+
+    fetched_at = GitHubProperties.now_utc()
+    if org and (level or GitHubProperties.LEVEL_ORG) == GitHubProperties.LEVEL_ORG:
+        lines = _github_properties_org_level(gh, org, filename, fetched_at)
+    else:
+        targets = _github_export_targets(
+            gh, "--properties", org, repo_id,
+            f"Listing {org}'s repos, then reading properties per repo (repo level)")
+        log.info("kgit github --properties: %s repos for %s (repo level), writing %s",
+                 len(targets), org or repo_id, filename)
+        with GitHubExport.RunFiles(filename) as files:
+            progress = _ExportProgress("--properties", files, len(targets), filename)
+
+            def on_repo(index, total, line):
+                files.add_repo([line])
+                progress.repo(GitHubProperties.progress_line(index, total, line))
+
+            try:
+                lines = GitHubProperties.repo_level_lines(gh, targets, fetched_at,
+                                                          on_repo=on_repo)
+            except GitHubProperties.RateLimited as e:
+                raise click.ClickException(
+                    progress.stopped(f"GitHub rate limit hit at {e}")
+                    + " Wait for the limit to reset.")
+            except KeyboardInterrupt:
+                raise click.ClickException(progress.stopped("Interrupted"))
+            files.finish()
+        log.info("kgit github --properties: finished, %s repos in %s (repo level)",
+                 files.repos, filename)
+
     s = GitHubProperties.summarise(lines)
     console.print(f"Wrote {s['repos']} repos to {filename}: {s['with_properties']} with "
                   f"properties, {s['no_properties']} without, {s['errors']} errors.")
@@ -1087,66 +1160,40 @@ def _github_properties(gh, org, repo_id, filename, level):
 
 def _github_dependabot(gh, org, repo_id, filename, level):
     """`kgit github --dependabot`: see kospex.github_dependabot."""
-    if not filename:
-        raise click.UsageError("--dependabot needs -filename.")
-    if bool(org) == bool(repo_id):
-        raise click.UsageError("--dependabot needs exactly one of -org or -repo_id.")
+    _github_export_checks("--dependabot", org, repo_id, filename)
     if level:
         raise click.UsageError("-level doesn't apply to --dependabot: it always reads "
                                "each repo, which also gives each repo's Dependabot status.")
-
-    if not gh.get_env_credentials():
-        token_vars = ", ".join(KospexGithub.TOKEN_ENV_VARS)
-        raise click.ClickException(f"--dependabot needs a GitHub token. Set one of: {token_vars}")
+    _require_github_token(gh, "--dependabot")
 
     status_file = GitHubDependabot.status_filename(filename)
     fetched_at = GitHubProperties.now_utc()
-    try:
-        if repo_id:
-            try:
-                owner, repo = GitHubProperties.parse_github_repo_id(repo_id)
-            except ValueError as e:
-                raise click.UsageError(str(e))
-            targets = [GitHubProperties.lookup_repo(gh, owner, repo)]
-        else:
-            console.print(f"Listing {org}'s repos, then reading open Dependabot alerts per repo")
-            targets = GitHubProperties.list_org_repos(gh, org)
-            console.print(f"{len(targets)} repos")
-    except GitHubListingIncomplete as e:
-        raise click.ClickException(f"{e}. Nothing was written. Rerun to retry.")
-    except GitHubProperties.RateLimited as e:
-        raise click.ClickException(
-            f"GitHub rate limit hit at {e}. Nothing was written. Rerun after the limit resets.")
+    targets = _github_export_targets(
+        gh, "--dependabot", org, repo_id,
+        f"Listing {org}'s repos, then reading open Dependabot alerts per repo")
 
     log.info("kgit github --dependabot: %s repos for %s, writing %s",
              len(targets), org or repo_id, filename)
     with GitHubDependabot.RunFiles(filename, status_file) as files:
+        progress = _ExportProgress("--dependabot", files, len(targets), filename)
 
         def on_repo(index, total, status, repo_alerts):
             files.add(status, repo_alerts)
-            progress = GitHubDependabot.progress_line(index, total, status)
-            console.print(progress)
-            log.info("kgit github --dependabot: %s", progress)
-
-        def stopped(reason):
-            message = (f"{reason}. Stopped after {files.repos} of {len(targets)} repos: those "
-                       f"are in {files.alerts_partial} and {files.status_partial}. "
-                       f"{filename} was not written. Rerun to get every repo.")
-            log.warning("kgit github --dependabot: %s", message)
-            return message
+            progress.repo(GitHubDependabot.progress_line(index, total, status))
 
         try:
             alert_lines, status_lines = GitHubDependabot.collect(
                 gh, targets, fetched_at, early_stop=bool(org), on_repo=on_repo)
         except GitHubProperties.RateLimited as e:
             raise click.ClickException(
-                stopped(f"GitHub rate limit hit at {e}") + " Wait for the limit to reset.")
+                progress.stopped(f"GitHub rate limit hit at {e}")
+                + " Wait for the limit to reset.")
         except GitHubDependabot.NoAlertAccess as e:
             raise click.ClickException(
-                stopped(f"This token can't see Dependabot alerts: {e}")
+                progress.stopped(f"This token can't see Dependabot alerts: {e}")
                 + f" {GitHubDependabot.ACCESS_NEEDED}")
         except KeyboardInterrupt:
-            raise click.ClickException(stopped("Interrupted"))
+            raise click.ClickException(progress.stopped("Interrupted"))
         files.finish()
 
     log.info("kgit github --dependabot: finished, %s repos and %s alerts in %s",

@@ -694,3 +694,17 @@ class TestCli:
         assert result.exit_code != 0
         assert "Nothing was written" in result.output
         assert not out.exists() and not (tmp_path / "alerts-status.jsonl").exists()
+
+    def test_ctrl_c_while_listing_writes_nothing(self, kgit_cli, tmp_path, monkeypatch,
+                                                 logged):
+        def interrupted(gh, org):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(GP, "list_org_repos", interrupted)
+        result = self.run(kgit_cli, ["--dependabot", "-org", "acme",
+                                     "-filename", str(tmp_path / "alerts.jsonl")])
+        assert result.exit_code != 0
+        assert "Interrupted while listing" in result.output
+        assert "Nothing was written" in result.output
+        assert list(tmp_path.iterdir()) == []
+        assert any("interrupted while listing" in m for m in logged)

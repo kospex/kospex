@@ -18,12 +18,12 @@ the first 100 rows):
   disabled, no_access, not_found or error; `open_alerts` is a count only when
   enabled, otherwise null because it isn't known.
 """
-import json
 import os
 import re
 from collections import Counter
 
 from kospex_git import KospexGit
+import kospex.github_export as GitHubExport
 from kospex.github_properties import GITHUB_HOST, RateLimited, _error_text
 
 STATUS_ENABLED = "enabled"
@@ -245,62 +245,20 @@ def progress_line(index, total, line):
     return text
 
 
-PARTIAL_SUFFIX = ".partial"
-
-
-class RunFiles:
-    """The alerts and status files, written one repo at a time.
-
-    Lines go to `<name>.partial` and are flushed after each repo, so an
-    interrupted run (rate limit, Ctrl-C, a dropped session) keeps every repo it
-    finished. Only finish() renames them to the final names, so a file without
-    `.partial` is always a complete run, and a previous complete file is left
-    alone until a new run completes.
-    """
+class RunFiles(GitHubExport.RunFiles):
+    """The alerts and status files, written one repo at a time (see kospex.github_export)."""
 
     def __init__(self, alerts_path, status_path):
-        self.alerts_path = os.fspath(alerts_path)
-        self.status_path = os.fspath(status_path)
-        self.alerts_partial = self.alerts_path + PARTIAL_SUFFIX
-        self.status_partial = self.status_path + PARTIAL_SUFFIX
-        self.repos = 0
-        self.alerts = 0
-        self._files = None
-
-    def __enter__(self):
-        alerts_file = open(self.alerts_partial, "w", encoding="utf-8")
-        try:
-            status_file = open(self.status_partial, "w", encoding="utf-8")
-        except BaseException:
-            alerts_file.close()
-            raise
-        self._files = (alerts_file, status_file)
-        return self
+        super().__init__(alerts_path, status_path)
+        self.alerts_path, self.status_path = self.paths
+        self.alerts_partial, self.status_partial = self.partials
 
     def add(self, status, alert_lines):
-        alerts_file, status_file = self._files
-        for a in alert_lines:
-            alerts_file.write(json.dumps(a, ensure_ascii=False) + "\n")
-        status_file.write(json.dumps(status, ensure_ascii=False) + "\n")
-        alerts_file.flush()
-        status_file.flush()
-        self.repos += 1
-        self.alerts += len(alert_lines)
+        self.add_repo(alert_lines, [status])
 
-    def _close(self):
-        if self._files:
-            for f in self._files:
-                f.close()
-            self._files = None
-
-    def finish(self):
-        self._close()
-        os.replace(self.alerts_partial, self.alerts_path)
-        os.replace(self.status_partial, self.status_path)
-
-    def __exit__(self, *exc):
-        self._close()
-        return False
+    @property
+    def alerts(self):
+        return self.lines[0]
 
 
 def status_filename(filename):
