@@ -2,9 +2,17 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## Unreleased
+## 0.4.0 - 2026-11-17
 
-**Database migration `0013`.** Run `kospex upgrade-db -apply` after upgrading.
+**Database migration `0013`.** After upgrading:
+
+1. Back up `~/kospex/kospex.db`, then run `kospex upgrade-db -apply`.
+2. Run `krunner file-metadata` if the database was synced with panopticas
+   older than 0.0.24, so Gradle settings files and scripts are tagged.
+3. Run `krunner osi` to read them.
+
+**Scripts that pass `kgit sync ... -relist` need changing to `-restart`.**
+There is no alias (see Changed).
 
 ### Added
 
@@ -80,7 +88,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 ### Changed
 
 - **`kgit sync`: `-relist` is now `-restart`.** It closes the unfinished run
-  and starts again from a fresh listing, as before.
+  and starts again from a fresh listing, as before. `-relist` is removed with
+  no alias, so a script that passes it fails with `No such option '-r'`.
 - **`kgit sync`'s suggestions repeat every option.** `Continue with`,
   `Resume with` and the other suggested commands now carry `-ssh`,
   `-no-prompt`, `-skip-archived` and the fork options as well as `-active`,
