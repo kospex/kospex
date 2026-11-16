@@ -43,6 +43,29 @@ Exactly one of `-org` or `-repo_id` is required. `-properties` works as well as
 The token comes from `GITHUB_AUTH_TOKEN`, `GH_TOKEN` or `GITHUB_TOKEN`, checked in that
 order. To use your `gh` login: `export GH_TOKEN=$(gh auth token)`.
 
+**Progress (repo level).** A repo-level run, which includes `-repo_id`, prints a line
+as each repo finishes. The same line goes to `~/kospex/logs/kgit.log`, so a long run
+can be followed with `tail -f ~/kospex/logs/kgit.log`:
+
+```
+[412/1300] acme/payments: 3 properties
+[413/1300] acme/docs: no properties
+[414/1300] acme/legacy: error (HTTP 404 Not Found)
+```
+
+An org-level run is one paginated query, so it logs only its start and finish (or
+failure) to `kgit.log`.
+
+**A repo-level run writes as it goes.** Each repo's line is added to `acme.jsonl.partial`
+as soon as it's read. Only a finished run renames it to the name you gave, so a file
+without `.partial` is always a complete run, and a previous complete file is left alone
+until a new run finishes. If the GitHub rate limit is hit or the run is interrupted
+(Ctrl-C), the `.partial` file keeps every repo it finished and the message says how
+many. It loads the same way as a complete file. Rerun to get every repo.
+
+Nothing is written if the repo listing fails or is interrupted, or if an org-level run
+fails or is interrupted. No repo has been saved at that point.
+
 ### Levels and access
 
 Both levels write the same lines. They differ in which API they call and the access it needs.
@@ -199,7 +222,8 @@ says how many. That happens if:
 
 The `.partial` files load the same way as complete ones. Rerun to get every repo.
 
-If the repo listing itself fails, nothing is written, because no repo has been read.
+If the repo listing itself fails or is interrupted, nothing is written, because no repo
+has been read.
 
 ### Access
 

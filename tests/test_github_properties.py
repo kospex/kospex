@@ -160,6 +160,36 @@ class TestRepoLevel:
         with pytest.raises(GP.RateLimited):
             GP.repo_level_lines(gh, [("acme", "a", 1), ("acme", "b", 2)], FETCHED_AT)
 
+    def test_on_repo_called_after_each_repo_in_order(self, monkeypatch):
+        gh = KospexGithub()
+        base = "https://api.github.com/repos"
+        self.scripted(gh, monkeypatch, {
+            f"{base}/acme/a/properties/values": ([], response(200)),
+            f"{base}/acme/b/properties/values": (None, response(404)),
+        })
+        seen = []
+        lines = GP.repo_level_lines(gh, [("acme", "a", 1), ("acme", "b", 2)], FETCHED_AT,
+                                    on_repo=lambda i, n, line: seen.append((i, n, line)))
+        assert [(i, n, line["repo"]) for i, n, line in seen] == [(1, 2, "a"), (2, 2, "b")]
+        assert [line for _, _, line in seen] == lines
+
+    def test_on_repo_sees_repos_done_before_a_rate_limit(self, monkeypatch):
+        gh = KospexGithub()
+        base = "https://api.github.com/repos"
+
+        def fake(url, params=None, method="GET", quiet_statuses=()):
+            if url == f"{base}/acme/b/properties/values":
+                gh.throttled = True
+                return None, response(403)
+            return [], response(200)
+
+        monkeypatch.setattr(gh, "_make_request", fake)
+        seen = []
+        with pytest.raises(GP.RateLimited):
+            GP.repo_level_lines(gh, [("acme", "a", 1), ("acme", "b", 2), ("acme", "c", 3)],
+                                FETCHED_AT, on_repo=lambda i, n, line: seen.append(line["repo"]))
+        assert seen == ["a"]
+
     def test_list_org_repos_uses_the_org_listing(self, monkeypatch):
         gh = KospexGithub()
         seen = []
@@ -172,6 +202,15 @@ class TestRepoLevel:
         monkeypatch.setattr(gh, "_get_org_repos", listing)
         assert GP.list_org_repos(gh, "acme") == [("Acme", "Payments", 101)]
         assert seen == [("acme", "all")]
+
+    def test_org_listing_prints_no_timer_line(self, monkeypatch, capsys):
+        # A @timer() on the generator printed "_get_org_repos executed in 0.000001s":
+        # the time to create the generator, not to list the repos.
+        gh = KospexGithub()
+        monkeypatch.setattr(gh, "_paginate", lambda url, params=None: iter([
+            {"id": 1, "name": "a", "owner": {"login": "acme"}}]))
+        assert GP.list_org_repos(gh, "acme") == [("acme", "a", 1)]
+        assert "executed in" not in capsys.readouterr().out
 
 
 class TestLookupRepo:
@@ -249,6 +288,27 @@ class TestWriteJsonl:
         assert out.read_text() == '{"repo_id": "a"}\n'
 
 
+class TestProgress:
+    def line(self, properties=None, error=None):
+        line = GP._line("acme", "payments", 1, GP.LEVEL_REPO, FETCHED_AT)
+        line.update(properties=properties, error=error)
+        return line
+
+    def test_counts_properties(self):
+        assert (GP.progress_line(412, 1300, self.line({"a": 1, "b": 2, "c": 3}))
+                == "[412/1300] acme/payments: 3 properties")
+
+    def test_one_property_is_singular(self):
+        assert GP.progress_line(1, 2, self.line({"a": 1})) == "[1/2] acme/payments: 1 property"
+
+    def test_none_set(self):
+        assert GP.progress_line(1, 2, self.line({})) == "[1/2] acme/payments: no properties"
+
+    def test_error_shows_the_error(self):
+        assert (GP.progress_line(1, 2, self.line(error="HTTP 404 Not Found"))
+                == "[1/2] acme/payments: error (HTTP 404 Not Found)")
+
+
 class TestSummary:
     def test_counts(self):
         lines = [{"properties": {"a": 1}}, {"properties": {}}, {"error": "HTTP 404"}]
@@ -299,12 +359,53 @@ class TestCli:
         assert "-org" in result.output and "-repo_id" in result.output
         assert not (tmp_path / "p.jsonl").exists()
 
+    @pytest.fixture
+    def logged(self, monkeypatch):
+        """kgit's log.info and log.warning messages."""
+        import kgit
+        messages = []
+        record = lambda msg, *a, **k: messages.append(msg % a if a else msg)  # noqa: E731
+        monkeypatch.setattr(kgit.log, "info", record)
+        monkeypatch.setattr(kgit.log, "warning", record)
+        return messages
+
+    @staticmethod
+    def fake_repo_level(monkeypatch, then=None):
+        """Fake repo_level_lines: a line per target (3 properties for the first, then none),
+        reported to on_repo, then raises `then` instead of the targets after the first two."""
+        seen = []
+
+        def fake(gh, repos, fetched_at, on_repo=None):
+            seen.extend(repos)
+            lines = []
+            for i, (owner, repo, rid) in enumerate(repos, start=1):
+                if then and i > 2:
+                    raise then
+                line = GP._line(owner, repo, rid, GP.LEVEL_REPO, fetched_at)
+                line["properties"] = {"a": 1, "b": 2, "c": 3} if i == 1 else {}
+                lines.append(line)
+                if on_repo:
+                    on_repo(i, len(repos), line)
+            if then:
+                raise then
+            return lines
+
+        monkeypatch.setattr(GP, "repo_level_lines", fake)
+        return seen
+
+    @staticmethod
+    def three_repos(monkeypatch):
+        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [
+            ("acme", "a", 1), ("acme", "b", 2), ("acme", "c", 3)])
+
+    def repo_level(self, cli, out):
+        return self.run(cli, ["--properties", "-org", "acme", "-level", "repo",
+                              "-filename", str(out)])
+
     def test_single_dash_properties_accepted(self, kgit_cli, tmp_path, monkeypatch):
         out = tmp_path / "p.jsonl"
         monkeypatch.setattr(GP, "lookup_repo", lambda gh, owner, repo: (owner, repo, 7))
-        seen = []
-        monkeypatch.setattr(GP, "repo_level_lines", lambda gh, repos, fetched_at: seen.extend(repos)
-                            or [{"repo_id": "x", "properties": {}}])
+        seen = self.fake_repo_level(monkeypatch)
         result = self.run(kgit_cli, ["-properties", "-repo_id", "github.com~acme~a",
                                      "-filename", str(out)])
         assert result.exit_code == 0, result.output
@@ -329,37 +430,163 @@ class TestCli:
         assert not out.exists()
         assert "-level repo" in result.output
 
+    def test_org_level_other_failure_writes_nothing(self, kgit_cli, tmp_path, monkeypatch,
+                                                    logged):
+        def fail(gh, org, fetched_at):
+            raise GitHubListingIncomplete("u", 3, 200, "HTTP 502")
+
+        monkeypatch.setattr(GP, "org_level_lines", fail)
+        out = tmp_path / "p.jsonl"
+        result = self.run(kgit_cli, ["--properties", "-org", "acme", "-filename", str(out)])
+        assert result.exit_code != 0
+        assert "Nothing was written" in result.output
+        assert list(tmp_path.iterdir()) == []
+        assert any("org level failed" in m for m in logged)
+
+    def test_org_level_logs_start_and_finish(self, kgit_cli, tmp_path, monkeypatch, logged):
+        monkeypatch.setattr(GP, "org_level_lines", lambda gh, org, fetched_at: [
+            GP._line("acme", "a", 1, GP.LEVEL_ORG, fetched_at) | {"properties": {}}])
+        out = tmp_path / "p.jsonl"
+        result = self.run(kgit_cli, ["--properties", "-org", "acme", "-filename", str(out)])
+        assert result.exit_code == 0, result.output
+        text = "\n".join(logged)
+        assert "acme at org level" in text and str(out) in text
+        assert "finished, 1 repos" in text and "(org level)" in text
+        assert len(out.read_text().splitlines()) == 1
+
+    def test_org_level_ctrl_c_writes_nothing(self, kgit_cli, tmp_path, monkeypatch, logged):
+        def interrupted(gh, org, fetched_at):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(GP, "org_level_lines", interrupted)
+        result = self.run(kgit_cli, ["--properties", "-org", "acme",
+                                     "-filename", str(tmp_path / "p.jsonl")])
+        assert result.exit_code != 0
+        assert "Interrupted" in result.output and "Nothing was written" in result.output
+        assert list(tmp_path.iterdir()) == []
+
     def test_repo_level_org_walks_the_listing(self, kgit_cli, tmp_path, monkeypatch):
         out = tmp_path / "p.jsonl"
         monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1), ("acme", "b", 2)])
-        seen = []
-
-        def lines(gh, repos, fetched_at):
-            seen.extend(repos)
-            return [{"repo_id": f"github.com~acme~{r}", "level": "repo",
-                     "fetched_at": fetched_at, "properties": {}} for _, r, _ in repos]
-
-        monkeypatch.setattr(GP, "repo_level_lines", lines)
-        result = self.run(kgit_cli, ["--properties", "-org", "acme", "-level", "repo",
-                                     "-filename", str(out)])
+        seen = self.fake_repo_level(monkeypatch)
+        result = self.repo_level(kgit_cli, out)
         assert result.exit_code == 0, result.output
         assert seen == [("acme", "a", 1), ("acme", "b", 2)]
         written = [json.loads(l) for l in out.read_text().splitlines()]
         assert [w["repo_id"] for w in written] == ["github.com~acme~a", "github.com~acme~b"]
         assert len({w["fetched_at"] for w in written}) == 1
 
-    def test_rate_limit_writes_nothing(self, kgit_cli, tmp_path, monkeypatch):
+    def test_prints_a_progress_line_per_repo(self, kgit_cli, tmp_path, monkeypatch):
+        self.three_repos(monkeypatch)
+        self.fake_repo_level(monkeypatch)
+        result = self.repo_level(kgit_cli, tmp_path / "p.jsonl")
+        assert result.exit_code == 0, result.output
+        assert "[1/3] acme/a: 3 properties" in result.output
+        assert "[2/3] acme/b: no properties" in result.output
+
+    def test_logs_start_each_repo_and_finish(self, kgit_cli, tmp_path, monkeypatch, logged):
+        self.three_repos(monkeypatch)
+        self.fake_repo_level(monkeypatch)
         out = tmp_path / "p.jsonl"
-        monkeypatch.setattr(GP, "list_org_repos", lambda gh, org: [("acme", "a", 1)])
+        result = self.repo_level(kgit_cli, out)
+        assert result.exit_code == 0, result.output
+        text = "\n".join(logged)
+        assert "3 repos for acme (repo level)" in text and str(out) in text
+        assert "[1/3] acme/a: 3 properties" in text
+        assert "[3/3] acme/c: no properties" in text
+        assert "finished, 3 repos" in text
 
-        def limited(gh, repos, fetched_at):
-            raise GP.RateLimited("acme/a")
-
-        monkeypatch.setattr(GP, "repo_level_lines", limited)
+    def test_log_names_the_absolute_path(self, kgit_cli, tmp_path, monkeypatch, logged):
+        self.three_repos(monkeypatch)
+        self.fake_repo_level(monkeypatch)
+        monkeypatch.chdir(tmp_path)
         result = self.run(kgit_cli, ["--properties", "-org", "acme", "-level", "repo",
-                                     "-filename", str(out)])
+                                     "-filename", "p.jsonl"])
+        assert result.exit_code == 0, result.output
+        absolute = str(tmp_path.resolve() / "p.jsonl")
+        assert any(m.endswith(f"writing {absolute}") for m in logged)
+        assert any(f"in {absolute} (repo level)" in m for m in logged)
+
+    def test_org_level_log_names_the_absolute_path(self, kgit_cli, tmp_path, monkeypatch,
+                                                   logged):
+        monkeypatch.setattr(GP, "org_level_lines", lambda gh, org, fetched_at: [])
+        monkeypatch.chdir(tmp_path)
+        result = self.run(kgit_cli, ["--properties", "-org", "acme", "-filename", "p.jsonl"])
+        assert result.exit_code == 0, result.output
+        absolute = str(tmp_path.resolve() / "p.jsonl")
+        assert any(f"in {absolute} (org level)" in m for m in logged)
+
+    def test_finished_run_leaves_no_partial_file(self, kgit_cli, tmp_path, monkeypatch):
+        self.three_repos(monkeypatch)
+        self.fake_repo_level(monkeypatch)
+        result = self.repo_level(kgit_cli, tmp_path / "p.jsonl")
+        assert result.exit_code == 0, result.output
+        assert [p.name for p in tmp_path.iterdir()] == ["p.jsonl"]
+        assert len((tmp_path / "p.jsonl").read_text().splitlines()) == 3
+
+    def test_rate_limit_keeps_the_repos_done_in_a_partial_file(self, kgit_cli, tmp_path,
+                                                               monkeypatch, logged):
+        self.three_repos(monkeypatch)
+        self.fake_repo_level(monkeypatch, then=GP.RateLimited("acme/c"))
+        out = tmp_path / "p.jsonl"
+        out.write_text("previous run\n")
+        result = self.repo_level(kgit_cli, out)
         assert result.exit_code != 0
+        flat = result.output.replace("\n", " ")
+        assert "rate limit" in flat
+        assert "2 of 3 repos" in flat and "p.jsonl.partial" in flat
+        assert "Nothing was written" not in flat
+        assert out.read_text() == "previous run\n"
+        assert len((tmp_path / "p.jsonl.partial").read_text().splitlines()) == 2
+        assert any("rate limit" in m for m in logged)
+
+    def test_ctrl_c_keeps_partial_file_and_says_where(self, kgit_cli, tmp_path, monkeypatch,
+                                                      logged):
+        self.three_repos(monkeypatch)
+        self.fake_repo_level(monkeypatch, then=KeyboardInterrupt())
+        out = tmp_path / "p.jsonl"
+        result = self.repo_level(kgit_cli, out)
+        assert result.exit_code != 0
+        flat = result.output.replace("\n", " ")
+        assert "2 of 3 repos" in flat and "p.jsonl.partial" in flat
         assert not out.exists()
+        assert len((tmp_path / "p.jsonl.partial").read_text().splitlines()) == 2
+        assert any("Interrupted" in m for m in logged)
+
+    def test_listing_failure_writes_nothing(self, kgit_cli, tmp_path, monkeypatch, logged):
+        def fail(gh, org):
+            raise GitHubListingIncomplete("u", 2, 100, "HTTP 502")
+
+        monkeypatch.setattr(GP, "list_org_repos", fail)
+        result = self.repo_level(kgit_cli, tmp_path / "p.jsonl")
+        assert result.exit_code != 0
+        assert "Nothing was written" in result.output
+        assert list(tmp_path.iterdir()) == []
+        assert any("listing acme failed" in m for m in logged)
+
+    def test_ctrl_c_while_listing_writes_nothing(self, kgit_cli, tmp_path, monkeypatch,
+                                                 logged):
+        def interrupted(gh, org):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(GP, "list_org_repos", interrupted)
+        result = self.repo_level(kgit_cli, tmp_path / "p.jsonl")
+        assert result.exit_code != 0
+        assert "Interrupted while listing" in result.output
+        assert "Nothing was written" in result.output
+        assert "Traceback" not in result.output
+        assert list(tmp_path.iterdir()) == []
+
+    def test_rate_limit_on_lookup_writes_nothing(self, kgit_cli, tmp_path, monkeypatch):
+        def limited(gh, owner, repo):
+            raise GP.RateLimited(f"{owner}/{repo}")
+
+        monkeypatch.setattr(GP, "lookup_repo", limited)
+        result = self.run(kgit_cli, ["--properties", "-repo_id", "github.com~acme~a",
+                                     "-filename", str(tmp_path / "p.jsonl")])
+        assert result.exit_code != 0
+        assert "Nothing was written" in result.output
+        assert list(tmp_path.iterdir()) == []
 
     def test_owner_still_required_without_properties(self, kgit_cli):
         result = self.run(kgit_cli, [])

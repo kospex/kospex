@@ -129,13 +129,18 @@ def _error_text(response):
     return f"{text} {message}" if message else text
 
 
-def repo_level_lines(gh, repos, fetched_at):
+def repo_level_lines(gh, repos, fetched_at, on_repo=None):
     """One request per (owner, repo, github_repo_id). A repo that fails gets an `error` line.
+
+    on_repo(index, total, line), if given, is called as each repo finishes
+    (index from 1), so a caller can report progress and write the line before
+    the run ends. It sees every repo that finished before a raise.
 
     Raises RateLimited if the rate limit is hit.
     """
     lines = []
-    for owner, repo, github_repo_id in repos:
+    total = len(repos)
+    for index, (owner, repo, github_repo_id) in enumerate(repos, start=1):
         url = f"{gh.base_url}/repos/{owner}/{repo}/properties/values"
         data, response = gh._make_request(url)
         if gh.throttled:
@@ -146,7 +151,20 @@ def repo_level_lines(gh, repos, fetched_at):
         else:
             line["properties"] = normalise(data)
         lines.append(line)
+        if on_repo:
+            on_repo(index, total, line)
     return lines
+
+
+def progress_line(index, total, line):
+    """One repo's result for the console and kgit.log: "[412/1300] acme/payments: 3 properties"."""
+    text = f"[{index}/{total}] {line['org']}/{line['repo']}: "
+    if line["error"]:
+        return text + f"error ({line['error']})"
+    n = len(line["properties"] or {})
+    if not n:
+        return text + "no properties"
+    return text + f"{n} propert{'y' if n == 1 else 'ies'}"
 
 
 def parse_github_repo_id(repo_id):
@@ -160,6 +178,9 @@ def parse_github_repo_id(repo_id):
 
 def write_jsonl(path, lines):
     """Write one JSON object per line, replacing the file atomically.
+
+    Used by -level org, which reads every repo in one paginated query. A
+    repo-level run writes as it goes, with kospex.github_export.RunFiles.
 
     UTF-8 without \\u escapes, and newline-terminated so files concatenate cleanly.
     """
