@@ -34,6 +34,11 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   the GitHub token it used (login, kind, source variable and expiry, never the
   token). A run done over several commands with different options, or a
   listing that shrank after a change of token, can be traced.
+- **`kgit sync --org` / `--user` logs what it did to `kgit.log`** (#443): the
+  command and token identity (never the token), each listing, each repository
+  (skipped and failed as warnings, with the reason), an interruption with its
+  resume command, a stop or error, and the totals. Every line starts
+  `kgit sync github.com~acme:`, so one owner's runs can be grepped out.
 - **`kgit pull --stale DAYS`** pulls only the repos not refreshed in DAYS
   days: last fetched, or last synced if kgit never fetched them. With `--check`
   it shows only those.
