@@ -1034,11 +1034,16 @@ def pull(all_flag, org, server, check, no_prompt, stale, repo_id):
 
 
 def _github_export_checks(flag, org, repo_id, filename):
-    """The options every `kgit github` export needs: -filename and one of -org / -repo_id."""
+    """The options every `kgit github` export needs: -filename and one of -org / -repo_id.
+
+    Returns -filename as an absolute path, so kgit.log says where a file went
+    whatever directory the run was started from.
+    """
     if not filename:
         raise click.UsageError(f"{flag} needs -filename.")
     if bool(org) == bool(repo_id):
         raise click.UsageError(f"{flag} needs exactly one of -org or -repo_id.")
+    return os.path.abspath(filename)
 
 
 def _require_github_token(gh, flag):
@@ -1117,7 +1122,7 @@ def _github_properties_org_level(gh, org, filename, fetched_at):
 
 def _github_properties(gh, org, repo_id, filename, level):
     """`kgit github --properties`: see kospex.github_properties."""
-    _github_export_checks("--properties", org, repo_id, filename)
+    filename = _github_export_checks("--properties", org, repo_id, filename)
     if repo_id and level == GitHubProperties.LEVEL_ORG:
         raise click.UsageError("-repo_id is always repo level; drop -level org.")
     _require_github_token(gh, "--properties")
@@ -1160,7 +1165,7 @@ def _github_properties(gh, org, repo_id, filename, level):
 
 def _github_dependabot(gh, org, repo_id, filename, level):
     """`kgit github --dependabot`: see kospex.github_dependabot."""
-    _github_export_checks("--dependabot", org, repo_id, filename)
+    filename = _github_export_checks("--dependabot", org, repo_id, filename)
     if level:
         raise click.UsageError("-level doesn't apply to --dependabot: it always reads "
                                "each repo, which also gives each repo's Dependabot status.")

@@ -203,6 +203,15 @@ class TestRepoLevel:
         assert GP.list_org_repos(gh, "acme") == [("Acme", "Payments", 101)]
         assert seen == [("acme", "all")]
 
+    def test_org_listing_prints_no_timer_line(self, monkeypatch, capsys):
+        # A @timer() on the generator printed "_get_org_repos executed in 0.000001s":
+        # the time to create the generator, not to list the repos.
+        gh = KospexGithub()
+        monkeypatch.setattr(gh, "_paginate", lambda url, params=None: iter([
+            {"id": 1, "name": "a", "owner": {"login": "acme"}}]))
+        assert GP.list_org_repos(gh, "acme") == [("acme", "a", 1)]
+        assert "executed in" not in capsys.readouterr().out
+
 
 class TestLookupRepo:
     """-repo_id: the repo endpoints don't return the numeric id, so ask for the repo."""
@@ -486,6 +495,26 @@ class TestCli:
         assert "[1/3] acme/a: 3 properties" in text
         assert "[3/3] acme/c: no properties" in text
         assert "finished, 3 repos" in text
+
+    def test_log_names_the_absolute_path(self, kgit_cli, tmp_path, monkeypatch, logged):
+        self.three_repos(monkeypatch)
+        self.fake_repo_level(monkeypatch)
+        monkeypatch.chdir(tmp_path)
+        result = self.run(kgit_cli, ["--properties", "-org", "acme", "-level", "repo",
+                                     "-filename", "p.jsonl"])
+        assert result.exit_code == 0, result.output
+        absolute = str(tmp_path.resolve() / "p.jsonl")
+        assert any(m.endswith(f"writing {absolute}") for m in logged)
+        assert any(f"in {absolute} (repo level)" in m for m in logged)
+
+    def test_org_level_log_names_the_absolute_path(self, kgit_cli, tmp_path, monkeypatch,
+                                                   logged):
+        monkeypatch.setattr(GP, "org_level_lines", lambda gh, org, fetched_at: [])
+        monkeypatch.chdir(tmp_path)
+        result = self.run(kgit_cli, ["--properties", "-org", "acme", "-filename", "p.jsonl"])
+        assert result.exit_code == 0, result.output
+        absolute = str(tmp_path.resolve() / "p.jsonl")
+        assert any(f"in {absolute} (org level)" in m for m in logged)
 
     def test_finished_run_leaves_no_partial_file(self, kgit_cli, tmp_path, monkeypatch):
         self.three_repos(monkeypatch)

@@ -272,10 +272,12 @@ class KospexGithub:
         for repo in self._paginate(url, params):
             yield repo
 
-    @timer()
     def _get_org_repos(self, org, repo_type='all'):
         """
         Get repositories for an organization.
+
+        Not @timer(): this is a generator, so a timer would measure only creating
+        it (about a microsecond) and print that as if it were the listing.
 
         Args:
             org: The organization name
