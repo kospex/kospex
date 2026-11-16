@@ -113,6 +113,22 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   table. `kgit pull --check --all` lists when each repo was last fetched and
   synced.
 
+### Security
+
+- **kweb no longer runs on a Starlette with known advisories.** Every FastAPI
+  version kospex allows accepts Starlette 0.46.0, so an environment that
+  already had an old Starlette kept it. Starlette is now listed directly as
+  `>=1.3.1`, the first release with no published advisories: upgrading kospex
+  now upgrades Starlette too. The advisories cleared include
+  `request.form()` size limits ignored for URL-encoded forms
+  (GHSA-82w8-qh3p-5jfq), `Host` header and request-path poisoning of
+  `request.url` (GHSA-86qp-5c8j-p5mr, GHSA-jp82-jpqv-5vv3), multipart and
+  `Range` header denial of service (GHSA-2c2j-9gv5-cj73, GHSA-7f5h-v6xp-fcq8),
+  `HTTPEndpoint` method dispatch (GHSA-x746-7m8f-x49c) and UNC paths in
+  `StaticFiles` on Windows (GHSA-wqp7-x3pw-xc5r).
+- **Dependency floors raised:** click `>=8.4.2`, uvicorn `>=0.52.4`.
+  python-dateutil is now capped at `<5`, and has been tested on 4.0.0.
+
 ## 0.3.1 - 2026-11-13
 
 ### Highlights
