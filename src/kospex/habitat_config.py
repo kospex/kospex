@@ -394,6 +394,23 @@ class HabitatConfig:
             f"KOSPEX_DEPS_ENRICH={raw!r} is not a recognised value; "
             "use true or false")
 
+    @property
+    def deps_private(self) -> 'PrivatePackages':
+        """Package names dependency scans never look up, whatever -enrich says.
+
+        KOSPEX_DEPS_PRIVATE (environment, then kospex.env) lists
+        `ecosystem:prefix` entries, e.g. `maven:com.example,go:github.com/example`;
+        GOPRIVATE is honoured for Go modules, from the process environment
+        only (not a value saved with `go env -w`). See kospex.private_packages.
+
+        Default: none
+        Raises:
+            ValueError: an entry is malformed or names an unsupported ecosystem.
+        """
+        from kospex.private_packages import private_packages
+        return private_packages(self._get_value('KOSPEX_DEPS_PRIVATE'),
+                                os.getenv('GOPRIVATE'))
+
     # =========================================================================
     # Validation and Directory Management
     # =========================================================================
@@ -563,6 +580,10 @@ class HabitatConfig:
 # Look dependencies up on deps.dev and PyPI during kospex sca / krunner osi.
 # false = parse and save only, nothing is sent (override with -enrich).
 # KOSPEX_DEPS_ENRICH=true
+
+# Package name prefixes that are never looked up, even with -enrich
+# (ecosystem:prefix, comma-separated; maven covers Gradle; GOPRIVATE is also read).
+# KOSPEX_DEPS_PRIVATE=maven:com.example,go:github.com/example
 """
                 self.config_file.write_text(default_config)
                 result['created'].append(str(self.config_file))

@@ -37,6 +37,10 @@ KOSPEX_DEFAULT_ENV = """
 # Look dependencies up on deps.dev and PyPI during kospex sca / krunner osi.
 # false = parse and save only, nothing is sent (override with -enrich).
 #KOSPEX_DEPS_ENRICH=true
+
+# Package name prefixes that are never looked up, even with -enrich
+# (ecosystem:prefix, comma-separated; maven covers Gradle; GOPRIVATE is also read).
+#KOSPEX_DEPS_PRIVATE=maven:com.example,go:github.com/example
 """
 
 KOSPEX_CONFIG_ITEMS = [

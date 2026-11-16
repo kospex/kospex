@@ -782,6 +782,13 @@ def _sca_package(package_spec, file_path, save, out, as_json):
             f"-package expects TYPE:NAME, with TYPE one of {', '.join(types)} "
             f"(got {package_spec!r}).")
 
+    permitted, reason = kospex.dependencies.lookup_permitted(package_type, package_name)
+    if not permitted:
+        Console(stderr=True, soft_wrap=True).print(
+            f"{package_type} {package_name} is private ({reason}), so it is never "
+            "looked up.", markup=False)
+        exit(1)
+
     first = kospex.dependencies.first_release(package_type, package_name)
     if first is None:
         console.print(Text.assemble("deps.dev has no record of ", (package_name, "bold"),
@@ -857,6 +864,9 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_pat
     With -no-enrich, or KOSPEX_DEPS_ENRICH=false, nothing is looked up: the
     file is parsed and its packages listed (and saved with -save) as not
     checked. -enrich overrides the setting.
+
+    Package names matching KOSPEX_DEPS_PRIVATE (or GOPRIVATE, for Go) are
+    never looked up, even with -enrich, and are listed as private_skipped.
     """
     err = Console(stderr=True, soft_wrap=True)
 
@@ -918,6 +928,14 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_pat
     if results is None:
         err.print(f"\n{file_path} is not a supported package manager\n", style="red")
         exit(1)
+
+    private = sum(r.get("resolution") == KospexSchema.RESOLUTION_PRIVATE_SKIPPED
+                  for r in results)
+    if private:
+        one = private == 1
+        err.print(f"{private} package{' is' if one else 's are'} private "
+                  "(KOSPEX_DEPS_PRIVATE / GOPRIVATE) and "
+                  f"{'was' if one else 'were'} not looked up.", markup=False)
 
     shown = KospexDependencies.filter_by_scope(results, scopes)
 

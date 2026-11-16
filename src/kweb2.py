@@ -33,6 +33,7 @@ from api_routes import router as api_router
 from kospex.db.migrator import warn_if_behind
 from kospex.osi_queue import get_outcome as get_osi_outcome
 from kospex_core import Kospex
+from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
 from kospex_query import (
     KospexQuery, retired_tag_replacement, retired_tags, url_cache_seconds)
@@ -1946,6 +1947,8 @@ UNRESOLVED_STATUS_LABELS = {
     "lookup_error": "Lookup error",
     # Parsed with enrichment off (KOSPEX_DEPS_ENRICH=false / -no-enrich).
     "not_checked": "Not checked",
+    # Name matches KOSPEX_DEPS_PRIVATE / GOPRIVATE: never looked up.
+    "private_skipped": "Private",
 }
 
 
@@ -2186,6 +2189,29 @@ def supply_chain(request: Request):
                     "ecosystem": ecosystem if ecosystem else "",
                     "package_name": package_name if package_name else "",
                     "package_version": package_version if package_version else "",
+                },
+            )
+
+        # A private name (KOSPEX_DEPS_PRIVATE, GOPRIVATE) is never looked up.
+        try:
+            permitted, reason = KospexDependencies.lookup_permitted(
+                ecosystem.strip(), package_name.strip())
+        except ValueError as e:
+            # An invalid KOSPEX_DEPS_PRIVATE: say so, not a generic server error.
+            return templates.TemplateResponse(
+                request, "supply_chain_search.html",
+                {"error": str(e), "ecosystem": ecosystem,
+                 "package_name": package_name, "package_version": package_version},
+            )
+        if not permitted:
+            return templates.TemplateResponse(
+                request, "supply_chain_search.html",
+                {
+                    "error": f"'{ecosystem}:{package_name}' is private ({reason}), "
+                             "so it is never looked up.",
+                    "ecosystem": ecosystem,
+                    "package_name": package_name,
+                    "package_version": package_version,
                 },
             )
 

@@ -568,6 +568,26 @@ class KospexQuery:
         (summary,) = kd.execute()
         return summary
 
+    def looked_up_dependency_names(self, request_id=None):
+        """Each package in current dependency rows in scope that carries a
+        lookup: [{"package_type", "package_name", "rows", "last_checked"}].
+        Grouped by name, so a caller can match names against a rule SQL can't
+        express (KOSPEX_DEPS_PRIVATE, GOPRIVATE) without reading every row.
+        """
+        kd = KospexData(self.kospex_db)
+        kd.from_table(KospexSchema.TBL_DEPENDENCY_DATA)
+        kd.select("package_type", "package_name")
+        kd.select_as("COUNT(*)", "rows")
+        kd.select_as("MAX(last_checked)", "last_checked")
+        kd.where("latest", "=", 1)
+        # Excludes NULL as IS NOT NULL would; where() has no IS operator.
+        kd.where("last_checked", ">", "")
+        kd.group_by("package_type", "package_name")
+
+        self._apply_request_scope(kd, request_id)
+
+        return kd.execute()
+
     def extracted_dependency_file_keys(self, request_id=None):
         """Return the set of (repo_id, file_path) that have extracted dependency
         rows (latest=1) in dependency_data, scoped like get_dependencies. Used by

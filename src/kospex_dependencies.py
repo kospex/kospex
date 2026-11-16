@@ -148,6 +148,8 @@ class KospexDependencies:
 
     def deps_dev(self, package_type, package_name, version):
         """Query the Deps.dev API for a package and version"""
+        if self._private(package_type, package_name):
+            return None
         base_url = "https://api.deps.dev/v3alpha/systems"
         encoded_name = urllib.parse.quote(package_name, safe="")
         url = f"{base_url}/{package_type}/packages/{encoded_name}/versions/{version}"
@@ -172,6 +174,8 @@ class KospexDependencies:
 
     def deps_dev_status(self, package_type, package_name, version):
         """Exact-version deps.dev lookup returning (data|None, status)."""
+        if self._private(package_type, package_name):
+            return None, None
         encoded = urllib.parse.quote(package_name, safe="")
         url = (f"https://api.deps.dev/v3alpha/systems/{package_type}"
                f"/packages/{encoded}/versions/{version}")
@@ -224,6 +228,9 @@ class KospexDependencies:
                              "its managed versions are not looked up",
                              name, version, file_path)
                     continue
+                if self._private("maven", name):
+                    # Its rows stay `no_version`; the log line says why.
+                    continue
                 if (name, version) not in fetched:
                     fetched[(name, version)] = self._bom_managed_versions(name, version)
                 for artifact, managed_version in fetched[(name, version)].items():
@@ -240,7 +247,7 @@ class KospexDependencies:
 
     def _bom_managed_versions(self, name, version):
         """{groupId:artifactId: resolvedVersion} from a BOM's deps.dev requirements."""
-        if not self.kospex_query:
+        if not self.kospex_query or self._private("maven", name):
             return {}
         url = ("https://api.deps.dev/v3alpha/systems/maven/packages/"
                f"{urllib.parse.quote(name, safe='')}/versions/"
@@ -303,6 +310,8 @@ class KospexDependencies:
 
         The same cached URL get_versions_behind() reads, so for a row that
         resolves this costs no extra request."""
+        if self._private(package_type, package_name):
+            return None
         url = ("https://api.deps.dev/v3alpha/systems/"
                f"{package_type}/packages/{urllib.parse.quote(package_name, safe='')}")
         content, _status = self.kospex_query.url_request_with_status(url)
@@ -436,7 +445,14 @@ class KospexDependencies:
         under the original's name -- the original's advisories. The record
         keeps the alias as package_name, part of the dependency_data key; the
         target is in the declared `npm:<name>@` text.
+
+        A private name (KOSPEX_DEPS_PRIVATE, GOPRIVATE) is not looked up at all,
+        not even for its version list: it is returned as `private_skipped`
+        with empty lookup columns.
         """
+        if self._private(package_type, package_name):
+            return {"package_name": package_name, "package_version": declared_version,
+                    "package_type": package_type, **self.private_fields()}, ""
         lookup_name = package_name
         if bom_version:
             lookup_version, satisfiable = bom_version, None
@@ -486,6 +502,8 @@ class KospexDependencies:
         """
         Query the deps.dev API for a package and get all version history
         """
+        if self._private(package_type, package_name):
+            return None
         base_url = "https://api.deps.dev/v3alpha/systems"
         encoded_name = urllib.parse.quote(package_name, safe="")
         url = f"{base_url}/{package_type}/packages/{encoded_name}"
@@ -534,6 +552,8 @@ class KospexDependencies:
 
     def get_pypi_package_info(self, package, version: Optional[str] = None):
         """Get the latest version of a package from PyPI"""
+        if self._private("pypi", package):
+            return None
         url = f"https://pypi.org/pypi/{package}/json"
 
         data = None
@@ -846,6 +866,44 @@ class KospexDependencies:
         """The lookup columns of a row that was parsed but not looked up."""
         return dict(cls._NOT_CHECKED_FIELDS)
 
+    @classmethod
+    def private_fields(cls):
+        """The lookup columns of a row whose name is private (KOSPEX_DEPS_PRIVATE,
+        GOPRIVATE): empty, as for not_checked, under its own resolution."""
+        return {**cls._NOT_CHECKED_FIELDS,
+                "resolution": KospexSchema.RESOLUTION_PRIVATE_SKIPPED}
+
+    @classmethod
+    def unlooked_fields(cls, package_type, package_name):
+        """The lookup columns of a row saved with lookups off: private_fields()
+        for a private name, so it reads as private before lookups are turned
+        on, else not_checked_fields(). Shared by both scan paths."""
+        if cls.lookup_permitted(package_type, package_name)[0]:
+            return cls.not_checked_fields()
+        return cls.private_fields()
+
+    @staticmethod
+    def lookup_permitted(package_type, package_name):
+        """(permitted, reason) for sending `package_name` to a lookup service.
+
+        Not permitted when the name matches KOSPEX_DEPS_PRIVATE or, for Go,
+        GOPRIVATE; `reason` names the entry. Nothing overrides this: not
+        -enrich and not KOSPEX_DEPS_ENRICH. Every method here that sends a
+        package name checks it first, so a caller cannot skip it.
+
+        Raises ValueError for an invalid KOSPEX_DEPS_PRIVATE.
+        """
+        from kospex.habitat_config import HabitatConfig
+        reason = HabitatConfig.get_instance().deps_private.match(package_type, package_name)
+        return (False, reason) if reason else (True, "")
+
+    def _private(self, package_type, package_name):
+        """True, and logged, if `package_name` must not be sent anywhere."""
+        permitted, reason = self.lookup_permitted(package_type, package_name)
+        if not permitted:
+            log.info(f"not looked up, private ({reason}): {package_type} {package_name}")
+        return not permitted
+
     @staticmethod
     def enrich_decision(flag):
         """(enrich, reason) for a scan, from its -enrich/-no-enrich flag.
@@ -854,11 +912,16 @@ class KospexDependencies:
         KOSPEX_DEPS_ENRICH decides (environment, then kospex.env, default true).
         `reason` says where an off came from, for the line a command prints.
 
-        Raises ValueError for an unrecognised KOSPEX_DEPS_ENRICH value.
+        KOSPEX_DEPS_PRIVATE is read here too, though no flag overrides it, so
+        an invalid value stops a scan before it starts rather than mid-run.
+
+        Raises ValueError for an unrecognised KOSPEX_DEPS_ENRICH value or an
+        invalid KOSPEX_DEPS_PRIVATE.
         """
+        from kospex.habitat_config import HabitatConfig
+        HabitatConfig.get_instance().deps_private
         if flag is not None:
             return bool(flag), "" if flag else "-no-enrich"
-        from kospex.habitat_config import HabitatConfig
         if HabitatConfig.get_instance().deps_enrich:
             return True, ""
         return False, "KOSPEX_DEPS_ENRICH=false"
@@ -920,8 +983,10 @@ class KospexDependencies:
                     bom_version=bom_versions.get(index))
                 out.update(record)
             else:
-                out.update(self.not_checked_fields())
+                out.update(self.unlooked_fields(package_type, out.get("package_name")))
                 lookup_version = ""
+            looked_up = out.get("resolution") not in (
+                KospexSchema.RESOLUTION_NOT_CHECKED, KospexSchema.RESOLUTION_PRIVATE_SKIPPED)
             # depsdev_record echoes back the version it was given; restore
             # the declared text so the primary key matches the manifest.
             out["package_version"] = declared_version
@@ -949,14 +1014,14 @@ class KospexDependencies:
             # Written on every save. NOT a column default: created_at is
             # DEFAULT CURRENT_TIMESTAMP and so never updates on an upsert.
             # Left empty when nothing was checked.
-            out["last_checked"] = self._utc_now_iso() if enrich else None
+            out["last_checked"] = self._utc_now_iso() if looked_up else None
 
             if package_type == "npm":
                 # The ~ / ^ prefix is recorded separately; npm consumers use it
                 # to show how far an upgrade may drift.
                 out["semantic"] = self._semantic_prefix(declared_version)
 
-            if enrich and package_type == "pypi" and not out.get("source_repo"):
+            if looked_up and package_type == "pypi" and not out.get("source_repo"):
                 # deps.dev frequently has no source repo for pypi packages.
                 out["source_repo"] = self.get_pypi_source_repo(out.get("package_name"))
 
@@ -1354,6 +1419,11 @@ class KospexDependencies:
                 # last_checked stays NULL rather than attesting a check that
                 # did not happen. Never a mix of the two.
                 rec.update(earlier.get(self._row_key(rec)) or self.not_checked_fields())
+            elif rec.get("resolution") == KospexSchema.RESOLUTION_PRIVATE_SKIPPED:
+                # Never keeps an earlier lookup: the prefix is the current word
+                # on what is private, and that lookup is a record of a name
+                # already sent, which `krunner osi` reports instead.
+                rec.update(self.private_fields())
             else:
                 rec["last_checked"] = self._utc_now_iso()
             if source is not None:
@@ -1423,6 +1493,9 @@ class KospexDependencies:
         metadata, including a `resolution` category and int-or-None versions_behind."""
         details = {"package_name": package_name, "package_version": package_version,
                    "package_type": package_type, "versions_behind": None}
+        if self._private(package_type, package_name):
+            details.update(self.private_fields())
+            return details
         today = datetime.datetime.now(datetime.timezone.utc)
 
         if not package_version:
@@ -1472,6 +1545,8 @@ class KospexDependencies:
 
     def get_pypi_source_repo(self, package_name):
         """Get the source repo for a PyPi package"""
+        if self._private("pypi", package_name):
+            return None
         url = f"https://pypi.org/pypi/{package_name}/json"
 
         data = None
@@ -1890,6 +1965,8 @@ class KospexDependencies:
 
     def get_depsdev_info(self, package_manager, package_name, version):
         """Query deps.dev API for package details."""
+        if self._private(package_manager, package_name):
+            return None
 
         # Define the base URL for deps.dev API
 
@@ -1944,7 +2021,7 @@ class KospexDependencies:
         None when deps.dev returned no package record. The URL is the same
         cached one the version lookup's caller has usually just fetched.
         """
-        if not self.kospex_query:
+        if not self.kospex_query or self._private(package_type, package_name):
             return None
         url = ("https://api.deps.dev/v3alpha/systems/"
                f"{package_type}/packages/{urllib.parse.quote(package_name, safe='')}")
@@ -2133,6 +2210,8 @@ class KospexDependencies:
 
     def check_malware(self, package_type, package_name, api_key):
         # Beta implementation of malicious packages API
+        if self._private(package_type, package_name):
+            return None  # Not checked, which False ("not malware") would hide.
         url = f"https://api.maliciouspackages.com/package/{package_type}/{package_name}"
         is_malware = False
         headers = {"X-API-Key": api_key}
@@ -2182,9 +2261,8 @@ class KospexDependencies:
             version: Package version to lookup.
             ecosystem: Package ecosystem to lookup.
         """
-        package = package
-        version = version
-        ecosystem = ecosystem
+        if self._private(ecosystem, package):
+            return None
         # GET /v3/systems/{versionKey.system}/packages/{versionKey.name}/versions/{versionKey.version}:dependencies
         base_url = "https://api.deps.dev/v3/systems"
         encoded_name = urllib.parse.quote(package, safe="")
@@ -2214,6 +2292,12 @@ class KospexDependencies:
 
             version = node["versionKey"].get("version").lower()
             node["version"] = version
+
+            if self._private(system, name):
+                # A public package can depend on a private name only in odd
+                # cases, but the graph came from outside, so check each node.
+                node["private"] = True
+                continue
 
             dep = self.deps_dev(system, name, version)
             node["publishedAt"] = dep.get("publishedAt")

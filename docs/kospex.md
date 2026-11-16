@@ -225,6 +225,19 @@ lookup.
 kospex sca -no-enrich package-lock.json
 ```
 
+**Private packages.** Package names matching `KOSPEX_DEPS_PRIVATE` (or, for
+Go, `GOPRIVATE`) are never looked up, even with `-enrich`. Their resolution
+is `private_skipped`, and sca says how many there were. `-package` refuses a
+private name. For example:
+
+```
+KOSPEX_DEPS_PRIVATE=maven:com.example,go:github.com/example
+```
+
+`maven:` entries cover Gradle files too. See
+[krunner osi, Private packages](krunner.md#private-packages) for how
+prefixes match.
+
 ## orphans
 
 Orphans occur when a repo no longer has someone working in the organisation or team who's active.

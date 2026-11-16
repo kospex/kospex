@@ -58,6 +58,19 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - `pylock.toml` and NuGet's per-project `packages.<project>.lock.json` are
   recognised through panopticas' `is_pylock()` and `is_nuget_project_lock()`
   instead of copies of their patterns. Neither has a parser yet.
+- **Package names that are never looked up.** `KOSPEX_DEPS_PRIVATE`, in the
+  environment or `~/kospex/kospex.env`, lists name prefixes as
+  `ecosystem:prefix` (`maven:com.example,go:github.com/example`). A matching
+  package is never sent to deps.dev or PyPI by `kospex sca`, `krunner osi`
+  or the Maven BOM fetch, whatever `-enrich` or `KOSPEX_DEPS_ENRICH` say. Its rows are saved with the new resolution
+  `private_skipped` and shown as **Private**. A prefix matches at a `.`/`:`
+  (Maven) or `/` (Go) boundary, ignoring case. `maven:` covers Gradle, and
+  `GOPRIVATE` is honoured for Go. Only `maven` and `go` are supported; any
+  other ecosystem, or a malformed entry, is an error. `krunner osi` reports the
+  prefixes before it starts and warns about current rows that match one but
+  were looked up before. `kospex sca` says how many packages were private, and
+  `-package` refuses a private name. The `kospex init` config template lists
+  the setting, commented out.
 
 ### Changed
 
