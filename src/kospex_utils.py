@@ -437,6 +437,27 @@ def validate_params(**kwargs):
     if kwargs.get('repo') and kwargs.get('repo_id'):
         raise ValueError("You can't specify both -repo (directory) and -repo_id")
 
+def age_label(days) -> str:
+    """A short age for whole days: "<1d", "45d", "11m", "2y 4m", or "" for None.
+
+    Under 60 days it counts days; from there, months rounded to the nearest
+    (30.4375 days each), shown as years and months from 12 months up.
+    Under a day is "<1d", not "today": the days are elapsed, so a release
+    from late yesterday is under a day old but not published today.
+    """
+    if days is None:
+        return ""
+    if days < 1:
+        return "<1d"
+    if days < 60:
+        return f"{days}d"
+    months = round(days / 30.4375)
+    if months < 12:
+        return f"{months}m"
+    years, months = divmod(months, 12)
+    return f"{years}y {months}m" if months else f"{years}y"
+
+
 def days_ago(dt_str: str) -> float:
     """ Convert an ISO datetime string to days ago"""
     # Parse the datetime string

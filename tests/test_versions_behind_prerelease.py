@@ -62,8 +62,10 @@ def _listing(*versions):
 CASES = [
     # system, name, fixture, version in use, expected (was)
     ("pypi", "duckdb", "pypi__duckdb.json", "1.4.3", 10),                     # 101
+    # 4 from the highest release, 4.2.20; 5 when the count started at the most
+    # recently published, the 4.1.140 backport (see the test below).
     ("maven", "io.netty:netty-handler", "maven__io.netty_netty-handler.json",
-     "4.2.18.Final", 5),                                                         # 0
+     "4.2.18.Final", 4),                                                         # 0
     ("go", "github.com/gin-gonic/gin", "go__github.com_gin-gonic_gin.json",
      "v1.10.0", 3),                                                              # 42
     ("npm", "react", "npm__react.json", "16.12.0", 43),                         # 49
@@ -87,14 +89,42 @@ def test_a_package_without_prereleases_is_unchanged():
 
 def test_a_prerelease_default_older_than_the_version_in_use():
     """netty-handler: the default is a 2015 alpha. Counting from it reached
-    nothing and read 0. Counting from the newest stable release (4.1.140)
-    gives 5 -- of which three are 4.1.x backports, not newer than 4.2.18;
-    that is #377 (maintenance lines), not a pre-release question."""
+    nothing and read 0. The count now starts at the highest release, 4.2.20,
+    not the most recently published one, 4.1.140 (a backport published 40
+    minutes later), which gave 5. That leaves 4.2.20, 4.1.139, 4.2.19 and
+    4.1.138: two are 4.1.x backports, not newer than 4.2.18. That is #377
+    (maintenance lines), not a pre-release question. Expected value computed
+    from the fixture outside kospex: `.Final` releases newest-published first,
+    from 4.2.20 to 4.2.18."""
     kd = _fixture_kd("maven", "io.netty:netty-handler", "maven__io.netty_netty-handler.json")
 
     details = kd.get_versions_behind("maven", "io.netty:netty-handler", "4.2.18.Final")
 
-    assert details["versions_behind"] == 5
+    assert details["versions_behind"] == 4
+    assert details["versions_before_default"] == 1      # 4.1.140
+
+
+def test_a_project_on_the_newer_backport_is_not_behind():
+    """4.1.140 was published after the highest release, 4.2.20. Nothing newer
+    in its own walk, so 0 -- not a negative or a count past the anchor."""
+    kd = _fixture_kd("maven", "io.netty:netty-handler", "maven__io.netty_netty-handler.json")
+
+    details = kd.get_versions_behind("maven", "io.netty:netty-handler", "4.1.140.Final")
+
+    assert details["versions_behind"] == 0
+
+
+@pytest.mark.parametrize("system, higher, lower", [
+    ("maven", "4.10.0.Final", "4.9.0.Final"),
+    ("maven", "4.2.21.Final", "4.1.141.Final"),
+    ("maven", "33.0.0-jre", "9.0.0-jre"),
+    ("maven", "2.0", "1.9.9"),
+    ("rubygems", "7.10.0", "7.9.1"),
+])
+def test_maven_and_rubygems_order_numerically(system, higher, lower):
+    """String order put 4.10 below 4.9. The leading dotted numbers decide."""
+    key = KospexDependencies._version_order_key
+    assert key(system, higher) > key(system, lower)
 
 
 @pytest.mark.parametrize("system, name, fixture, used", [
@@ -124,7 +154,8 @@ class TestReleaseList:
         listed = json.loads((DATA / "pypi__duckdb.json").read_text())["versions"]
 
         assert len(releases) == len(listed)                  # pre-releases included
-        assert set(releases[0]) == {"version", "published_at", "is_default", "is_prerelease"}
+        assert set(releases[0]) == {"version", "published_at", "is_default", "is_prerelease",
+                                    "is_deprecated", "deprecated_reason"}
         by_version = {r["version"]: r for r in releases}
         assert by_version["1.4.3"]["is_prerelease"] is False
         assert by_version["2.1.0.dev2610310630"]["is_prerelease"] is True
