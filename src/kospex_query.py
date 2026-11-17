@@ -130,6 +130,20 @@ class KospexQuery:
         # microseconds, a fetch costs a round trip. Read as a delta around a unit
         # of work; see kospex.osi_run_log.
         self.url_fetches = 0
+        # The outcome of the latest url_request_with_status call, for callers
+        # whose path to it discards the status (release_list() -> first_release()).
+        # last_url_error is the requests exception when no HTTP response came
+        # back at all -- TLS verification, DNS, refused, timeout, proxy -- and
+        # None otherwise. Without it, a failed connection is indistinguishable
+        # from "deps.dev has no record of this package".
+        self.last_url_status = None
+        self.last_url_error = None
+        # Every such failure this instance has seen: {exception class name:
+        # (count, first exception)}. last_url_error is reset on each request, so
+        # a batch (sca FILE, krunner osi) reads this at the end to say why rows
+        # are lookup_error -- every lookup failing TLS verification behind a
+        # proxy otherwise looked like an ordinary run.
+        self.url_failures = {}
 
     def get_kospex_db_version(self):
         """
@@ -1568,6 +1582,13 @@ class KospexQuery:
         check this" is attesting evaluation, not retrieval: the real bound on the
         data's age is the returned value's age plus nothing, and at worst the TTL.
         """
+        content, status = self._url_request_with_status(url, cache, timeout, headers)
+        self.last_url_status = status
+        return content, status
+
+    def _url_request_with_status(self, url, cache, timeout, headers):
+        """url_request_with_status() without the last_url_status bookkeeping."""
+        self.last_url_error = None
         if cache is None:
             cache = url_cache_seconds()
 
@@ -1598,7 +1619,13 @@ class KospexQuery:
         except requests.HTTPError as e:
             status = e.response.status_code if e.response is not None else None
             return None, status
-        except requests.RequestException:
+        except requests.RequestException as e:
+            # No response at all. Logged, and kept on last_url_error, because
+            # the (None, None) return alone reads as "nothing there".
+            self.last_url_error = e
+            count, first = self.url_failures.get(type(e).__name__, (0, e))
+            self.url_failures[type(e).__name__] = (count + 1, first)
+            log.warning("Request to %s failed: %s: %s", url, type(e).__name__, e)
             return None, None
 
     def url_request(self, url, cache=None, timeout=10, headers=None):

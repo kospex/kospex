@@ -8,6 +8,7 @@ import os
 import os.path
 import socket
 import ssl
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from shutil import which
@@ -24,6 +25,7 @@ import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
 import krunner_utils as KrunnerUtils
 from kospex.db import Migrator
+from kospex.habitat_config import HabitatConfig
 from kospex.db.migrator import warn_if_behind
 from kospex.extractors.registry import package_types
 from kospex.integrations.snyk.cli import snyk
@@ -771,6 +773,34 @@ def _split_package_version(name):
     return head, tail
 
 
+def _explain_no_package_record(package_type, package_name):
+    """Say why deps.dev gave no package record: only a 404 means it has none.
+
+    A failed request also comes back as "no record", so without this a TLS
+    verification failure -- typically a TLS-intercepting proxy whose CA Python
+    does not trust -- told the user the package did not exist.
+    """
+    query = kospex.dependencies.kospex_query
+    error = getattr(query, "last_url_error", None)
+    status = getattr(query, "last_url_status", None)
+    err = Console(stderr=True, soft_wrap=True)
+
+    if isinstance(error, requests.exceptions.SSLError):
+        err.print(f"SSL error connecting to deps.dev, so {package_type} {package_name} "
+                  "was not looked up:", markup=False)
+        err.print(f"  {error}", markup=False)
+        err.print("\n" + KospexUtils.SSL_CA_BUNDLE_ADVICE, markup=False)
+    elif error is not None:
+        err.print(f"Could not reach deps.dev, so {package_type} {package_name} was not "
+                  f"looked up: {type(error).__name__}: {error}", markup=False)
+    elif status not in (None, 200, 404):
+        err.print(f"deps.dev returned HTTP {status} for {package_type} {package_name}, "
+                  "so it was not looked up.", markup=False)
+    else:
+        console.print(Text.assemble("deps.dev has no record of ", (package_name, "bold"),
+                                    f" ({package_type})."))
+
+
 def _sca_package(package_spec, file_path, save, out, as_json):
     """`kospex sca -package TYPE:NAME[@VERSION]`: one package's releases (#390).
 
@@ -809,13 +839,14 @@ def _sca_package(package_spec, file_path, save, out, as_json):
     summary = kospex.dependencies.release_summary(package_type, package_name, fresh=True,
                                                   version=version)
     if summary is None:
-        console.print(Text.assemble("deps.dev has no record of ", (package_name, "bold"),
-                                    f" ({package_type})."))
+        _explain_no_package_record(package_type, package_name)
         exit(1)
     requested = summary.get("requested")
     if version is not None and requested is None:
         status = summary.get("requested_status")
-        if status == 404:
+        if getattr(kospex.dependencies.kospex_query, "last_url_error", None) is not None:
+            _explain_no_package_record(package_type, f"{package_name}@{version}")
+        elif status == 404:
             console.print(Text.assemble("deps.dev has no version ", (version, "bold"),
                                         f" of {package_name} ({package_type}). "
                                         "Give an exact version, not a range."))
@@ -1021,6 +1052,12 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_pat
         err.print(f"Error: {e}", style="red", markup=False)
         exit(1)
 
+    # A CA bundle path that doesn't exist fails every lookup with an OSError
+    # requests does not wrap, so say so before looking anything up (#453).
+    if enrich and (problem := KospexUtils.ca_bundle_problem()):
+        err.print(problem, style="red", markup=False)
+        exit(1)
+
     if package_spec:
         if not enrich:
             # -package is nothing but a lookup, so there is no parse-only form.
@@ -1067,6 +1104,9 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_pat
                   "and lookup columns are empty. Use -enrich to look them up.",
                   markup=False)
 
+    # Failures from this run only: the query object outlives a command.
+    if getattr(kdeps.kospex_query, "url_failures", None) is not None:
+        kdeps.kospex_query.url_failures.clear()
     results = kdeps.assess(file_path, save=save, source="kospex sca", quiet=True,
                            enrich=enrich)
 
@@ -1081,6 +1121,13 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_pat
         err.print(f"{private} package{' is' if one else 's are'} private "
                   "(KOSPEX_DEPS_PRIVATE / GOPRIVATE) and "
                   f"{'was' if one else 'were'} not looked up.", markup=False)
+
+    # Why rows are lookup_error, when requests got no response at all (#453).
+    failures = getattr(kdeps.kospex_query, "url_failures", None)
+    for line in KospexUtils.url_failure_summary(failures):
+        err.print(line, style="yellow", markup=False)
+    if line := KospexUtils.url_failure_log_line(failures):
+        log.warning("sca %s: %s", file_path, line)
 
     shown = KospexDependencies.filter_by_scope(results, scopes)
 
@@ -1883,151 +1930,165 @@ def commit_stats(commits, request_id, dev):
     "-save",
     is_flag=True,
     default=False,
-    help="Save root and intermediate CA certificates to ~/kospex/REQUEST_CA_CERTS.",
+    help="Write a system CA bundle that verifies api.deps.dev to ~/kospex/kospex.env "
+    "as REQUESTS_CA_BUNDLE.",
 )
 def connectivity(save):
     """
-    Test connectivity to api.deps.dev and check for SSL errors.
+    Test the HTTPS connection to api.deps.dev, and fix certificate errors.
 
-    This command attempts to connect to api.deps.dev and reports any SSL certificate errors.
+    kospex makes its lookups with Python's requests library, which verifies
+    against its own CA bundle (certifi), or REQUESTS_CA_BUNDLE when set. It
+    does not use the operating system's certificate store, so behind a
+    TLS-intercepting proxy the organisation's CA can be trusted by apt, curl
+    and git and still be unknown to kospex.
 
-    One key use case for this funcion is if your organisation uses a make and break proxy,
-    and the CA CERT is unknown to Python.
-
-    Use the -save flag to export the certificate chain to ~/kospex/REQUEST_CA_CERTS.
+    When verification fails, this checks the system CA bundles and says
+    which one verifies api.deps.dev. -save writes that one to
+    ~/kospex/kospex.env as REQUESTS_CA_BUNDLE.
     """
-    log.info("Testing connectivity to api.deps.dev")
+    from kospex import ca_bundles
 
-    test_url = "https://api.deps.dev/v3alpha/systems"
     hostname = "api.deps.dev"
-    port = 443
+    test_url = f"https://{hostname}/v3alpha/systems"
+    log.info("Testing connectivity to %s", hostname)
 
+    var, bundle = ca_bundles.bundle_in_use()
     print(f"\nTesting connectivity to {hostname}...")
-    print(f"URL: {test_url}\n")
+    print(f"URL: {test_url}")
+    print(f"CA bundle: {bundle}" + (f"  (from {var})" if var else "  (certifi, requests' default)"))
+    print()
 
-    # Try to make a simple request
-    ssl_error = None
-    response = None
+    # A bundle path that doesn't exist raises a plain OSError inside requests,
+    # before any connection. Treated like a verification failure: the fix is
+    # the same, a bundle that works.
+    needs_bundle = False
+    if problem := KospexUtils.ca_bundle_problem():
+        print(f"✗ {problem}")
+        log.error(problem)
+        needs_bundle = True
+    else:
+        try:
+            response = requests.get(test_url, timeout=10)
+            print(f"✓ Successfully connected to {hostname}")
+            print(f"  Status Code: {response.status_code}")
+            print("  SSL Verification: PASSED")
+            log.info("Successfully connected to %s", hostname)
+        except requests.exceptions.SSLError as e:
+            needs_bundle = True
+            print(f"✗ SSL Error detected when connecting to {hostname}")
+            print(f"  Error: {e}")
+            log.error("SSL Error connecting to %s: %s", hostname, e)
+        except requests.exceptions.RequestException as e:
+            # DNS, refused, timeout, proxy: no CA bundle fixes these.
+            print(f"✗ Connection error: {e}")
+            log.error("Connection error: %s", e)
+            return
 
-    try:
-        response = requests.get(test_url, timeout=10)
-        print(f"✓ Successfully connected to {hostname}")
-        print(f"  Status Code: {response.status_code}")
-        print(f"  SSL Verification: PASSED")
-        log.info(f"Successfully connected to {hostname}")
-    except requests.exceptions.SSLError as e:
-        ssl_error = e
-        print(f"✗ SSL Error detected when connecting to {hostname}")
-        print(f"  Error: {str(e)}")
-        log.error(f"SSL Error connecting to {hostname}: {str(e)}")
-    except requests.exceptions.RequestException as e:
-        print(f"✗ Connection error: {str(e)}")
-        log.error(f"Connection error: {str(e)}")
+    if not needs_bundle:
+        if save:
+            print("\nNothing saved: certificate verification already works.")
+        print("\n" + "=" * 60)
+        print("✓ Connectivity test completed successfully")
+        print("=" * 60 + "\n")
         return
 
-    # If -save flag is set or if there was an SSL error, extract certificates
-    if save or ssl_error:
-        print(f"\n{'Extracting' if save else 'Analyzing'} certificate chain from {hostname}...")
+    if not problem:
+        _show_presented_certificate(hostname)
 
-        try:
-            # Create an SSL context that doesn't verify certificates.
-            # Verification is intentionally disabled because this is a
-            # diagnostic that must retrieve the cert chain even when the
-            # chain can't be validated (e.g. behind a TLS-intercepting proxy).
-            # Pin a modern minimum TLS version so the handshake itself stays safe.
-            context = ssl.create_default_context()
-            context.minimum_version = ssl.TLSVersion.TLSv1_2
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
+    print("\nChecking the system CA bundles:")
+    checks = ca_bundles.find_working_bundles(test_url, exclude=[bundle])
+    for check in checks:
+        if check.verified:
+            print(f"  ✓ {check.path}  verifies {hostname}")
+        else:
+            print(f"  ✗ {check.path}  {'does not verify' if check.ssl_error else check.error}")
+    if not checks:
+        print("  none found")
+    working = next((c.path for c in checks if c.verified), None)
 
-            # Connect and get the certificate chain
-            with socket.create_connection((hostname, port), timeout=10) as sock:
-                with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                    # Get the certificate in DER format
-                    der_cert = ssock.getpeercert(binary_form=True)
-
-                    # Convert to PEM format
-                    pem_cert = ssl.DER_cert_to_PEM_cert(der_cert)
-
-                    # Get certificate information
-                    cert_dict = ssock.getpeercert()
-
-                    print(f"\n✓ Retrieved certificate from {hostname}")
-                    if cert_dict:
-                        subject = dict(x[0] for x in cert_dict.get("subject", ()))
-                        issuer = dict(x[0] for x in cert_dict.get("issuer", ()))
-                        print(f"  Subject: {subject.get('commonName', 'N/A')}")
-                        print(f"  Issuer: {issuer.get('commonName', 'N/A')}")
-                        print(f"  Valid from: {cert_dict.get('notBefore', 'N/A')}")
-                        print(f"  Valid until: {cert_dict.get('notAfter', 'N/A')}")
-
-                    if save:
-                        # Save to ~/kospex/REQUEST_CA_CERTS
-                        kospex_home = os.getenv("KOSPEX_HOME", os.path.expanduser("~/kospex"))
-                        cert_file = os.path.join(kospex_home, "REQUEST_CA_CERTS")
-
-                        try:
-                            # Check if certificate already exists in the file
-                            cert_exists = False
-                            if os.path.exists(cert_file):
-                                with open(cert_file, "r") as f:
-                                    existing_content = f.read()
-                                    # Check if this exact certificate is already in the file
-                                    if pem_cert.strip() in existing_content:
-                                        cert_exists = True
-                                        print(f"\n✓ Certificate already exists in: {cert_file}")
-                                        log.info(
-                                            f"Certificate for {hostname} already exists in {cert_file}"
-                                        )
-
-                            if not cert_exists:
-                                # Append certificate with header comment
-                                mode = "a" if os.path.exists(cert_file) else "w"
-                                with open(cert_file, mode) as f:
-                                    # Add header comment for clarity
-                                    if mode == "a":
-                                        f.write("\n")  # Add blank line between certificates
-                                    f.write(f"# Certificate for {hostname}\n")
-                                    f.write(
-                                        f"# Retrieved: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-                                    )
-                                    f.write(pem_cert)
-                                    if not pem_cert.endswith("\n"):
-                                        f.write("\n")
-
-                                action = "appended to" if mode == "a" else "saved to"
-                                print(f"\n✓ Certificate {action}: {cert_file}")
-                                print(
-                                    f"  You can use this file with the REQUESTS_CA_BUNDLE environment variable:"
-                                )
-                                print(f"  export REQUESTS_CA_BUNDLE={cert_file}")
-                                log.info(f"Certificate for {hostname} {action} {cert_file}")
-                        except IOError as e:
-                            print(f"\n✗ Error saving certificate: {str(e)}")
-                            log.error(f"Error saving certificate: {str(e)}")
-
-        except socket.error as e:
-            print(f"\n✗ Socket error while retrieving certificate: {str(e)}")
-            log.error(f"Socket error while retrieving certificate: {str(e)}")
-        except ssl.SSLError as e:
-            print(f"\n✗ SSL error while retrieving certificate: {str(e)}")
-            log.error(f"SSL error while retrieving certificate: {str(e)}")
-        except Exception as e:
-            print(f"\n✗ Unexpected error: {str(e)}")
-            log.error(f"Unexpected error: {str(e)}")
-
-    # Summary
     print("\n" + "=" * 60)
-    if ssl_error:
-        print("⚠ WARNING: SSL certificate verification failed!")
-        print("\nRecommendations:")
-        print("  1. Check your system's CA certificate bundle")
-        print("  2. Update your system's CA certificates")
-        print("  3. Use the -save flag to export the certificate")
-        print("  4. Check if you're behind a corporate proxy")
-    else:
-        print("✓ Connectivity test completed successfully")
+    if working is None:
+        print(f"⚠ No CA bundle on this system verifies {hostname}.")
+        print("\nIf you are behind a TLS-intercepting proxy, add your organisation's CA")
+        print("to the system store (update-ca-certificates on Debian/Ubuntu,")
+        print("update-ca-trust on RHEL/Fedora), then run this again. The CA, not the")
+        print(f"certificate {hostname} presented. See https://docs.kospex.io/troubleshooting")
+        print("=" * 60 + "\n")
+        return
+
+    if not save:
+        print(f"⚠ The CA bundle in use doesn't work for {hostname}, but {working} does.")
+        print("\nUse it for kospex:")
+        print(f"  export REQUESTS_CA_BUNDLE={working}")
+        print("or run `kospex connectivity -save` to write it to ~/kospex/kospex.env.")
+        print("=" * 60 + "\n")
+        return
+
+    env_file = str(HabitatConfig.get_instance().config_file)
+    try:
+        previous = ca_bundles.save_to_kospex_env(env_file, working)
+    except OSError as e:
+        print(f"✗ Could not write {env_file}: {e}")
+        log.error("Could not write %s: %s", env_file, e)
+        print("=" * 60 + "\n")
+        return
+    print(f"✓ Saved REQUESTS_CA_BUNDLE={working} to {env_file}"
+          + (f" (replacing {previous})" if previous and previous != working else ""))
+    log.info("Saved REQUESTS_CA_BUNDLE=%s to %s", working, env_file)
+    # kospex.env never overrides the environment, so a value set in the shell
+    # would keep winning. It came from the shell if it isn't the file's value.
+    shell_value = os.environ.get("REQUESTS_CA_BUNDLE")
+    if shell_value and shell_value != previous and \
+            os.path.expanduser(previous or "") != shell_value:
+        print(f"⚠ REQUESTS_CA_BUNDLE is also set in your environment ({shell_value}),")
+        print("  which takes precedence over kospex.env. Unset it: unset REQUESTS_CA_BUNDLE")
+    elif not shell_value and os.environ.get("CURL_CA_BUNDLE"):
+        print("  (It takes precedence over the CURL_CA_BUNDLE set in your environment.)")
+    print("Run `kospex connectivity` again to check.")
     print("=" * 60 + "\n")
+
+
+def _show_presented_certificate(hostname, port=443):
+    """Print the subject and issuer of the certificate `hostname` presents.
+
+    Behind a TLS-intercepting proxy the issuer is the proxy's CA, which names
+    the CA to install. Diagnostic only: nothing is saved. Verification is
+    disabled on purpose, to read a certificate that fails it.
+    """
+    try:
+        # Verification is intentionally disabled because this is a diagnostic
+        # that must retrieve the certificate even when it can't be validated
+        # (e.g. behind a TLS-intercepting proxy). Pin a modern minimum TLS
+        # version so the handshake itself stays safe.
+        context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        with socket.create_connection((hostname, port), timeout=10) as sock:
+            with context.wrap_socket(sock, server_hostname=hostname) as ssock:
+                der_cert = ssock.getpeercert(binary_form=True)
+        # getpeercert() returns {} without verification, so decode the DER
+        # through ssl's own test helper, which needs a file.
+        with tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False) as fh:
+            fh.write(ssl.DER_cert_to_PEM_cert(der_cert))
+        try:
+            cert = ssl._ssl._test_decode_cert(fh.name)  # pylint: disable=protected-access
+        finally:
+            os.unlink(fh.name)
+    except (OSError, ssl.SSLError, ValueError, AttributeError) as e:
+        # AttributeError: _test_decode_cert is private; if a Python release
+        # drops it, the details are skipped, not the command.
+        print(f"\n✗ Could not read the certificate {hostname} presents: {e}")
+        log.error("Could not read the certificate %s presents: %s", hostname, e)
+        return
+    subject = dict(x[0] for x in cert.get("subject", ()))
+    issuer = dict(x[0] for x in cert.get("issuer", ()))
+    print(f"\nCertificate {hostname} presented:")
+    print(f"  Subject: {KospexUtils.terminal_safe(subject.get('commonName', 'N/A'))}")
+    print(f"  Issuer:  {KospexUtils.terminal_safe(issuer.get('commonName', 'N/A'))}"
+          "   <- behind a proxy, this is the CA to trust")
+    print(f"  Valid:   {cert.get('notBefore', 'N/A')} to {cert.get('notAfter', 'N/A')}")
 
 
 # Vendor integrations keep their commands in their own subpackage.

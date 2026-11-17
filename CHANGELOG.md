@@ -39,6 +39,33 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   above 4.9) instead of as strings. Stored values change on the next
   `krunner osi`. On a 24,740-version development database, 3 rows moved,
   each down by one.
+- **`kospex sca -package` no longer reports a failed connection as "deps.dev
+  has no record".** An SSL certificate error now says so and explains how to
+  set `REQUESTS_CA_BUNDLE`, which is needed behind a TLS-intercepting proxy
+  because requests ignores the system certificate store and `SSL_CERT_FILE`.
+  Other connection errors and unexpected HTTP statuses are reported as such;
+  only a 404 is "no record". Failed requests to external URLs are now logged
+  in `kospex_query.log`. The troubleshooting page has a new section on SSL
+  certificate errors.
+- **`kospex sca FILE` and `krunner osi` say why lookups failed.** When
+  requests to deps.dev or PyPI get no response, the rows were already recorded
+  as `lookup_error`, but nothing said why. The run now ends with the number of
+  failed requests by error type, and for SSL errors the `REQUESTS_CA_BUNDLE`
+  advice. The summary is also logged at WARNING in `kospex.log` (sca) or
+  `krunner.log` (osi), for scheduled runs whose output nobody sees.
+- **A `REQUESTS_CA_BUNDLE` (or `CURL_CA_BUNDLE`) path that doesn't exist no
+  longer ends `kospex sca` or `krunner osi` with a traceback.** They stop
+  before looking anything up and name the variable and path. A leading `~` in
+  `~/kospex/kospex.env` is now expanded.
+- **`kospex connectivity` finds a CA bundle that works, and `-save` saves
+  it.** `-save` used to write the certificate api.deps.dev presented to
+  `~/kospex/REQUEST_CA_CERTS` and suggest it as `REQUESTS_CA_BUNDLE`, which
+  can't verify anything. When verification fails, connectivity now checks the
+  system CA bundles and names the one that verifies api.deps.dev. `-save`
+  writes it to `~/kospex/kospex.env`, and warns if a `REQUESTS_CA_BUNDLE` set
+  in the shell would still take precedence. The certificate's subject and
+  issuer, which never printed, now do. If you set `REQUESTS_CA_BUNDLE` to
+  `REQUEST_CA_CERTS`, run `kospex connectivity -save` to replace it.
 
 ## 0.4.0 - 2026-11-17
 
