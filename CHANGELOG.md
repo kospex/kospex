@@ -2,6 +2,44 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+### Added
+
+- **`kospex sca -package TYPE:NAME@VERSION` looks up one version.** It is
+  placed in the Releases table between the first and latest releases (or
+  marks them, if it is one of them), with how many releases it is behind the
+  latest and a table of its known advisories: ID, CVE, CVSS 3 score and
+  title. deps.dev lists one vulnerability under several IDs, such as a GHSA
+  and a PYSEC; aliases are shown as one row. An advisory with no CVSS 3 score
+  shows `-`, not deps.dev's `0`, since it may be scored under CVSS 4 only.
+
+### Changed
+
+- **`kospex sca -package` shows the latest release as well as the first.**
+  The table is now titled `Releases`, with an Age column (`2y 4m`, `33d`).
+  Latest is deps.dev's default version, or the highest release when that is
+  a pre-release, the same rule `versions_behind` counts from. The `First (any)`
+  and `Latest (any)` rows include pre-releases, and only appear when that
+  gives a different answer, such as react's daily builds or a release
+  candidate newer than the latest release. A summary line counts versions,
+  pre-releases, deprecated versions and releases in the last 12 months, and a
+  deprecated latest release is flagged with deps.dev's reason. `-package` now
+  always fetches from deps.dev instead of the URL cache, so a release from the
+  last day is not missed.
+
+### Fixed
+
+- **`versions_behind` counts from the highest release, not the most recently
+  published one, when deps.dev's default version is a pre-release.** A
+  backport published after the newer line's release became the starting
+  point: netty-handler (default `5.0.0.Alpha2`) counted from 4.1.140 rather
+  than 4.2.20, and litellm (default a `.dev` build) from 1.103.5 rather than
+  1.105.1. Maven and RubyGems versions are now ordered numerically (4.10
+  above 4.9) instead of as strings. Stored values change on the next
+  `krunner osi`. On a 24,740-version development database, 3 rows moved,
+  each down by one.
+
 ## 0.4.0 - 2026-11-17
 
 **Database migration `0013`.** After upgrading:

@@ -172,14 +172,17 @@ class KospexDependencies:
 
         return data
 
-    def deps_dev_status(self, package_type, package_name, version):
-        """Exact-version deps.dev lookup returning (data|None, status)."""
+    def deps_dev_status(self, package_type, package_name, version, cache=None):
+        """Exact-version deps.dev lookup returning (data|None, status).
+
+        `cache` is passed to url_request_with_status(): None is the configured
+        TTL, 0 always fetches."""
         if self._private(package_type, package_name):
             return None, None
         encoded = urllib.parse.quote(package_name, safe="")
         url = (f"https://api.deps.dev/v3alpha/systems/{package_type}"
                f"/packages/{encoded}/versions/{version}")
-        content, status = self.kospex_query.url_request_with_status(url)
+        content, status = self.kospex_query.url_request_with_status(url, cache=cache)
         data = json.loads(content) if content else None
         return data, status
 
@@ -1985,8 +1988,15 @@ class KospexDependencies:
     def _version_order_key(system, version):
         """A sort key that orders versions as their ecosystem does, where kospex
         can: PEP 440 for PyPI, numeric x.y.z (a release above its own
-        pre-releases) for semver ecosystems. Otherwise the string, which is
-        deterministic but not semantic. Only used to break publish-time ties."""
+        pre-releases) for semver ecosystems, and the leading dotted numbers for
+        Maven and RubyGems (4.10.0.Final above 4.9.0.Final; the qualifier only
+        breaks a tie, as a string). Otherwise the string, which is
+        deterministic but not semantic.
+
+        Used to break publish-time ties in release_list(), and by
+        _latest_release() to pick the highest release. The Maven key is not
+        Maven's full ComparableVersion: qualifiers are not ranked, which is
+        enough among releases, where pre-release qualifiers are already gone."""
         eco = (system or "").lower()
         if eco == "pypi":
             try:
@@ -2001,12 +2011,17 @@ class KospexDependencies:
             except ValueError:
                 return (0, version)
             return (1, parts, 0 if pre else 1, version)
+        if eco in ("maven", "rubygems"):
+            match = re.match(r"\d+(?:\.\d+)*", version)
+            if match:
+                return (1, tuple(int(p) for p in match.group().split(".")), version)
         return (0, version)
 
-    def release_list(self, package_type, package_name):
+    def release_list(self, package_type, package_name, cache=None):
         """Every version deps.dev lists for a package, newest first, or None.
 
-        Each entry is {"version", "published_at", "is_default", "is_prerelease"}.
+        Each entry is {"version", "published_at", "is_default", "is_prerelease",
+        "is_deprecated", "deprecated_reason"}.
         `is_prerelease` is kospex.prerelease's verdict, so versions_behind and
         the first-release date (#390) agree on what a release is. Pre-releases
         are included; filter on `is_prerelease` for releases only.
@@ -2020,12 +2035,14 @@ class KospexDependencies:
 
         None when deps.dev returned no package record. The URL is the same
         cached one the version lookup's caller has usually just fetched.
+        `cache` is passed to url_request_with_status(): None is the configured
+        TTL, 0 always fetches.
         """
         if not self.kospex_query or self._private(package_type, package_name):
             return None
         url = ("https://api.deps.dev/v3alpha/systems/"
                f"{package_type}/packages/{urllib.parse.quote(package_name, safe='')}")
-        content, status = self.kospex_query.url_request_with_status(url)
+        content, status = self.kospex_query.url_request_with_status(url, cache=cache)
         try:
             data = json.loads(content) if content else None
             versions = data.get("versions", []) if data else None
@@ -2038,7 +2055,9 @@ class KospexDependencies:
         releases = [{"version": v["versionKey"]["version"],
                      "published_at": v.get("publishedAt") or "",
                      "is_default": bool(v.get("isDefault")),
-                     "is_prerelease": is_prerelease(package_type, v["versionKey"]["version"])}
+                     "is_prerelease": is_prerelease(package_type, v["versionKey"]["version"]),
+                     "is_deprecated": bool(v.get("isDeprecated")),
+                     "deprecated_reason": v.get("deprecatedReason") or ""}
                     for v in versions]
         releases.sort(key=lambda r: (r["published_at"] != "", r["published_at"],
                                      self._version_order_key(package_type, r["version"])),
@@ -2063,24 +2082,232 @@ class KospexDependencies:
 
         None when deps.dev returned no package record.
         """
-        releases = self.release_list(package_type, package_name)
-        if releases is None:
+        summary = self.release_summary(package_type, package_name)
+        if summary is None:
             return None
-        dated = [r for r in releases if r["published_at"]]
-        stable = [r for r in dated if not r["is_prerelease"]]
-        # Newest first, so the last entry is the oldest; same-moment ties are
-        # in version order, so it is also the lowest version of that moment.
-        first = dated[-1] if dated else {}
-        first_stable = stable[-1] if stable else {}
+        first = summary["first_any"] or {}
+        first_stable = summary["first"] or {}
         return {
             "first_published": first.get("published_at"),
             "first_published_version": first.get("version"),
             "first_stable_published": first_stable.get("published_at"),
             "first_stable_version": first_stable.get("version"),
+            "versions": summary["versions"],
+            "prereleases": summary["prereleases"],
+            "undated": summary["undated"],
+        }
+
+    @classmethod
+    def _latest_release(cls, package_type, releases):
+        """The release kospex calls latest: deps.dev's default version, or the
+        highest release by version when that default is a pre-release or
+        missing.
+
+        versions_behind counts from this, and `sca -package` reports it as
+        Latest, so the two agree. Publish order would be wrong: a backport
+        (1.2.9 shipped after 2.0.0) is newer but not the latest. netty-handler
+        is the live case -- its default is a 2015 alpha, and it publishes 4.2.x
+        and 4.1.x together, the 4.1 build usually last.
+        None when there are no releases.
+        """
+        stable = [r for r in releases if not r["is_prerelease"]]
+        default = next((r for r in releases if r["is_default"]), None)
+        if default and not default["is_prerelease"]:
+            return default
+        if not stable:
+            return None
+        return max(stable, key=lambda r: cls._version_order_key(package_type, r["version"]))
+
+    @staticmethod
+    def _age_days(published_at, now):
+        """Whole days from an RFC 3339 `published_at` to `now`, or None if undated."""
+        if not published_at:
+            return None
+        try:
+            published = datetime.datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return int((now - published).total_seconds() // 86400)
+
+    def release_summary(self, package_type, package_name, fresh=False, now=None,
+                        version=None):
+        """First and latest releases of a package, with ages and counts, or None.
+
+        From release_list(), so pre-releases mean the same as in
+        versions_behind. Each of `first`, `first_any`, `latest`, `latest_any`
+        is {"version", "published_at", "age_days", "is_prerelease",
+        "is_deprecated", "deprecated_reason"} or None:
+
+        - `first`: the oldest dated release (pre-releases excluded).
+        - `first_any`: the oldest dated version of any kind (see first_release()).
+        - `latest`: _latest_release() -- deps.dev's default, or the highest
+          release when the default is a pre-release.
+        - `latest_any`: the newest pre-release published after `latest`, or
+          None. Only a pre-release can be newer than the latest release and
+          still matter; a later backport is not "latest" of anything.
+
+        `age_days` is whole days from publication to `now` (default: the
+        current UTC time), None when the version is undated.
+        `releases_last_12_months` counts releases, not pre-releases, published
+        in the 365 days before `now`. `deprecated` counts versions deps.dev
+        marks deprecated (npm's deprecate, for example).
+
+        `fresh=True` fetches from deps.dev instead of the URL cache, for a
+        single interactive lookup where a day-old "latest" would mislead.
+
+        With `version`, the summary also has `requested` and
+        `requested_status`: version_detail() for that version, counted against
+        this same release list. `requested` is None when deps.dev has no such
+        version, and `requested_status` says why (404, or another status).
+        """
+        releases = self.release_list(package_type, package_name,
+                                     cache=0 if fresh else None)
+        if releases is None:
+            return None
+        now = now or datetime.datetime.now(timezone.utc)
+
+        def age_days(published_at):
+            return self._age_days(published_at, now)
+
+        def entry(release):
+            if release is None:
+                return None
+            return {"version": release["version"],
+                    "published_at": release["published_at"],
+                    "age_days": age_days(release["published_at"]),
+                    "is_prerelease": release["is_prerelease"],
+                    "is_deprecated": release["is_deprecated"],
+                    "deprecated_reason": release["deprecated_reason"]}
+
+        dated = [r for r in releases if r["published_at"]]
+        stable = [r for r in dated if not r["is_prerelease"]]
+        latest = self._latest_release(package_type, releases)
+        # Newest first: the first pre-release in `dated` is the newest one.
+        newest_pre = next((r for r in dated if r["is_prerelease"]), None)
+        if newest_pre and latest and newest_pre["published_at"] <= latest["published_at"]:
+            newest_pre = None
+
+        recent = [r for r in stable
+                  if (days := age_days(r["published_at"])) is not None and days < 365]
+        # Newest first, so the last entry is the oldest; same-moment ties are
+        # in version order, so it is also the lowest version of that moment.
+        summary = {
+            "first": entry(stable[-1] if stable else None),
+            "first_any": entry(dated[-1] if dated else None),
+            "latest": entry(latest),
+            "latest_any": entry(newest_pre),
             "versions": len(releases),
             "prereleases": sum(1 for r in releases if r["is_prerelease"]),
             "undated": len(releases) - len(dated),
+            "deprecated": sum(1 for r in releases if r["is_deprecated"]),
+            "releases_last_12_months": len(recent),
         }
+        if version is not None:
+            summary["requested"], summary["requested_status"] = self.version_detail(
+                package_type, package_name, version, releases, fresh=fresh, now=now)
+        return summary
+
+    def version_detail(self, package_type, package_name, version, releases,
+                       fresh=False, now=None):
+        """One version of a package: (detail, status), detail None if not found.
+
+        `version` is looked up exactly. deps.dev canonicalises it (pypi `2.25`
+        is `2.25.0`): `version` in the result is deps.dev's spelling, and
+        `requested_as` what was asked for. `releases` is the package's
+        release_list(), which versions_behind is counted against.
+
+        The detail has release_summary()'s entry keys, plus:
+        - `versions_behind`: get_versions_behind(); None when unknown (a
+          pre-release, or a version missing from the package's list).
+        - `latest_version`: _latest_release(), where that count starts.
+        - `advisories`: advisories(), one entry per vulnerability.
+        - `advisory_ids`: how many IDs deps.dev lists, before aliases merge.
+        """
+        data, status = self.deps_dev_status(package_type, package_name, version,
+                                            cache=0 if fresh else None)
+        if not data or "versionKey" not in data:
+            return None, status
+        now = now or datetime.datetime.now(timezone.utc)
+        canonical = data["versionKey"].get("version") or version
+        published_at = data.get("publishedAt") or ""
+        listed = next((r for r in releases if r["version"] == canonical), None)
+        behind = self.get_versions_behind(package_type, package_name, canonical,
+                                          releases=releases)
+        latest = self._latest_release(package_type, releases)
+        ids = [k["id"] for k in data.get("advisoryKeys") or [] if k.get("id")]
+        return {
+            "version": canonical,
+            "requested_as": version,
+            "published_at": published_at,
+            "age_days": self._age_days(published_at, now),
+            "is_prerelease": is_prerelease(package_type, canonical),
+            "is_deprecated": bool(data.get("isDeprecated")
+                                  or (listed and listed["is_deprecated"])),
+            "deprecated_reason": (data.get("deprecatedReason")
+                                  or (listed["deprecated_reason"] if listed else "")),
+            "versions_behind": behind.get("versions_behind"),
+            "latest_version": latest["version"] if latest else None,
+            "advisories": self.advisories(ids),
+            "advisory_ids": len(ids),
+        }, status
+
+    def advisory(self, advisory_id):
+        """deps.dev's record of one advisory, or None.
+
+        {"advisoryKey", "url", "title", "aliases", "cvss3Score", "cvss3Vector"}.
+        Cached with the configured TTL: an advisory changes far less often
+        than a package's version list.
+        """
+        if not self.kospex_query:
+            return None
+        url = ("https://api.deps.dev/v3alpha/advisories/"
+               f"{urllib.parse.quote(advisory_id, safe='')}")
+        content, status = self.kospex_query.url_request_with_status(url)
+        try:
+            return json.loads(content) if content else None
+        except ValueError:
+            log.info("deps.dev advisory %s: unreadable response (status %s)",
+                     advisory_id, status)
+            return None
+
+    def advisories(self, advisory_ids):
+        """The advisories behind a version's advisoryKeys, one per vulnerability.
+
+        deps.dev lists a vulnerability under each database's ID: requests
+        2.25.0 has both GHSA-9hjg-9r4m-mvj7 and PYSEC-2026-1872, aliases of
+        each other. An ID that is an alias of one already listed is folded
+        into it (`also`), not listed again.
+
+        Each entry is {"id", "also", "cves", "title", "cvss3_score", "url"}.
+        When the advisory lookup fails, only "id" and "also" are filled in.
+
+        `cvss3_score` is None when deps.dev has no CVSS 3 vector. It sends
+        `cvss3Score: 0` then, not null -- including for advisories scored only
+        under CVSS 4, such as a netty one osv.dev rates CRITICAL -- so a 0
+        taken at face value would read as harmless.
+        """
+        merged = []
+        by_id = {}
+        for advisory_id in advisory_ids:
+            if advisory_id in by_id:
+                continue
+            record = self.advisory(advisory_id) or {}
+            aliases = record.get("aliases") or []
+            score = record.get("cvss3Score")
+            if not isinstance(score, (int, float)) or isinstance(score, bool):
+                score = None
+            entry = {"id": advisory_id, "also": [],
+                     "cves": [a for a in aliases if a.startswith("CVE-")],
+                     "title": record.get("title") or "",
+                     "cvss3_score": score if record.get("cvss3Vector") else None,
+                     "url": record.get("url") or ""}
+            merged.append(entry)
+            by_id[advisory_id] = entry
+            for alias in aliases:
+                if alias in advisory_ids and alias not in by_id:
+                    entry["also"].append(alias)
+                    by_id[alias] = entry
+        return merged
 
     # Maven artifacts published in parallel flavours: Guava's -jre / -android.
     _MAVEN_FLAVOURS = ("-jre", "-android")
@@ -2099,7 +2326,7 @@ class KospexDependencies:
                 return version[: -len(flavour)]
         return version
 
-    def get_versions_behind(self, package_manager, package_name, version):
+    def get_versions_behind(self, package_manager, package_name, version, releases=None):
         """Count the releases between deps.dev's default version and `version`.
 
         `version` must be spelled as deps.dev lists it: depsdev_record() passes
@@ -2110,15 +2337,21 @@ class KospexDependencies:
 
         Only releases are counted (#276): pre-releases, nightlies, canaries and
         Go pseudo-versions are skipped. The count starts at deps.dev's default,
-        or at the newest release when the default is itself a pre-release
-        (duckdb's nightly; netty-handler's 2015 alpha, which is older than
-        versions in use and made them read 0). A version in use that is a
+        or at the highest release by version when the default is itself a
+        pre-release (duckdb's nightly; netty-handler's 2015 alpha, which is
+        older than versions in use and made them read 0). Highest, not most
+        recently published: netty's 4.1.x backport goes out after the 4.2.x
+        release it accompanies. See _latest_release(). A version in use that is a
         pre-release gives None: neither 0 nor a count of releases describes it.
 
         A Maven version in a flavour (`-jre`, `-android`) counts only releases
         of that flavour (#415): Guava publishes each release in both.
+
+        `releases` is a release_list() the caller already has, so the count
+        and the table it is shown beside come from the same record.
         """
-        releases = self.release_list(package_manager, package_name)
+        if releases is None:
+            releases = self.release_list(package_manager, package_name)
 
         if releases is None:
             # deps.dev answered nothing for the PACKAGE-level endpoint. This is a
@@ -2162,10 +2395,9 @@ class KospexDependencies:
             return details
 
         stable = [r for r in releases if not r["is_prerelease"]]
-        default = next((r for r in releases if r["is_default"]), None)
-        # Start at the default, or at the newest release when deps.dev's
+        # Start at the default, or at the highest release when deps.dev's
         # default is a pre-release (or missing).
-        anchor = default if default and not default["is_prerelease"] else stable[0]
+        anchor = self._latest_release(package_manager, releases)
 
         # Guava publishes each release twice, -jre and -android (#415). A
         # project on one flavour is behind only that flavour's releases. The

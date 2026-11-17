@@ -758,8 +758,21 @@ def deps(repo, directory, out):
         print("To assess a single dependency file, use `kospex sca FILE`.")
 
 
+def _split_package_version(name):
+    """NAME[@VERSION] -> (name, version or None).
+
+    The version follows the LAST '@', and a leading '@' is part of the name,
+    so npm's `@babel/core@7.0.0` is ('@babel/core', '7.0.0') and
+    `@babel/core` has no version. A trailing '@' gives version "".
+    """
+    head, sep, tail = name.rpartition("@")
+    if not sep or not head:
+        return name, None
+    return head, tail
+
+
 def _sca_package(package_spec, file_path, save, out, as_json):
-    """`kospex sca -package TYPE:NAME`: one package's first release (#390).
+    """`kospex sca -package TYPE:NAME[@VERSION]`: one package's releases (#390).
 
     The name is everything after the first colon, so a Maven
     group:artifact keeps its own. Options that only apply to a file are
@@ -779,8 +792,11 @@ def _sca_package(package_spec, file_path, save, out, as_json):
     types = package_types()
     if not package_name or package_type not in types:
         raise click.UsageError(
-            f"-package expects TYPE:NAME, with TYPE one of {', '.join(types)} "
+            f"-package expects TYPE:NAME[@VERSION], with TYPE one of {', '.join(types)} "
             f"(got {package_spec!r}).")
+    package_name, version = _split_package_version(package_name)
+    if version == "":
+        raise click.UsageError(f"-package {package_spec!r} has an empty version after '@'.")
 
     permitted, reason = kospex.dependencies.lookup_permitted(package_type, package_name)
     if not permitted:
@@ -789,33 +805,158 @@ def _sca_package(package_spec, file_path, save, out, as_json):
             "looked up.", markup=False)
         exit(1)
 
-    first = kospex.dependencies.first_release(package_type, package_name)
-    if first is None:
+    # Fresh: one request, and a cached "latest" can be a day old.
+    summary = kospex.dependencies.release_summary(package_type, package_name, fresh=True,
+                                                  version=version)
+    if summary is None:
         console.print(Text.assemble("deps.dev has no record of ", (package_name, "bold"),
                                     f" ({package_type})."))
         exit(1)
+    requested = summary.get("requested")
+    if version is not None and requested is None:
+        status = summary.get("requested_status")
+        if status == 404:
+            console.print(Text.assemble("deps.dev has no version ", (version, "bold"),
+                                        f" of {package_name} ({package_type}). "
+                                        "Give an exact version, not a range."))
+        else:
+            console.print(f"Could not look up version {version} of {package_name} "
+                          f"({package_type}) on deps.dev"
+                          + (f": HTTP {status}." if status else "."))
+        exit(1)
 
-    table = Table(title=f"First release: {package_type} {package_name}")
-    table.add_column("First")
+    def version_of(entry):
+        return entry["version"] if entry else None
+
+    rows = [("First", summary["first"]), ("Latest", summary["latest"])]
+    # The "(any)" rows include pre-releases, and only appear when that gives a
+    # different answer -- react's 0.0.x builds, a release candidate newer than
+    # the latest release. Otherwise they repeat the row above.
+    if version_of(summary["first_any"]) != version_of(summary["first"]):
+        rows.insert(1, ("First (any)", summary["first_any"]))
+    if summary["latest_any"]:
+        rows.append(("Latest (any)", summary["latest_any"]))
+    requested_rows = set()
+    if requested:
+        # A requested version that is already a row (First, Latest...) is
+        # flagged there. Otherwise it gets its own row in publish order: the
+        # rows above are oldest first, and an undated version goes before Latest.
+        matches = [i for i, (_, entry) in enumerate(rows)
+                   if version_of(entry) == requested["version"]]
+        if matches:
+            for i in matches:
+                rows[i] = (f"{rows[i][0]} (requested)", rows[i][1])
+            requested_rows.update(matches)
+        else:
+            published = requested["published_at"]
+            at = next((i for i, (label, entry) in enumerate(rows)
+                       if i > 0 and (label == "Latest" and not published
+                                     or entry and published
+                                     and entry["published_at"] > published)),
+                      len(rows))
+            rows.insert(at, ("Requested", requested))
+            requested_rows.add(at)
+
+    table = Table(title=f"Releases: {package_type} {package_name}")
+    table.add_column("Release")
     table.add_column("Version")
     table.add_column("Published")
-    table.add_row("stable release", first["first_stable_version"] or "none",
-                  first["first_stable_published"] or "")
-    table.add_row("any version", first["first_published_version"] or "none",
-                  first["first_published"] or "")
+    table.add_column("Age", justify="right")
+    for i, (label, entry) in enumerate(rows):
+        style = "bold" if i in requested_rows else None
+        if entry is None:
+            table.add_row(label, "none", "", "", style=style)
+            continue
+        # deps.dev text is printed through terminal_safe() (CWE-150).
+        shown = (KospexUtils.terminal_safe(entry["version"])
+                 + (" (deprecated)" if entry["is_deprecated"] else ""))
+        table.add_row(label, shown, KospexUtils.terminal_safe(entry["published_at"][:10]),
+                      KospexUtils.age_label(entry["age_days"]), style=style)
     console.print()
     KospexUtils.print_table(table, console)
-    console.print("'stable release' excludes alphas, betas, release candidates and other "
-                  "pre-releases; 'any version' includes them.")
-    console.print(f"{first['versions']} versions listed, {first['prereleases']} pre-releases.")
-    undated = first["undated"]
+
+    def plural(count, noun):
+        return f"{count} {noun}{'' if count == 1 else 's'}"
+
+    console.print(f"{plural(summary['versions'], 'version')}, "
+                  f"{plural(summary['prereleases'], 'pre-release')}, "
+                  f"{summary['deprecated']} deprecated. "
+                  f"{plural(summary['releases_last_12_months'], 'release')} "
+                  "in the last 12 months.")
+    console.print("Releases exclude alphas, betas, release candidates and other "
+                  "pre-releases" + ("; '(any)' rows include them."
+                                    if any("(any)" in label for label, _ in rows) else "."))
+    latest = summary["latest"]
+    if latest and latest["is_deprecated"]:
+        reason = KospexUtils.terminal_safe(latest["deprecated_reason"])
+        console.print(f"The latest release is deprecated{': ' + reason if reason else '.'}")
+    undated = summary["undated"]
     if undated == 1:
         console.print("There is 1 undated version (no publish date); it may be older "
                       "than the dates above.")
     elif undated:
         console.print(f"There are {undated} undated versions (no publish date); any of "
                       "them may be older than the dates above.")
+    if requested:
+        _print_requested_version(package_type, package_name, requested)
     console.print()
+
+
+def _print_requested_version(package_type, package_name, requested):
+    """The lines under the Releases table for `-package TYPE:NAME@VERSION`.
+
+    Every string from deps.dev goes through terminal_safe() (CWE-150): a
+    deprecation message is whatever the package's maintainer wrote.
+    """
+    safe = KospexUtils.terminal_safe
+    version = safe(requested["version"])
+    console.print()
+    if requested["requested_as"] != requested["version"]:
+        console.print(f"deps.dev lists {safe(requested['requested_as'])} as {version}.")
+    behind = requested["versions_behind"]
+    latest = safe(requested["latest_version"])
+    if requested["is_prerelease"]:
+        console.print(f"{version} is a pre-release, so releases behind is not counted.")
+    elif behind is None:
+        console.print(f"{version} is not in deps.dev's version list, so releases "
+                      "behind is unknown.")
+    elif behind == 0:
+        console.print(f"{version} is the latest release.")
+    else:
+        console.print(f"{version} is {behind} release{'' if behind == 1 else 's'} "
+                      f"behind the latest ({latest}).")
+    if requested["is_deprecated"]:
+        reason = safe(requested["deprecated_reason"])
+        console.print(f"{version} is deprecated{': ' + reason if reason else '.'}")
+
+    advisories = requested["advisories"]
+    if not advisories:
+        console.print(f"deps.dev lists no known advisories for {version}.")
+        return
+    count = len(advisories)
+    note = ""
+    if requested["advisory_ids"] != count:
+        note = (f" (deps.dev lists {requested['advisory_ids']} IDs; aliases of the "
+                "same vulnerability are shown once)")
+    console.print(f"{count} known advisor{'y' if count == 1 else 'ies'} "
+                  f"for {version}{note}:")
+    table = Table(title=f"Advisories: {package_type} {package_name} {version}")
+    table.add_column("Advisory")
+    table.add_column("CVE")
+    table.add_column("CVSS 3", justify="right")
+    table.add_column("Title")
+    # deps.dev's order, not sorted by score: an advisory with no CVSS 3 score
+    # may be scored only under CVSS 4, and sorting would bury it.
+    for advisory in advisories:
+        ids = "\n".join(safe(i) for i in [advisory["id"]] + advisory["also"])
+        score = advisory["cvss3_score"]
+        table.add_row(ids, "\n".join(safe(c) for c in advisory["cves"]),
+                      "-" if score is None else f"{score:.1f}", safe(advisory["title"]))
+    KospexUtils.print_table(table, console)
+    if any(a["cvss3_score"] is None for a in advisories):
+        console.print("CVSS 3 '-' means deps.dev has no CVSS 3 score; the advisory may "
+                      "be scored under CVSS 4. Check its severity on osv.dev.")
+    console.print("Details: https://osv.dev/vulnerability/ADVISORY")
 
 
 @cli.command("sca")
@@ -839,9 +980,12 @@ def _sca_package(package_spec, file_path, save, out, as_json):
 @click.option("-json", "as_json", is_flag=True, default=False,
               help="Print the results as JSON on stdout, and nothing else.")
 @click.option("-out", type=click.STRING, help="filename to write CSV results to.")
-@click.option("-package", "package_spec", metavar="TYPE:NAME",
+@click.option("-package", "package_spec", metavar="TYPE:NAME[@VERSION]",
               help="Look up one package instead of a file, e.g. pypi:requests or "
-              "maven:io.netty:netty-handler. Shows its first release.")
+              "maven:io.netty:netty-handler. Shows its first and latest releases, "
+              "their age, and release counts. Add @VERSION (pypi:requests@2.25.0) "
+              "to place that version among them, with its releases behind and "
+              "known advisories.")
 @click.option("-enrich/-no-enrich", "enrich", default=None,
               help="Look packages up on deps.dev, or only parse the file. "
                    "Overrides KOSPEX_DEPS_ENRICH (default: enrich).")
@@ -855,11 +999,12 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_pat
 
     With -package TYPE:NAME, looks up a single package instead. TYPE is an
     ecosystem kospex reads dependency files for, such as npm, pypi or maven;
-    an unknown TYPE lists the accepted ones. It shows two first releases,
-    because a package's oldest version is often a pre-release: the first
-    stable release (alphas, betas, release candidates and other pre-releases
-    excluded) and the first version of any kind. Versions deps.dev lists
-    without a publish date are counted, since any of them may be older.
+    an unknown TYPE lists the accepted ones. It shows the first and latest
+    releases (alphas, betas, release candidates and other pre-releases
+    excluded), with "(any)" rows when counting pre-releases changes the
+    answer. Versions deps.dev lists without a publish date are counted, since
+    any of them may be older. TYPE:NAME@VERSION adds that exact version to the
+    table, with how many releases it is behind and its known advisories.
 
     With -no-enrich, or KOSPEX_DEPS_ENRICH=false, nothing is looked up: the
     file is parsed and its packages listed (and saved with -save) as not

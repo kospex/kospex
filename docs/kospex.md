@@ -234,6 +234,73 @@ private name. For example:
 KOSPEX_DEPS_PRIVATE=maven:com.example,go:github.com/example
 ```
 
+**Looking up one package.** `-package TYPE:NAME` looks up a single package
+instead of reading a file, and shows its release history from deps.dev:
+
+```bash
+kospex sca -package pypi:kospex
+```
+
+```
+       Releases: pypi kospex
+  Release   Version   Published    Age
+  First     0.0.1     2024-07-13   2y 4m
+  Latest    0.4.0     2026-11-16   <1d
+44 versions, 0 pre-releases, 0 deprecated. 11 releases in the last 12 months.
+```
+
+- **First** is the oldest release, and **Latest** is the registry's default
+  version (the highest release if that default is a pre-release). Pre-releases
+  (alphas, betas, release candidates, nightlies) are excluded from both.
+- **First (any)** and **Latest (any)** include pre-releases. They appear only
+  when the answer is different, e.g. a package whose first versions were
+  pre-releases, or a release candidate newer than the latest release.
+- **Deprecated** versions are counted, and a deprecated latest release is
+  flagged with the reason deps.dev gives.
+- **Undated** versions (deps.dev lists some with no publish date) are counted,
+  because any of them may be older than the first date shown.
+
+`-package` always asks deps.dev directly rather than using the cache, so the
+latest release is current. TYPE is one of `cargo`, `go`, `maven`, `npm`,
+`nuget`, `pypi` or `rubygems`.
+
+**Looking up one version.** Add `@VERSION` to place an exact version among
+the releases:
+
+```bash
+kospex sca -package pypi:requests@2.25.0
+kospex sca -package npm:@babel/traverse@7.0.0
+```
+
+```
+           Releases: pypi requests
+  Release     Version   Published    Age
+  First       0.2.0     2011-02-14   15y 9m
+  Requested   2.25.0    2020-11-11   6y
+  Latest      2.34.2    2026-05-14   6m
+
+2.25.0 is 21 releases behind the latest (2.34.2).
+4 known advisories for 2.25.0 (deps.dev lists 8 IDs; aliases of the same
+vulnerability are shown once):
+```
+
+followed by a table of the advisories: ID (with any alias IDs), CVE, CVSS 3
+score and title.
+
+- The version gets a **Requested** row in publish order. If it is the first
+  or latest release, that row is marked `(requested)` instead.
+- **Releases behind** is counted the same way as `versions_behind` in the
+  file results. A pre-release has no count.
+- **Advisories** are deps.dev's, for that exact version. deps.dev lists one
+  vulnerability under several IDs (a GHSA and a PYSEC, for example), so IDs
+  that are aliases of each other are shown as one row.
+- A CVSS 3 score of `-` means deps.dev has none. The advisory may be scored
+  under CVSS 4 only, so check its severity on osv.dev.
+- The version must be exact, not a range. deps.dev's spelling is used, and
+  the command says when it differs (pypi `2.25` is `2.25.0`). A version
+  deps.dev doesn't have exits with an error.
+- The version follows the last `@`, so npm scopes work as written.
+
 `maven:` entries cover Gradle files too. See
 [krunner osi, Private packages](krunner.md#private-packages) for how
 prefixes match.
