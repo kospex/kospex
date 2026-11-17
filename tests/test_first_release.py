@@ -771,3 +771,89 @@ class TestScaPackageVersion:
 
         assert result.exit_code == 0, result.output
         assert run_sca.versions_asked == [("npm", "@acme/x", "1.1.0", 0)]
+
+
+# ---------------------------------------------------------------------------
+# Network failures are not "no record" (#453).
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def run_sca_network(monkeypatch, tmp_path):
+    """`kospex sca ARGS` with deps.dev reached through the real
+    url_request_with_status, whose requests.get is replaced by `fake_get`."""
+    from kospex.habitat_config import HabitatConfig
+
+    home = tmp_path / "kospex_home"
+    home.mkdir()
+    monkeypatch.setenv("KOSPEX_HOME", str(home))
+    monkeypatch.setenv("KOSPEX_DB", str(home / "kospex.db"))
+    # No cache hits: every lookup goes to fake_get.
+    monkeypatch.setenv("KOSPEX_URL_CACHE_SECONDS", "0")
+    HabitatConfig.reset_instance()
+
+    def run(*args, fake_get):
+        import kospex_cli
+        import kospex_query
+
+        monkeypatch.setattr(kospex_query.requests, "get", fake_get)
+        return CliRunner().invoke(kospex_cli.cli, ["sca", *args])
+
+    return run
+
+
+def _raises(exc):
+    def fake_get(url, **_kwargs):
+        raise exc
+    return fake_get
+
+
+def _http_status(status):
+    import requests
+
+    def fake_get(url, **_kwargs):
+        response = requests.Response()
+        response.status_code = status
+        response.url = url
+        return response
+    return fake_get
+
+
+class TestScaPackageNetworkErrors:
+    """A failed request is not "deps.dev has no record" (a TLS-intercepting
+    proxy whose CA Python does not trust looked exactly like a missing package)."""
+
+    def test_ssl_error_says_so_and_names_the_ca_bundle_variable(self, run_sca_network):
+        import requests
+
+        result = run_sca_network("-package", "pypi:requests", fake_get=_raises(
+            requests.exceptions.SSLError("CERTIFICATE_VERIFY_FAILED")))
+
+        assert result.exit_code == 1
+        assert "no record" not in result.output
+        assert "SSL" in result.output
+        assert "REQUESTS_CA_BUNDLE" in result.output
+
+    def test_connection_error_is_not_reported_as_no_record(self, run_sca_network):
+        import requests
+
+        result = run_sca_network("-package", "pypi:requests", fake_get=_raises(
+            requests.exceptions.ConnectionError("Name or service not known")))
+
+        assert result.exit_code == 1
+        assert "no record" not in result.output
+        assert "Could not reach deps.dev" in result.output
+        assert "REQUESTS_CA_BUNDLE" not in result.output
+
+    def test_unexpected_http_status_is_reported(self, run_sca_network):
+        result = run_sca_network("-package", "pypi:requests", fake_get=_http_status(503))
+
+        assert result.exit_code == 1
+        assert "no record" not in result.output
+        assert "503" in result.output
+
+    def test_404_is_still_no_record(self, run_sca_network):
+        result = run_sca_network("-package", "pypi:no-such-package",
+                                 fake_get=_http_status(404))
+
+        assert result.exit_code == 1
+        assert "deps.dev has no record of no-such-package" in result.output

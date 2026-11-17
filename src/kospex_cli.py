@@ -771,6 +771,43 @@ def _split_package_version(name):
     return head, tail
 
 
+def _explain_no_package_record(package_type, package_name):
+    """Say why deps.dev gave no package record: only a 404 means it has none.
+
+    A failed request also comes back as "no record", so without this a TLS
+    verification failure -- typically a TLS-intercepting proxy whose CA Python
+    does not trust -- told the user the package did not exist.
+    """
+    query = kospex.dependencies.kospex_query
+    error = getattr(query, "last_url_error", None)
+    status = getattr(query, "last_url_status", None)
+    err = Console(stderr=True, soft_wrap=True)
+
+    if isinstance(error, requests.exceptions.SSLError):
+        err.print(f"SSL error connecting to deps.dev, so {package_type} {package_name} "
+                  "was not looked up:", markup=False)
+        err.print(f"  {error}", markup=False)
+        err.print("\nPython's requests library does not use the system or OS certificate "
+                  "store, or SSL_CERT_FILE; it uses its own CA bundle (certifi). If you "
+                  "are behind a TLS-intercepting proxy, point it at a CA bundle that "
+                  "includes your organisation's CA, e.g.:\n"
+                  "  export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt   "
+                  "# Debian/Ubuntu\n"
+                  "  export REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt     "
+                  "# RHEL/Fedora\n"
+                  "or set it in ~/kospex/kospex.env. `kospex connectivity` tests the "
+                  "connection. See https://docs.kospex.io/troubleshooting", markup=False)
+    elif error is not None:
+        err.print(f"Could not reach deps.dev, so {package_type} {package_name} was not "
+                  f"looked up: {type(error).__name__}: {error}", markup=False)
+    elif status not in (None, 200, 404):
+        err.print(f"deps.dev returned HTTP {status} for {package_type} {package_name}, "
+                  "so it was not looked up.", markup=False)
+    else:
+        console.print(Text.assemble("deps.dev has no record of ", (package_name, "bold"),
+                                    f" ({package_type})."))
+
+
 def _sca_package(package_spec, file_path, save, out, as_json):
     """`kospex sca -package TYPE:NAME[@VERSION]`: one package's releases (#390).
 
@@ -809,8 +846,7 @@ def _sca_package(package_spec, file_path, save, out, as_json):
     summary = kospex.dependencies.release_summary(package_type, package_name, fresh=True,
                                                   version=version)
     if summary is None:
-        console.print(Text.assemble("deps.dev has no record of ", (package_name, "bold"),
-                                    f" ({package_type})."))
+        _explain_no_package_record(package_type, package_name)
         exit(1)
     requested = summary.get("requested")
     if version is not None and requested is None:

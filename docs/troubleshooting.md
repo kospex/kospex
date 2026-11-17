@@ -185,6 +185,58 @@ If `kgit clone` fails, here are the most common causes and solutions:
   which scc
   ```
 
+### SSL Certificate Errors (deps.dev, PyPI and other lookups)
+
+kospex makes its HTTPS calls (deps.dev, PyPI, the GitHub and Bitbucket APIs) with
+the Python [requests](https://requests.readthedocs.io/en/latest/user/advanced/#ssl-cert-verification)
+library. On a network with a TLS-intercepting proxy, those calls fail certificate
+verification until requests is told to trust the proxy's CA.
+
+- **Problem**: `kospex sca -package TYPE:NAME` reports
+  `SSL error connecting to deps.dev`, or `kospex connectivity` reports
+  `SSL Error detected`, with `CERTIFICATE_VERIFY_FAILED` in the detail.
+- **Why fixing the system isn't enough**: requests does **not** use the operating
+  system's certificate store, and does not read `SSL_CERT_FILE`. It verifies against
+  its own bundle, from the [certifi](https://pypi.org/project/certifi/) package. So a
+  CA that makes `apt`, `dnf`, `curl` or `git` work can still be unknown to kospex.
+- **Solution**: set `REQUESTS_CA_BUNDLE` to a PEM file of CA certificates that
+  includes your organisation's CA.
+
+  The simplest is to add the CA to the system store and point requests at the
+  system bundle:
+  ```bash
+  # Debian / Ubuntu
+  sudo cp /path/to/your/private-ca.crt /usr/local/share/ca-certificates/
+  sudo update-ca-certificates
+  export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+
+  # RHEL / Fedora
+  sudo cp /path/to/your/private-ca.crt /etc/pki/ca-trust/source/anchors/
+  sudo update-ca-trust
+  export REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt
+
+  # Check it worked
+  kospex connectivity
+  ```
+
+  To make it permanent for kospex only, put the line in `~/kospex/kospex.env`
+  (without `export`):
+  ```
+  REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+  ```
+  A value already set in the environment takes precedence over `kospex.env`.
+
+- **Notes**:
+  - `REQUESTS_CA_BUNDLE` **replaces** certifi's bundle rather than adding to it, so
+    the file must hold every CA kospex needs. A file containing only your proxy's CA
+    works while every request goes through the proxy, and fails for any host that
+    bypasses it. The system bundle avoids that.
+  - The file must contain the **CA** certificate (the root, or the issuing
+    intermediate), not the certificate of the server you are connecting to.
+  - requests also honours `CURL_CA_BUNDLE` when `REQUESTS_CA_BUNDLE` is unset.
+  - Don't turn verification off to work around this: it hides the error and
+    removes the protection the check exists for.
+
 ### Authentication and Rate Limiting
 
 #### GitHub Rate Limits
