@@ -2,7 +2,11 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## Unreleased
+## 0.4.1 - 2026-11-18
+
+No database migration. Run `krunner osi` to refresh `versions_behind` (see
+Fixed). If `REQUESTS_CA_BUNDLE` points at `~/kospex/REQUEST_CA_CERTS`, run
+`kospex connectivity -save` to replace it.
 
 ### Added
 
