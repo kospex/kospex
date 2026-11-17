@@ -898,18 +898,24 @@ class TestScaPackageNetworkErrors:
         assert "REQUESTS_CA_BUNDLE" in result.output and "does not exist" in result.output
         assert calls == []
 
-    def test_a_file_run_says_why_rows_are_lookup_error(self, run_sca_network, tmp_path):
+    def test_a_file_run_says_why_rows_are_lookup_error(self, run_sca_network, tmp_path,
+                                                       caplog):
         import requests
 
         manifest = tmp_path / "requirements.txt"
         manifest.write_text("requests==2.25.0\n")
-        result = run_sca_network("-json", str(manifest), fake_get=_raises(
-            requests.exceptions.SSLError("CERTIFICATE_VERIFY_FAILED")))
+        with caplog.at_level("WARNING", logger="kospex"):
+            result = run_sca_network("-json", str(manifest), fake_get=_raises(
+                requests.exceptions.SSLError("CERTIFICATE_VERIFY_FAILED")))
 
         assert result.exit_code == 0, result.output
         assert json.loads(result.stdout)[0]["resolution"] == "lookup_error"
         assert "failed with no response (SSLError" in result.stderr
         assert "REQUESTS_CA_BUNDLE" in result.stderr
+        # And one line in kospex.log, naming the file.
+        logged = [r.getMessage() for r in caplog.records if r.name == "kospex"]
+        assert any(str(manifest) in m and "SSLError" in m and "REQUESTS_CA_BUNDLE" in m
+                   for m in logged), logged
 
     def test_a_file_run_without_failures_says_nothing_extra(self, run_sca_network, tmp_path):
         manifest = tmp_path / "requirements.txt"

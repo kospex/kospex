@@ -1366,8 +1366,12 @@ def _report_url_failures(kospex_query):
     """After lookups, say why rows are lookup_error when requests got no
     response at all -- every lookup failing TLS verification behind a proxy
     otherwise looked like an ordinary run (#453)."""
-    for line in KospexUtils.url_failure_summary(getattr(kospex_query, "url_failures", None)):
+    failures = getattr(kospex_query, "url_failures", None)
+    for line in KospexUtils.url_failure_summary(failures):
         console.print(line, style="yellow", markup=False)
+    # In krunner.log too: a scheduled run's output usually goes nowhere.
+    if line := KospexUtils.url_failure_log_line(failures):
+        log.warning("osi: %s", line)
 
 
 def _report_private_lookups(kospex_query, request_id):

@@ -1123,9 +1123,11 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_pat
                   f"{'was' if one else 'were'} not looked up.", markup=False)
 
     # Why rows are lookup_error, when requests got no response at all (#453).
-    for line in KospexUtils.url_failure_summary(
-            getattr(kdeps.kospex_query, "url_failures", None)):
+    failures = getattr(kdeps.kospex_query, "url_failures", None)
+    for line in KospexUtils.url_failure_summary(failures):
         err.print(line, style="yellow", markup=False)
+    if line := KospexUtils.url_failure_log_line(failures):
+        log.warning("sca %s: %s", file_path, line)
 
     shown = KospexDependencies.filter_by_scope(results, scopes)
 

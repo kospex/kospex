@@ -133,6 +133,30 @@ class TestUrlFailureSummary:
         assert "REQUESTS_CA_BUNDLE" not in text
 
 
+class TestUrlFailureLogLine:
+
+    def test_none_when_nothing_failed(self):
+        assert KospexUtils.url_failure_log_line({}) is None
+        assert KospexUtils.url_failure_log_line(None) is None
+
+    def test_ssl_is_one_line_with_a_pointer(self):
+        error = requests.exceptions.SSLError("CERTIFICATE_VERIFY_FAILED")
+        line = KospexUtils.url_failure_log_line({"SSLError": (5, error)})
+
+        assert "\n" not in line
+        assert "5 requests" in line and "CERTIFICATE_VERIFY_FAILED" in line
+        assert "REQUESTS_CA_BUNDLE" in line and "kospex connectivity" in line
+        # The advice paragraph is for the screen, not every scheduled run's log.
+        assert "certifi" not in line
+
+    def test_other_failures_have_no_ca_bundle_pointer(self):
+        error = requests.exceptions.ConnectionError("Name or service not known")
+        line = KospexUtils.url_failure_log_line({"ConnectionError": (2, error)})
+
+        assert "Name or service not known" in line
+        assert "REQUESTS_CA_BUNDLE" not in line
+
+
 class TestUrlFailuresAreCounted:
 
     def test_each_failure_is_counted_and_the_first_kept(self, tmp_path, monkeypatch):
@@ -185,23 +209,31 @@ class TestKrunnerOsi:
 
         assert "does not exist" not in result.output
 
-    def test_failures_are_reported_after_the_run(self, capsys):
+    def test_failures_are_reported_after_the_run(self, capsys, caplog):
         import krunner
 
         class Query:
             url_failures = {"SSLError": (3, requests.exceptions.SSLError("VERIFY"))}
 
-        krunner._report_url_failures(Query())
+        with caplog.at_level("WARNING", logger="krunner"):
+            krunner._report_url_failures(Query())
         out = capsys.readouterr().out
 
         assert "3 requests" in out and "REQUESTS_CA_BUNDLE" in out
+        # And in krunner.log: a scheduled run's output usually goes nowhere.
+        logged = [r for r in caplog.records if r.name == "krunner"]
+        assert len(logged) == 1 and logged[0].levelname == "WARNING"
+        assert "3 requests" in logged[0].getMessage()
+        assert "REQUESTS_CA_BUNDLE" in logged[0].getMessage()
 
-    def test_nothing_reported_without_failures(self, capsys):
+    def test_nothing_reported_without_failures(self, capsys, caplog):
         import krunner
 
         class Query:
             url_failures = {}
 
-        krunner._report_url_failures(Query())
+        with caplog.at_level("WARNING", logger="krunner"):
+            krunner._report_url_failures(Query())
 
         assert capsys.readouterr().out == ""
+        assert not [r for r in caplog.records if r.name == "krunner"]

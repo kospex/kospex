@@ -81,6 +81,14 @@ exited 0, and nothing mentioned SSL. Now:
   `KospexUtils.url_failure_summary()`: the count by class, and for an SSL
   failure the CA bundle advice, the same text `-package` prints
   (`KospexUtils.SSL_CA_BUNDLE_ADVICE`).
+- The summary is also logged, as one WARNING line
+  (`KospexUtils.url_failure_log_line()`: the count, the first error, and for
+  SSL a pointer to `REQUESTS_CA_BUNDLE` / `kospex connectivity`, without the
+  advice paragraph), in the command's own log: `kospex.log` for sca (naming
+  the file), `krunner.log` for osi. The console output of a scheduled
+  `krunner osi -next` usually goes nowhere, and `kospex_query.log` has only
+  one line per failed request, so without this a run whose every lookup
+  failed left no record of it in the log people check.
 - Each run clears `url_failures` before its lookups. The query object is
   module-level and outlives a command; in one process (tests, kweb, the
   agent) the count otherwise carried over from the previous run.

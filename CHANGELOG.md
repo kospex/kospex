@@ -51,7 +51,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   requests to deps.dev or PyPI get no response, the rows were already recorded
   as `lookup_error`, but nothing said why. The run now ends with the number of
   failed requests by error type, and for SSL errors the `REQUESTS_CA_BUNDLE`
-  advice.
+  advice. The summary is also logged at WARNING in `kospex.log` (sca) or
+  `krunner.log` (osi), for scheduled runs whose output nobody sees.
 - **A `REQUESTS_CA_BUNDLE` (or `CURL_CA_BUNDLE`) path that doesn't exist no
   longer ends `kospex sca` or `krunner osi` with a traceback.** They stop
   before looking anything up and name the variable and path. A leading `~` in

@@ -456,6 +456,25 @@ def url_failure_summary(failures):
         lines.append("First error: " + str(next(iter(failures.values()))[1]))
     return lines
 
+
+def url_failure_log_line(failures):
+    """url_failure_summary() as one log line, or None when nothing failed.
+
+    For the command's own log (krunner.log, kospex.log). A scheduled
+    `krunner osi -next` has nobody watching its output, and kospex_query.log
+    has only one warning per failed request, so this is the line that says
+    the run's lookups failed and why. The advice paragraph is left out; a
+    pointer to it replaces it.
+    """
+    lines = url_failure_summary(failures)
+    if not lines:
+        return None
+    line = " ".join(lines[:2])
+    if any("SSL" in name for name in failures):
+        line += (" Set REQUESTS_CA_BUNDLE (`kospex connectivity` finds a bundle "
+                 "that works).")
+    return line
+
 def get_extension(filename):
     """
     Return the extension of the given filename, or the filename if it doesn't have an extension

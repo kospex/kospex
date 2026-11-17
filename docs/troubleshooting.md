@@ -198,6 +198,9 @@ verification until requests is told to trust the proxy's CA.
   `kospex sca FILE` and `krunner osi` record the packages as `lookup_error` and
   end with a line like
   `12 requests to external services failed with no response (SSLError x12)`.
+  The same line goes to `~/kospex/logs/kospex.log` (sca) or `krunner.log`
+  (osi), so a scheduled run leaves a record. Each failed request is also
+  logged in `kospex_query.log`.
 - **Why fixing the system isn't enough**: requests does **not** use the operating
   system's certificate store, and does not read `SSL_CERT_FILE`. It verifies against
   its own bundle, from the [certifi](https://pypi.org/project/certifi/) package. So a
