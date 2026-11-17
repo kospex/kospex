@@ -380,6 +380,81 @@ def get_kospex_db_path():
 def load_config(config_file):
     """ Load the config file """
     load_dotenv(dotenv_path=config_file)
+    expand_ca_bundle_paths()
+
+
+# The variables requests reads for its CA bundle, in its order: the first
+# non-empty one wins (requests.utils / Session.merge_environment_settings).
+from kospex.ca_bundles import BUNDLE_VARS as CA_BUNDLE_VARS  # noqa: E402
+
+
+def expand_ca_bundle_paths():
+    """Expand a leading `~` in REQUESTS_CA_BUNDLE / CURL_CA_BUNDLE (#453).
+
+    A shell expands `~` before kospex sees it, but kospex.env is read by
+    python-dotenv, which does not, and requests opens the path as given.
+    `REQUESTS_CA_BUNDLE=~/certs/ca.pem` in kospex.env then failed every
+    lookup with "Could not find a suitable TLS CA certificate bundle".
+    """
+    for var in CA_BUNDLE_VARS:
+        value = os.environ.get(var)
+        if value and value.startswith("~"):
+            os.environ[var] = os.path.expanduser(value)
+
+
+def ca_bundle_problem():
+    """A message if the CA bundle requests will use does not exist, else None.
+
+    requests checks the path only when it connects, and raises a plain
+    OSError, not a RequestException: a lookup loop does not catch it, so a
+    bad path ended `sca` and `krunner osi` with a traceback. Commands that
+    look packages up call this first and stop with the message instead.
+    """
+    var = next((v for v in CA_BUNDLE_VARS if os.environ.get(v)), None)
+    if var is None:
+        return None
+    path = os.environ[var]
+    if os.path.exists(path):
+        return None
+    return (f"{var} is set to {path}, which does not exist, so no HTTPS lookups "
+            f"can be made. Set it to the full path of a CA bundle file, or unset it "
+            f"to use requests' own bundle (certifi). It is read from the environment "
+            f"or ~/kospex/kospex.env.")
+
+
+SSL_CA_BUNDLE_ADVICE = (
+    "Python's requests library does not use the system or OS certificate store, "
+    "or SSL_CERT_FILE; it uses its own CA bundle (certifi). If you are behind a "
+    "TLS-intercepting proxy, point it at a CA bundle that includes your "
+    "organisation's CA, e.g.:\n"
+    "  export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt   # Debian/Ubuntu\n"
+    "  export REQUESTS_CA_BUNDLE=/etc/pki/tls/certs/ca-bundle.crt     # RHEL/Fedora\n"
+    "or set it in ~/kospex/kospex.env. `kospex connectivity` tests the connection. "
+    "See https://docs.kospex.io/troubleshooting"
+)
+
+
+def url_failure_summary(failures):
+    """Lines explaining failed external requests, or [] when there were none.
+
+    `failures` is KospexQuery.url_failures: {exception class name: (count,
+    first exception)}. An SSL failure gets the CA bundle advice, since that
+    is the usual cause and the fix is on the user's side.
+    """
+    if not failures:
+        return []
+    total = sum(count for count, _ in failures.values())
+    kinds = ", ".join(f"{name} x{count}" for name, (count, _) in sorted(failures.items()))
+    lines = [f"{total} request{'' if total == 1 else 's'} to external services failed "
+             f"with no response ({kinds}). Those lookups are recorded as lookup_error, "
+             "not as missing packages."]
+    ssl_error = next((e for name, (_, e) in failures.items() if "SSL" in name), None)
+    if ssl_error is not None:
+        lines.append(f"SSL error: {ssl_error}")
+        lines.append(SSL_CA_BUNDLE_ADVICE)
+    else:
+        lines.append("First error: " + str(next(iter(failures.values()))[1]))
+    return lines
 
 def get_extension(filename):
     """

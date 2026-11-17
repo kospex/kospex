@@ -857,3 +857,64 @@ class TestScaPackageNetworkErrors:
 
         assert result.exit_code == 1
         assert "deps.dev has no record of no-such-package" in result.output
+
+    def test_a_version_lookup_that_fails_says_why(self, run_sca_network, monkeypatch):
+        """The package record came back; the version lookup hit an SSL error."""
+        import requests
+
+        listing = _versions({"version": "1.0.0", "published": "2020-01-01T00:00:00Z",
+                             "default": True})
+
+        def fake_get(url, **_kwargs):
+            if "/versions/" in url:
+                raise requests.exceptions.SSLError("CERTIFICATE_VERIFY_FAILED")
+            response = requests.Response()
+            response.status_code = 200
+            response._content = listing.encode()
+            return response
+
+        result = run_sca_network("-package", "pypi:x@1.0.0", fake_get=fake_get)
+
+        assert result.exit_code == 1
+        assert "SSL error" in result.output and "x@1.0.0" in result.output
+        assert "REQUESTS_CA_BUNDLE" in result.output
+
+    @pytest.mark.parametrize("args", [["-package", "pypi:requests"], ["requirements.txt"]])
+    def test_a_missing_ca_bundle_stops_before_any_lookup(self, run_sca_network,
+                                                         monkeypatch, tmp_path, args):
+        (tmp_path / "requirements.txt").write_text("requests==2.25.0\n")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CURL_CA_BUNDLE", raising=False)
+        monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(tmp_path / "nope.pem"))
+        calls = []
+
+        def fake_get(url, **_kwargs):
+            calls.append(url)
+            raise AssertionError("no lookup should be made")
+
+        result = run_sca_network(*args, fake_get=fake_get)
+
+        assert result.exit_code == 1
+        assert "REQUESTS_CA_BUNDLE" in result.output and "does not exist" in result.output
+        assert calls == []
+
+    def test_a_file_run_says_why_rows_are_lookup_error(self, run_sca_network, tmp_path):
+        import requests
+
+        manifest = tmp_path / "requirements.txt"
+        manifest.write_text("requests==2.25.0\n")
+        result = run_sca_network("-json", str(manifest), fake_get=_raises(
+            requests.exceptions.SSLError("CERTIFICATE_VERIFY_FAILED")))
+
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.stdout)[0]["resolution"] == "lookup_error"
+        assert "failed with no response (SSLError" in result.stderr
+        assert "REQUESTS_CA_BUNDLE" in result.stderr
+
+    def test_a_file_run_without_failures_says_nothing_extra(self, run_sca_network, tmp_path):
+        manifest = tmp_path / "requirements.txt"
+        manifest.write_text("requests==2.25.0\n")
+        result = run_sca_network("-json", str(manifest), fake_get=_http_status(404))
+
+        assert result.exit_code == 0, result.output
+        assert "failed with no response" not in result.stderr

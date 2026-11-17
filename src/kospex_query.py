@@ -138,6 +138,12 @@ class KospexQuery:
         # from "deps.dev has no record of this package".
         self.last_url_status = None
         self.last_url_error = None
+        # Every such failure this instance has seen: {exception class name:
+        # (count, first exception)}. last_url_error is reset on each request, so
+        # a batch (sca FILE, krunner osi) reads this at the end to say why rows
+        # are lookup_error -- every lookup failing TLS verification behind a
+        # proxy otherwise looked like an ordinary run.
+        self.url_failures = {}
 
     def get_kospex_db_version(self):
         """
@@ -1617,6 +1623,8 @@ class KospexQuery:
             # No response at all. Logged, and kept on last_url_error, because
             # the (None, None) return alone reads as "nothing there".
             self.last_url_error = e
+            count, first = self.url_failures.get(type(e).__name__, (0, e))
+            self.url_failures[type(e).__name__] = (count + 1, first)
             log.warning("Request to %s failed: %s: %s", url, type(e).__name__, e)
             return None, None
 

@@ -195,12 +195,27 @@ verification until requests is told to trust the proxy's CA.
 - **Problem**: `kospex sca -package TYPE:NAME` reports
   `SSL error connecting to deps.dev`, or `kospex connectivity` reports
   `SSL Error detected`, with `CERTIFICATE_VERIFY_FAILED` in the detail.
+  `kospex sca FILE` and `krunner osi` record the packages as `lookup_error` and
+  end with a line like
+  `12 requests to external services failed with no response (SSLError x12)`.
 - **Why fixing the system isn't enough**: requests does **not** use the operating
   system's certificate store, and does not read `SSL_CERT_FILE`. It verifies against
   its own bundle, from the [certifi](https://pypi.org/project/certifi/) package. So a
   CA that makes `apt`, `dnf`, `curl` or `git` work can still be unknown to kospex.
 - **Solution**: set `REQUESTS_CA_BUNDLE` to a PEM file of CA certificates that
   includes your organisation's CA.
+
+  `kospex connectivity` finds one for you. When verification fails, it shows the
+  certificate api.deps.dev presented (behind a proxy, its issuer is the CA to
+  trust), checks the system CA bundles, and says which one works:
+  ```
+  Checking the system CA bundles:
+    ✓ /etc/ssl/certs/ca-certificates.crt  verifies api.deps.dev
+  ```
+  `kospex connectivity -save` writes that one to `~/kospex/kospex.env` as
+  `REQUESTS_CA_BUNDLE`, keeping the rest of the file. If none works, the
+  organisation's CA isn't in the system store yet; add it as below and run it
+  again.
 
   The simplest is to add the CA to the system store and point requests at the
   system bundle:
@@ -225,6 +240,11 @@ verification until requests is told to trust the proxy's CA.
   REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
   ```
   A value already set in the environment takes precedence over `kospex.env`.
+  A leading `~` in `kospex.env` is expanded to your home directory.
+
+  If the path doesn't exist, `kospex sca` and `krunner osi` stop before looking
+  anything up and say so (`REQUESTS_CA_BUNDLE is set to ..., which does not
+  exist`), since every lookup would fail.
 
 - **Notes**:
   - `REQUESTS_CA_BUNDLE` **replaces** certifi's bundle rather than adding to it, so
@@ -234,6 +254,10 @@ verification until requests is told to trust the proxy's CA.
   - The file must contain the **CA** certificate (the root, or the issuing
     intermediate), not the certificate of the server you are connecting to.
   - requests also honours `CURL_CA_BUNDLE` when `REQUESTS_CA_BUNDLE` is unset.
+  - Earlier versions of `kospex connectivity -save` wrote the server's certificate
+    to `~/kospex/REQUEST_CA_CERTS` and suggested it as `REQUESTS_CA_BUNDLE`. That
+    file can't verify anything. If you are using it, run `kospex connectivity -save`
+    to replace it with a bundle that works, then delete `REQUEST_CA_CERTS`.
   - Don't turn verification off to work around this: it hides the error and
     removes the protection the check exists for.
 

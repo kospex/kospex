@@ -1205,6 +1205,14 @@ def osi(all, next_, write_csv, max_seconds, enrich, request_id):
     if not enrich:
         console.log(f"Not looking packages up ({why_not}): parsing and saving only, "
                     "rows are marked not checked. Use -enrich to look them up.")
+    # A CA bundle path that doesn't exist fails every lookup with an OSError
+    # requests does not wrap: refuse before scanning, not mid-run (#453).
+    if enrich and (problem := KospexUtils.ca_bundle_problem()):
+        console.log(f"Error: {problem}", style="red")
+        sys.exit(1)
+    # _report_url_failures() reports this run's failures only: the query
+    # object outlives a command.
+    kospex.kospex_query.url_failures.clear()
 
     if next_ is not None and all:
         console.log("Error: -next and -all are mutually exclusive")
@@ -1218,6 +1226,7 @@ def osi(all, next_, write_csv, max_seconds, enrich, request_id):
         # Batched path: its own exit contract. Nothing due and a busy lock are
         # both success, because a scheduler must not see a failure for either.
         _run_osi_next(next_, request_id, write_csv, max_seconds, enrich=enrich)
+        _report_url_failures(kospex.kospex_query)
         return
 
     if write_csv:
@@ -1292,6 +1301,7 @@ def osi(all, next_, write_csv, max_seconds, enrich, request_id):
     enrich_dependency_records(
         results, kdeps, echo=console.print,
         progress=lambda m: log.info("osi: %s", m), enrich=enrich)
+    _report_url_failures(kospex.kospex_query)
 
     # Recorded before the no-results exit below, because "examined and found
     # nothing" is exactly the fact worth keeping -- an estate with no parseable
@@ -1350,6 +1360,14 @@ def _report_earlier_lookups(kospex_query, request_id):
                 f"were looked up before (most recently {summary['last_checked']} UTC). "
                 "Rows for an unchanged commit keep that lookup; rows for new commits "
                 "are saved not checked.", style="yellow")
+
+
+def _report_url_failures(kospex_query):
+    """After lookups, say why rows are lookup_error when requests got no
+    response at all -- every lookup failing TLS verification behind a proxy
+    otherwise looked like an ordinary run (#453)."""
+    for line in KospexUtils.url_failure_summary(getattr(kospex_query, "url_failures", None)):
+        console.print(line, style="yellow", markup=False)
 
 
 def _report_private_lookups(kospex_query, request_id):
