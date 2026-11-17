@@ -2293,11 +2293,13 @@ class KospexDependencies:
                 continue
             record = self.advisory(advisory_id) or {}
             aliases = record.get("aliases") or []
+            score = record.get("cvss3Score")
+            if not isinstance(score, (int, float)) or isinstance(score, bool):
+                score = None
             entry = {"id": advisory_id, "also": [],
                      "cves": [a for a in aliases if a.startswith("CVE-")],
                      "title": record.get("title") or "",
-                     "cvss3_score": (record.get("cvss3Score")
-                                     if record.get("cvss3Vector") else None),
+                     "cvss3_score": score if record.get("cvss3Vector") else None,
                      "url": record.get("url") or ""}
             merged.append(entry)
             by_id[advisory_id] = entry

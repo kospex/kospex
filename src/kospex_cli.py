@@ -867,8 +867,10 @@ def _sca_package(package_spec, file_path, save, out, as_json):
         if entry is None:
             table.add_row(label, "none", "", "", style=style)
             continue
-        shown = entry["version"] + (" (deprecated)" if entry["is_deprecated"] else "")
-        table.add_row(label, shown, entry["published_at"][:10],
+        # deps.dev text is printed through terminal_safe() (CWE-150).
+        shown = (KospexUtils.terminal_safe(entry["version"])
+                 + (" (deprecated)" if entry["is_deprecated"] else ""))
+        table.add_row(label, shown, KospexUtils.terminal_safe(entry["published_at"][:10]),
                       KospexUtils.age_label(entry["age_days"]), style=style)
     console.print()
     KospexUtils.print_table(table, console)
@@ -886,7 +888,7 @@ def _sca_package(package_spec, file_path, save, out, as_json):
                                     if any("(any)" in label for label, _ in rows) else "."))
     latest = summary["latest"]
     if latest and latest["is_deprecated"]:
-        reason = latest["deprecated_reason"]
+        reason = KospexUtils.terminal_safe(latest["deprecated_reason"])
         console.print(f"The latest release is deprecated{': ' + reason if reason else '.'}")
     undated = summary["undated"]
     if undated == 1:
@@ -901,13 +903,18 @@ def _sca_package(package_spec, file_path, save, out, as_json):
 
 
 def _print_requested_version(package_type, package_name, requested):
-    """The lines under the Releases table for `-package TYPE:NAME@VERSION`."""
-    version = requested["version"]
+    """The lines under the Releases table for `-package TYPE:NAME@VERSION`.
+
+    Every string from deps.dev goes through terminal_safe() (CWE-150): a
+    deprecation message is whatever the package's maintainer wrote.
+    """
+    safe = KospexUtils.terminal_safe
+    version = safe(requested["version"])
     console.print()
-    if requested["requested_as"] != version:
-        console.print(f"deps.dev lists {requested['requested_as']} as {version}.")
+    if requested["requested_as"] != requested["version"]:
+        console.print(f"deps.dev lists {safe(requested['requested_as'])} as {version}.")
     behind = requested["versions_behind"]
-    latest = requested["latest_version"]
+    latest = safe(requested["latest_version"])
     if requested["is_prerelease"]:
         console.print(f"{version} is a pre-release, so releases behind is not counted.")
     elif behind is None:
@@ -919,7 +926,7 @@ def _print_requested_version(package_type, package_name, requested):
         console.print(f"{version} is {behind} release{'' if behind == 1 else 's'} "
                       f"behind the latest ({latest}).")
     if requested["is_deprecated"]:
-        reason = requested["deprecated_reason"]
+        reason = safe(requested["deprecated_reason"])
         console.print(f"{version} is deprecated{': ' + reason if reason else '.'}")
 
     advisories = requested["advisories"]
@@ -941,10 +948,10 @@ def _print_requested_version(package_type, package_name, requested):
     # deps.dev's order, not sorted by score: an advisory with no CVSS 3 score
     # may be scored only under CVSS 4, and sorting would bury it.
     for advisory in advisories:
-        ids = "\n".join([advisory["id"]] + advisory["also"])
+        ids = "\n".join(safe(i) for i in [advisory["id"]] + advisory["also"])
         score = advisory["cvss3_score"]
-        table.add_row(ids, "\n".join(advisory["cves"]),
-                      "-" if score is None else f"{score:.1f}", advisory["title"])
+        table.add_row(ids, "\n".join(safe(c) for c in advisory["cves"]),
+                      "-" if score is None else f"{score:.1f}", safe(advisory["title"]))
     KospexUtils.print_table(table, console)
     if any(a["cvss3_score"] is None for a in advisories):
         console.print("CVSS 3 '-' means deps.dev has no CVSS 3 score; the advisory may "

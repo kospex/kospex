@@ -728,6 +728,36 @@ class TestScaPackageVersion:
         assert "empty version" in result.output
         assert run_sca.asked == []
 
+    def test_control_characters_from_deps_dev_are_not_printed(self, run_sca):
+        """CWE-150: a maintainer's deprecation message or an advisory title
+        holding ESC / CSI must not reach the terminal."""
+        listing = _versions(
+            {"version": "1.0.0", "published": "2020-01-01T00:00:00Z", "deprecated": True,
+             "reason": "old\x1b]0;title\x07"},
+            {"version": "1.2.0", "published": "2022-01-01T00:00:00Z", "default": True,
+             "deprecated": True, "reason": "gone\x1b[2J"})
+        record = _version_record("1.0.0", advisories=("GHSA-a",), isDeprecated=True,
+                                 deprecatedReason="old\x1b]0;title\x07")
+        advisories = {"GHSA-a": _advisory("GHSA-a", ("CVE-2024-1\x9b2J",),
+                                          "Leak\x1b[31m", 5.3, VECTOR)}
+        result = run_sca("-package", "npm:x@1.0.0", listing=listing,
+                         version_record=record, advisories=advisories)
+
+        assert result.exit_code == 0, result.output
+        for char in ("\x1b", "\x9b", "\x07"):
+            assert char not in result.output
+        assert "deprecated: old]0;title" in result.output
+        assert "Leak" in result.output and "gone[2J" in result.output
+
+    def test_a_non_numeric_score_is_no_score(self, run_sca):
+        record = _version_record("1.0.0", advisories=("GHSA-a",))
+        advisories = {"GHSA-a": _advisory("GHSA-a", (), "Leak", "9.8", VECTOR)}
+        result = run_sca("-package", "pypi:x@1.0.0", listing=THREE_RELEASES,
+                         version_record=record, advisories=advisories)
+
+        assert result.exit_code == 0, result.output
+        assert "no CVSS 3 score" in result.output
+
     def test_an_npm_scope_is_not_a_version(self, run_sca):
         result = run_sca("-package", "npm:@acme/x", listing=THREE_RELEASES)
 
