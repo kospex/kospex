@@ -165,3 +165,103 @@ def test_not_linked_from_the_header():
     import kweb2
     header = Path(kweb2.__file__).parent / "templates" / "_header.html"
     assert "/syncs/" not in header.read_text()
+
+
+# --- /syncs/run/{run_id} -----------------------------------------------------
+
+HOSTILE = "<script>alert(1)</script>"
+
+
+def _item(name, **kw):
+    return {"_repo_id": f"github.com~acme~{name}",
+            "clone_url": f"https://github.com/acme/{name}.git",
+            "ssh_url": f"git@github.com:acme/{name}.git",
+            "provider_repo_id": f"github.com:{name}", "archived": False, "fork": False,
+            "private": False, "pushed_at": "2026-11-01T00:00:00Z", **kw}
+
+
+def _run(db, private=True):
+    # `old` is in kospex and listed; `fresh` and the hostile id are in kospex
+    # but not listed, so they're the drift.
+    run_id = M.save_listing(db, "github.com~acme", [
+        _item("old"), _item("new", private=private),
+        _item("forked", fork=True, fork_parent="up/forked", fork_source="root/forked"),
+    ])
+    M.mark(db, run_id, "github.com~acme~new", M.FAILED, f"clone failed {HOSTILE}")
+    return run_id
+
+
+def _get_run(run_id):
+    import kweb2
+    scope = {"type": "http", "method": "GET", "path": f"/syncs/run/{run_id}",
+             "headers": [], "query_string": b""}
+    response = kweb2.syncs_run(Request(scope), run_id)
+    return response.status_code, response.body.decode()
+
+
+def test_run_page_shows_items_drift_and_private_banner(db):
+    run_id = _run(db)
+    status, body = _get_run(run_id)
+    assert status == 200
+    items, drift = body.split('id="itemsTable"')[1].split("In kospex, not in this listing")
+    assert "github.com~acme~new" in items and "github.com~acme~forked" in items
+    assert "up/forked" in items and "source: root/forked" in items
+    assert 'data-search="failed"' in items
+    assert items.count('class="private-marker') == 1
+    assert "github.com~acme~fresh" in drift and "github.com~acme~old" not in drift
+    assert "This run includes <span class=\"font-semibold\">1</span> private repo out of 3." in body
+
+
+def test_run_page_has_no_banner_without_private_repos(db):
+    status, body = _get_run(_run(db, private=False))
+    assert status == 200
+    assert 'id="private-banner"' not in body
+    assert 'class="private-marker' not in body
+
+
+def test_run_page_escapes_repo_ids_and_details(db):
+    # Review focus: repo ids and failure details are text, never markup.
+    status, body = _get_run(_run(db))
+    assert HOSTILE not in body
+    assert "clone failed &lt;script&gt;alert(1)&lt;/script&gt;" in body
+    assert "github.com~acme~&lt;script&gt;alert(1)&lt;/script&gt;" in body
+
+
+def test_run_page_status_filter_reads_only_fixed_statuses(db):
+    # CWE-79: the filter picks a status by the button's position in a list the
+    # server rendered, never from text read from the page.
+    import json
+    import re
+    status, body = _get_run(_run(db))
+    statuses = json.loads(re.search(r"const runStatusFilters = (\[.*?\]);", body).group(1))
+    assert statuses == ["", "failed", "pending"]
+    assert "this.dataset.filter" in body and "this.textContent" not in body
+
+
+def test_unknown_run_is_404(db):
+    _run(db)
+    with pytest.raises(HTTPException) as raised:
+        _get_run("19990101T000000Z")
+    assert raised.value.status_code == 404
+
+
+def test_run_page_on_a_db_behind_0013(db):
+    db.execute(f"DROP TABLE {M.TBL_ORG_SYNC_COMMANDS}")
+    status, body = _get_run("anything")
+    assert status == 200
+    assert "kospex upgrade-db" in body
+
+
+def test_org_syncs_tab_links_each_run(db):
+    run_id = _run(db)
+    status, body = _get(tab="orgs")
+    assert f'href="/syncs/run/{run_id}"' in body
+
+
+def test_run_page_not_linked_from_anywhere_but_syncs():
+    from pathlib import Path
+    import kweb2
+    templates = Path(kweb2.__file__).parent / "templates"
+    linking = sorted(p.name for p in templates.glob("*.html")
+                     if "/syncs/run/" in p.read_text())
+    assert linking == ["syncs.html"]

@@ -187,15 +187,20 @@ def _continue_command(run, commands):
     return OrgSyncCommand.command(flag, parsed["org"], OrgSyncCommand.continuing(opts))
 
 
+def _available(db):
+    """False on a DB from before migration 0013 (kweb never applies it)."""
+    tables = (OrgSyncManifest.TBL_ORG_SYNC_RUNS, OrgSyncManifest.TBL_ORG_SYNC_ITEMS,
+              OrgSyncManifest.TBL_ORG_SYNC_LISTINGS, OrgSyncManifest.TBL_ORG_SYNC_COMMANDS)
+    return all(db[name].exists() for name in tables)
+
+
 def org_runs(db, *, org, server, now):
     """The Org syncs tab: runs latest first, with their commands and listings.
 
     `available` is False on a DB from before migration 0013, which kweb never
     applies itself: the page says to run `kospex upgrade-db` instead.
     """
-    tables = (OrgSyncManifest.TBL_ORG_SYNC_RUNS, OrgSyncManifest.TBL_ORG_SYNC_ITEMS,
-              OrgSyncManifest.TBL_ORG_SYNC_LISTINGS, OrgSyncManifest.TBL_ORG_SYNC_COMMANDS)
-    if not all(db[name].exists() for name in tables):
+    if not _available(db):
         return {"available": False, "runs": []}
     sql = f"SELECT * FROM {OrgSyncManifest.TBL_ORG_SYNC_RUNS}"
     params = []
@@ -227,3 +232,49 @@ def org_runs(db, *, org, server, now):
                                   if row["run_id"] == run_id],
                      "continue_command": _continue_command(run, commands)})
     return {"available": True, "runs": runs}
+
+
+# --- one run: /syncs/run/{run_id} --------------------------------------------
+# Design: changes/202611-kweb-sync-run.md
+
+# The order statuses appear in the page's filter.
+FILTER_STATUSES = (OrgSyncManifest.FAILED, OrgSyncManifest.SKIPPED,
+                   OrgSyncManifest.PENDING, OrgSyncManifest.IN_PROGRESS,
+                   OrgSyncManifest.SYNCED, OrgSyncManifest.GONE)
+
+
+def run_view(db, run_id):
+    """One run: its header, counts, items and drift.
+
+    Returns `{"available": False}` on a DB from before migration 0013. Raises
+    KeyError for an unknown run. Drift and the private count come from
+    `inventory()`, as `kgit sync -inventory` reports them, so they count only
+    the current listing, not `gone` items.
+    """
+    if not _available(db):
+        return {"available": False}
+    run = next(iter(db.query(
+        f"SELECT * FROM {OrgSyncManifest.TBL_ORG_SYNC_RUNS} WHERE run_id = ?", [run_id])),
+        None)
+    if run is None:
+        raise KeyError(f"No run {run_id}")
+    inventory = OrgSyncManifest.inventory(db, run_id)
+    counts = OrgSyncManifest.run_counts(db, run_id)
+    rows = OrgSyncManifest.items(db, run_id)
+    for row in rows:
+        row["gone"] = row["status"] == OrgSyncManifest.GONE
+        row["pushed_date"] = (row.get("pushed_at") or "")[:10]
+        source = row.get("fork_source")
+        row["fork_source_shown"] = (source if source and source != row.get("fork_parent")
+                                    else None)
+    parsed = KospexUtils.parse_org_key(run["org_key"])
+    return {"available": True, "run": run,
+            "owner": parsed["org"] if parsed else run["org_key"],
+            "listed_at": OrgSyncManifest.listed_at(db, run_id),
+            "counts": counts,
+            "filters": [(s, counts[s]) for s in FILTER_STATUSES if counts[s]],
+            "rows": rows,  # not "items": Jinja would read page.items as dict.items
+            "drift": inventory["gone"],
+            "private": inventory["private"], "listed": inventory["listed"],
+            "continue_command": _continue_command(
+                run, OrgSyncManifest.commands(db, run_id))}

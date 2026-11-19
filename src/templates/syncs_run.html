@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Kospex Web - Org sync run</title>
+        <link rel="stylesheet" href="/static/css/tailwind.css">
+    </head>
+    <body class="bg-white">
+        {% include '_header.html' %}
+
+        {% macro command_box(id, text) -%}
+            <div class="flex items-center gap-2 mt-2">
+                <code id="{{ id }}" class="font-mono text-sm bg-gray-100 rounded px-2 py-1">{{ text }}</code>
+                <button type="button" class="text-xs border border-gray-300 rounded px-2 py-1 hover:bg-gray-50"
+                        onclick="navigator.clipboard.writeText(document.getElementById('{{ id }}').textContent)">copy</button>
+            </div>
+        {%- endmacro %}
+
+        {% macro yes(flag) -%}{{ "yes" if flag else "" }}{%- endmacro %}
+
+        <div class="container mx-auto px-4 mt-12 mb-12">
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    {% if not page.available %}
+                    <p class="text-sm mb-4"><a href="/syncs/?tab=orgs" class="text-blue-600 hover:text-blue-800 underline">← Syncs</a></p>
+                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Org sync run</h1>
+                    <div class="border border-gray-200 bg-yellow-100 rounded-lg p-4">
+                        <p class="text-gray-900">This database is from before org sync history was recorded. Back it up, then run:</p>
+                        {{ command_box("upgrade-command", "kospex upgrade-db -apply") }}
+                    </div>
+                    {% else %}
+                    {% set run = page.run %}
+                    {% set c = page.counts %}
+                    <p class="text-sm mb-4"><a href="/syncs/?{{ {'tab': 'orgs', 'org': run.org_key, 'days': 'all'} | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">← Syncs</a></p>
+                    <h1 class="text-3xl font-bold text-gray-900 mb-2">{{ run.org_key }}</h1>
+                    <p class="text-gray-600 mb-6">Org sync run <span class="font-mono">{{ run.run_id }}</span>. This page only shows: copy a command and run it yourself.</p>
+
+                    {% if page.private %}
+                    <div id="private-banner" class="border border-purple-200 bg-purple-50 rounded-lg p-4 mb-6">
+                        <p class="text-gray-900">This run includes <span class="font-semibold">{{ page.private }}</span> private repo{{ "s" if page.private != 1 }} out of {{ page.listed }}.</p>
+                    </div>
+                    {% endif %}
+
+                    <div class="border border-gray-200 rounded-lg p-4 mb-6">
+                        <dl class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                            <div><dt class="text-gray-500">Owner</dt><dd class="text-gray-900">{{ page.owner }} ({{ run.owner_type or "org" }})</dd></div>
+                            <div><dt class="text-gray-500">State</dt><dd class="{% if run.finished_at %}text-green-700{% else %}text-yellow-800{% endif %}">{{ "finished" if run.finished_at else "in progress" }}</dd></div>
+                            <div><dt class="text-gray-500">Listed</dt><dd class="text-gray-900">{{ run.listed }} repos, <span class="font-mono">{{ page.listed_at }}</span></dd></div>
+                            <div><dt class="text-gray-500">Started</dt><dd class="font-mono text-gray-900">{{ run.started_at }}</dd></div>
+                            <div><dt class="text-gray-500">Finished</dt><dd class="font-mono text-gray-900">{{ run.finished_at or "—" }}</dd></div>
+                        </dl>
+                        <p class="text-sm text-gray-700 mt-4">
+                            {{ c.synced }} synced · {{ c.pending + c.in_progress }} pending · {{ c.skipped }} skipped · {{ c.failed }} failed · {{ c.gone }} gone
+                        </p>
+                        {% if page.continue_command %}
+                        <p class="text-sm text-gray-600 mt-4">Continue:</p>
+                        {{ command_box("continue-command", page.continue_command) }}
+                        {% endif %}
+                    </div>
+
+                    <h2 class="text-xl font-semibold text-gray-900 mb-2">Repos in this run</h2>
+                    {# The filter searches the status column for one of these fixed
+                       names, chosen by the button's position: nothing read from the page. #}
+                    {% set filter_statuses = [""] %}
+                    <div class="flex flex-wrap gap-2 mb-4" id="status-filter">
+                        <button type="button" data-filter="0" class="status-filter inline-block px-3 py-1 rounded-full border text-xs bg-blue-600 text-white border-blue-600">all {{ page.rows | length }}</button>
+                        {% for status, n in page.filters %}
+                        {% set _ = filter_statuses.append(status) %}
+                        <button type="button" data-filter="{{ loop.index }}" class="status-filter inline-block px-3 py-1 rounded-full border text-xs border-gray-300 text-gray-700 hover:bg-gray-50">{{ status }} {{ n }}</button>
+                        {% endfor %}
+                    </div>
+                    <script>const runStatusFilters = {{ filter_statuses | tojson }};</script>
+
+                    <div class="overflow-x-auto mb-8">
+                        <table class="min-w-full divide-y divide-gray-200" id="itemsTable">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    {% for h in ["Repo", "Status", "Detail", "Fork parent", "Archived", "Private", "Pushed", "In kospex"] %}
+                                    <th class="px-3 py-2 {% if loop.index > 4 %}text-center{% else %}text-left{% endif %} text-xs font-medium text-gray-500 uppercase">{{ h }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for item in page.rows %}
+                                <tr class="{% if item.gone %}text-gray-400 bg-gray-50{% else %}hover:bg-gray-50{% endif %}">
+                                    <td class="px-3 py-2 text-sm">{{ item._repo_id }}{% if item.private %} <span class="private-marker inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">private</span>{% endif %}</td>
+                                    <td class="px-3 py-2 text-sm" data-search="{{ item.status }}">{{ item.status }}{% if item.gone %}<div class="text-xs">not in current listing</div>{% endif %}</td>
+                                    <td class="px-3 py-2 text-sm {% if item.status == 'failed' and not item.gone %}text-red-700{% endif %}">{{ item.detail or "" }}</td>
+                                    <td class="px-3 py-2 text-sm">{{ item.fork_parent or "" }}{% if item.fork_source_shown %}<div class="text-xs text-gray-500">source: {{ item.fork_source_shown }}</div>{% endif %}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ yes(item.archived) }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{{ yes(item.private) }}</td>
+                                    <td class="px-3 py-2 text-sm text-center font-mono">{{ item.pushed_date }}</td>
+                                    <td class="px-3 py-2 text-sm text-center">{% if item.in_kospex %}<a href="/repo/{{ item._repo_id | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">yes</a>{% else %}no{% endif %}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h2 class="text-xl font-semibold text-gray-900 mb-2">In kospex, not in this listing</h2>
+                    <p class="text-sm text-gray-600 mb-4">Repos kospex has under {{ run.org_key }} that this run's listing doesn't include: deleted, renamed, transferred, or not visible to the token that listed them.</p>
+                    {% if page.drift %}
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200" id="driftTable">
+                            <thead class="bg-gray-50">
+                                <tr><th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Repo ({{ page.drift | length }})</th></tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for repo_id in page.drift %}
+                                <tr><td class="px-3 py-2 text-sm"><a href="/repo/{{ repo_id | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ repo_id }}</a></td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-500">None: every repo kospex has under this org is in the listing.</p>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% include '_footer_scripts.html' %}
+        {% include '_datatable_scripts.html' %}
+        <script>
+            $(document).ready(function () {
+                if (!$("#itemsTable").length) {
+                    return;
+                }
+                const table = $("#itemsTable").DataTable({
+                    order: [[0, "asc"]],
+                    pageLength: 100,
+                    lengthMenu: [[25, 50, 100, -1], [25, 50, 100, "All"]],
+                });
+                $(".status-filter").on("click", function () {
+                    const status = runStatusFilters[Number(this.dataset.filter)];
+                    if (status === undefined) {
+                        return;
+                    }
+                    table.column(1).search(status ? "^" + status + "$" : "", true, false).draw();
+                    $(".status-filter").removeClass("bg-blue-600 text-white border-blue-600")
+                        .addClass("border-gray-300 text-gray-700");
+                    $(this).removeClass("border-gray-300 text-gray-700")
+                        .addClass("bg-blue-600 text-white border-blue-600");
+                });
+            });
+        </script>
+    </body>
+</html>

@@ -633,6 +633,21 @@ def refresh_listing(db, run_id, items):
     return counts
 
 
+def items(db, run_id):
+    """A run's items, by repo id, each with `in_kospex` (1 when `repos` has it).
+
+    The per-row form of the join `inventory()` totals. Includes `gone` items:
+    callers that only want the current listing filter on status.
+    """
+    return list(db.query(f"""
+        SELECT i.*, (r._repo_id IS NOT NULL) AS in_kospex
+          FROM {TBL_ORG_SYNC_ITEMS} i
+          LEFT JOIN {TBL_REPOS} r ON r._repo_id = i._repo_id
+         WHERE i.run_id = ?
+         ORDER BY i._repo_id
+    """, [run_id]))
+
+
 def inventory(db, run_id):
     """What a run's listing holds, compared with what kospex already has.
 
