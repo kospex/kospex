@@ -88,6 +88,14 @@ class TestBehindFields:
         fields = _kd().behind_fields("npm", "pkg", version)
         assert fields == dict.fromkeys(KospexDependencies.BEHIND_FIELDS)
 
+    def test_an_oversized_version_in_the_listing_is_skipped(self):
+        """One published version with a 5000-digit component must not end the
+        lookup -- or the krunner osi batch it runs in (CWE-1284)."""
+        huge = "1" * 5000 + ".0.0"
+        kd = _kd(versions=REACT_LIKE + [(huge, "2026-01-01T00:00:00Z", False)])
+        assert kd.behind_fields("npm", "pkg", "18.3.0")["behind_level"] == "major"
+        assert kd.behind_fields("npm", "pkg", huge) == KospexDependencies.empty_behind_fields()
+
     def test_no_deps_dev_record_gives_every_key_as_none(self):
         kd = KospexDependencies(kospex_query=_Query({}))
         assert kd.behind_fields("npm", "nope", "1.0.0") == KospexDependencies.empty_behind_fields()
@@ -158,6 +166,23 @@ class TestScaTable:
         assert row["latest_version"] == "19.2.1"
         assert row["behind"] == "major (1/2/2)"
         assert "behind_major" not in row
+
+    def test_escape_sequences_do_not_reach_the_terminal(self):
+        """CWE-150: rich passes ESC through even with markup off, and these
+        values come from deps.dev and the manifest."""
+        import io
+
+        from rich.console import Console
+
+        buf = io.StringIO()
+        console = Console(file=buf, force_terminal=True, width=300)
+        KospexDependencies().print_table_rows(
+            [{"package_name": "x", "latest_version": "1.0.0\x1b]0;title\x07",
+              "source_repo": "https://example.com/r\x1b[2J"}], console=console)
+        out = buf.getvalue()
+        assert "\x1b]0;title" not in out
+        assert "\x1b[2J" not in out
+        assert "1.0.0" in out
 
     def test_the_table_shows_them(self):
         from rich.console import Console

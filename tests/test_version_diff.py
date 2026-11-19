@@ -49,6 +49,12 @@ class TestParseRelease:
         # A legacy upload packaging refuses, but its number is still readable.
         assert parse_release("0.10.0.win32-py2.7", "pypi") == (0, 10, 0)
 
+    @pytest.mark.parametrize("system", ["npm", "pypi"])
+    def test_a_component_longer_than_the_int_digit_limit_is_unparseable(self, system):
+        """int() refuses more than 4300 digits (ValueError). A published version
+        is attacker-controlled: it must read as unparseable, not raise."""
+        assert parse_release("1" * 5000 + ".0.0", system) is None
+
     def test_a_long_digit_run_is_linear(self):
         start = time.perf_counter()
         assert parse_release("1." * 5000 + "x") is not None

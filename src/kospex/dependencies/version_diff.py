@@ -37,16 +37,22 @@ def parse_release(version, system=None):
         return None
     version = version.strip()
     numbers = None
+    # ValueError as well as InvalidVersion: int() refuses a digit run longer
+    # than sys.get_int_max_str_digits() (4300), and anyone can publish a
+    # version. Unparseable, not an exception that ends a whole scan.
     if (system or "").lower() == "pypi":
         try:
             numbers = Version(version).release
-        except InvalidVersion:
+        except (InvalidVersion, ValueError):
             numbers = None
     if numbers is None:
         match = _LEADING_NUMBERS.match(version)
         if not match:
             return None
-        numbers = tuple(int(n) for n in match.group(1).split("."))
+        try:
+            numbers = tuple(int(n) for n in match.group(1).split("."))
+        except ValueError:
+            return None
     return tuple(numbers) + (0,) * (3 - len(numbers))
 
 

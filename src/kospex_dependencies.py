@@ -707,8 +707,10 @@ class KospexDependencies:
         for rec in records:
             # Text, not str: a str cell is parsed as rich markup, which would
             # swallow the `[python]` of a package declared with extras.
-            table.add_row(*(Text(self._display_value(self._field_value(rec, f)))
-                            for f in fields))
+            # terminal_safe (CWE-150): versions, dates and source repos come
+            # from deps.dev and the manifest, and rich passes ESC through.
+            table.add_row(*(Text(KospexUtils.terminal_safe(
+                self._display_value(self._field_value(rec, f)))) for f in fields))
         (console or Console()).print(table)
 
     def table_rows(self, records):
