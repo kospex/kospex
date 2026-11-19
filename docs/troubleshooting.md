@@ -90,18 +90,17 @@ If `kgit clone` fails, here are the most common causes and solutions:
   ```bash
   # Configure CA certificate for specific repository URL
   git config --global http."https://your-git-server.company.com/".sslCAInfo /path/to/your/private-ca.crt
-
-  # Or disable SSL verification for specific host (less secure)
-  git config --global http."https://your-git-server.company.com/".sslVerify false
   ```
 
-  **Temporary Workaround (Not Recommended for Production)**
+  **Never turn SSL verification off.** Configure the CA certificate with one of the
+  options above instead. With `http.sslVerify false` or `GIT_SSL_NO_VERIFY`, git no
+  longer checks who it is talking to, so anyone on the network path can intercept
+  the connection. They can read your credentials and the code, and serve you
+  altered repositories, and nothing will tell you. That holds for "just for
+  testing" and for a single host. If you have set it before, check for it:
   ```bash
-  # Disable SSL verification globally (INSECURE - use only for testing)
-  git config --global http.sslVerify false
-
-  # Re-enable SSL verification after fixing CA issues
-  git config --global http.sslVerify true
+  git config --show-origin --get-regexp 'http.*sslverify'   # anything set to false: remove it
+  env | grep GIT_SSL_NO_VERIFY                              # should print nothing
   ```
 
   **Verifying CA Certificate Installation**
@@ -261,8 +260,10 @@ verification until requests is told to trust the proxy's CA.
     to `~/kospex/REQUEST_CA_CERTS` and suggested it as `REQUESTS_CA_BUNDLE`. That
     file can't verify anything. If you are using it, run `kospex connectivity -save`
     to replace it with a bundle that works, then delete `REQUEST_CA_CERTS`.
-  - Don't turn verification off to work around this: it hides the error and
-    removes the protection the check exists for.
+  - **Never turn verification off to work around this**, however it is done.
+    Configure the CA bundle as above instead. Without verification, anyone on the network
+    path can intercept kospex's traffic. They can read the GitHub and Bitbucket
+    tokens it sends and change the responses it records, and nothing will tell you.
 
 ### Authentication and Rate Limiting
 
