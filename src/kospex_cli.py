@@ -933,6 +933,38 @@ def _sca_package(package_spec, file_path, save, out, as_json):
     console.print()
 
 
+def _upgrade_path_lines(version, behind):
+    """Lines describing the upgrade path from `version` (already
+    terminal-safe) to the latest release, from behind_fields(); [] when it was
+    not measured or there is no gap. deps.dev text goes through
+    terminal_safe() (CWE-150)."""
+    safe = KospexUtils.terminal_safe
+    level = behind.get("behind_level")
+    if level not in ("major", "minor", "patch"):
+        return []
+
+    def plural(count, noun):
+        return f"{count} {noun}{'' if count == 1 else 's'}"
+
+    steps = [f"{behind[f'behind_{name}']} {name}"
+             for name in ("major", "minor", "patch", "other") if behind.get(f"behind_{name}")]
+    listed = steps[0] if len(steps) == 1 else f"{', '.join(steps[:-1])} and {steps[-1]}"
+    total = sum(behind.get(f"behind_{name}") or 0
+                for name in ("major", "minor", "patch", "other"))
+    lines = [f"Upgrade path to {safe(behind['latest_version'])}: a {level} change, "
+             f"{listed} release{'' if total == 1 else 's'} "
+             f"({plural(behind['behind_releases'], 'release')} in between, counting "
+             "fixes to older lines)."]
+    on_major = behind.get("behind_on_major")
+    if on_major:
+        lines.append(f"On its own major: {plural(on_major, 'newer release')}, up to "
+                     f"{safe(behind['latest_on_major'])}.")
+    elif level == "major":
+        lines.append(f"{version} is the newest release on its major; the next step "
+                     "is a major.")
+    return lines
+
+
 def _print_requested_version(package_type, package_name, requested):
     """The lines under the Releases table for `-package TYPE:NAME@VERSION`.
 
@@ -956,6 +988,8 @@ def _print_requested_version(package_type, package_name, requested):
     else:
         console.print(f"{version} is {behind} release{'' if behind == 1 else 's'} "
                       f"behind the latest ({latest}).")
+    for line in _upgrade_path_lines(version, requested.get("behind") or {}):
+        console.print(line)
     if requested["is_deprecated"]:
         reason = safe(requested["deprecated_reason"])
         console.print(f"{version} is deprecated{': ' + reason if reason else '.'}")

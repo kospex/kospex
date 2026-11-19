@@ -32,6 +32,7 @@ from kospex.extractors.npmlock import npm_alias_target
 from kospex.extractors.registry import classify, resolve_parser
 from kospex.npm_range import min_satisfying, parse_range, satisfies
 from kospex.prerelease import is_prerelease
+from kospex.dependencies import version_diff as vdiff
 import kospex_utils as KospexUtils
 from kospex_git import KospexGit
 
@@ -624,12 +625,19 @@ class KospexDependencies:
         advisories describe -- for a range, not the declared text (`^1` is
         checked at 1.12.0). `resolution` says why a row's numbers are blank
         (`no_satisfying_version`, `version_yanked`, ...).
+
+        `latest_version` and `behind` are the upgrade path from the version
+        checked to the latest release (behind_fields()). `behind` is composed
+        from the behind_* fields -- `major (3/8/4)` is a major change, along a
+        path of 3 major, 8 minor and 4 patch releases -- see _field_value().
         """
         return [
             "package_name",
             "package_version",
             "resolved_version",
             "versions_behind",
+            "latest_version",
+            "behind",
             "days_ago",
             "published_at",
             "default",
@@ -641,13 +649,33 @@ class KospexDependencies:
     # Columns rendered right-aligned; everything else is left-aligned.
     _NUMERIC_TABLE_FIELDS = frozenset({
         "package_version", "resolved_version", "versions_behind", "days_ago",
-        "default", "advisories",
+        "default", "advisories", "latest_version",
     })
 
     # Table headers that differ from the field name. -json and -out keep the
     # field name, which is the dependency_data column; the table says what it
     # means, as the /dependencies/ page does.
-    _TABLE_HEADERS = {"resolved_version": "checked at"}
+    _TABLE_HEADERS = {"resolved_version": "checked at", "latest_version": "latest",
+                      "behind": "behind (M/m/p)"}
+
+    @staticmethod
+    def behind_label(record):
+        """`behind` for one record: the level, with the upgrade path's major /
+        minor / patch counts when there is a gap -- `major (3/8/4)`, `none`,
+        `ahead` -- or None when it was not measured."""
+        level = record.get("behind_level")
+        if level in (None, "", "none", "ahead"):
+            return level or None
+        counts = "/".join(str(record.get(f"behind_{name}") or 0)
+                          for name in ("major", "minor", "patch"))
+        return f"{level} ({counts})"
+
+    @classmethod
+    def _field_value(cls, record, field):
+        """A table field of a record: the stored value, or a composed one."""
+        if field == "behind":
+            return cls.behind_label(record)
+        return record.get(field)
 
     def get_cli_table(self):
         """Return an empty rich Table with the dependency columns."""
@@ -679,7 +707,8 @@ class KospexDependencies:
         for rec in records:
             # Text, not str: a str cell is parsed as rich markup, which would
             # swallow the `[python]` of a package declared with extras.
-            table.add_row(*(Text(self._display_value(rec.get(f))) for f in fields))
+            table.add_row(*(Text(self._display_value(self._field_value(rec, f)))
+                            for f in fields))
         (console or Console()).print(table)
 
     def table_rows(self, records):
@@ -691,7 +720,7 @@ class KospexDependencies:
         the seed -- it must not reach JSON as a string in a numeric field.
         """
         fields = self.get_table_field_names()
-        return [{f: None if rec.get(f) == "" else rec.get(f) for f in fields}
+        return [{f: None if (v := self._field_value(rec, f)) == "" else v for f in fields}
                 for rec in records]
 
     @staticmethod
@@ -1183,12 +1212,22 @@ class KospexDependencies:
             return "gradle"
         return package_type
 
+    # How far a version is behind the latest release, by level along the upgrade
+    # path (behind_fields()). Written to the `krunner osi` CSV and shown by
+    # `kospex sca`, but not stored: they become columns with the package facts
+    # tables (changes/202611-package-facts-tables.md), not dependency_data ones.
+    BEHIND_FIELDS = (
+        "latest_version", "behind_level", "behind_major", "behind_minor",
+        "behind_patch", "behind_other", "behind_releases", "behind_on_major",
+        "latest_on_major",
+    )
+
     # Extractor-only template fields produced by the leaf parsers that are
     # NOT columns in TBL_DEPENDENCY_DATA and must be stripped before upsert.
     _NON_SCHEMA_FIELDS = (
         "days_ago", "authors", "ecosystem", "semantic",
         "extras", "requirements_type", "version_type",
-    )
+    ) + BEHIND_FIELDS
 
     def save_preconditions(self, filename):
         """Reasons `kospex sca -save` must refuse to write `filename`, or [].
@@ -1538,9 +1577,17 @@ class KospexDependencies:
         # Handed to lookup_dependency(), which records it as resolved_version
         # and removes it from the record (it is not a dependency_data column).
         details["depsdev_version"] = canonical
-        days_info = self.get_versions_behind(package_type, package_name, canonical)
+        # One package listing for both counts, so they describe the same list.
+        # None (a failed fetch) is not passed on: get_versions_behind() would
+        # take it as "fetch it yourself" and ask deps.dev a second time.
+        releases = self.release_list(package_type, package_name)
+        days_info = {}
+        if releases is not None:
+            days_info = self.get_versions_behind(package_type, package_name, canonical,
+                                                 releases=releases)
         versions_behind = days_info.get("versions_behind")
         details["versions_behind"] = versions_behind if isinstance(versions_behind, int) else None
+        details.update(self.behind_fields(package_type, package_name, canonical, releases))
         details["authors"] = None
         if details["source_repo"]:
             details["authors"] = self.get_repo_authors(details["source_repo"])
@@ -2220,6 +2267,7 @@ class KospexDependencies:
         - `versions_behind`: get_versions_behind(); None when unknown (a
           pre-release, or a version missing from the package's list).
         - `latest_version`: _latest_release(), where that count starts.
+        - `behind`: behind_fields(), the upgrade path to that latest release.
         - `advisories`: advisories(), one entry per vulnerability.
         - `advisory_ids`: how many IDs deps.dev lists, before aliases merge.
         """
@@ -2247,6 +2295,7 @@ class KospexDependencies:
                                   or (listed["deprecated_reason"] if listed else "")),
             "versions_behind": behind.get("versions_behind"),
             "latest_version": latest["version"] if latest else None,
+            "behind": self.behind_fields(package_type, package_name, canonical, releases),
             "advisories": self.advisories(ids),
             "advisory_ids": len(ids),
         }, status
@@ -2308,6 +2357,156 @@ class KospexDependencies:
                     entry["also"].append(alias)
                     by_id[alias] = entry
         return merged
+
+    @classmethod
+    def empty_behind_fields(cls):
+        """BEHIND_FIELDS, all None: a row not looked up, or not measurable."""
+        return dict.fromkeys(cls.BEHIND_FIELDS)
+
+    def behind_fields(self, package_type, package_name, version, releases=None):
+        """BEHIND_FIELDS for `version` against the latest release, from
+        releases_between(); every key is present, None when unknown.
+
+        `behind_level` is major / minor / patch / none, or `ahead` when
+        `version` is above kospex's latest (deps.dev's default can trail a
+        release). The counts are the upgrade path's; `behind_releases` is every
+        release in between. A pre-release in use gives all None, as
+        versions_behind does: release numbers alone would read `1.2.3-rc.1` as
+        1.2.3.
+        """
+        fields = self.empty_behind_fields()
+        if not version or is_prerelease(package_type, version):
+            return fields
+        between = self.releases_between(package_type, package_name, version,
+                                        releases=releases)
+        if between is None:
+            return fields
+        fields["latest_version"] = between["to"]
+        if between["level"] == "downgrade":
+            fields["behind_level"] = "ahead"
+            return fields
+        fields.update({
+            "behind_level": between["level"],
+            "behind_major": between["major"],
+            "behind_minor": between["minor"],
+            "behind_patch": between["patch"],
+            "behind_other": between["other"],
+            "behind_releases": between["releases"],
+            "behind_on_major": between["on_major"],
+            "latest_on_major": between["latest_on_major"],
+        })
+        return fields
+
+    def releases_between(self, package_type, package_name, from_version, to_version=None,
+                         releases=None):
+        """The releases deps.dev lists after `from_version`, up to `to_version`,
+        counted by level along the upgrade path: the online counterpart of
+        kospex.dependencies.version_diff.
+
+        `to_version` defaults to _latest_release() -- deps.dev's default, or the
+        highest release by version when the default is a pre-release or missing
+        -- so it agrees with versions_behind and `sca -package`'s Latest.
+
+        Releases in (from, to] are taken in **version** order, not publish
+        order. Pre-releases are skipped, and a Maven flavour (`-jre`,
+        `-android`) counts only its own flavour's releases.
+
+        `major` / `minor` / `patch` / `other` count the **upgrade path**: the
+        first release of every minor line, plus the patches of the newest minor
+        line of each major. Patches to a minor line that a newer one superseded
+        are maintenance an upgrade never installs: react 16.12.0 -> 19.3.1 lists
+        44 releases, 19 of them fixes to 19.0.x and 19.1.x published after 19.2.0,
+        and the path is 3 major, 8 minor and 4 patch. Each path release is
+        classified against the one before it. `other` is a step that moves only
+        a fourth component (NuGet `1.2.3.1`), so the four counts sum to
+        len(`path`).
+
+        Also returned: `level` and `diff` (change_level / version_diff of the
+        two versions), `releases` and `versions` (every release in range, oldest
+        first), `path` (the path releases), and `on_major` /
+        `latest_on_major` (releases newer than `from_version` on its own major,
+        and the highest of them, or None).
+
+        `releases` is a release_list() the caller already has, as for
+        get_versions_behind(). Neither version has to be in deps.dev's list: the
+        bounds are compared by number. On a downgrade nothing is counted. None when deps.dev has no
+        record or a version has no leading number.
+        """
+        if releases is None:
+            releases = self.release_list(package_type, package_name)
+        if releases is None:
+            return None
+        stable = [r for r in releases if not r["is_prerelease"]]
+
+        if to_version is None:
+            anchor = self._latest_release(package_type, releases)
+            if anchor is None:
+                return None
+            to_version = anchor["version"]
+            flavour = self._maven_flavour(package_type, from_version)
+            if flavour and not to_version.endswith(flavour):
+                base = self._without_flavour(to_version)
+                twin = next((r for r in stable if r["version"] == base + flavour), None)
+                to_version = twin["version"] if twin else to_version
+
+        lo = vdiff.parse_release(from_version, package_type)
+        hi = vdiff.parse_release(to_version, package_type)
+        if lo is None or hi is None:
+            return None
+
+        result = {
+            "from": from_version,
+            "to": to_version,
+            "level": vdiff.change_level(from_version, to_version, package_type),
+            "diff": vdiff.version_diff(from_version, to_version, package_type),
+            "major": 0, "minor": 0, "patch": 0, "other": 0,
+            "releases": 0, "versions": [], "path": [],
+            "on_major": 0, "latest_on_major": None,
+        }
+        if result["level"] == "downgrade":
+            return result
+
+        flavour = self._maven_flavour(package_type, from_version)
+        parsed = []
+        for r in stable:
+            if self._maven_flavour(package_type, r["version"]) != flavour:
+                continue
+            numbers = vdiff.parse_release(r["version"], package_type)
+            if numbers is not None:
+                parsed.append((numbers, r["version"]))
+        width = max([len(lo), len(hi)] + [len(n) for n, _ in parsed])
+
+        def pad(t):
+            return t + (0,) * (width - len(t))
+
+        between = sorted((pad(n), v) for n, v in parsed if pad(lo) < pad(n) <= pad(hi))
+        result["versions"] = [v for _, v in between]
+        result["releases"] = len(between)
+
+        on_major = [v for n, v in between if n[0] == lo[0]]
+        result["on_major"] = len(on_major)
+        result["latest_on_major"] = on_major[-1] if on_major else None
+
+        # Newest minor line of each major within range, and the first release of
+        # each minor line (between is sorted, so the first seen is the lowest).
+        newest_minor = {}
+        first_of_line = {}
+        for n, v in between:
+            newest_minor[n[0]] = max(newest_minor.get(n[0], n[1]), n[1])
+            first_of_line.setdefault(n[:2], v)
+
+        previous = pad(lo)
+        for n, v in between:
+            # The line in use is not a new line: its next release is a patch,
+            # on the path only if no newer minor superseded the line.
+            starts_line = first_of_line[n[:2]] == v and n[:2] != pad(lo)[:2]
+            if not starts_line and n[1] != newest_minor[n[0]]:
+                continue
+            level = vdiff.level_between(previous, n)
+            result[level if level in vdiff.LEVELS else "other"] += 1
+            result["path"].append(v)
+            previous = n
+        return result
 
     # Maven artifacts published in parallel flavours: Guava's -jre / -android.
     _MAVEN_FLAVOURS = ("-jre", "-android")

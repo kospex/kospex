@@ -102,6 +102,9 @@ def test_a_prerelease_default_older_than_the_version_in_use():
 
     assert details["versions_behind"] == 4
     assert details["versions_before_default"] == 1      # 4.1.140
+    # By version order the backports drop out: only the two 4.2.x releases.
+    between = kd.releases_between("maven", "io.netty:netty-handler", "4.2.18.Final")
+    assert between["versions"] == ["4.2.19.Final", "4.2.20.Final"]
 
 
 def test_a_project_on_the_newer_backport_is_not_behind():

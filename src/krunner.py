@@ -162,6 +162,8 @@ def enrich_dependency_records(results, kdeps, echo=None, progress=None, enrich=T
         for d in results:
             d.update(KospexDependencies.unlooked_fields(
                 d.get("package_type"), d.get("package_name")))
+            # Same keys as an enriched row, empty: the CSV header is row 0's.
+            d.update(KospexDependencies.empty_behind_fields())
             d["package_use"] = _REQ_TO_USE.get(
                 d.get("requirements_type", ""), KospexSchema.PACKAGE_USE_UNKNOWN)
         return results
@@ -211,6 +213,14 @@ def enrich_dependency_records(results, kdeps, echo=None, progress=None, enrich=T
         # `peer` and `optional` went unnoticed in 497 rows.
         d["package_use"] = _REQ_TO_USE.get(
             d.get("requirements_type", ""), KospexSchema.PACKAGE_USE_UNKNOWN)
+        # The upgrade path to the latest release. CSV only: save_dependencies()
+        # strips these (_NON_SCHEMA_FIELDS). Last, so they are the CSV's last
+        # columns and a reader indexing the earlier ones is unaffected. On every
+        # row, None when not measured: write_dict_to_csv takes its header from
+        # row 0, and DictWriter raises on a later row with extra keys.
+        for field in KospexDependencies.BEHIND_FIELDS:
+            d.pop(field, None)
+            d[field] = deps_rec.get(field)
 
         # Not on the final package: the caller's own per-repo line reports the
         # total immediately afterwards, so a "312 of 312" here would just repeat it.
