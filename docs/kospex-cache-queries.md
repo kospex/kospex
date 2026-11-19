@@ -20,11 +20,15 @@ CREATE TABLE [url_cache] (
 
 Read this before using the cache as an audit record.
 
-- **Only successful (HTTP 200) responses are cached.** A failed request, such as a
-  404 for a package deps.dev doesn't know or a timeout, is not written. Requested URLs
-  are not logged anywhere else either. So **a missing URL does not prove it was never
-  sent.** A private package name is the case most likely to get a 404, and that is the
-  case the cache can't show. If you need to stop private names being sent, use
+- **Only successful (HTTP 200) responses are cached.** A request that gets an error
+  response, such as a 404 for a package deps.dev doesn't know, is not written to the
+  cache or logged anywhere. A request that gets no response at all (an SSL error, a
+  timeout, a refused connection) is not cached either, but from 0.4.1 it is logged
+  with its URL in `~/kospex/logs/kospex_query.log`, as
+  `Request to <url> failed: <error>`. A timeout may still have reached the server.
+  So **a missing URL does not prove it was never sent.** A private package name is
+  the case most likely to get a 404, and that is the case neither the cache nor the
+  log can show. If you need to stop private names being sent, use
   `KOSPEX_DEPS_PRIVATE` (and `GOPRIVATE` for Go). Matching packages are skipped before
   any request is made and saved as `private_skipped`.
 - **One row per URL.** Each exact URL has at most one row. The package URL
