@@ -291,3 +291,76 @@ def test_a_db_behind_0013_is_not_available():
     db.execute(f"DROP TABLE {M.TBL_ORG_SYNC_LISTINGS}")
     assert V.org_runs(db, org=None, server=None, now=NOW) == {"available": False,
                                                               "runs": []}
+
+
+# --- one run: /syncs/run/{run_id} --------------------------------------------
+
+def _run_db():
+    """A run of four items in various states, plus kospex repos for drift."""
+    db = _db()
+    db["repos"].insert_all([
+        {"_repo_id": f"{ORG}~a", "_git_server": "github.com", "_git_owner": "acme",
+         "_git_repo": "a"},
+        {"_repo_id": f"{ORG}~old", "_git_server": "github.com", "_git_owner": "acme",
+         "_git_repo": "old"},
+        {"_repo_id": "github.com~other~x", "_git_server": "github.com",
+         "_git_owner": "other", "_git_repo": "x"},
+    ], pk="_repo_id", alter=True)
+    run_id = M.save_listing(db, ORG, [
+        _item("a"),
+        _item("b", private=True),
+        _item("c", fork=True, fork_parent="up/c", fork_source="root/c"),
+        _item("d", fork=True, fork_parent="up/d", fork_source="up/d"),
+    ])
+    M.mark(db, run_id, f"{ORG}~a", M.SYNCED)
+    M.mark(db, run_id, f"{ORG}~b", M.FAILED, "clone failed: auth")
+    M.mark(db, run_id, f"{ORG}~c", M.SKIPPED, "fork")
+    return db, run_id
+
+
+def test_run_view_header_items_and_counts():
+    db, run_id = _run_db()
+    view = V.run_view(db, run_id)
+    assert view["available"] is True
+    assert view["run"]["org_key"] == ORG and view["owner"] == "acme"
+    assert view["counts"]["failed"] == 1 and view["counts"]["pending"] == 1
+    assert view["filters"] == [("failed", 1), ("skipped", 1), ("pending", 1), ("synced", 1)]
+    items = {i["_repo_id"].split("~")[-1]: i for i in view["rows"]}
+    assert list(items) == ["a", "b", "c", "d"]
+    assert items["a"]["in_kospex"] == 1 and items["b"]["in_kospex"] == 0
+    assert items["b"]["detail"] == "clone failed: auth" and items["b"]["private"] == 1
+    assert items["a"]["pushed_date"] == "2026-11-01"
+    # The source shows only when it isn't the parent.
+    assert items["c"]["fork_source_shown"] == "root/c"
+    assert items["d"]["fork_source_shown"] is None
+    assert view["continue_command"] == "kgit sync --org acme"
+
+
+def test_run_view_drift_and_private_come_from_inventory():
+    db, run_id = _run_db()
+    view = V.run_view(db, run_id)
+    # `old` is in kospex under acme but not listed; `other~x` is another org.
+    assert view["drift"] == M.inventory(db, run_id)["gone"] == [f"{ORG}~old"]
+    assert (view["private"], view["listed"]) == (1, 4)
+
+
+def test_run_view_gone_items_are_shown_but_not_counted_as_listed():
+    db, run_id = _run_db()
+    M.refresh_listing(db, run_id, [_item("a"), _item("c", fork=True), _item("d", fork=True)])
+    view = V.run_view(db, run_id)
+    assert [i["_repo_id"] for i in view["rows"] if i["gone"]] == [f"{ORG}~b"]
+    assert ("gone", 1) in view["filters"]
+    # b was the private one, and isn't in the current listing any more.
+    assert (view["private"], view["listed"]) == (0, 3)
+
+
+def test_run_view_unknown_run_raises_key_error():
+    db, _ = _run_db()
+    with pytest.raises(KeyError):
+        V.run_view(db, "19990101T000000Z")
+
+
+def test_run_view_on_a_db_behind_0013():
+    db = _db()
+    db.execute(f"DROP TABLE {M.TBL_ORG_SYNC_COMMANDS}")
+    assert V.run_view(db, "anything") == {"available": False}

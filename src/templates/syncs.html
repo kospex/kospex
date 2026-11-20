@@ -147,7 +147,7 @@
                                 {% set c = run.counts %}
                                 <tr>
                                     <td class="px-3 py-2 text-sm"><a href="/org/{{ run.org_key | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ run.org_key }}</a></td>
-                                    <td class="px-3 py-2 text-sm font-mono">{{ run.run_id }}</td>
+                                    <td class="px-3 py-2 text-sm font-mono"><a href="/syncs/run/{{ run.run_id | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ run.run_id }}</a></td>
                                     <td class="px-3 py-2 text-sm {% if run.finished_at %}text-green-700{% else %}text-yellow-700{% endif %}">{{ "finished" if run.finished_at else "in progress" }}</td>
                                     <td class="px-3 py-2 text-sm font-mono">{{ run.listed_at or run.started_at }}</td>
                                     <td class="px-3 py-2 text-sm text-center">{{ run.listed }}</td>

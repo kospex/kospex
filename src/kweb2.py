@@ -876,6 +876,28 @@ def syncs(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/syncs/run/{run_id}", response_class=HTMLResponse)
+def syncs_run(request: Request, run_id: str):
+    """One org sync run, repo by repo, and the org's repos the listing doesn't have.
+
+    Read-only, and not linked from the menus yet. See changes/202611-kweb-sync-run.md.
+    """
+    from kospex import syncs_view as SyncsView
+    try:
+        try:
+            page = SyncsView.run_view(KospexQuery().kospex_db, run_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="No org sync run with that id.")
+        page["title"] = "Org sync run"
+        return templates.TemplateResponse(request, "syncs_run.html", {"page": page})
+    except HTTPException:
+        # The 404 above, not a 500 from the handler below. (#210)
+        raise
+    except Exception as e:
+        logger.error(f"Error in syncs run endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.get("/repos/", response_class=HTMLResponse)
 @app.get("/repos/{id}", response_class=HTMLResponse)
 def repos(request: Request, id: Optional[str] = None):
