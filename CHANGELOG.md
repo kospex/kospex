@@ -2,6 +2,39 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+No database migration. Nothing new is stored.
+
+### Added
+
+- **How far behind the latest release, by major / minor / patch.** Counted
+  along the upgrade path: every minor and major step, plus the patches on the
+  newest minor line of each major. Fixes published to older lines are left
+  out, because an upgrade never installs them: react 16.12.0 to 19.3.1 is
+  3 major, 8 minor and 4 patch releases, of 44 in between.
+  - **`krunner osi`** adds nine columns at the end of its CSV:
+    `latest_version`, `behind_level` (`major`, `minor`, `patch`, `none` or
+    `ahead`), `behind_major`, `behind_minor`, `behind_patch`, `behind_other`
+    (a fourth-component step, as in NuGet), `behind_releases` (every release
+    in between), `behind_on_major` and `latest_on_major` (newer releases on
+    the major in use, and the highest). They are empty when a package was not
+    looked up or is on a pre-release. They are not saved to the database.
+  - **`kospex sca FILE`** adds `latest` and `behind (M/m/p)` columns, e.g.
+    `major (3/8/4)`. `-out` and `-json` have them as `latest_version` and
+    `behind`.
+  - **`kospex sca -package TYPE:NAME@VERSION`** shows the upgrade path to the
+    latest release and, when that is a major away, the newest release on the
+    major in use. "N releases behind" now reads "N releases were published
+    between VERSION and the latest", since it counts fixes to older lines.
+- **`kospex.dependencies.version_diff`**, for comparing two versions offline:
+  the raw per-component difference (`version_diff`) and the level of the
+  change (`change_level`).
+
+`versions_behind` is unchanged. It counts by publish date, so it can differ
+from `behind_releases`, which counts by version: react 16.12.0 reads 43 and
+44.
+
 ## 0.4.1 - 2026-11-18
 
 No database migration. Run `krunner osi` to refresh `versions_behind` (see

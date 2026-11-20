@@ -158,8 +158,9 @@ class TestColumns:
         Same columns in the table, -json and -out, from the one list."""
         fields = KospexDependencies().get_table_field_names()
         assert fields == ["package_name", "package_version", "resolved_version",
-                          "versions_behind", "days_ago", "published_at", "default",
-                          "advisories", "resolution", "source_repo"]
+                          "versions_behind", "latest_version", "behind", "days_ago",
+                          "published_at", "default", "advisories", "resolution",
+                          "source_repo"]
 
     def test_the_table_titles_resolved_version_checked_at(self):
         """As on /dependencies/. -json and -out keep the DB column name."""

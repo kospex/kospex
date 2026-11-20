@@ -634,7 +634,8 @@ class TestScaPackageVersion:
         latest = next(i for i, l in enumerate(lines) if "Latest" in l)
         assert first < requested < latest
         assert "1.1.0" in lines[requested]
-        assert "1.1.0 is 1 release behind the latest (1.2.0)." in result.output
+        assert ("1 release was published between 1.1.0 and the latest (1.2.0), "
+                "including any fixes to older lines.") in " ".join(result.output.split())
 
     def test_the_latest_row_is_flagged_instead_of_repeated(self, run_sca):
         result = run_sca("-package", "pypi:x@1.2.0", listing=THREE_RELEASES,
@@ -651,7 +652,8 @@ class TestScaPackageVersion:
 
         assert result.exit_code == 0, result.output
         assert "First (requested)" in result.output
-        assert "1.0.0 is 2 releases behind the latest (1.2.0)." in result.output
+        assert ("2 releases were published between 1.0.0 and the latest (1.2.0), "
+                "including any fixes to older lines.") in " ".join(result.output.split())
 
     def test_a_pre_release_newer_than_latest_goes_after_it(self, run_sca):
         listing = _versions(
@@ -688,6 +690,9 @@ class TestScaPackageVersion:
             assert text in out
         unscored = next(l for l in out.splitlines() if "GHSA-b" in l)
         assert "0.0" not in unscored and " - " in unscored
+        # Says ADVISORY is a placeholder; a bare ".../ADVISORY" read as a broken link.
+        assert ("Look up an advisory at https://osv.dev/vulnerability/<ID from the "
+                "Advisory column>") in " ".join(out.split())
         assert "no CVSS 3 score" in out
 
     def test_no_advisories_says_so(self, run_sca):

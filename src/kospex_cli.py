@@ -27,6 +27,7 @@ import krunner_utils as KrunnerUtils
 from kospex.db import Migrator
 from kospex.habitat_config import HabitatConfig
 from kospex.db.migrator import warn_if_behind
+from kospex.dependencies import version_diff as vdiff
 from kospex.extractors.registry import package_types
 from kospex.integrations.snyk.cli import snyk
 from kospex_core import GitRepo, Kospex, RepoPathConflict
@@ -933,6 +934,46 @@ def _sca_package(package_spec, file_path, save, out, as_json):
     console.print()
 
 
+def _upgrade_path_lines(version, behind, system=None):
+    """Lines describing the upgrade path from `version` (already
+    terminal-safe) to the latest release, from behind_fields(); [] when it was
+    not measured or there is no gap. deps.dev text goes through
+    terminal_safe() (CWE-150).
+
+    The total of releases in between (behind_releases) is left to the CSV:
+    beside the published-between count above it, a third number read as a
+    contradiction.
+    """
+    safe = KospexUtils.terminal_safe
+    level = behind.get("behind_level")
+    if level not in ("major", "minor", "patch"):
+        return []
+
+    steps = [f"{behind[f'behind_{name}']} {name}"
+             for name in ("major", "minor", "patch", "other") if behind.get(f"behind_{name}")]
+    listed = steps[0] if len(steps) == 1 else f"{', '.join(steps[:-1])} and {steps[-1]}"
+    total = sum(behind.get(f"behind_{name}") or 0
+                for name in ("major", "minor", "patch", "other"))
+    lines = [f"Upgrade path to {safe(behind['latest_version'])}: "
+             f"{listed} release{'' if total == 1 else 's'}."]
+    if level != "major":
+        # The latest is on this major, so the line below would repeat the one above.
+        return lines
+
+    numbers = vdiff.parse_release(behind.get("latest_on_major") or version, system)
+    line = f"{numbers[0]}.x" if numbers else "its major"
+    on_major = behind.get("behind_on_major")
+    if on_major:
+        newest = behind["latest_on_major"]
+        step = vdiff.change_level(version, newest, system)
+        size = f", a {step} upgrade" if step in vdiff.LEVELS else ""
+        lines.append(f"Without a major upgrade: {version} → {safe(newest)}{size} "
+                     f"({on_major} newer {line} release{'' if on_major == 1 else 's'}).")
+    else:
+        lines.append(f"{version} is the latest {line}; any upgrade from here is a major one.")
+    return lines
+
+
 def _print_requested_version(package_type, package_name, requested):
     """The lines under the Releases table for `-package TYPE:NAME@VERSION`.
 
@@ -954,8 +995,13 @@ def _print_requested_version(package_type, package_name, requested):
     elif behind == 0:
         console.print(f"{version} is the latest release.")
     else:
-        console.print(f"{version} is {behind} release{'' if behind == 1 else 's'} "
-                      f"behind the latest ({latest}).")
+        # Publish order, so it counts fixes to older lines released in that
+        # window (react's 15.7.0) and not ones released after the latest.
+        console.print(f"{behind} release{' was' if behind == 1 else 's were'} published "
+                      f"between {version} and the latest ({latest}), including any "
+                      "fixes to older lines.")
+    for line in _upgrade_path_lines(version, requested.get("behind") or {}, package_type):
+        console.print(line)
     if requested["is_deprecated"]:
         reason = safe(requested["deprecated_reason"])
         console.print(f"{version} is deprecated{': ' + reason if reason else '.'}")
@@ -987,7 +1033,8 @@ def _print_requested_version(package_type, package_name, requested):
     if any(a["cvss3_score"] is None for a in advisories):
         console.print("CVSS 3 '-' means deps.dev has no CVSS 3 score; the advisory may "
                       "be scored under CVSS 4. Check its severity on osv.dev.")
-    console.print("Details: https://osv.dev/vulnerability/ADVISORY")
+    console.print("Look up an advisory at "
+                  "https://osv.dev/vulnerability/<ID from the Advisory column>")
 
 
 @cli.command("sca")
