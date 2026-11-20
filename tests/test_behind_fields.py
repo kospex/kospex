@@ -241,17 +241,37 @@ class TestScaPackage:
 
         fields = _kd().behind_fields("npm", "pkg", "18.3.0")
         lines = _upgrade_path_lines("18.3.0", fields)
-        assert lines[0] == ("Upgrade path to 19.2.1: a major change, 1 major, 2 minor and "
-                            "2 patch releases (8 releases in between, counting fixes to "
-                            "older lines).")
-        assert lines[1] == "On its own major: 1 newer release, up to 18.3.1."
+        assert lines == [
+            "Upgrade path to 19.2.1: 1 major, 2 minor and 2 patch releases.",
+            "Without a major upgrade: 18.3.0 → 18.3.1, a patch upgrade "
+            "(1 newer 18.x release).",
+        ]
+
+    def test_without_a_major_names_the_size_of_the_jump(self):
+        from kospex_cli import _upgrade_path_lines
+
+        # 18.x has a newer minor and a patch on it: the jump is a minor.
+        versions = REACT_LIKE + [("18.2.0", "2022-06-14T00:00:00Z", False)]
+        fields = _kd(versions=versions).behind_fields("npm", "pkg", "18.2.0")
+        assert _upgrade_path_lines("18.2.0", fields, "npm")[1] == (
+            "Without a major upgrade: 18.2.0 → 18.3.1, a minor upgrade "
+            "(2 newer 18.x releases).")
+
+    def test_latest_on_the_same_major_gives_only_the_path(self):
+        """No "Without a major upgrade" line: it would repeat the path."""
+        from kospex_cli import _upgrade_path_lines
+
+        fields = _kd().behind_fields("npm", "pkg", "19.0.0")
+        assert fields["behind_level"] == "minor"
+        assert _upgrade_path_lines("19.0.0", fields, "npm") == [
+            "Upgrade path to 19.2.1: 2 minor and 1 patch releases."]
 
     def test_newest_on_its_major(self):
         from kospex_cli import _upgrade_path_lines
 
         fields = _kd().behind_fields("npm", "pkg", "18.3.1")
         assert _upgrade_path_lines("18.3.1", fields)[1] == (
-            "18.3.1 is the newest release on its major; the next step is a major.")
+            "18.3.1 is the latest 18.x; any upgrade from here is a major one.")
 
     @pytest.mark.parametrize("version", ["19.2.1", "20.0.0", "19.0.0-rc.1"])
     def test_no_lines_without_a_gap(self, version):

@@ -24,8 +24,9 @@ No database migration. Nothing new is stored.
     `major (3/8/4)`. `-out` and `-json` have them as `latest_version` and
     `behind`.
   - **`kospex sca -package TYPE:NAME@VERSION`** shows the upgrade path to the
-    latest release, and how many newer releases there are on the major in
-    use.
+    latest release and, when that is a major away, the newest release on the
+    major in use. "N releases behind" now reads "N releases were published
+    between VERSION and the latest", since it counts fixes to older lines.
 - **`kospex.dependencies.version_diff`**, for comparing two versions offline:
   the raw per-component difference (`version_diff`) and the level of the
   change (`change_level`).

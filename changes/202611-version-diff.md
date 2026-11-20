@@ -57,10 +57,17 @@ kd.releases_between("npm", "react", "16.12.0")
 ```
 $ kospex sca -package npm:react@16.12.0
 ...
-16.12.0 is 43 releases behind the latest (19.3.1).
-Upgrade path to 19.3.1: a major change, 3 major, 8 minor and 4 patch releases (44 releases in between, counting fixes to older lines).
-On its own major: 3 newer releases, up to 16.14.0.
+43 releases were published between 16.12.0 and the latest (19.3.1), including any fixes to older lines.
+Upgrade path to 19.3.1: 3 major, 8 minor and 4 patch releases.
+Without a major upgrade: 16.12.0 → 16.14.0, a minor upgrade (3 newer 16.x releases).
 ```
+
+The 43 is `versions_behind` (publish order) and the 44 in `releases` is version order; they
+differ by design. For react, 0.14.10 and 15.7.0 were published in the window but are older
+versions, and 19.0.9 / 19.1.10 / 19.2.9 are below 19.3.1 but were published after it.
+`-package` shows the publish-order count and the path, not the 44: a third total beside the
+first read as a contradiction. `behind_releases` keeps it in the CSV. The "Without a major
+upgrade" line appears only when the latest is a major away; otherwise it repeats the path.
 
 `to` defaults to `_latest_release()`: deps.dev's default version, or the highest release by
 version when the default is a pre-release or missing. The same rule as `versions_behind` and

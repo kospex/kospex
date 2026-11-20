@@ -279,7 +279,8 @@ kospex sca -package npm:@babel/traverse@7.0.0
   Requested   2.25.0    2020-11-11   6y
   Latest      2.34.2    2026-05-14   6m
 
-2.25.0 is 21 releases behind the latest (2.34.2).
+21 releases were published between 2.25.0 and the latest (2.34.2), including any fixes to older lines.
+Upgrade path to 2.34.2: 9 minor and 2 patch releases.
 4 known advisories for 2.25.0 (deps.dev lists 8 IDs; aliases of the same
 vulnerability are shown once):
 ```
@@ -289,8 +290,13 @@ score and title.
 
 - The version gets a **Requested** row in publish order. If it is the first
   or latest release, that row is marked `(requested)` instead.
-- **Releases behind** is counted the same way as `versions_behind` in the
-  file results. A pre-release has no count.
+- **Releases published between** is `versions_behind` from the file
+  results: releases in publish order, so it includes fixes to older lines
+  released in that window. A pre-release has no count.
+- **Upgrade path** counts only the releases an upgrade passes through, by
+  major, minor and patch: the same numbers as the `behind` column. When the
+  latest is a major away, a further line gives the newest release on your
+  current major.
 - **Advisories** are deps.dev's, for that exact version. deps.dev lists one
   vulnerability under several IDs (a GHSA and a PYSEC, for example), so IDs
   that are aliases of each other are shown as one row.
