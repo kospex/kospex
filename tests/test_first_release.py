@@ -688,6 +688,9 @@ class TestScaPackageVersion:
             assert text in out
         unscored = next(l for l in out.splitlines() if "GHSA-b" in l)
         assert "0.0" not in unscored and " - " in unscored
+        # Says ADVISORY is a placeholder; a bare ".../ADVISORY" read as a broken link.
+        assert ("Look up an advisory at https://osv.dev/vulnerability/<ID from the "
+                "Advisory column>") in " ".join(out.split())
         assert "no CVSS 3 score" in out
 
     def test_no_advisories_says_so(self, run_sca):

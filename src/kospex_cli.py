@@ -1021,7 +1021,8 @@ def _print_requested_version(package_type, package_name, requested):
     if any(a["cvss3_score"] is None for a in advisories):
         console.print("CVSS 3 '-' means deps.dev has no CVSS 3 score; the advisory may "
                       "be scored under CVSS 4. Check its severity on osv.dev.")
-    console.print("Details: https://osv.dev/vulnerability/ADVISORY")
+    console.print("Look up an advisory at "
+                  "https://osv.dev/vulnerability/<ID from the Advisory column>")
 
 
 @cli.command("sca")
