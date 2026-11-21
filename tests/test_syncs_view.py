@@ -357,16 +357,16 @@ def test_run_view_gone_items_are_shown_but_not_counted_as_listed():
 
 
 @pytest.mark.parametrize("counts, text", [
-    ({"internal": 1312}, "This run includes 1,312 internal repos out of 1,312."),
-    ({"private": 1}, "This run includes 1 private repo out of 1,312."),
+    ({"internal": 2500}, "This run includes 2,500 internal repos out of 2,500."),
+    ({"private": 1}, "This run includes 1 private repo out of 2,500."),
     ({"internal": 3, "private": 1},
-     "This run includes 3 internal and 1 private repos out of 1,312."),
+     "This run includes 3 internal and 1 private repos out of 2,500."),
     ({"internal": 3, "private": 1, "visibility_other": 2},
-     "This run includes 3 internal, 1 private and 2 other non-public repos out of 1,312."),
+     "This run includes 3 internal, 1 private and 2 other non-public repos out of 2,500."),
     ({}, None),
 ])
 def test_visibility_banner(counts, text):
-    inventory = {"internal": 0, "private": 0, "visibility_other": 0, "listed": 1312, **counts}
+    inventory = {"internal": 0, "private": 0, "visibility_other": 0, "listed": 2500, **counts}
     assert V.visibility_banner(inventory) == text
 
 

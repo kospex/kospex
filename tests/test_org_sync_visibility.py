@@ -40,7 +40,7 @@ def _repo(name, **kw):
 @pytest.mark.parametrize("repo, expected", [
     ({"visibility": "public", "private": False}, "public"),
     ({"visibility": "private", "private": True}, "private"),
-    # What a GitHub Enterprise org returned for all 1,312 of its repos.
+    # What a GitHub Enterprise org returned for every one of its repos.
     ({"visibility": "internal", "private": True}, "internal"),
     ({"visibility": "Internal"}, "internal"),
     # A value GitHub adds later is kept as sent, not dropped.
