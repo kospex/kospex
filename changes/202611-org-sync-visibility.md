@@ -11,8 +11,8 @@ by every member of the enterprise, across all its orgs, but not by the public.
 Only orgs owned by an enterprise account (GitHub Enterprise Cloud or Server)
 can have internal repos. A Team-plan org has only public and private repos.
 
-On a 1,312-repo enterprise org, every repo is internal. GitHub returned
-`visibility: "internal"` and `private: true` for all 1,312. kospex stored
+On an enterprise org, every repo is internal. GitHub returned
+`visibility: "internal"` and `private: true` for all. kospex stored
 `private = 0` for all of them, so the run page shows no private repos and
 nothing says they aren't public. kospex stores no other trace: kgit reads
 `visibility` from the listing, turns it into the 0/1 flag, and drops the value.
@@ -140,3 +140,35 @@ UPDATE [org_sync_items] SET [visibility] = 'private' WHERE [private] = 1;
 - No patch release; this ships as one change with the migration.
 - `private` keeps its meaning; `internal` is added beside it.
 - Unknown visibility is `NULL` and shown as "not recorded", never guessed.
+
+## Implementation
+
+| File | What |
+|---|---|
+| `src/kospex/db/migrations/0014_org_sync_visibility.sql` | the two columns and the `private = 1` backfill |
+| `src/kospex_github.py` | passes GitHub's `private` boolean through with `visibility` |
+| `src/kospex/org_sync.py` | `visibility(repo)`; items carry it, `private` derived from it |
+| `src/kospex/org_sync_manifest.py` | `PUBLIC` / `PRIVATE` / `INTERNAL`; `visibility` in `LISTING_FIELDS`; listings count `internal`; `inventory()` counts each |
+| `src/kospex/org_sync_command.py` | `relisting(opts)`, for the page's re-listing command |
+| `src/kgit.py` | `-inventory` / `-status` visibility line, `-history` `internal` column |
+| `src/kospex/syncs_view.py`, `src/templates/syncs_run.html` | Visibility column, markers, banner, not-recorded note |
+
+Where it differs from the plan, or settled what the plan left open:
+
+- **No `visibility` and no `private`** from GitHub gives `NULL`, not `public`:
+  the plan's fallback would have guessed.
+- **An unexpected value** (one GitHub adds later) is counted as
+  `visibility_other` and shown as "other non-public" in the banner, with its
+  own value as the row's marker.
+- **`-history` shows an empty cell**, not "-", for a listing from before 0014,
+  as it does for every other NULL count.
+- **The not-recorded note on a finished run** omits `-refresh`: with no
+  unfinished run, `-inventory -refresh` saves a new run, so the note says that
+  instead of promising to fill in this one.
+- **The re-listing command** keeps the last command's options except `-active`
+  and `-next` (which `-inventory` refuses) and the listing flags.
+- **The run page needs 0014**: on a DB behind it, the page shows the
+  `kospex upgrade-db` note. The Org syncs tab doesn't read visibility, so it
+  still works there.
+- **The internal marker is blue** (`bg-blue-100 text-blue-800`, already in the
+  committed CSS), private stays purple. No CSS rebuild.

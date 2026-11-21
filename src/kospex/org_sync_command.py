@@ -40,6 +40,24 @@ def continuing(opts):
     return [opt for opt in opts if opt not in _NOT_CONTINUED]
 
 
+def relisting(opts):
+    """The options for listing the run again into itself (`-inventory -refresh`).
+
+    Keeps what decides what is listed (-no-auth, the fork and archive choices)
+    and the rest as typed. Drops -active and -next with their values, which
+    -inventory refuses, and the other listing flags.
+    """
+    kept, skip = [], False
+    for opt in opts:
+        if skip:
+            skip = False
+        elif opt in ("-active", "-next"):
+            skip = True
+        elif opt not in _NOT_CONTINUED:
+            kept.append(opt)
+    return ["-inventory", "-refresh"] + kept
+
+
 def command(flag, owner, opts):
     """`kgit sync --org acme -active 90`, every value shell-quoted."""
     return " ".join(["kgit", "sync", flag, shlex.quote(owner)]
