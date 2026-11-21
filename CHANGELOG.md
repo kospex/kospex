@@ -70,6 +70,14 @@ until it is applied.
 - **New page: [Configuration](https://docs.kospex.io/configuration).** It covers
   where kospex keeps its files, which value wins, the `kospex.env` format, and
   the preference, credential and logging settings.
+- **`kospex orphans -active-in estate|server|org`.** Where a person counts
+  as still here: any synced repo (the default), the repo's git server, or its
+  kospex org (`server~owner`, so GitLab nested groups and self-hosted servers
+  work too).
+- **kweb `/orphans/` uses the same rule as the CLI.** It dated people by
+  committer date, counted bots as people and showed repos with no commits as
+  orphaned. It now shows the same statuses, bots and refresh age, with a menu
+  for the `active_in` scope.
 
 ## 0.4.2 - 2026-11-20
 

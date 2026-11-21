@@ -45,6 +45,35 @@ recent work is in an unrefreshed repo looks gone, and the repos they used to
 work on can be wrongly Orphaned. The summary line covers this by saying how
 many repos in scope are stale.
 
+## Where "still working for us" is looked for: `-active-in`
+
+The default is the whole estate, which is right for a company that syncs its
+own servers. A database holding several organisations (open source, or more
+than one customer business unit) can narrow it per repo:
+
+- `estate`: any synced repo (default).
+- `server`: repos on the repo's own git server.
+- `org`: repos in the repo's own kospex org, `KospexGit.generate_org_key(server,
+  owner)`, not a GitHub concept, so GitLab, Bitbucket and self-hosted servers
+  work the same. A GitLab nested group's owner is its whole path, so sibling
+  subgroups are different orgs; rolling a subgroup up to its parent group is
+  not done.
+
+On the 403-repo dev DB, `org` moves 42 repos from Knowledge to Orphaned (111
+vs 69): its 235 orgs mostly hold one or two repos. `server` matches `estate`,
+because 392 of the repos are on github.com.
+
+## kweb /orphans/
+
+`KospexQuery.get_orphans()` had its own copy of the loop: author email (good)
+but committer date for both windows, bots as people, and no-commit repos as
+orphaned. It now returns `kospex.orphans.report()` rows, so the page and the
+CLI agree (`test_get_orphans_matches_the_cli_rows`). The page shows Status,
+People, Present, % Here, Bots active and Refreshed (red past 30 days), and a
+menu for `?active_in=estate|server|org`; anything else is a 400. Scope ids
+(`/orphans/ORG_KEY`, `/orphans/SERVER`, `/orphans/REPO_ID`) select repos from
+the repos table, so a synced repo with no commits now appears (as Dormant).
+
 ## Decisions
 
 - **Orphaned means "no longer working for us"**, so active is estate-wide,
@@ -63,10 +92,14 @@ many repos in scope are stale.
 
 ## Files changed
 
-- `src/kospex/authorship.py`: `orphan_row()` (the rule, pure), status
-  constants, `ORPHAN_FIELDS`, `bot_checker()`.
-- `src/kospex_query.py`: `active_author_emails()`, `repo_author_emails()`
-  (chunked for SQLite's 999-variable limit), `repos_table()`.
+- `src/kospex/orphans.py`: the rule (`orphan_row()`, pure), `report()` used by
+  the CLI and kweb, `scope_key()`, `counts()`, `summary()`, `FIELDS`.
+- `src/kospex/authorship.py`: `bot_checker()`.
+- `src/kospex_query.py`: `active_author_emails()`,
+  `active_author_emails_by_scope()`, `repo_author_emails()` (chunked for
+  SQLite's 999-variable limit), `repos_table()`; `get_orphans()` uses
+  `report()`.
+- `src/kweb2.py`, `src/templates/orphans.html`: the page.
 - `src/kospex_cli.py`: `orphans` rewritten; adds `-stale-days`; `-target-list`
   takes repo_ids, skips blanks and `#` comments, and reports unparseable lines
   on stderr; CSV is spreadsheet-safe.
@@ -77,12 +110,13 @@ many repos in scope are stale.
 ## CSV columns
 
 `repo_id, status, people, people_active, pct_here, bots, bots_active,
-last_refresh, refresh_age_days, refresh_stale, window_days, active_days`.
+last_refresh, refresh_age_days, refresh_stale, window_days, active_days,
+active_in`.
 Replaces `_repo_id, committers, active, Orphaned, % Here`.
 
-## Not changed
+## Open question: Dormant repos
 
-kweb's `/orphans/` page (`KospexQuery.get_orphans()`) has its own copy of the
-loop. It already uses author email, but still filters the window on committer
-date, counts bots and shows no-commit repos as orphaned. Moving it onto
-`orphan_row()` is a follow-up.
+A Dormant repo has no person in the window, so nobody to check. Its last
+people could still be here (it is finished, and someone could pick it up) or
+all gone (finished and orphaned). Looking at the people in the year before its
+last commit would tell those apart; not done yet.

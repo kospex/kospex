@@ -10,6 +10,7 @@ import sqlite_utils
 from click.testing import CliRunner
 
 import kospex.authorship as KospexAuthorship
+import kospex.orphans as KospexOrphans
 import kospex_schema as KospexSchema
 from kospex_query import KospexQuery
 
@@ -29,8 +30,7 @@ def _ago(days):
 
 def _row(authors, active, repo=None, stale_days=30):
     repo = {"_repo_id": "r", "last_sync": "2026-11-20T00:00:00Z"} if repo is None else repo
-    return KospexAuthorship.orphan_row("r", repo, authors, active, _is_bot,
-                                       NOW, 365, 90, stale_days)
+    return KospexOrphans.orphan_row("r", repo, authors, active, _is_bot, NOW, stale_days)
 
 
 def test_people_none_active_is_orphaned():
@@ -69,7 +69,7 @@ def test_bots_active_means_on_this_repo():
 
 
 def test_not_in_db_is_not_synced():
-    row = KospexAuthorship.orphan_row("r", None, {}, set(), _is_bot, NOW, 365, 90, 30)
+    row = KospexOrphans.orphan_row("r", None, {}, set(), _is_bot, NOW, 30)
     assert row["status"] == "Not synced"
     assert row["refresh_stale"] == ""
 
@@ -84,37 +84,57 @@ def test_refresh_age_uses_the_staleness_rule(repo, age, stale):
     assert (row["refresh_age_days"], row["refresh_stale"]) == (age, stale)
 
 
-def test_fields_are_pinned():
-    row = _row({}, active=set())
-    assert list(row) != []
-    assert set(row) == set(KospexAuthorship.ORPHAN_FIELDS)
+def test_report_rows_have_every_field():
+    kq = _seed()
+    repos = kq.repos_table()
+    rows = KospexOrphans.report(kq, [*repos, "x~y~z"], repos, _is_bot)
+    assert rows
+    for row in rows:
+        assert set(row) == set(KospexOrphans.FIELDS)
+
+
+def test_unknown_active_in_is_an_error():
+    with pytest.raises(ValueError):
+        KospexOrphans.report(_seed(), [], {}, _is_bot, active_in="galaxy")
 
 
 # --- the queries, against a seeded DB --------------------------------------------
 
+def _owner(repo_id):
+    """(server, owner) from a test repo_id; '~~' is a '/' in a nested group."""
+    server, rest = repo_id.split("~", 1)
+    return server, rest.rsplit("~", 1)[0].replace("~~", "/")
+
+
 def _commit(repo_id, hash_value, author, author_days, committer="same", committer_days=None):
     committer_days = author_days if committer_days is None else committer_days
+    server, owner = _owner(repo_id)
     return {"_repo_id": repo_id, "hash": hash_value,
+            "_git_server": server, "_git_owner": owner,
             "author_email": author, "author_when": _ago(author_days),
             "committer_email": author if committer == "same" else committer,
             "committer_when": _ago(committer_days), "parents": 1, "_files": 1}
 
 
-REPOS = {
-    "github.com~acme~webmerged": "github.com",
-    "github.com~acme~rebased": "github.com",
-    "github.com~acme~botonly": "github.com",
-    "github.com~acme~quiet": "github.com",
-    "gitlab.com~beta~svc": "gitlab.com",
-}
+REPOS = [
+    "github.com~acme~webmerged",
+    "github.com~acme~rebased",
+    "github.com~acme~botonly",
+    "github.com~acme~quiet",
+    "gitlab.com~beta~svc",
+    # A GitLab nested group, and a sibling subgroup of it
+    "gitlab.com~group~~old~legacy",
+    "gitlab.com~group~~new~app",
+]
 
 
 def _seed(stale=False):
     db = sqlite_utils.Database(memory=True)
     db.execute(KospexSchema.SQL_CREATE_COMMITS)
     db.execute(KospexSchema.SQL_CREATE_REPOS)
-    for repo_id, server in REPOS.items():
-        _, owner, repo = repo_id.split("~")
+    for repo_id in REPOS:
+        server, owner = _owner(repo_id)
+        repo = repo_id.rsplit("~", 1)[1]
         db[KospexSchema.TBL_REPOS].insert({
             "_repo_id": repo_id, "_git_server": server, "_git_owner": owner,
             "_git_repo": repo, "last_sync": _ago(100 if stale else 1)})
@@ -128,6 +148,9 @@ def _seed(stale=False):
         _commit("github.com~acme~rebased", "r1", "gone@acme.com", 900, committer_days=7),
         _commit("github.com~acme~botonly", "b1", BOT, 3),
         _commit("github.com~acme~quiet", "q1", "gone@acme.com", 800),
+        # moved from one subgroup to its sibling
+        _commit("gitlab.com~group~~old~legacy", "l1", "mover@acme.com", 200),
+        _commit("gitlab.com~group~~new~app", "n1", "mover@acme.com", 10),
     ]
     db[KospexSchema.TBL_COMMITS].insert_all(rows, pk=["_repo_id", "hash"])
     return KospexQuery(kospex_db=db)
@@ -158,7 +181,12 @@ def test_repo_authors_chunk_large_scopes():
 def test_repos_table_scopes():
     kq = _seed()
     assert set(kq.repos_table()) == set(REPOS)
-    assert set(kq.repos_table(server="gitlab.com")) == {"gitlab.com~beta~svc"}
+    assert set(kq.repos_table(server="gitlab.com")) == {
+        "gitlab.com~beta~svc", "gitlab.com~group~~old~legacy", "gitlab.com~group~~new~app"}
+    assert set(kq.repos_table(id_params={"org_key": "gitlab.com~group~~old"})) == {
+        "gitlab.com~group~~old~legacy"}
+    assert set(kq.repos_table(id_params={"repo_id": "github.com~acme~quiet"})) == {
+        "github.com~acme~quiet"}
     assert set(kq.repos_table(repo_ids=["gitlab.com~beta~svc", "x~y~z"])) == {
         "gitlab.com~beta~svc"}
 
@@ -197,6 +225,8 @@ def test_cli_statuses(cli):
         "github.com~acme~rebased": "Dormant",
         "github.com~acme~webmerged": "Knowledge",
         "gitlab.com~beta~svc": "Knowledge",
+        "gitlab.com~group~~old~legacy": "Knowledge",
+        "gitlab.com~group~~new~app": "Knowledge",
     }
 
 
@@ -238,7 +268,7 @@ def test_cli_flags_stale_refresh(cli):
     fresh = CliRunner().invoke(cli(), ["orphans"]).output
     assert "not refreshed" not in fresh
     stale = CliRunner().invoke(cli(stale=True), ["orphans"]).output
-    assert "5 of 5 repos not refreshed in 30 days" in stale
+    assert "7 of 7 repos not refreshed in 30 days" in stale
     assert "kgit pull --stale 30" in stale
 
 
@@ -254,7 +284,112 @@ def test_cli_csv(cli, tmp_path):
     assert result.exit_code == 0, result.output
     with open(out, newline="") as f:
         rows = list(csv.DictReader(f))
-    assert list(rows[0]) == KospexAuthorship.ORPHAN_FIELDS
+    assert list(rows[0]) == KospexOrphans.FIELDS
     by_id = {r["repo_id"]: r for r in rows}
     assert by_id["github.com~acme~botonly"]["bots_active"] == "1"
     assert by_id["github.com~acme~webmerged"]["status"] == "Knowledge"
+
+
+# --- -active-in: where "still working for us" is looked for --------------------
+
+def _status(kq, repo_id, active_in):
+    repos = kq.repos_table()
+    rows = KospexOrphans.report(kq, list(repos), repos, _is_bot, active_in=active_in)
+    found = {r["repo_id"]: r["status"] for r in rows}
+    assert found, rows
+    return found[repo_id]
+
+
+@pytest.mark.parametrize("active_in, expected", [
+    ("estate", "Knowledge"),    # dev@acme.com is active on gitlab.com
+    ("server", "Orphaned"),     # ...but not on github.com
+    ("org", "Orphaned"),
+])
+def test_active_in_scopes_who_is_still_here(active_in, expected):
+    assert _status(_seed(), "github.com~acme~webmerged", active_in) == expected
+
+
+@pytest.mark.parametrize("active_in, expected", [
+    ("estate", "Knowledge"),
+    ("server", "Knowledge"),
+    # a nested group's org is the whole path: group/new is not group/old
+    ("org", "Orphaned"),
+])
+def test_active_in_org_uses_the_kospex_org_key_for_nested_groups(active_in, expected):
+    assert _status(_seed(), "gitlab.com~group~~old~legacy", active_in) == expected
+
+
+def test_scope_key_matches_org_key():
+    assert KospexOrphans.scope_key("org", "GitLab.com", "Group/Sub") == "gitlab.com~group~~sub"
+    assert KospexOrphans.scope_key("server", "GitLab.com", "x") == "gitlab.com"
+    assert KospexOrphans.scope_key("estate", "a", "b") is None
+
+
+def test_cli_active_in(cli):
+    result = CliRunner().invoke(cli(), ["orphans", "-active-in", "org"])
+    assert result.exit_code == 0, result.output
+    assert _statuses(result.output)["github.com~acme~webmerged"] == "Orphaned"
+    bad = CliRunner().invoke(cli(), ["orphans", "-active-in", "galaxy"])
+    assert bad.exit_code != 0
+
+
+# --- kweb /orphans/: the same rows as the CLI -------------------------------------
+
+def test_get_orphans_matches_the_cli_rows():
+    kq = _seed()
+    repos = kq.repos_table()
+    for active_in in KospexOrphans.ACTIVE_IN:
+        web = kq.get_orphans(id={}, active_in=active_in, is_bot=_is_bot)
+        cli_rows = KospexOrphans.report(kq, list(repos), repos, _is_bot, active_in=active_in)
+        assert web and web == cli_rows
+
+
+def test_get_orphans_scopes_to_an_org():
+    kq = _seed()
+    rows = kq.get_orphans(id={"org_key": "github.com~acme"}, is_bot=_is_bot)
+    assert {r["repo_id"] for r in rows} == {
+        "github.com~acme~webmerged", "github.com~acme~rebased",
+        "github.com~acme~botonly", "github.com~acme~quiet"}
+    # active is still estate-wide by default
+    assert {r["repo_id"]: r["status"] for r in rows}["github.com~acme~webmerged"] == "Knowledge"
+
+
+def _request(path, query_string=b""):
+    from starlette.requests import Request
+    import kweb2
+    return Request({
+        "type": "http", "method": "GET", "path": path, "server": ("localhost", 8000),
+        "scheme": "http", "headers": [], "query_string": query_string, "app": kweb2.app,
+    })
+
+
+@pytest.fixture
+def kweb(monkeypatch):
+    import kweb2
+    kq = _seed()
+    monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: kq)
+    monkeypatch.setattr(KospexAuthorship, "bot_checker", lambda: _is_bot)
+    kweb2.request_cache.clear()
+    return kweb2
+
+
+def test_page_renders_statuses_bots_and_scope_choice(kweb):
+    response = kweb.orphans(_request("/orphans/"), id=None, active_in="org")
+    assert response.status_code == 200
+    html = response.body.decode()
+    for text in ("Orphaned", "Knowledge", "Dormant", "Bots active", "Refreshed",
+                 "gitlab.com~group~~old~legacy",
+                 '<option value="org" selected>'):
+        assert text in html, text
+
+
+def test_page_refuses_an_unknown_active_in(kweb):
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as err:
+        kweb.orphans(_request("/orphans/"), id=None, active_in="galaxy")
+    assert err.value.status_code == 400
+
+
+def test_summary_leaves_out_empty_statuses_without_a_gap():
+    rows = [{"status": "Orphaned"}, {"status": "Dormant"}]
+    assert KospexOrphans.summary(rows) == "Orphaned: 1 | Knowledge: 0 | Dormant: 1 | Total: 2"

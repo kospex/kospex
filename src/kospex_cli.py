@@ -21,6 +21,7 @@ from rich.table import Table
 from rich.text import Text
 
 import kospex.authorship as KospexAuthorship
+import kospex.orphans as KospexOrphans
 import kospex_rebuild as KospexRebuild
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
@@ -1622,6 +1623,12 @@ def groups(name, add, remove, delete, show, file, value, email, repo):
     "-stale-days", type=int, default=30,
     help="Flag repos whose last refresh is older than X days. (default 30)"
 )
+@click.option(
+    "-active-in", "active_in", type=click.Choice(["estate", "server", "org"]),
+    default="estate", show_default=True,
+    help="Where a person counts as still here: any synced repo, the repo's git "
+         "server, or its kospex org (server~owner)."
+)
 @click.option("-server", type=click.STRING, help="Git server to query.")
 @click.option(
     "-target-list", type=click.Path(exists=True),
@@ -1633,7 +1640,7 @@ def groups(name, add, remove, delete, show, file, value, email, repo):
     type=click.Path(dir_okay=False, writable=True),
     help="Write results to this CSV file (spreadsheet-safe).",
 )
-def orphans(days, window, stale_days, server, target_list, csv_path):
+def orphans(days, window, stale_days, active_in, server, target_list, csv_path):
     """
     Find orphaned repos.
 
@@ -1641,7 +1648,11 @@ def orphans(days, window, stale_days, server, target_list, csv_path):
     for you: people committed to it in the window (default 365 days), and
     none of them has committed to any synced repo in the last X days
     (default 90). Someone who moved to another synced project is still
-    here. "Present" counts those people still active anywhere.
+    here. "Present" counts those people still active.
+
+    "Still here" is any synced repo by default. -active-in org looks only in
+    the repo's own kospex org (server~owner, e.g. github.com~apache or
+    gitlab.com~group~~subgroup), -active-in server only on its git server.
 
     \b
     Statuses:
@@ -1689,11 +1700,9 @@ def orphans(days, window, stale_days, server, target_list, csv_path):
         click.echo("No repos to check.")
         return
 
-    active = kq.active_author_emails(days=days)
-    authors = kq.repo_author_emails([r for r in repo_ids if r in repos],
-                                    window=window, days=days)
-    is_bot = KospexAuthorship.bot_checker()
-    now = datetime.now(timezone.utc)
+    rows = KospexOrphans.report(
+        kq, repo_ids, repos, KospexAuthorship.bot_checker(), days=days, window=window,
+        stale_days=stale_days, active_in=active_in)
 
     table = Table()
     table.add_column("repo_id")
@@ -1704,14 +1713,10 @@ def orphans(days, window, stale_days, server, target_list, csv_path):
     table.add_column("Bots active", justify="right")
     table.add_column("Refreshed", justify="right")
 
-    rows = []
-    for repo_id in repo_ids:
-        row = KospexAuthorship.orphan_row(
-            repo_id, repos.get(repo_id), authors.get(repo_id, {}), active, is_bot,
-            now, window, days, stale_days)
-        rows.append(row)
+    for row in rows:
+        repo_id = row["repo_id"]
         shown_id = KospexUtils.terminal_safe(repo_id)
-        if row["status"] == KospexAuthorship.NOT_SYNCED:
+        if row["status"] == KospexOrphans.NOT_SYNCED:
             console.print(f"repo_id: {shown_id}, {row['status']}", soft_wrap=True)
         else:
             console.print(
@@ -1720,7 +1725,7 @@ def orphans(days, window, stale_days, server, target_list, csv_path):
                 soft_wrap=True,
             )
         age = row["refresh_age_days"]
-        refreshed = Text("-" if age == "" and row["status"] == KospexAuthorship.NOT_SYNCED
+        refreshed = Text("-" if age == "" and row["status"] == KospexOrphans.NOT_SYNCED
                          else "never" if age == "" else f"{age}d",
                          style="red" if row["refresh_stale"] is True else "")
         pct = row["pct_here"]
@@ -1734,17 +1739,13 @@ def orphans(days, window, stale_days, server, target_list, csv_path):
     console.print()
     KospexUtils.print_table(table, console)
 
-    counts = {s: sum(1 for r in rows if r["status"] == s) for s in (
-        KospexAuthorship.ORPHANED, KospexAuthorship.KNOWLEDGE,
-        KospexAuthorship.DORMANT, KospexAuthorship.NOT_SYNCED)}
-    summary = " | ".join(f"{s}: {n}" for s, n in counts.items() if n or s in (
-        KospexAuthorship.ORPHANED, KospexAuthorship.KNOWLEDGE))
-    console.print(f"\n{summary} | Total: {len(rows)}")
-    with_people = counts[KospexAuthorship.ORPHANED] + counts[KospexAuthorship.KNOWLEDGE]
+    counts = KospexOrphans.counts(rows)
+    console.print(f"\n{KospexOrphans.summary(rows)}")
+    with_people = counts[KospexOrphans.ORPHANED] + counts[KospexOrphans.KNOWLEDGE]
     if with_people:
         console.print(
             f"Of {with_people} repos with people in the window: "
-            f"{counts[KospexAuthorship.ORPHANED] / with_people * 100:.2f}% orphaned.")
+            f"{counts[KospexOrphans.ORPHANED] / with_people * 100:.2f}% orphaned.")
     stale = sum(1 for r in rows if r["refresh_stale"] is True)
     if stale:
         console.print(
@@ -1756,10 +1757,10 @@ def orphans(days, window, stale_days, server, target_list, csv_path):
     if csv_path:
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(KospexAuthorship.ORPHAN_FIELDS)
+            writer.writerow(KospexOrphans.FIELDS)
             for row in rows:
                 writer.writerow([KrunnerUtils.spreadsheet_safe(row[k])
-                                 for k in KospexAuthorship.ORPHAN_FIELDS])
+                                 for k in KospexOrphans.FIELDS])
         console.print(f"Wrote {len(rows)} rows to {csv_path}\n")
 
     print()

@@ -640,72 +640,19 @@ class KospexQuery:
 
         return results
 
-    def get_orphans(self, id=None):
+    def get_orphans(self, id=None, active_in="estate", is_bot=None):
+        """Orphan rows for a web scope (id: params from KospexWeb.get_id_params).
+
+        The same rule and rows as `kospex orphans` (kospex.orphans.report), so
+        the page and the CLI agree.
         """
-        Get the orphaned repos for the given scope.
-        """
+        from kospex import orphans as KospexOrphans
+        import kospex.authorship as KospexAuthorship
 
-        kd = KospexData(self.kospex_db)
-        kd.from_table(KospexSchema.TBL_DEPENDENCY_DATA)
-        kd.set_params_by_id(id)
-
-        active_devs = self.developers(days=90)
-        active_set = set(map(lambda item: item["author"], active_devs))
-
-
-        repos = self.repos2(id=id)
-
-        window = 365
-        now_utc = datetime.now(timezone.utc)
-        from_date = now_utc - timedelta(days=window)
-
-        results = []
-
-        # Loop through every repo
-        for r in repos:
-            # find all the authors in the last 'window' days
-            row = {}
-            row["_repo_id"] = r["_repo_id"]
-            row["_git_repo"] = r["_git_repo"]
-
-            commits = self.commits(
-                repo_id=r["_repo_id"], after=from_date.strftime("%Y-%m-%dT%H:%M:%S%z")
-            )
-
-            # commits = self.commits(
-            #    repo_id=r["_repo_id"] )
-
-            committers = set([c["author_email"] for c in commits])
-            row["committers"] = len(committers)
-
-            intersection_count = len(committers.intersection(active_set))
-            row["intersection"] = intersection_count
-
-            log.debug(
-                "%s: %d of %d committers active in 12 months",
-                row.get("_repo_id"), intersection_count, len(committers),
-            )
-
-            # if all the authors are not in the active_devs_emails list
-            # then print the repo status of orphaned
-
-            if intersection_count == 0:
-                row["orphaned"] = True
-                row["percentage"] = 0
-                # orphaned += 1
-            else:
-                row["orphaned"] = False
-                row["percentage"] = f"{intersection_count / len(committers) * 100:.2f}"
-                # row.append(f"{intersection_count/len(committers)*100:.2f}%")
-                # working_knowledge += 1
-
-            results.append(row)
-            # table.add_row(row)
-            # print()
-
-        # results = kd.execute()
-
-        return results
+        repos = self.repos_table(id_params=id or None)
+        return KospexOrphans.report(
+            self, list(repos), repos, is_bot or KospexAuthorship.bot_checker(),
+            active_in=active_in)
 
     def repos_by_author(self, author_email):
         """Find repos for the given author_email."""
@@ -2312,6 +2259,21 @@ class KospexQuery:
         rows = self.kospex_db.execute(sql, [f"-{int(days)} day"]).fetchall()
         return {row[0] for row in rows}
 
+    def active_author_emails_by_scope(self, days=90, key=None):
+        """active_author_emails(), grouped: {key(_git_server, _git_owner): {email, ...}}.
+
+        For `kospex orphans -active-in server|org`, where "still here" is looked
+        for only in the repo's own server or kospex org.
+        """
+        sql = f"""SELECT DISTINCT _git_server, _git_owner, author_email
+            FROM {KospexSchema.TBL_COMMITS}
+            WHERE date(author_when) > date('now', ?)"""
+        grouped = {}
+        for server, owner, email in self.kospex_db.execute(
+                sql, [f"-{int(days)} day"]).fetchall():
+            grouped.setdefault(key(server, owner), set()).add(email)
+        return grouped
+
     def repo_author_emails(self, repo_ids, window=365, days=90, chunk_size=500):
         """Per repo, the authors with a commit in the last ``window`` days.
 
@@ -2339,12 +2301,21 @@ class KospexQuery:
                 results[repo_id][email] = bool(recent)
         return results
 
-    def repos_table(self, server=None, repo_ids=None):
-        """Rows from the repos table, by _repo_id; all of them, one server's, or listed ids.
+    def repos_table(self, server=None, repo_ids=None, id_params=None):
+        """Rows from the repos table, by _repo_id.
 
+        All of them; one server's; the listed repo_ids; or a web scope
+        (id_params from KospexWeb.get_id_params: repo_id, org_key or server).
         Unlike repos(), which is built from commits, this includes a synced repo
         that has no commits, and carries last_sync / last_fetch.
         """
+        if id_params:
+            kd = KospexData(self.kospex_db)
+            kd.from_table(KospexSchema.TBL_REPOS)
+            kd.select("*")
+            kd.set_params_by_id(id_params)
+            kd.order_by("_repo_id", "ASC")
+            return {row["_repo_id"]: row for row in kd.execute()}
         sql = f"SELECT * FROM {KospexSchema.TBL_REPOS}"
         if repo_ids is not None:
             repo_ids = list(repo_ids)

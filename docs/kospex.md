@@ -325,6 +325,22 @@ but still useful: sync an org such as `github.com~apache` and a developer who
 left one Apache project but still commits to several others counts as active,
 so the project they left shows the knowledge is still in the org.
 
+When your database holds more than one organisation, `-active-in` narrows
+where a person counts as still here:
+
+```bash
+kospex orphans -active-in org      # only repos in the same kospex org
+kospex orphans -active-in server   # only repos on the same git server
+```
+
+The org is the kospex org key, `server~owner`, so it works the same for
+GitHub, GitLab, Bitbucket or a self-hosted server. A GitLab nested group is
+its whole path: `gitlab.com~group~~sub-a` and `gitlab.com~group~~sub-b` are
+different orgs. The default, `estate`, is every synced repo.
+
+The kweb page `/orphans/` (and `/orphans/ORG_KEY`, `/orphans/SERVER`) shows
+the same results, with a menu to choose the same three scopes.
+
 ```bash
 kospex orphans                    # every synced repo
 kospex orphans -server github.com # one git server
@@ -374,6 +390,7 @@ kospex orphans -target-list FILE
 - `-days` — a person who committed anywhere in the last X days is still here (default 90)
 - `-window` — whose knowledge counts: people who committed to the repo in the last X days (default 365)
 - `-stale-days` — flag repos whose last refresh is older than X days (default 30)
+- `-active-in` — where a person counts as still here: `estate` (any synced repo, the default), `server` or `org`
 - `-server` — only repos on this git server
 - `-target-list` — a file of repos to check
 - `-csv FILE` — also write the results to a CSV file; values are escaped for spreadsheets

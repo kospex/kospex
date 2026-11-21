@@ -32,6 +32,7 @@ import kospex_web as KospexWeb
 from api_routes import router as api_router
 from kospex.db.migrator import warn_if_behind
 from kospex.osi_queue import get_outcome as get_osi_outcome
+import kospex.orphans as KospexOrphans
 from kospex_core import Kospex
 from kospex_dependencies import KospexDependencies
 from kospex_git import KospexGit
@@ -572,16 +573,28 @@ def metadata_repos(request: Request, id: Optional[str] = None):
 
 @app.get("/orphans/", response_class=HTMLResponse)
 @app.get("/orphans/{id}", response_class=HTMLResponse)
-def orphans(request: Request, id: Optional[str] = None):
-    """Display orphan information"""
+def orphans(request: Request, id: Optional[str] = None, active_in: str = "estate"):
+    """Orphaned repos for a scope; the same rows as `kospex orphans`.
+
+    active_in (estate, server or org) is where a person counts as still here.
+    """
     try:
         logger.info(f"Orphans page requested with id: {id}")
 
+        if active_in not in KospexOrphans.ACTIVE_IN:
+            raise HTTPException(
+                status_code=400,
+                detail=f"active_in must be one of {', '.join(KospexOrphans.ACTIVE_IN)}.")
         params = KospexWeb.get_id_params(id)
         _require_known_scope(params, id)
-        data = KospexQuery().get_orphans(id=params)
+        data = KospexQuery().get_orphans(id=params, active_in=active_in)
 
-        return templates.TemplateResponse(request, "orphans.html", {"data": data})
+        return templates.TemplateResponse(request, "orphans.html", {
+            "data": data,
+            "summary": KospexOrphans.summary(data),
+            "active_in": active_in,
+            "scope_id": id or "",
+        })
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any
         # Exception to a 500, and HTTPException is an Exception, so a
