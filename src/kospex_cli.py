@@ -20,6 +20,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+import kospex.authorship as KospexAuthorship
 import kospex_rebuild as KospexRebuild
 import kospex_schema as KospexSchema
 import kospex_utils as KospexUtils
@@ -1609,114 +1610,155 @@ def groups(name, add, remove, delete, show, file, value, email, repo):
 
 @cli.command("orphans")
 @click.option(
-    "-days", type=int, default=90, help="Committed in X days is considered active.(default 90)"
+    "-days", type=int, default=90,
+    help="A person who committed anywhere in the last X days is still here. (default 90)"
 )
 @click.option(
-    "-window", type=int, default=365, help="Days to consider for orphaned repos. (default 365)"
+    "-window", type=int, default=365,
+    help="Whose knowledge counts: people who committed to the repo in the last X days. "
+         "(default 365)"
+)
+@click.option(
+    "-stale-days", type=int, default=30,
+    help="Flag repos whose last refresh is older than X days. (default 30)"
 )
 @click.option("-server", type=click.STRING, help="Git server to query.")
 @click.option(
-    "-target-list", type=click.Path(exists=True), help="A file containing repos to check."
+    "-target-list", type=click.Path(exists=True),
+    help="A file of repos to check, one git URL or repo_id per line."
 )
 @click.option(
     "-csv",
     "csv_path",
     type=click.Path(dir_okay=False, writable=True),
-    help="Write results to this CSV file.",
+    help="Write results to this CSV file (spreadsheet-safe).",
 )
-def orphans(days, window, server, target_list, csv_path):
+def orphans(days, window, stale_days, server, target_list, csv_path):
     """
     Find orphaned repos.
 
-    An orphaned repo is one where:
+    A repo is Orphaned when people committed to it in the window (default 365
+    days), and none of them has committed to any synced repo in the last X
+    days (default 90). "Present" counts those people still active anywhere.
 
-     - all the developers who've committed in the window (default 365 days) \
-     - have not been active in the last X days (default 90 days).
+    \b
+    Statuses:
+      Orphaned    people worked on it, none of them is still active
+      Knowledge   at least one of them is still active
+      Dormant     no person committed in the window (bots may have)
+      Not synced  in -target-list but not in the kospex DB
 
+    Author email and author date are used, so a GitHub web merge
+    (committer noreply@github.com) or a rebase does not distort the result.
+    Bots are never counted as people; "bots active" is bots that committed
+    to the repo in the last X days. A refresh age in red is older than
+    -stale-days: that repo's data may be out of date, and so may the
+    activity of its people. Refresh with kgit pull --stale DAYS.
     """
-    print("Experimental - Work in Progress.")
-    params = {k: v for k, v in locals().items() if k != "csv_path"}
-
-    active_devs = kospex.active_developers(**params)
-    active_set = set(map(lambda item: item["author"], active_devs))
-
-    # repos will contain an array of dicts, we need the _repo_id
-    repos = []
+    kq = kospex.kospex_query
+    for name, value in (("-days", days), ("-window", window), ("-stale-days", stale_days)):
+        if value < 1:
+            raise click.UsageError(f"{name} must be 1 or more.")
 
     if target_list:
-        # Process the file
+        repo_ids = []
         with open(target_list, "r") as file:
             for line in file:
-                # Skip empty lines
-                kospex.git.set_remote_url(line)
-                repo_id = kospex.git.repo_id
-                if repo_id:
-                    # Create dict with _repo_id key and add to repos array
-                    repo_dict = {"_repo_id": repo_id}
-                    repos.append(repo_dict)
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "~" in line and "/" not in line and ":" not in line:
+                    repo_ids.append(line)
+                    continue
+                parts = KospexGit.parse_git_remote(line)
+                if not parts:
+                    click.echo(f"Skipping '{KospexUtils.terminal_safe(line)}': "
+                               "not a git URL or repo_id.", err=True)
+                    continue
+                repo_ids.append(KospexGit.generate_repo_id(
+                    parts["remote"], parts["org"], parts["repo"]))
+        repo_ids = list(dict.fromkeys(repo_ids))
+        repos = kq.repos_table(repo_ids=repo_ids)
     else:
-        # Find all the repos in the database
-        repos = kospex.kospex_query.repos(server=server)
+        repos = kq.repos_table(server=server)
+        repo_ids = list(repos)
 
-    now_utc = datetime.now(timezone.utc)
-    from_date = now_utc - timedelta(days=window)
+    if not repo_ids:
+        click.echo("No repos to check.")
+        return
 
-    table = KospexUtils.orphan_prettytable()
-    csv_headers = ["_repo_id", "committers", "active", "Orphaned", "% Here"]
-    csv_rows = []
-    orphaned = 0
-    working_knowledge = 0
+    active = kq.active_author_emails(days=days)
+    authors = kq.repo_author_emails([r for r in repo_ids if r in repos],
+                                    window=window, days=days)
+    is_bot = KospexAuthorship.bot_checker()
+    now = datetime.now(timezone.utc)
 
-    # Loop through every repo
-    for r in repos:
-        # find all the authors in the last 'window' days
-        row = []
-        row.append(r["_repo_id"])
-        print(f"repo_id: {r['_repo_id']}")
-        commits = kospex.kospex_query.commits(
-            repo_id=r["_repo_id"], after=from_date.strftime("%Y-%m-%dT%H:%M:%S%z")
+    table = Table()
+    table.add_column("repo_id")
+    table.add_column("Status")
+    table.add_column("People", justify="right")
+    table.add_column("Present", justify="right")
+    table.add_column("% Here", justify="right")
+    table.add_column("Bots active", justify="right")
+    table.add_column("Refreshed", justify="right")
+
+    rows = []
+    for repo_id in repo_ids:
+        row = KospexAuthorship.orphan_row(
+            repo_id, repos.get(repo_id), authors.get(repo_id, {}), active, is_bot,
+            now, window, days, stale_days)
+        rows.append(row)
+        shown_id = KospexUtils.terminal_safe(repo_id)
+        if row["status"] == KospexAuthorship.NOT_SYNCED:
+            console.print(f"repo_id: {shown_id}, {row['status']}", soft_wrap=True)
+        else:
+            console.print(
+                f"repo_id: {shown_id}, {row['status']}, Present: {row['people_active']}, "
+                f"Total: {row['people']} in {window} days.",
+                soft_wrap=True,
+            )
+        age = row["refresh_age_days"]
+        refreshed = Text("-" if age == "" and row["status"] == KospexAuthorship.NOT_SYNCED
+                         else "never" if age == "" else f"{age}d",
+                         style="red" if row["refresh_stale"] is True else "")
+        pct = row["pct_here"]
+        table.add_row(
+            Text(shown_id), row["status"],
+            str(row["people"]), str(row["people_active"]),
+            "" if pct == "" else f"{pct:.2f}%",
+            str(row["bots_active"]), refreshed,
         )
 
-        committers = set([c["committer_email"] for c in commits])
-        row.append(len(committers))
+    console.print()
+    KospexUtils.print_table(table, console)
 
-        intersection_count = len(committers.intersection(active_set))
-
-        row.append(intersection_count)
-
-        print(f"Present: {intersection_count}, Total: {len(committers)} in 12 months.")
-
-        # if all the authors are not in the active_devs_emails list
-        # then print the repo status of orphaned
-
-        if intersection_count == 0:
-            print("Orphaned")
-            row.append(True)
-            row.append("0%")
-            orphaned += 1
-        else:
-            print("Working knowledge exists")
-            row.append(False)
-            row.append(f"{intersection_count / len(committers) * 100:.2f}%")
-            working_knowledge += 1
-
-        table.add_row(row)
-        csv_rows.append(row)
-        print()
-
-    print()
-    print(table)
-    print(f"\nOrphaned: {orphaned} | Working Knowledge: {working_knowledge} | Total: {len(repos)}")
-    print(
-        f"Orphaned: {orphaned / len(repos) * 100:.2f}% | Working Knowledge: {working_knowledge / len(repos) * 100:.2f}%\n"
-    )
+    counts = {s: sum(1 for r in rows if r["status"] == s) for s in (
+        KospexAuthorship.ORPHANED, KospexAuthorship.KNOWLEDGE,
+        KospexAuthorship.DORMANT, KospexAuthorship.NOT_SYNCED)}
+    summary = " | ".join(f"{s}: {n}" for s, n in counts.items() if n or s in (
+        KospexAuthorship.ORPHANED, KospexAuthorship.KNOWLEDGE))
+    console.print(f"\n{summary} | Total: {len(rows)}")
+    with_people = counts[KospexAuthorship.ORPHANED] + counts[KospexAuthorship.KNOWLEDGE]
+    if with_people:
+        console.print(
+            f"Of {with_people} repos with people in the window: "
+            f"{counts[KospexAuthorship.ORPHANED] / with_people * 100:.2f}% orphaned.")
+    stale = sum(1 for r in rows if r["refresh_stale"] is True)
+    if stale:
+        console.print(
+            f"{stale} of {len(rows)} repos not refreshed in {stale_days} days: their status "
+            f"may be out of date, and so may who is still active. "
+            f"Refresh with: kgit pull --stale {stale_days}", soft_wrap=True)
+    console.print()
 
     if csv_path:
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(csv_headers)
-            writer.writerows(csv_rows)
-        print(f"Wrote {len(csv_rows)} rows to {csv_path}\n")
+            writer.writerow(KospexAuthorship.ORPHAN_FIELDS)
+            for row in rows:
+                writer.writerow([KrunnerUtils.spreadsheet_safe(row[k])
+                                 for k in KospexAuthorship.ORPHAN_FIELDS])
+        console.print(f"Wrote {len(rows)} rows to {csv_path}\n")
 
     print()
 

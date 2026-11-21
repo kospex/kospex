@@ -2298,6 +2298,70 @@ class KospexQuery:
                 })
         return results
 
+    def active_author_emails(self, days=90):
+        """Every author_email with a commit in the last ``days`` days, anywhere in the DB.
+
+        Used by `kospex orphans` for "is this person still here": a developer
+        active in any synced repo counts, whichever server or scope was asked
+        for. Author time, not committer time, so a rebase or cherry-pick of an
+        old commit does not make its author look recent. Merges count: merging
+        is still activity.
+        """
+        sql = f"""SELECT DISTINCT author_email FROM {KospexSchema.TBL_COMMITS}
+            WHERE date(author_when) > date('now', ?)"""
+        rows = self.kospex_db.execute(sql, [f"-{int(days)} day"]).fetchall()
+        return {row[0] for row in rows}
+
+    def repo_author_emails(self, repo_ids, window=365, days=90, chunk_size=500):
+        """Per repo, the authors with a commit in the last ``window`` days.
+
+        Returns {repo_id: {author_email: recent}}, where ``recent`` is True when
+        that author also committed to the repo in the last ``days`` days. A repo
+        with no commits in the window maps to {}. Author time throughout, merges
+        included; see active_author_emails(). repo_ids is chunked for SQLite's
+        999-variable limit (kospex supports 3.26).
+        """
+        repo_ids = list(repo_ids)
+        results = {repo_id: {} for repo_id in repo_ids}
+        for start in range(0, len(repo_ids), chunk_size):
+            chunk = repo_ids[start:start + chunk_size]
+            placeholders = ", ".join("?" for _ in chunk)
+            sql = f"""
+                SELECT _repo_id, author_email,
+                    MAX(date(author_when) > date('now', ?)) AS recent
+                FROM {KospexSchema.TBL_COMMITS}
+                WHERE _repo_id IN ({placeholders})
+                    AND date(author_when) > date('now', ?)
+                GROUP BY _repo_id, author_email
+            """
+            params = [f"-{int(days)} day", *chunk, f"-{int(window)} day"]
+            for repo_id, email, recent in self.kospex_db.execute(sql, params).fetchall():
+                results[repo_id][email] = bool(recent)
+        return results
+
+    def repos_table(self, server=None, repo_ids=None):
+        """Rows from the repos table, by _repo_id; all of them, one server's, or listed ids.
+
+        Unlike repos(), which is built from commits, this includes a synced repo
+        that has no commits, and carries last_sync / last_fetch.
+        """
+        sql = f"SELECT * FROM {KospexSchema.TBL_REPOS}"
+        if repo_ids is not None:
+            repo_ids = list(repo_ids)
+            found = {}
+            for start in range(0, len(repo_ids), 500):
+                chunk = repo_ids[start:start + 500]
+                where = f" WHERE _repo_id IN ({', '.join('?' for _ in chunk)})"
+                for row in self.kospex_db.query(sql + where, chunk):
+                    found[row["_repo_id"]] = row
+            return found
+        params = []
+        if server:
+            sql += " WHERE _git_server = ?"
+            params.append(server)
+        return {row["_repo_id"]: row for row in self.kospex_db.query(sql + " ORDER BY _repo_id",
+                                                                     params)}
+
     def key_person(self, days=None, repo_id=None, top=None):
         """
         Return a high level key person based on commits

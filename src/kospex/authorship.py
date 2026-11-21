@@ -239,3 +239,84 @@ def bus_factor_row(repo, authors, thresholds, active_days, generated_at, is_bot)
         for t, v in none_to_blank(values).items():
             row[f"{prefix}_{t}"] = v
     return {f: row[f] for f in bus_factor_fields(thresholds)}
+
+
+def bot_checker():
+    """A cached is_bot(email), shared by krunner key-person / bus-factor and kospex orphans."""
+    from kospex_email import EmailAnalyzer
+
+    analyzer = EmailAnalyzer()
+    cache = {}
+
+    def is_bot(email):
+        if email not in cache:
+            cache[email] = analyzer.analyze(email).is_bot
+        return cache[email]
+
+    return is_bot
+
+
+# --- orphans ------------------------------------------------------------------
+#
+# A repo is orphaned when people committed to it in the window, and none of
+# them has committed anywhere in the synced estate in the last `days` days.
+# Bots never count as people: they are reported in their own column.
+# Design: changes/202611-orphans-author-bots-refresh.md
+
+ORPHANED = "Orphaned"
+KNOWLEDGE = "Knowledge"
+DORMANT = "Dormant"
+NOT_SYNCED = "Not synced"
+
+ORPHAN_FIELDS = [
+    "repo_id", "status", "people", "people_active", "pct_here",
+    "bots", "bots_active", "last_refresh", "refresh_age_days", "refresh_stale",
+    "window_days", "active_days",
+]
+
+
+def orphan_row(repo_id, repo, authors, active, is_bot, now, window, days, stale_days):
+    """One `kospex orphans` row.
+
+    repo: the repos-table row, or None when the repo is not in the DB.
+    authors: {author_email: recent} for the window, from repo_author_emails().
+    active: author emails active anywhere in the DB, from active_author_emails().
+
+    status is people only. A repo whose only commits in the window are by bots
+    is Dormant (no person has worked on it), with bots_active showing the bots
+    are still at work. refresh_stale says whether the repo's own data is older
+    than stale_days, using the kgit pull / kweb /syncs/ rule (kospex.staleness).
+    """
+    from kospex import staleness
+
+    row = {"repo_id": repo_id, "window_days": window, "active_days": days}
+    if repo is None:
+        row.update({"status": NOT_SYNCED, "people": "", "people_active": "", "pct_here": "",
+                    "bots": "", "bots_active": "", "last_refresh": "",
+                    "refresh_age_days": "", "refresh_stale": ""})
+        return row
+
+    people = [a for a in authors if not is_bot(a)]
+    bots = [a for a in authors if is_bot(a)]
+    people_active = sum(1 for a in people if a in active)
+    if not people:
+        status = DORMANT
+    elif people_active == 0:
+        status = ORPHANED
+    else:
+        status = KNOWLEDGE
+
+    age = staleness.age_days(repo, now)
+    row.update({
+        "status": status,
+        "people": len(people),
+        "people_active": people_active,
+        "pct_here": _pct(people_active, len(people)),
+        "bots": len(bots),
+        # bots on this repo recently, not anywhere: a bot elsewhere says nothing here
+        "bots_active": sum(1 for a in bots if authors[a]),
+        "last_refresh": staleness.last_refreshed(repo) or "",
+        "refresh_age_days": "" if age is None else int(age),
+        "refresh_stale": staleness.is_stale(repo, stale_days, now),
+    })
+    return row

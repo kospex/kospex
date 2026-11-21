@@ -46,6 +46,17 @@ until it is applied.
 
 ### Changed
 
+- **`kospex orphans` is no longer experimental.** It counted a repo's people
+  by committer email but "still active" by author email, so a GitHub web merge
+  (committer `noreply@github.com`) always looked like someone who had left; on
+  a 403-repo database it reported 139 repos Orphaned where 69 are. People are
+  now author email and author date, bots are not counted as people (a
+  `Bots active` column shows them), a repo with no one in the window is
+  `Dormant` and a `-target-list` repo not in the DB is `Not synced`. The
+  output is one status line per repo and a rich table, without the author
+  table it printed first. A `Refreshed` column shows each repo's last refresh,
+  in red past the new `-stale-days` (default 30). The `-csv` columns changed;
+  see `docs/kospex.md`.
 - **Every path setting follows one order: environment, then `kospex.env`,
   then the default.** That covers `KOSPEX_DB`, `KOSPEX_CODE` and `KOSPEX_LOGS`,
   and the less common `KOSPEX_KRUNNER`, `KOSPEX_STAGING` and `KOSPEX_ASSESSMENTS`.

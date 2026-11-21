@@ -313,37 +313,63 @@ prefixes match.
 
 ## orphans
 
-Orphans occur when a repo no longer has someone working in the organisation or team who's active.
-
-*"Experimental feature — Work in Progress."*
-
-All you need to do is run the following command:
+A repo is orphaned when the people who worked on it have all stopped
+committing: someone committed to it in the last year, and none of them has
+committed to any synced repo in the last 90 days.
 
 ```bash
-kospex orphans
+kospex orphans                    # every synced repo
+kospex orphans -server github.com # one git server
 ```
 
-This will display a table with the following columns:
+Each repo gets a status line, then a table:
 
-- `_repo_id`
-- `committers`
-- `active`
-- `Orphaned`
-- `% Here`
+```
+repo_id: github.com~acme~api, Orphaned, Present: 0, Total: 3 in 365 days.
+```
 
-If you want to check for the orphan status of only a subset of repos, you can use the `-target-list` argument:
+| Column | Meaning |
+|---|---|
+| `Status` | `Orphaned`, `Knowledge`, `Dormant` or `Not synced` (below) |
+| `People` | people who committed to the repo in the window |
+| `Present` | how many of them committed to any synced repo in the last `-days` |
+| `% Here` | `Present` as a percentage of `People` |
+| `Bots active` | bots that committed to this repo in the last `-days` |
+| `Refreshed` | days since kospex last fetched or synced the repo |
+
+- **Orphaned**: people worked on it, and none of them is still active.
+- **Knowledge**: at least one of them is still active.
+- **Dormant**: no person committed in the window. Bots may have; the
+  `Bots active` column says so.
+- **Not synced**: listed in `-target-list` but not in the kospex database.
+
+People are identified by author email and dated by author date. A merge made
+in GitHub's web UI is committed by `noreply@github.com`, and a rebase gives an
+old commit a new committer date, so neither is used. Bots never count as
+people: an Orphaned repo with bots active is one whose dependencies are still
+being updated with no one left who worked on it.
+
+"Still active" means anywhere in the synced repos, not only this one, so a
+developer who moved to another project still counts. It also means the result
+is only as current as the sync: a `Refreshed` age shown in red is older than
+`-stale-days`, and the summary says how many repos that is. Refresh them with
+`kgit pull --stale 30`.
+
+To check a subset of repos, pass a file with one git URL or `repo_id` per
+line (blank lines and lines starting with `#` are skipped):
 
 ```bash
-kospex orphans -target-list FILE_OF_CLONE_URLS
+kospex orphans -target-list FILE
 ```
-
-The format of this file is git clone URLs, one per line.
 
 **Parameters**
 
-- `-days` — committed in X days is considered active (default 90)
-- `-window` — days to consider for orphaned repos (default 365)
-- `-target-list` — a file containing repos to check
+- `-days` — a person who committed anywhere in the last X days is still here (default 90)
+- `-window` — whose knowledge counts: people who committed to the repo in the last X days (default 365)
+- `-stale-days` — flag repos whose last refresh is older than X days (default 30)
+- `-server` — only repos on this git server
+- `-target-list` — a file of repos to check
+- `-csv FILE` — also write the results to a CSV file; values are escaped for spreadsheets
 
 ## rebuild
 

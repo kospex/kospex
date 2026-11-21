@@ -64,7 +64,7 @@ with now, versus twelve months ago.
 
 Signals that code needs attention — or an owner:
 
-- **Orphaned repos** — no active committer still contributing (`kospex orphans`)
+- **Orphaned repos** — nobody who worked on the repo is still active (`kospex orphans`)
 - **Key person risk** — files and repos with a single active committer, for offboarding
   and knowledge-transfer planning
 - **Aging and unmaintained code** — based on last commit activity
