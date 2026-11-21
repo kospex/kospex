@@ -35,9 +35,13 @@ is gone, and each repo's status is one line.
 A repo that has not been refreshed can look quieter than it is. The first idea
 was a `Stale sync` status, but 356 of the 403 repos were last refreshed more
 than 30 days ago, so it would have replaced nearly every status. Instead the
-status stays people-based and a `Refreshed` column shows the age, in red past
-`-stale-days` (default 30), with a summary line and the `kgit pull --stale`
-command. The age is `kospex.staleness`: `last_fetch`, else `last_sync`, the
+status stays people-based and a `Last sync` column shows the age, in red past
+`-stale-days` (default 30), with a summary line giving the `kgit pull`
+command for the scope (`orphans.sync_command()`: `--org`, `--server`, a
+repo_id, or `--all`; kgit pull refuses a bare `--stale`). The CSV keeps
+`last_refresh` / `refresh_age_days`, because the value is `last_fetch` falling
+back to `last_sync`, and a `last_sync` column would be mistaken for the repos
+table's. The age is `kospex.staleness`: `last_fetch`, else `last_sync`, the
 same rule as `kgit pull --check` and kweb `/syncs/`.
 
 The limit it can't show: "still active" is estate-wide, so a person whose
@@ -69,7 +73,8 @@ because 392 of the repos are on github.com.
 but committer date for both windows, bots as people, and no-commit repos as
 orphaned. It now returns `kospex.orphans.report()` rows, so the page and the
 CLI agree (`test_get_orphans_matches_the_cli_rows`). The page shows Status,
-People, Present, % Here, Bots active and Refreshed (red past 30 days), and a
+People, Present, % Here, Bots active and Last sync (red past 30 days), an
+"explain column headings and table" toggle as on the OSI page, and a
 menu for `?active_in=estate|server|org`; anything else is a 400. Scope ids
 (`/orphans/ORG_KEY`, `/orphans/SERVER`, `/orphans/REPO_ID`) select repos from
 the repos table, so a synced repo with no commits now appears (as Dormant).

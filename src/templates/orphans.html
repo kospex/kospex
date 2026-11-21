@@ -36,7 +36,7 @@
                 <div class="p-6">
                     <h1 class="text-3xl font-bold text-gray-900 mb-4">Orphaned Repositories</h1>
                     <p class="text-gray-600 mb-2">A repository is orphaned when everyone who committed to it in the last 365 days has stopped working for you: none of them has committed in the last 90 days.</p>
-                    <p class="text-gray-600 mb-4">People are matched by author email. Bots are never counted as people; <em>Bots active</em> is bots that committed to the repository in the last 90 days. A <em>Refreshed</em> age in red is more than 30 days old, so that repository's data may be out of date.</p>
+                    <p class="text-gray-600 mb-4">People are matched by author email. Bots are never counted as people. A <em>Last sync</em> in red is more than {{ stale_days }} days ago, so that repository needs a sync before its status can be trusted.</p>
 
                     <form method="get" class="flex flex-wrap items-center gap-4 mb-4">
                         <label for="active_in" class="text-sm font-medium text-gray-700">Still working for us means committed to</label>
@@ -63,7 +63,72 @@
             <!-- Orphaned Repositories Table -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Repository Analysis</h2>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">Repository Analysis</h2>
+                    <p class="mb-6">
+                        <a
+                            href="#column_details"
+                            id="column_toggle"
+                            role="button"
+                            aria-expanded="false"
+                            aria-controls="column_details"
+                            class="text-sm text-blue-600 hover:text-blue-800 underline"
+                            >explain column headings and table</a
+                        >
+                    </p>
+                    <script>
+                        // Plain JS, bound before the table, as on the OSI page.
+                        (function () {
+                            const toggle = document.getElementById("column_toggle");
+                            toggle.addEventListener("click", function (e) {
+                                e.preventDefault();
+                                const details = document.getElementById("column_details");
+                                const expanded = toggle.getAttribute("aria-expanded") === "true";
+                                details.classList.toggle("hidden", expanded);
+                                toggle.setAttribute("aria-expanded", String(!expanded));
+                                toggle.textContent = expanded ? "explain column headings and table" : "hide";
+                            });
+                        })();
+                    </script>
+                    <div id="column_details" class="hidden mb-6 text-sm text-gray-700 space-y-2">
+                        <p>One row per repository. "Still here" means committed in the last 90 days to
+                            {% if active_in == 'org' %}a repository in the same org{% elif active_in == 'server' %}a repository on the same git server{% else %}any synced repository{% endif %}
+                            (change it with the menu above).</p>
+                        <dl class="space-y-2">
+                            <div>
+                                <dt class="font-semibold">Status</dt>
+                                <dd>
+                                    <ul class="list-disc list-inside mt-1">
+                                        <li><span class="font-medium">Orphaned</span> - people committed in the last 365 days, and none of them is still here</li>
+                                        <li><span class="font-medium">Knowledge</span> - at least one of them is still here</li>
+                                        <li><span class="font-medium">Dormant</span> - no person committed in the last 365 days (bots may have)</li>
+                                    </ul>
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">People</dt>
+                                <dd class="inline">- people (by author email) who committed to this repository in the last 365 days. Bots are not counted.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Present</dt>
+                                <dd class="inline">- how many of those people are still here.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">% Here</dt>
+                                <dd class="inline">- Present as a percentage of People; blank when there are no people.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Bots active</dt>
+                                <dd class="inline">- bots that committed to this repository in the last 90 days. Orphaned with bots active means dependencies are still being updated with no one left who worked on it.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Last sync</dt>
+                                <dd class="inline">- days since kospex last fetched or synced this repository. In red, it is more than {{ stale_days }} days ago: commits since then are missing, so its people, and anyone who is only active there, may look less active than they are. It needs a sync: <code>{{ sync_command }}</code></dd>
+                            </div>
+                        </dl>
+                    </div>
+                    {% if stale_count %}
+                    <p class="mb-6 text-sm text-red-600">{{ stale_count }} of {{ data|length }} repositories last synced more than {{ stale_days }} days ago need a sync: <code>{{ sync_command }}</code></p>
+                    {% endif %}
 
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200" id="myTable">
@@ -75,7 +140,7 @@
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Present</th>
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">% Here</th>
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Bots active</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Refreshed</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last sync</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">

@@ -266,10 +266,12 @@ def test_cli_target_list_reports_repos_not_in_db(cli, tmp_path):
 
 def test_cli_flags_stale_refresh(cli):
     fresh = CliRunner().invoke(cli(), ["orphans"]).output
-    assert "not refreshed" not in fresh
+    assert "not synced in" not in fresh
     stale = CliRunner().invoke(cli(stale=True), ["orphans"]).output
-    assert "7 of 7 repos not refreshed in 30 days" in stale
-    assert "kgit pull --stale 30" in stale
+    assert "7 of 7 repos not synced in 30 days" in stale
+    assert "kgit pull --all --stale 30" in stale
+    scoped = CliRunner().invoke(cli(stale=True), ["orphans", "-server", "gitlab.com"]).output
+    assert "kgit pull --server gitlab.com --stale 30" in scoped
 
 
 def test_cli_empty_scope(cli):
@@ -377,7 +379,8 @@ def test_page_renders_statuses_bots_and_scope_choice(kweb):
     response = kweb.orphans(_request("/orphans/"), id=None, active_in="org")
     assert response.status_code == 200
     html = response.body.decode()
-    for text in ("Orphaned", "Knowledge", "Dormant", "Bots active", "Refreshed",
+    for text in ("Orphaned", "Knowledge", "Dormant", "Bots active", "Last sync",
+                 "explain column headings and table", "kgit pull --all --stale 30",
                  "gitlab.com~group~~old~legacy",
                  '<option value="org" selected>'):
         assert text in html, text
@@ -393,3 +396,18 @@ def test_page_refuses_an_unknown_active_in(kweb):
 def test_summary_leaves_out_empty_statuses_without_a_gap():
     rows = [{"status": "Orphaned"}, {"status": "Dormant"}]
     assert KospexOrphans.summary(rows) == "Orphaned: 1 | Knowledge: 0 | Dormant: 1 | Total: 2"
+
+
+@pytest.mark.parametrize("scope, expected", [
+    ({}, "kgit pull --all --stale 30"),
+    ({"org_key": "gitlab.com~group~~sub"}, "kgit pull --org gitlab.com~group~~sub --stale 30"),
+    ({"server": "github.com"}, "kgit pull --server github.com --stale 30"),
+    ({"repo_id": "github.com~acme~api"}, "kgit pull github.com~acme~api"),
+])
+def test_sync_command_always_has_a_scope(scope, expected):
+    assert KospexOrphans.sync_command(30, **scope) == expected
+
+
+def test_page_sync_command_follows_the_scope(kweb):
+    html = kweb.orphans(_request("/orphans/github.com~acme"), id="github.com~acme").body.decode()
+    assert "kgit pull --org github.com~acme --stale 30" in html

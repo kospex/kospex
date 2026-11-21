@@ -359,7 +359,7 @@ repo_id: github.com~acme~api, Orphaned, Present: 0, Total: 3 in 365 days.
 | `Present` | how many of them committed to any synced repo in the last `-days` |
 | `% Here` | `Present` as a percentage of `People` |
 | `Bots active` | bots that committed to this repo in the last `-days` |
-| `Refreshed` | days since kospex last fetched or synced the repo |
+| `Last sync` | days since kospex last fetched or synced the repo |
 
 - **Orphaned**: people worked on it, and none of them is still active.
 - **Knowledge**: at least one of them is still active.
@@ -374,9 +374,11 @@ people: an Orphaned repo with bots active is one whose dependencies are still
 being updated with no one left who worked on it.
 
 Because "still active" means anywhere in the synced repos, the result is
-only as current as the sync: a `Refreshed` age shown in red is older than
-`-stale-days`, and the summary says how many repos that is. Refresh them with
-`kgit pull --stale 30`.
+only as current as the sync: a `Last sync` shown in red is older than
+`-stale-days`, and the summary says how many repos that is. Those repos need a
+sync, and the summary gives the command: `kgit pull --all --stale 30`, or
+`--server SERVER` when you passed `-server`. `kgit pull` needs a scope, so
+use `--org ORG_KEY` to sync one org.
 
 To check a subset of repos, pass a file with one git URL or `repo_id` per
 line (blank lines and lines starting with `#` are skipped):

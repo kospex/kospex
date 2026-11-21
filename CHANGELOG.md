@@ -54,8 +54,9 @@ until it is applied.
   `Bots active` column shows them), a repo with no one in the window is
   `Dormant` and a `-target-list` repo not in the DB is `Not synced`. The
   output is one status line per repo and a rich table, without the author
-  table it printed first. A `Refreshed` column shows each repo's last refresh,
-  in red past the new `-stale-days` (default 30). The `-csv` columns changed;
+  table it printed first. A `Last sync` column shows days since each repo
+  was last fetched or synced, in red past the new `-stale-days` (default 30),
+  with the `kgit pull` command that syncs them. The `-csv` columns changed;
   see `docs/kospex.md`.
 - **Every path setting follows one order: environment, then `kospex.env`,
   then the default.** That covers `KOSPEX_DB`, `KOSPEX_CODE` and `KOSPEX_LOGS`,
@@ -76,8 +77,9 @@ until it is applied.
   work too).
 - **kweb `/orphans/` uses the same rule as the CLI.** It dated people by
   committer date, counted bots as people and showed repos with no commits as
-  orphaned. It now shows the same statuses, bots and refresh age, with a menu
-  for the `active_in` scope.
+  orphaned. It now shows the same statuses, bots and last sync, with a menu
+  for the `active_in` scope and an "explain column headings and table"
+  toggle.
 
 ## 0.4.2 - 2026-11-20
 

@@ -592,6 +592,11 @@ def orphans(request: Request, id: Optional[str] = None, active_in: str = "estate
         return templates.TemplateResponse(request, "orphans.html", {
             "data": data,
             "summary": KospexOrphans.summary(data),
+            "stale_count": sum(1 for row in data if row["refresh_stale"] is True),
+            "stale_days": 30,
+            "sync_command": KospexOrphans.sync_command(
+                30, repo_id=params.get("repo_id"), org_key=params.get("org_key"),
+                server=params.get("server")),
             "active_in": active_in,
             "scope_id": id or "",
         })

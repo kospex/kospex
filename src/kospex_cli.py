@@ -1621,7 +1621,7 @@ def groups(name, add, remove, delete, show, file, value, email, repo):
 )
 @click.option(
     "-stale-days", type=int, default=30,
-    help="Flag repos whose last refresh is older than X days. (default 30)"
+    help="Flag repos whose last sync is older than X days. (default 30)"
 )
 @click.option(
     "-active-in", "active_in", type=click.Choice(["estate", "server", "org"]),
@@ -1664,9 +1664,11 @@ def orphans(days, window, stale_days, active_in, server, target_list, csv_path):
     Author email and author date are used, so a GitHub web merge
     (committer noreply@github.com) or a rebase does not distort the result.
     Bots are never counted as people; "bots active" is bots that committed
-    to the repo in the last X days. A refresh age in red is older than
-    -stale-days: that repo's data may be out of date, and so may the
-    activity of its people. Refresh with kgit pull --stale DAYS.
+    to the repo in the last X days. "Last sync" is days since kospex last
+    fetched or synced the repo; in red, it is older than -stale-days, so
+    that repo's data may be out of date, and so may the activity of its
+    people. It needs a sync: kgit pull --all --stale DAYS (or --org /
+    --server).
     """
     kq = kospex.kospex_query
     for name, value in (("-days", days), ("-window", window), ("-stale-days", stale_days)):
@@ -1711,7 +1713,7 @@ def orphans(days, window, stale_days, active_in, server, target_list, csv_path):
     table.add_column("Present", justify="right")
     table.add_column("% Here", justify="right")
     table.add_column("Bots active", justify="right")
-    table.add_column("Refreshed", justify="right")
+    table.add_column("Last sync", justify="right")
 
     for row in rows:
         repo_id = row["repo_id"]
@@ -1749,9 +1751,10 @@ def orphans(days, window, stale_days, active_in, server, target_list, csv_path):
     stale = sum(1 for r in rows if r["refresh_stale"] is True)
     if stale:
         console.print(
-            f"{stale} of {len(rows)} repos not refreshed in {stale_days} days: their status "
-            f"may be out of date, and so may who is still active. "
-            f"Refresh with: kgit pull --stale {stale_days}", soft_wrap=True)
+            f"{stale} of {len(rows)} repos not synced in {stale_days} days: their status "
+            f"may be out of date, and so may who is still active. They need a sync: "
+            f"{KospexOrphans.sync_command(stale_days, server=None if target_list else server)}",
+            soft_wrap=True)
     console.print()
 
     if csv_path:

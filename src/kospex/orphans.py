@@ -143,3 +143,18 @@ def summary(rows):
     out, except Orphaned and Knowledge, which are always shown."""
     parts = [f"{s}: {n}" for s, n in counts(rows).items() if n or s in (ORPHANED, KNOWLEDGE)]
     return " | ".join(parts + [f"Total: {len(rows)}"])
+
+
+def sync_command(stale_days, repo_id=None, org_key=None, server=None):
+    """The `kgit pull` that refreshes the stale repos in a scope.
+
+    kgit pull needs exactly one scope (a repo_id, --org, --server or --all), so
+    the suggestion names the one being looked at, or --all.
+    """
+    if repo_id:
+        return f"kgit pull {repo_id}"
+    if org_key:
+        return f"kgit pull --org {org_key} --stale {stale_days}"
+    if server:
+        return f"kgit pull --server {server} --stale {stale_days}"
+    return f"kgit pull --all --stale {stale_days}"
