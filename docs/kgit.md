@@ -154,8 +154,9 @@ kgit sync --org acme -history
 Each row counts the changes since the listing before: repositories that are
 `new` (in no earlier listing), `gone`, `back` (listed before, missing from the
 previous listing), `renamed`, newly archived (`archived+`) and `unarchived`, with
-the totals for archived, forks and private repositories. The counts are kept in
-`org_sync_listings`.
+the totals for archived, forks, private and internal repositories. The counts
+are kept in `org_sync_listings`. A listing saved before kospex recorded
+internal repositories has an empty `internal`.
 
 To see which repositories changed, use three columns of `org_sync_items`.
 They're recorded for every repository in the listing, synced or not:
@@ -197,6 +198,36 @@ renamed repository's old name is one of them, with its new name in the detail:
 
 A repository missing from the listing after a `-restart` has no row in the
 new run. `-history` still counts it as gone.
+
+### Public, private and internal repositories
+
+Each listed repository's visibility is recorded as GitHub reports it, in
+`org_sync_items.visibility`:
+
+- `public`: anyone can read it.
+- `private`: only the people and teams given access to it.
+- `internal`: every member of the enterprise can read it, across all of its
+  organisations, but not the public. Only organisations owned by a GitHub
+  Enterprise account (Cloud or Server) have internal repositories.
+
+`-inventory` and `-status` count each one:
+
+```
+  public       120     private       14     internal 1,178
+```
+
+`private` (`1` or `0`) still means GitHub said `private`, so an internal
+repository has `private = 0`. Repositories listed before kospex recorded
+visibility have an empty `visibility`, counted as `not recorded`. To fill it
+in for an unfinished run, list the organisation again into the run. This
+clones nothing:
+
+```bash
+kgit sync --org acme -inventory -refresh
+```
+
+A finished run can't be listed again: the next listing of the organisation
+starts a new run and records it.
 
 ### What each command records
 

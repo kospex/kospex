@@ -243,15 +243,55 @@ FILTER_STATUSES = (OrgSyncManifest.FAILED, OrgSyncManifest.SKIPPED,
                    OrgSyncManifest.SYNCED, OrgSyncManifest.GONE)
 
 
+def _has_visibility(db):
+    """False on a DB from before migration 0014 (org_sync_items.visibility)."""
+    return "visibility" in db[OrgSyncManifest.TBL_ORG_SYNC_ITEMS].columns_dict
+
+
+def visibility_banner(inventory):
+    """"This run includes 3 internal and 1 private repo out of 40.", or None
+    when every listed repo is public or not recorded. Zero parts are left out.
+    """
+    parts = [(inventory["internal"], "internal"), (inventory["private"], "private"),
+             (inventory["visibility_other"], "other non-public")]
+    parts = [f"{n:,} {label}" for n, label in parts if n]
+    if not parts:
+        return None
+    shown = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    total = inventory["internal"] + inventory["private"] + inventory["visibility_other"]
+    return (f"This run includes {shown} repo{'' if total == 1 else 's'} "
+            f"out of {inventory['listed']:,}.")
+
+
+def _visibility_note(run, inventory, commands):
+    """What to run when some items have no recorded visibility, or None.
+
+    An unfinished run can be listed again into itself, cloning nothing. A
+    finished one can't (-refresh needs an unfinished run): the org's next
+    listing, a new run, records it.
+    """
+    unknown = inventory["visibility_unknown"]
+    if not unknown:
+        return None
+    parsed = KospexUtils.parse_org_key(run["org_key"])
+    flag = "--user" if run.get("owner_type") == "user" else "--org"
+    opts = OrgSyncCommand.parse(commands[-1]["options"]) if commands else []
+    relist = OrgSyncCommand.relisting(opts)
+    if run["finished_at"]:
+        relist = [opt for opt in relist if opt != "-refresh"]
+    return {"unknown": unknown, "finished": bool(run["finished_at"]),
+            "command": OrgSyncCommand.command(flag, parsed["org"], relist)}
+
+
 def run_view(db, run_id):
     """One run: its header, counts, items and drift.
 
-    Returns `{"available": False}` on a DB from before migration 0013. Raises
-    KeyError for an unknown run. Drift and the private count come from
-    `inventory()`, as `kgit sync -inventory` reports them, so they count only
-    the current listing, not `gone` items.
+    Returns `{"available": False}` on a DB from before migration 0014, which
+    added visibility. Raises KeyError for an unknown run. Drift and the
+    visibility counts come from `inventory()`, as `kgit sync -inventory`
+    reports them, so they count only the current listing, not `gone` items.
     """
-    if not _available(db):
+    if not (_available(db) and _has_visibility(db)):
         return {"available": False}
     run = next(iter(db.query(
         f"SELECT * FROM {OrgSyncManifest.TBL_ORG_SYNC_RUNS} WHERE run_id = ?", [run_id])),
@@ -268,6 +308,7 @@ def run_view(db, run_id):
         row["fork_source_shown"] = (source if source and source != row.get("fork_parent")
                                     else None)
     parsed = KospexUtils.parse_org_key(run["org_key"])
+    commands = OrgSyncManifest.commands(db, run_id)
     return {"available": True, "run": run,
             "owner": parsed["org"] if parsed else run["org_key"],
             "listed_at": OrgSyncManifest.listed_at(db, run_id),
@@ -275,6 +316,7 @@ def run_view(db, run_id):
             "filters": [(s, counts[s]) for s in FILTER_STATUSES if counts[s]],
             "rows": rows,  # not "items": Jinja would read page.items as dict.items
             "drift": inventory["gone"],
-            "private": inventory["private"], "listed": inventory["listed"],
-            "continue_command": _continue_command(
-                run, OrgSyncManifest.commands(db, run_id))}
+            "listed": inventory["listed"],
+            "visibility_banner": visibility_banner(inventory),
+            "visibility_note": _visibility_note(run, inventory, commands),
+            "continue_command": _continue_command(run, commands)}

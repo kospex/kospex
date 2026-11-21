@@ -266,6 +266,24 @@ def test_inventory_saves_the_listing_and_clones_nothing(env):
                                  "c": (M.SKIPPED, "fork")}
 
 
+def test_inventory_counts_each_visibility(env):
+    # GitHub Enterprise internal repos: readable across the enterprise, not
+    # public, and not private either.
+    FakeGitHub.listing = [_repo("a", visibility="internal", private=True),
+                          _repo("b", visibility="internal", private=True),
+                          _repo("c", visibility="private", private=True), _repo("d")]
+    result = run("--org", "acme", "-inventory")
+    assert result.exit_code == 0, result.output
+    assert "public 1 private 1 internal 2" in result.text
+    assert "not recorded" not in result.text
+    env["db"].execute(f"UPDATE {M.TBL_ORG_SYNC_ITEMS} SET visibility = NULL "
+                      "WHERE _repo_id LIKE '%~d'")
+    # A repo listed before 0014: -status, offline, says so rather than guessing.
+    result = run("--org", "acme", "-status")
+    assert result.exit_code == 0, result.output
+    assert "public 0 private 1 internal 2 not recorded 1" in result.text
+
+
 def test_inventory_keeps_an_unfinished_run_unless_restart(env):
     FakeGitHub.listing = [_repo("a"), _repo("b")]
     run("--org", "acme", "-inventory")
@@ -544,9 +562,9 @@ def test_history_shows_each_listing_and_what_changed_offline(env, monkeypatch):
     lines = [line.split() for line in result.output.splitlines() if "│" in line]
     rows = [[cell for cell in line if cell != "│"] for line in lines]
     first, refresh = [r for r in rows if r and r[0].startswith("20")]
-    #        kind      repos new gone back renamed archived+ unarchived archived forks private
-    assert first[2:] == ["first", "3", "3", "0", "0", "0", "0", "0", "0", "0", "0"]
-    assert refresh[2:] == ["refresh", "3", "1", "1", "0", "0", "1", "0", "1", "0", "0"]
+    #        kind      repos new gone back renamed archived+ unarchived archived forks private internal
+    assert first[2:] == ["first", "3", "3", "0", "0", "0", "0", "0", "0", "0", "0", "0"]
+    assert refresh[2:] == ["refresh", "3", "1", "1", "0", "0", "1", "0", "1", "0", "0", "0"]
 
     result = run("--org", "acme", "-status")
     assert "github.com~acme listed 2 times since" in result.text

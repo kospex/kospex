@@ -59,8 +59,14 @@ DONE_STATUSES = (SYNCED, SKIPPED, FAILED)
 # with it. A refresh overwrites these and leaves the status alone.
 LISTING_FIELDS = (
     "clone_url", "ssh_url", "provider_repo_id", "archived", "fork",
-    "fork_parent", "fork_source", "private", "pushed_at", "created_at",
+    "fork_parent", "fork_source", "private", "visibility", "pushed_at", "created_at",
 )
+
+# An item's `visibility` (migration 0014), as GitHub reports it. NULL = not
+# recorded: listed before 0014, or GitHub sent neither visibility nor private.
+PUBLIC = "public"
+PRIVATE = "private"
+INTERNAL = "internal"
 
 ITEM_FIELDS = LISTING_FIELDS + ("status", "detail")
 
@@ -297,12 +303,13 @@ def _record_listing(db, run_id, org_key, kind, now, rows, changes):
     db.execute(f"""
         INSERT INTO {TBL_ORG_SYNC_LISTINGS}
                (run_id, org_key, listed_at, kind, listed, [new], gone, back, renamed,
-                newly_archived, unarchived, archived, forks, private)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                newly_archived, unarchived, archived, forks, private, internal)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, [run_id, org_key, now, kind, len(rows), changes["new"], changes["gone"],
           changes["back"], changes["renamed"], changes["newly_archived"],
           changes["unarchived"], sum(1 for r in rows if r.get("archived")),
-          sum(1 for r in rows if r.get("fork")), sum(1 for r in rows if r.get("private"))])
+          sum(1 for r in rows if r.get("fork")), sum(1 for r in rows if r.get("private")),
+          sum(1 for r in rows if r.get("visibility") == INTERNAL)])
 
 
 def listings(db, org_key):
@@ -654,6 +661,9 @@ def inventory(db, run_id):
     The numbers behind `-inventory` and `-status`:
 
     * `listed`, `active`, `archived`, `forks`, `private`: from the listing.
+    * `public`, `internal`: by `visibility`, with `private` the third value.
+      `visibility_unknown` is NULL (listed before migration 0014), and
+      `visibility_other` a value GitHub added since, kept as sent.
     * `in_kospex`: listed repositories already in `repos`; `not_in_kospex` the rest.
     * `changed_since_fetch`: in kospex, and pushed to after `repos.last_fetch`
       (or never fetched). Compared as epoch seconds, because the provider's
@@ -674,7 +684,11 @@ def inventory(db, run_id):
                COALESCE(SUM(archived = 1), 0) AS archived,
                COALESCE(SUM(COALESCE(archived, 0) = 0), 0) AS active,
                COALESCE(SUM(fork = 1), 0) AS forks,
-               COALESCE(SUM(private = 1), 0) AS private,
+               COALESCE(SUM(i.private = 1), 0) AS private,
+               COALESCE(SUM(i.visibility = ?), 0) AS public,
+               COALESCE(SUM(i.visibility = ?), 0) AS internal,
+               COALESCE(SUM(i.visibility IS NULL), 0) AS visibility_unknown,
+               COALESCE(SUM(i.visibility NOT IN (?, ?, ?)), 0) AS visibility_other,
                COALESCE(SUM(r._repo_id IS NOT NULL), 0) AS in_kospex,
                COALESCE(SUM(r._repo_id IS NOT NULL AND (
                    r.last_fetch IS NULL OR
@@ -683,7 +697,7 @@ def inventory(db, run_id):
           FROM {TBL_ORG_SYNC_ITEMS} i
           LEFT JOIN {TBL_REPOS} r ON r._repo_id = i._repo_id
          WHERE i.run_id = ? AND i.status != ?
-    """, [run_id, GONE])))
+    """, [PUBLIC, INTERNAL, PUBLIC, PRIVATE, INTERNAL, run_id, GONE])))
 
     # The org's repos by their parsed columns, as KospexQuery.where_org_key
     # scopes an org, not by slicing _repo_id. A nested group under this org has

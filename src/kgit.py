@@ -822,6 +822,13 @@ def _print_inventory(db, run_id, key, saved):
                   + (f", saved as run {run_id}" if saved else ""))
     console.print(f"  active {inv['active']:>9,}     archived {inv['archived']:>7,}     "
                   f"forks {inv['forks']:>7,}")
+    visibility = (f"  public {inv['public']:>9,}     private {inv['private']:>8,}     "
+                  f"internal {inv['internal']:>4,}")
+    if inv["visibility_other"]:
+        visibility += f"     other {inv['visibility_other']:,}"
+    if inv["visibility_unknown"]:
+        visibility += f"     not recorded {inv['visibility_unknown']:,}"
+    console.print(visibility)
     console.print(f"  in kospex {inv['in_kospex']:>6,}     not yet {inv['not_in_kospex']:>8,}     "
                   f"changed since last fetch {inv['changed_since_fetch']:,}")
     if inv["gone"]:
@@ -842,7 +849,7 @@ def _print_history(db, key, owner, flag):
     columns = (("listed", "repos"), ("new", "new"), ("gone", "gone"), ("back", "back"),
                ("renamed", "renamed"), ("newly_archived", "archived+"),
                ("unarchived", "unarchived"), ("archived", "archived"),
-               ("forks", "forks"), ("private", "private"))
+               ("forks", "forks"), ("private", "private"), ("internal", "internal"))
     for _, label in columns:
         table.add_column(label, justify="right")
     for row in listings:
