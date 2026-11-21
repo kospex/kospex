@@ -11,8 +11,8 @@ by every member of the enterprise, across all its orgs, but not by the public.
 Only orgs owned by an enterprise account (GitHub Enterprise Cloud or Server)
 can have internal repos. A Team-plan org has only public and private repos.
 
-On a 1000+-repo enterprise org, every repo is internal. GitHub returned
-`visibility: "internal"` and `private: true` for every one. kospex stored
+On an enterprise org, every repo is internal. GitHub returned
+`visibility: "internal"` and `private: true` for all. kospex stored
 `private = 0` for all of them, so the run page shows no private repos and
 nothing says they aren't public. kospex stores no other trace: kgit reads
 `visibility` from the listing, turns it into the 0/1 flag, and drops the value.
