@@ -313,9 +313,17 @@ prefixes match.
 
 ## orphans
 
-A repo is orphaned when the people who worked on it have all stopped
-committing: someone committed to it in the last year, and none of them has
-committed to any synced repo in the last 90 days.
+A repo is orphaned when everyone who worked on it is no longer working for
+you: people committed to it in the last year, and none of them has committed
+to *any* synced repo in the last 90 days. Someone who moved to another
+project is still here, so their old repo is not orphaned; someone who has left
+the organisation stops committing everywhere, and that is what kospex sees.
+
+"Working for us" is whatever you have synced. For a company, sync its git
+servers or orgs and it means the company. It is less direct for open source,
+but still useful: sync an org such as `github.com~apache` and a developer who
+left one Apache project but still commits to several others counts as active,
+so the project they left shows the knowledge is still in the org.
 
 ```bash
 kospex orphans                    # every synced repo
@@ -349,9 +357,8 @@ old commit a new committer date, so neither is used. Bots never count as
 people: an Orphaned repo with bots active is one whose dependencies are still
 being updated with no one left who worked on it.
 
-"Still active" means anywhere in the synced repos, not only this one, so a
-developer who moved to another project still counts. It also means the result
-is only as current as the sync: a `Refreshed` age shown in red is older than
+Because "still active" means anywhere in the synced repos, the result is
+only as current as the sync: a `Refreshed` age shown in red is older than
 `-stale-days`, and the summary says how many repos that is. Refresh them with
 `kgit pull --stale 30`.
 

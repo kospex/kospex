@@ -47,9 +47,12 @@ many repos in scope are stale.
 
 ## Decisions
 
-- **Active is estate-wide**, whatever `-server` or `-target-list` scopes the
-  repos to. The question is whether the person is still around, not whether
-  they still work on this server.
+- **Orphaned means "no longer working for us"**, so active is estate-wide,
+  whatever `-server` or `-target-list` scopes the repos to. A person who left
+  a project for another one is still here; one who left the organisation stops
+  committing everywhere. "Us" is whatever is synced: a company's servers, or
+  for open source an org such as `github.com~apache`, where a developer who
+  left one project but commits to others still counts.
 - **Merges count** as activity and as having worked on a repo. Unlike
   key-person shares (#170), this is presence, not a measure of authorship,
   and the person merging a PR has looked at it.

@@ -1637,9 +1637,11 @@ def orphans(days, window, stale_days, server, target_list, csv_path):
     """
     Find orphaned repos.
 
-    A repo is Orphaned when people committed to it in the window (default 365
-    days), and none of them has committed to any synced repo in the last X
-    days (default 90). "Present" counts those people still active anywhere.
+    A repo is Orphaned when everyone who worked on it is no longer working
+    for you: people committed to it in the window (default 365 days), and
+    none of them has committed to any synced repo in the last X days
+    (default 90). Someone who moved to another synced project is still
+    here. "Present" counts those people still active anywhere.
 
     \b
     Statuses:
