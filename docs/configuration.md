@@ -131,8 +131,9 @@ Tokens in `kospex.env` are stored in plain text. Keep the file readable only by 
 | `KOSPEX_LOG_RETENTION_DAYS` | `30` | Days of rotated log files to keep |
 | `KOSPEX_CONSOLE_LOGGING` | `false` | Also print log messages to the console |
 
-Set these in the environment, or in `~/kospex/config.json`, which can also set a
-level per tool:
+Set these in the environment or `kospex.env`, like any other setting. They can
+also go in `~/kospex/config.json`, which wins over both and can set a level per
+tool:
 
 ```json
 {

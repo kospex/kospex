@@ -201,6 +201,38 @@ def test_logs_are_written_under_kospex_logs(habitat, tmp_path):
     assert not (home / "logs").exists()
 
 
+_LOG_LEVEL_PROBE = (
+    "import importlib, logging, sys\n"
+    "importlib.import_module(sys.argv[1])\n"
+    "print(logging.getLevelName(logging.getLogger('kospex').level))\n"
+)
+
+
+@pytest.mark.parametrize("module", ["kospex_cli", "kgit", "krunner", "kweb2"])
+@pytest.mark.parametrize("env_level,file_level,expected", [
+    (None, None, "INFO"),            # default
+    (None, "DEBUG", "DEBUG"),        # kospex.env
+    ("WARNING", "DEBUG", "WARNING"),  # the environment beats kospex.env
+])
+def test_log_level_from_kospex_env(habitat, tmp_path, module, env_level, file_level,
+                                   expected):
+    """The logger reads its settings while modules are imported, before
+    init() loads kospex.env, so it used to ignore the file."""
+    home, code = habitat
+    if file_level:
+        (home / "kospex.env").write_text(f"KOSPEX_LOG_LEVEL={file_level}\n")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("KOSPEX_")}
+    env.update(KOSPEX_HOME=str(home), KOSPEX_CODE=str(code), PYTHONPATH=str(SRC))
+    if env_level:
+        env["KOSPEX_LOG_LEVEL"] = env_level
+
+    result = subprocess.run([sys.executable, "-c", _LOG_LEVEL_PROBE, module], env=env,
+                            cwd=tmp_path, capture_output=True, text=True, timeout=180)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == expected
+
+
 # --- guard: path settings are read through HabitatConfig only ----------------
 
 PATH_SETTINGS = {

@@ -85,6 +85,16 @@ variables into `os.environ`, which is the top of `HabitatConfig`'s order
   suggested: that also creates `krunner/` and `assessments/`, and writes a
   config file at a `KOSPEX_CONFIG` path that does not exist. Every command
   runs `init()` at import, so it keeps creating only the home and logs.
-- The logging settings (`KOSPEX_LOG_LEVEL`, ...) are documented as environment
-  or `config.json` only. Whether `kospex.env` reaches them depends on whether a
-  logger is configured before `init()` loads the file. That was not checked.
+
+## Follow-up: logging settings from kospex.env
+
+Checked after #467 merged: `KOSPEX_LOG_LEVEL` in `kospex.env` was ignored by
+`kospex`, `kgit`, `krunner` and `kweb2`. `KospexLogger._load_config()` caches on
+the first `get_logger()`, which runs while modules are imported, before
+`init()` loads `kospex.env`. It now reads `KOSPEX_LOG_LEVEL`,
+`KOSPEX_LOG_RETENTION_DAYS` and `KOSPEX_CONSOLE_LOGGING` through the new
+`HabitatConfig.setting()` (override, environment, then `kospex.env`), so it no
+longer depends on `init()` having run. `config.json` still overrides all of them,
+which is unchanged. Test: `test_log_level_from_kospex_env` in
+`tests/test_cli_path_precedence.py`, which fails on the four `kospex.env` cases
+without the fix.

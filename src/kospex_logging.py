@@ -59,16 +59,22 @@ class KospexLogger:
             "modules": {},
         }
 
-        # Override with environment variables
-        env_level = os.getenv("KOSPEX_LOG_LEVEL")
+        # Override with the environment, then kospex.env. Read through
+        # HabitatConfig, not os.getenv: this runs on the first get_logger(),
+        # which happens while modules are imported, before KospexUtils.init()
+        # has loaded kospex.env into the environment.
+        from kospex.habitat_config import HabitatConfig
+        setting = HabitatConfig.get_instance().setting
+
+        env_level = setting("KOSPEX_LOG_LEVEL")
         if env_level:
             config["log_level"] = env_level.upper()
 
-        env_retention = os.getenv("KOSPEX_LOG_RETENTION_DAYS")
+        env_retention = setting("KOSPEX_LOG_RETENTION_DAYS")
         if env_retention and env_retention.isdigit():
             config["retention_days"] = int(env_retention)
 
-        env_console = os.getenv("KOSPEX_CONSOLE_LOGGING")
+        env_console = setting("KOSPEX_CONSOLE_LOGGING")
         if env_console:
             config["console_logging"] = env_console.lower() in ("true", "1", "yes")
 
