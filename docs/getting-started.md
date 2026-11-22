@@ -89,6 +89,8 @@ kospex init --create --verbose
 and `--verbose` shows you what it did. To check an existing setup without changing
 anything, use `kospex init --validate`.
 
+To keep repos, the database or logs somewhere else, see [Configuration](configuration).
+
 See [Git code layout for running analysis](#git-code-layout-for-running-analysis) below for more details.
 
 ## Step 3: Sync some data and try some commands

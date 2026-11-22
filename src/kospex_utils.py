@@ -15,7 +15,7 @@ from prettytable import PrettyTable
 from rich.console import Console as RichConsole
 from rich.measure import Measurement as RichMeasurement
 from rich.table import Table as RichTable
-from dotenv import load_dotenv
+
 
 # Import centralized logging after other imports to handle potential import errors
 try:
@@ -43,14 +43,17 @@ KOSPEX_DEFAULT_ENV = """
 #KOSPEX_DEPS_PRIVATE=maven:com.example,go:github.com/example
 """
 
-KOSPEX_CONFIG_ITEMS = [
-    "KOSPEX_CODE",
-    "KOSPEX_LOGS",
-    "KOSPEX_DB",
-    "KOSPEX_HOME",
-    "KOSPEX_DB",
-    "KOSPEX_CONFIG"
-]
+# The path settings HabitatConfig resolves, in the order they are reported.
+# (setting, HabitatConfig attribute)
+KOSPEX_CONFIG_PATHS = (
+    ("KOSPEX_HOME", "home"),
+    ("KOSPEX_CONFIG", "config_file"),
+    ("KOSPEX_DB", "db_path"),
+    ("KOSPEX_CODE", "code_dir"),
+    ("KOSPEX_LOGS", "logs_dir"),
+)
+
+KOSPEX_CONFIG_ITEMS = [name for name, _ in KOSPEX_CONFIG_PATHS]
 
 DEFAULT_STATUS_THRESHOLDS = OrderedDict({
     "Single day": 1,
@@ -72,6 +75,20 @@ def init(create_directories=True, setup_logging=True, verbose=False):
     """
     Initialize the kospex environment with enhanced directory and logging setup.
 
+    Paths are resolved by HabitatConfig, which applies one order to every
+    setting: environment, then kospex.env, then the default (see
+    docs/configuration.md). init() does not write path variables into
+    os.environ: an exported value sits at the top of that order, so writing
+    KOSPEX_DB / KOSPEX_CONFIG here used to override the user's own settings.
+
+    What it still does:
+      - loads kospex.env into the environment without replacing a variable
+        that is already set, for the settings HabitatConfig does not own
+        (GITHUB_TOKEN, REQUESTS_CA_BUNDLE, ...), and expands `~` in the CA
+        bundle variables;
+      - creates KOSPEX_HOME (with a default kospex.env) and the logs directory;
+      - checks KOSPEX_CODE exists and validates logging.
+
     Args:
         create_directories: Whether to create directories if they don't exist
         setup_logging: Whether to initialize the centralized logging system
@@ -80,12 +97,15 @@ def init(create_directories=True, setup_logging=True, verbose=False):
     Returns:
         dict: Initialization status and validation results
     """
-    user_kospex_home = os.path.expanduser("~/kospex")
-    kospex_home = os.getenv("KOSPEX_HOME", user_kospex_home)
+    from kospex.habitat_config import HabitatConfig
+    config = HabitatConfig.get_instance()
 
-    # Initialize status tracking
+    kospex_home = config.home
+
+    # Initialize status tracking. environment_vars_set lists the variables
+    # loaded from kospex.env into the environment.
     init_status = {
-        "kospex_home": kospex_home,
+        "kospex_home": str(kospex_home),
         "directories_created": [],
         "environment_vars_set": [],
         "logging_status": None,
@@ -94,62 +114,45 @@ def init(create_directories=True, setup_logging=True, verbose=False):
     }
 
     try:
-        # Create KOSPEX_HOME directory if needed
-        if kospex_home == user_kospex_home and create_directories:
-            if not os.path.exists(kospex_home):
-                os.makedirs(kospex_home, mode=0o750, exist_ok=True)
-                init_status["directories_created"].append(kospex_home)
+        if create_directories and not kospex_home.exists():
+            kospex_home.mkdir(mode=0o750, parents=True, exist_ok=True)
+            init_status["directories_created"].append(str(kospex_home))
+            if verbose:
+                print(f"✓ Created KOSPEX_HOME: {kospex_home}")
+
+            # A fresh home gets a commented-out kospex.env. Only when the home
+            # was just made: a missing KOSPEX_CONFIG path is not created.
+            config_file = config.config_file
+            if config_file.parent == kospex_home and not config_file.exists():
+                config_file.write_text(KOSPEX_DEFAULT_ENV)
+                init_status["directories_created"].append(str(config_file))
                 if verbose:
-                    print(f"✓ Created KOSPEX_HOME: {kospex_home}")
-
-                # Create default environment file
-                env_file_path = f"{kospex_home}/kospex.env"
-                with open(env_file_path, "w") as env_file:
-                    env_file.write(KOSPEX_DEFAULT_ENV)
-                if verbose:
-                    print(f"✓ Created environment file: {env_file_path}")
-
-        # Set environment variables
-        if not os.getenv("KOSPEX_HOME"):
-            os.environ["KOSPEX_HOME"] = kospex_home
-            init_status["environment_vars_set"].append("KOSPEX_HOME")
-
-        default_kospex_db = f"{kospex_home}/{KOSPEX_DB_FILENAME}"
-        os.environ["KOSPEX_DB"] = default_kospex_db
-        init_status["environment_vars_set"].append("KOSPEX_DB")
-
-        # Set up configuration
-        config_path = f"{kospex_home}/kospex.env"
-        os.environ["KOSPEX_CONFIG"] = config_path
-        init_status["environment_vars_set"].append("KOSPEX_CONFIG")
+                    print(f"✓ Created environment file: {config_file}")
 
         # Load existing configuration
-        if os.path.exists(config_path):
-            load_config(config_path)
-
-        # Set up code directory
-        kospex_code = os.path.expanduser("~/code")
-        if os.getenv("KOSPEX_CODE") is None:
-            os.environ["KOSPEX_CODE"] = kospex_code
-            init_status["environment_vars_set"].append("KOSPEX_CODE")
+        config_path = config.config_file
+        if config_path.exists():
+            loaded, ignored = load_config(str(config_path))
+            init_status["environment_vars_set"].extend(loaded)
+            for var in ignored:
+                init_status["warnings"].append(
+                    f"{var} in {config_path} is ignored: it locates kospex.env, "
+                    f"so set it in the environment instead"
+                )
 
         # Validate code directory exists
-        if not os.path.isdir(os.getenv("KOSPEX_CODE")):
+        kospex_code = config.code_dir
+        if not kospex_code.is_dir():
             warning_msg = f"KOSPEX_CODE directory '{kospex_code}' does not exist"
             init_status["warnings"].append(warning_msg)
             if verbose:
                 print(f"⚠ WARNING: {warning_msg}")
 
-        # Set up logging directory (legacy support)
-        kospex_logs = os.getenv("KOSPEX_LOGS", f"{kospex_home}/logs")
-        if os.getenv("KOSPEX_LOGS") is None:
-            os.environ["KOSPEX_LOGS"] = kospex_logs
-            init_status["environment_vars_set"].append("KOSPEX_LOGS")
-
         # Create logs directory (will be handled by centralized logging, but maintain compatibility)
-        if create_directories and not os.path.exists(kospex_logs):
-            os.makedirs(kospex_logs, mode=0o750, exist_ok=True)
-            init_status["directories_created"].append(kospex_logs)
+        kospex_logs = config.logs_dir
+        if create_directories and not kospex_logs.exists():
+            kospex_logs.mkdir(mode=0o750, parents=True, exist_ok=True)
+            init_status["directories_created"].append(str(kospex_logs))
             if verbose:
                 print(f"✓ Created logs directory: {kospex_logs}")
 
@@ -239,17 +242,21 @@ def validate_kospex_setup():
         "critical_issues": []
     }
 
-    # Check environment variables
-    for var in KOSPEX_CONFIG_ITEMS:
-        value = os.getenv(var)
+    # Path settings: the value kospex uses, and where it came from
+    # (environment, kospex.env or default). "set" means not the default.
+    from kospex.habitat_config import HabitatConfig
+    config = HabitatConfig.get_instance()
+    for var, attr in KOSPEX_CONFIG_PATHS:
+        source = config.source(var)
         validation["environment_vars"][var] = {
-            "set": value is not None,
-            "value": value
+            "set": source != "default",
+            "value": str(getattr(config, attr)),
+            "source": source,
         }
 
     # Check critical directories
-    kospex_home = os.getenv("KOSPEX_HOME", os.path.expanduser("~/kospex"))
-    kospex_code = os.getenv("KOSPEX_CODE", os.path.expanduser("~/code"))
+    kospex_home = str(config.home)
+    kospex_code = str(config.code_dir)
 
     validation["directories"]["kospex_home"] = {
         "path": kospex_home,
@@ -334,11 +341,11 @@ class KospexTimer:
 
 
 def get_all_config():
-    """ Get the kospex config """
-    details = {}
-    for item in KOSPEX_CONFIG_ITEMS:
-        details[item] = os.getenv(item)
-    return details
+    """The path settings kospex is using, as resolved by HabitatConfig."""
+    from kospex.habitat_config import HabitatConfig
+    config = HabitatConfig.get_instance()
+    return {var: f"{getattr(config, attr)} ({config.source(var)})"
+            for var, attr in KOSPEX_CONFIG_PATHS}
 
 def get_kospex_config():
     """ Get the kospex config file path.
@@ -377,10 +384,34 @@ def get_kospex_db_path():
 
     return str(config.db_path)
 
+# kospex.env cannot set these: they say where kospex.env is.
+CONFIG_FILE_LOCATORS = ("KOSPEX_HOME", "KOSPEX_CONFIG")
+
+
 def load_config(config_file):
-    """ Load the config file """
-    load_dotenv(dotenv_path=config_file)
+    """Load kospex.env into the environment, below anything already set.
+
+    A variable already in the environment keeps its value (the environment
+    outranks kospex.env). Path settings (KOSPEX_DB, KOSPEX_CODE, ...) are not
+    copied: HabitatConfig reads them from the file itself. KOSPEX_HOME and
+    KOSPEX_CONFIG are reported as ignored, since they locate this file.
+
+    Returns:
+        (loaded, ignored): the variable names set from the file, and the
+        locator variables the file tried to set.
+    """
+    from kospex.habitat_config import HabitatConfig, read_env_file
+    loaded, ignored = [], []
+    for key, value in read_env_file(config_file).items():
+        if key in CONFIG_FILE_LOCATORS:
+            ignored.append(key)
+        elif key in HabitatConfig.PATH_SETTINGS:
+            continue
+        elif key not in os.environ:
+            os.environ[key] = value
+            loaded.append(key)
     expand_ca_bundle_paths()
+    return loaded, ignored
 
 
 # The variables requests reads for its CA bundle, in its order: the first

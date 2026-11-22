@@ -1,10 +1,12 @@
 """Shared test fixtures.
 
-Kospex resolves paths through the HabitatConfig singleton and, during
-construction, writes several KOSPEX_* vars straight to os.environ (not via
-monkeypatch). Both leak across tests: a test that constructs Kospex with a
-throwaway KOSPEX_HOME can leave the singleton and env pointing at a now-deleted
-tmpdir, breaking a later test's DB-path resolution.
+Kospex resolves paths through the HabitatConfig singleton, and until #466
+KospexUtils.init() also wrote several KOSPEX_* vars straight to os.environ (not
+via monkeypatch). Both leak across tests: a test that constructs Kospex with a
+throwaway KOSPEX_HOME can leave the singleton (and, before #466, the env)
+pointing at a now-deleted tmpdir, breaking a later test's DB-path resolution.
+init() no longer exports path variables, but a test may still set them, so the
+guards below stay.
 
 This autouse fixture isolates those globals for every test: it snapshots and
 restores the KOSPEX_* env vars and resets the singleton before and after each
@@ -99,9 +101,9 @@ _PRISTINE_ENV = {k: os.environ.get(k) for k in _KOSPEX_ENV_KEYS}
 # every schema_migrations row: with KOSPEX_DB exported, that was the real one.
 _PRISTINE_ENV["KOSPEX_DB"] = None
 
-# Nor KOSPEX_HOME. Unset, kospex falls back to ~/kospex, and importing kospex_cli
-# or kgit for the first time writes KOSPEX_DB=~/kospex/kospex.db into os.environ.
-# A test that imports first and sets KOSPEX_HOME second then opens the real DB.
+# Nor KOSPEX_HOME. Unset, kospex falls back to ~/kospex, and before #466 importing
+# kospex_cli or kgit wrote KOSPEX_DB=~/kospex/kospex.db into os.environ, so a test
+# that imported first and set KOSPEX_HOME second opened the real DB.
 # Every test starts from a throwaway home instead, set now so that imports during
 # collection use it too.
 _THROWAWAY_HOME = tempfile.mkdtemp(prefix="kospex-tests-home-")

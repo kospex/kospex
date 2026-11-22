@@ -367,8 +367,17 @@ affected that the corpus does not exercise.
 ## Configuration
 
 ### Environment Variables
+**Precedence: environment > `kospex.env` > default**, resolved by `HabitatConfig`
+(`src/kospex/habitat_config.py`). Read paths from `HabitatConfig`, never
+`os.getenv("KOSPEX_DB")` etc., and never write a path variable into `os.environ`:
+an exported value outranks the user's own setting (#466). `KospexUtils.init()` loads
+`kospex.env` into the environment for the non-path settings only. User docs:
+`docs/configuration.md`.
 - `KOSPEX_CODE` - Base directory for git repositories (default: ~/code)
-- `KOSPEX_HOME` - Config directory (default: ~/kospex)
+- `KOSPEX_HOME` - Config directory (default: ~/kospex). Environment only: it locates `kospex.env`
+- `KOSPEX_CONFIG` - The `kospex.env` file (default: `$KOSPEX_HOME/kospex.env`). Environment only
+- `KOSPEX_DB` - SQLite DB (default: `$KOSPEX_HOME/kospex.db`)
+- `KOSPEX_LOGS` - Log directory (default: `$KOSPEX_HOME/logs`)
 - `GITHUB_AUTH_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` - GitHub API token, checked in that order
   (`KospexGithub.TOKEN_ENV_VARS`); empty values are skipped and whitespace stripped. Run
   `tests/manual/github_token_matrix.py` with a real read-only token after changing that lookup.

@@ -2,6 +2,43 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+No database migration. Nothing new is stored.
+
+### Fixed
+
+- **`KOSPEX_DB` and `KOSPEX_CONFIG` now take effect** (#466). Every command
+  replaced them with their defaults at startup, so
+  `KOSPEX_DB=/path/to/copy.db kospex upgrade-db -apply` migrated
+  `~/kospex/kospex.db`, not the copy. A custom `KOSPEX_CONFIG` file was never
+  read.
+- **`KOSPEX_DB` in `kospex.env` now takes effect.** It was ignored.
+- **A leading `~` is expanded in `kospex.env` paths and in `KOSPEX_HOME`.**
+  `KOSPEX_CODE=~/code` in `kospex.env` was reported as missing, and
+  `KOSPEX_HOME=~/khome` in the environment created a `./~/khome` directory
+  in the current directory.
+- **The "KOSPEX_CODE directory does not exist" warning names the path it
+  checked**, not always `~/code`.
+- **Logs are written to `KOSPEX_LOGS` when it is set.** They always went to
+  `$KOSPEX_HOME/logs`.
+
+### Changed
+
+- **Every path setting follows one order: environment, then `kospex.env`,
+  then the default.** That covers `KOSPEX_DB`, `KOSPEX_CODE` and `KOSPEX_LOGS`,
+  and the less common `KOSPEX_KRUNNER`, `KOSPEX_STAGING` and `KOSPEX_ASSESSMENTS`.
+  `KOSPEX_HOME` and `KOSPEX_CONFIG` are read from the environment only, since
+  they locate `kospex.env`. If the file sets either one, it is ignored and
+  `kospex init --verbose` warns.
+- **`kospex init --validate` and `kospex system-status` show where each path
+  came from**: `(environment)`, `(kospex.env)` or `(default)`.
+- **`kospex.env` is read by one parser**, so an `export ` prefix or an inline
+  comment is handled the same everywhere.
+- **New page: [Configuration](https://docs.kospex.io/configuration).** It covers
+  where kospex keeps its files, which value wins, the `kospex.env` format, and
+  the preference, credential and logging settings.
+
 ## 0.4.2 - 2026-11-20
 
 No database migration. Nothing new is stored.
