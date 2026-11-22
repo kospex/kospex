@@ -2,7 +2,7 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
-## Unreleased
+## 0.5.0 - 2026-11-22
 
 Database migrations `0014` and `0015`: back up `~/kospex/kospex.db`, then run
 `kospex upgrade-db -apply`. `kgit sync --org` / `--user` can't save a listing
