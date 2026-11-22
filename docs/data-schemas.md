@@ -10,8 +10,10 @@ Kospex uses two database systems:
 
 | Database | Default Path | Environment Variable |
 |----------|--------------|----------------------|
-| SQLite | `~/kospex/kospex.db` | `KOSPEX_HOME` |
-| DuckDB | `~/kospex/kospex-git.duckdb` | `KOSPEX_HOME` |
+| SQLite | `~/kospex/kospex.db` | `KOSPEX_DB`, else under `KOSPEX_HOME` |
+| DuckDB | `~/kospex/kospex-git.duckdb` | `KOSPEX_DUCKDB`, else under `KOSPEX_HOME` |
+
+Either can also be set in `kospex.env`; see [Configuration](configuration).
 
 ---
 

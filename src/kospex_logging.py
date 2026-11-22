@@ -32,14 +32,19 @@ class KospexLogger:
     _config_cache: Optional[Dict[str, Any]] = None
 
     def __init__(self):
-        self.kospex_home = self._get_kospex_home()
-        self.logs_dir = self.kospex_home / "logs"
+        from kospex.habitat_config import HabitatConfig
+        habitat = HabitatConfig.get_instance()
+        # KOSPEX_HOME and KOSPEX_LOGS, resolved in the same order as every
+        # other path (environment, kospex.env, default).
+        self.kospex_home = habitat.home
+        self.logs_dir = habitat.logs_dir
         self.config_file = self.kospex_home / "config.json"
 
     @staticmethod
     def _get_kospex_home() -> Path:
-        """Get the Kospex home directory with fallback."""
-        return Path(os.getenv("KOSPEX_HOME", os.path.expanduser("~/kospex")))
+        """The Kospex home directory, as HabitatConfig resolves it."""
+        from kospex.habitat_config import HabitatConfig
+        return HabitatConfig.get_instance().home
 
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from environment variables and config file."""
@@ -54,16 +59,22 @@ class KospexLogger:
             "modules": {},
         }
 
-        # Override with environment variables
-        env_level = os.getenv("KOSPEX_LOG_LEVEL")
+        # Override with the environment, then kospex.env. Read through
+        # HabitatConfig, not os.getenv: this runs on the first get_logger(),
+        # which happens while modules are imported, before KospexUtils.init()
+        # has loaded kospex.env into the environment.
+        from kospex.habitat_config import HabitatConfig
+        setting = HabitatConfig.get_instance().setting
+
+        env_level = setting("KOSPEX_LOG_LEVEL")
         if env_level:
             config["log_level"] = env_level.upper()
 
-        env_retention = os.getenv("KOSPEX_LOG_RETENTION_DAYS")
+        env_retention = setting("KOSPEX_LOG_RETENTION_DAYS")
         if env_retention and env_retention.isdigit():
             config["retention_days"] = int(env_retention)
 
-        env_console = os.getenv("KOSPEX_CONSOLE_LOGGING")
+        env_console = setting("KOSPEX_CONSOLE_LOGGING")
         if env_console:
             config["console_logging"] = env_console.lower() in ("true", "1", "yes")
 
@@ -88,7 +99,7 @@ class KospexLogger:
             self.kospex_home.mkdir(mode=0o750, exist_ok=True)
 
             # Create logs directory if it doesn't exist
-            self.logs_dir.mkdir(mode=0o750, exist_ok=True)
+            self.logs_dir.mkdir(mode=0o750, parents=True, exist_ok=True)
 
             # Check if directories are writable
             if not os.access(self.logs_dir, os.W_OK):

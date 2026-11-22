@@ -169,10 +169,9 @@ def kospex_init(create, verbose, validate):
         print("\n=== Kospex Setup Validation ===")
         print(f"Overall Status: {validation['overall_status'].upper()}")
 
-        print("\nEnvironment Variables:")
+        print("\nPaths (environment > kospex.env > default):")
         for var, info in validation["environment_vars"].items():
-            status = "✓" if info["set"] else "✗"
-            print(f"  {status} {var}: {info['value'] or 'Not set'}")
+            print(f"  {var}: {info['value']} ({info['source']})")
 
         print("\nDirectories:")
         for name, info in validation["directories"].items():
@@ -235,7 +234,7 @@ def kospex_init(create, verbose, validate):
                 print(f"  • {dir_path}")
 
         if init_result["environment_vars_set"]:
-            print("\nEnvironment Variables Set:")
+            print("\nLoaded from kospex.env:")
             for var in init_result["environment_vars_set"]:
                 print(f"  • {var}")
 
