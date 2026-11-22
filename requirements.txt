@@ -1,7 +1,7 @@
 annotated-doc==0.0.7
 annotated-types==0.8.0
 anyio==4.16.0
-certifi==2026.10.23
+certifi==2026.11.20
 charset-normalizer==3.5.2
 click-default-group==1.2.4
 click==8.5.1
@@ -25,7 +25,7 @@ pygments==2.21.0
 python-dateutil==4.0.0
 python-dotenv==1.2.4
 python-multipart==0.0.34
-pyyaml==6.0.3
+pyyaml==6.0.4
 requests==2.34.2
 rich==15.0.0
 sqlite-fts4==1.0.3
@@ -37,4 +37,4 @@ typing-inspection==0.4.5
 tzdata==2026.6
 urllib3==2.8.0
 uvicorn==0.54.0
-wcwidth==0.9.4
+wcwidth==0.9.5
