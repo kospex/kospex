@@ -241,8 +241,9 @@ verification until requests is told to trust the proxy's CA.
   ```
   REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
   ```
-  A value already set in the environment takes precedence over `kospex.env`.
-  A leading `~` in `kospex.env` is expanded to your home directory.
+  A value already set in the environment takes precedence over `kospex.env`
+  (see [Configuration](configuration)). A leading `~` in `kospex.env` is
+  expanded to your home directory.
 
   If the path doesn't exist, `kospex sca` and `krunner osi` stop before looking
   anything up and say so (`REQUESTS_CA_BUNDLE is set to ..., which does not
@@ -348,6 +349,8 @@ verification until requests is told to trust the proxy's CA.
   # Set custom code directory
   export KOSPEX_CODE=/path/to/your/code
   ```
+  `kospex init --validate` shows each path and whether it came from the
+  environment, `kospex.env` or the default. See [Configuration](configuration).
 
 ### Logging Issues
 

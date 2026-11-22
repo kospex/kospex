@@ -32,14 +32,19 @@ class KospexLogger:
     _config_cache: Optional[Dict[str, Any]] = None
 
     def __init__(self):
-        self.kospex_home = self._get_kospex_home()
-        self.logs_dir = self.kospex_home / "logs"
+        from kospex.habitat_config import HabitatConfig
+        habitat = HabitatConfig.get_instance()
+        # KOSPEX_HOME and KOSPEX_LOGS, resolved in the same order as every
+        # other path (environment, kospex.env, default).
+        self.kospex_home = habitat.home
+        self.logs_dir = habitat.logs_dir
         self.config_file = self.kospex_home / "config.json"
 
     @staticmethod
     def _get_kospex_home() -> Path:
-        """Get the Kospex home directory with fallback."""
-        return Path(os.getenv("KOSPEX_HOME", os.path.expanduser("~/kospex")))
+        """The Kospex home directory, as HabitatConfig resolves it."""
+        from kospex.habitat_config import HabitatConfig
+        return HabitatConfig.get_instance().home
 
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from environment variables and config file."""
@@ -88,7 +93,7 @@ class KospexLogger:
             self.kospex_home.mkdir(mode=0o750, exist_ok=True)
 
             # Create logs directory if it doesn't exist
-            self.logs_dir.mkdir(mode=0o750, exist_ok=True)
+            self.logs_dir.mkdir(mode=0o750, parents=True, exist_ok=True)
 
             # Check if directories are writable
             if not os.access(self.logs_dir, os.W_OK):

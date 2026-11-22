@@ -24,6 +24,19 @@ if TYPE_CHECKING:
     from kospex.private_packages import PrivatePackages
 
 
+def read_env_file(path) -> Dict[str, str]:
+    """Read a kospex.env file into {KEY: value}.
+
+    The one parser for kospex.env: KospexUtils.load_config() uses it to load
+    the file into the environment, and HabitatConfig to read it directly, so
+    the two cannot disagree about an `export ` prefix, an inline comment or
+    quoting. It is python-dotenv's. A key with no `=` is skipped. `~` is not
+    expanded here; the path properties expand it.
+    """
+    from dotenv import dotenv_values
+    return {k: v for k, v in dotenv_values(path).items() if v is not None}
+
+
 class HabitatConfig:
     """Centralized configuration management for kospex habitat.
 
@@ -31,9 +44,15 @@ class HabitatConfig:
     settings for the kospex environment.
 
     Configuration Precedence (highest to lowest):
-        1. Environment variables (e.g., KOSPEX_HOME, KOSPEX_CODE)
+        1. Environment variables (e.g., KOSPEX_DB, KOSPEX_CODE)
         2. Config file values (~/kospex/kospex.env)
         3. Default values
+
+    KOSPEX_HOME and KOSPEX_CONFIG locate the config file, so they come from
+    the environment (or the default) only. Paths derived from home (the DB,
+    logs, config file, ...) follow whatever KOSPEX_HOME resolves to.
+
+    Nothing here writes to os.environ. See docs/configuration.md.
 
     Attributes:
         home: Path to KOSPEX_HOME directory (default: ~/kospex)
@@ -65,6 +84,19 @@ class HabitatConfig:
     # Accepted spellings for an on/off setting. Anything else is refused rather
     # than guessed: for KOSPEX_DEPS_ENRICH one wrong guess sends package names to
     # third parties and the other silently drops the advisory data.
+    # Settings that locate kospex.env, so kospex.env cannot set them.
+    _ENV_ONLY = frozenset({'KOSPEX_HOME', 'KOSPEX_CONFIG'})
+
+    # Path settings resolved here. KospexUtils.load_config() does not copy
+    # these from kospex.env into os.environ: this class reads the file itself,
+    # and an exported copy would make a kospex.env value look like an
+    # environment one (and outrank a later change to the file).
+    PATH_SETTINGS = frozenset({
+        'KOSPEX_HOME', 'KOSPEX_CONFIG', 'KOSPEX_CODE', 'KOSPEX_DB',
+        'KOSPEX_DUCKDB', 'KOSPEX_LOGS', 'KOSPEX_KRUNNER', 'KOSPEX_STAGING',
+        'KOSPEX_ASSESSMENTS',
+    })
+
     _TRUE_VALUES = frozenset({'true', '1', 'yes', 'on'})
     _FALSE_VALUES = frozenset({'false', '0', 'no', 'off'})
 
@@ -141,8 +173,8 @@ class HabitatConfig:
     def _load_config_file(self) -> None:
         """Load configuration from the kospex.env file.
 
-        Uses dotenv-style parsing for the config file. The config file
-        is loaded lazily on first access to any config value.
+        Parsed by read_env_file() (python-dotenv). The config file is
+        loaded lazily on first access to any config value.
         """
         self._config_loaded = True
         config_path = self._get_config_file_path()
@@ -151,22 +183,8 @@ class HabitatConfig:
             return
 
         try:
-            with open(config_path, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    # Skip empty lines and comments
-                    if not line or line.startswith('#'):
-                        continue
-                    # Parse KEY=VALUE format
-                    if '=' in line:
-                        key, value = line.split('=', 1)
-                        key = key.strip()
-                        value = value.strip()
-                        # Remove quotes if present
-                        if value and value[0] in ('"', "'") and value[-1] == value[0]:
-                            value = value[1:-1]
-                        self._config_values[key] = value
-        except (IOError, OSError):
+            self._config_values = read_env_file(config_path)
+        except (IOError, OSError, UnicodeDecodeError):
             # If we can't read the config file, just continue with defaults
             pass
 
@@ -193,6 +211,36 @@ class HabitatConfig:
             home = Path(home_env).expanduser() if home_env else Path(self.DEFAULTS['KOSPEX_HOME']).expanduser()
 
         return home / self.DEFAULTS['KOSPEX_CONFIG_FILENAME']
+
+    def _path_setting(self, key: str) -> Optional[Path]:
+        """An explicitly configured path: override, environment, then kospex.env.
+
+        None when the setting is not configured anywhere (or is empty), so the
+        caller falls back to its home-derived default.
+        """
+        value = self._overrides.get(key) or os.getenv(key)
+        if not value:
+            if not self._config_loaded:
+                self._load_config_file()
+            value = self._config_values.get(key)
+        return Path(value).expanduser() if value else None
+
+    def source(self, key: str) -> str:
+        """Where a setting's value comes from.
+
+        Returns 'override', 'environment', 'kospex.env' or 'default'.
+        KOSPEX_HOME and KOSPEX_CONFIG are never 'kospex.env'.
+        """
+        if self._overrides.get(key):
+            return 'override'
+        if os.getenv(key):
+            return 'environment'
+        if key not in self._ENV_ONLY:
+            if not self._config_loaded:
+                self._load_config_file()
+            if self._config_values.get(key):
+                return 'kospex.env'
+        return 'default'
 
     def reload(self) -> None:
         """Reload configuration from the config file.
@@ -244,9 +292,11 @@ class HabitatConfig:
         """Path to KOSPEX_HOME directory.
 
         Default: ~/kospex
-        Override: Set KOSPEX_HOME environment variable or in config file.
+        Override: Set the KOSPEX_HOME environment variable. kospex.env cannot
+        set it, because kospex.env is found through it.
         """
-        return Path(self._get_value('KOSPEX_HOME')).expanduser()
+        value = self._overrides.get('KOSPEX_HOME') or os.getenv('KOSPEX_HOME')
+        return Path(value or self.DEFAULTS['KOSPEX_HOME']).expanduser()
 
     @property
     def code_dir(self) -> Path:
@@ -262,53 +312,27 @@ class HabitatConfig:
         """Path to SQLite database file.
 
         Default: ~/kospex/kospex.db
-        Override: Set KOSPEX_DB environment variable.
+        Override: KOSPEX_DB in the environment or kospex.env.
         """
-        # Check for explicit KOSPEX_DB override
-        db_override = self._overrides.get('KOSPEX_DB')
-        if db_override:
-            return Path(db_override).expanduser()
-
-        db_env = os.getenv('KOSPEX_DB')
-        if db_env:
-            return Path(db_env).expanduser()
-
-        return self.home / self._get_value('KOSPEX_DB_FILENAME')
+        return self._path_setting('KOSPEX_DB') or self.home / self._get_value('KOSPEX_DB_FILENAME')
 
     @property
     def duckdb_path(self) -> Path:
         """Path to DuckDB database file.
 
         Default: ~/kospex/kospex-git.duckdb
-        Override: Set KOSPEX_DUCKDB environment variable.
+        Override: KOSPEX_DUCKDB in the environment or kospex.env.
         """
-        # Check for explicit KOSPEX_DUCKDB override
-        duckdb_override = self._overrides.get('KOSPEX_DUCKDB')
-        if duckdb_override:
-            return Path(duckdb_override).expanduser()
-
-        duckdb_env = os.getenv('KOSPEX_DUCKDB')
-        if duckdb_env:
-            return Path(duckdb_env).expanduser()
-
-        return self.home / self._get_value('KOSPEX_DUCKDB_FILENAME')
+        return self._path_setting('KOSPEX_DUCKDB') or self.home / self._get_value('KOSPEX_DUCKDB_FILENAME')
 
     @property
     def logs_dir(self) -> Path:
         """Path to logs directory.
 
         Default: ~/kospex/logs
-        Override: Set KOSPEX_LOGS environment variable.
+        Override: KOSPEX_LOGS in the environment or kospex.env.
         """
-        logs_override = self._overrides.get('KOSPEX_LOGS')
-        if logs_override:
-            return Path(logs_override).expanduser()
-
-        logs_env = os.getenv('KOSPEX_LOGS')
-        if logs_env:
-            return Path(logs_env).expanduser()
-
-        return self.home / self._get_value('KOSPEX_LOGS_DIRNAME')
+        return self._path_setting('KOSPEX_LOGS') or self.home / self._get_value('KOSPEX_LOGS_DIRNAME')
 
     @property
     def config_file(self) -> Path:
@@ -324,54 +348,30 @@ class HabitatConfig:
         """Path to krunner directory for batch processing.
 
         Default: ~/kospex/krunner
-        Override: Set KOSPEX_KRUNNER environment variable.
+        Override: KOSPEX_KRUNNER in the environment or kospex.env.
         """
-        krunner_override = self._overrides.get('KOSPEX_KRUNNER')
-        if krunner_override:
-            return Path(krunner_override).expanduser()
-
-        krunner_env = os.getenv('KOSPEX_KRUNNER')
-        if krunner_env:
-            return Path(krunner_env).expanduser()
-
-        return self.home / self._get_value('KOSPEX_KRUNNER_DIRNAME')
+        return self._path_setting('KOSPEX_KRUNNER') or self.home / self._get_value('KOSPEX_KRUNNER_DIRNAME')
 
     @property
     def staging_dir(self) -> Path:
         """Path to sync staging directory under KOSPEX_CODE.
 
         Default: ~/code/_sync-staging
-        Override: Set KOSPEX_STAGING environment variable.
+        Override: KOSPEX_STAGING in the environment or kospex.env.
 
         This directory is used for temporary storage during repository
         synchronization operations.
         """
-        staging_override = self._overrides.get('KOSPEX_STAGING')
-        if staging_override:
-            return Path(staging_override).expanduser()
-
-        staging_env = os.getenv('KOSPEX_STAGING')
-        if staging_env:
-            return Path(staging_env).expanduser()
-
-        return self.code_dir / self._get_value('KOSPEX_STAGING_DIRNAME')
+        return self._path_setting('KOSPEX_STAGING') or self.code_dir / self._get_value('KOSPEX_STAGING_DIRNAME')
 
     @property
     def assessments_dir(self) -> Path:
         """Path to assessments directory for assessment outputs.
 
         Default: ~/kospex/assessments
-        Override: Set KOSPEX_ASSESSMENTS environment variable.
+        Override: KOSPEX_ASSESSMENTS in the environment or kospex.env.
         """
-        assessments_override = self._overrides.get('KOSPEX_ASSESSMENTS')
-        if assessments_override:
-            return Path(assessments_override).expanduser()
-
-        assessments_env = os.getenv('KOSPEX_ASSESSMENTS')
-        if assessments_env:
-            return Path(assessments_env).expanduser()
-
-        return self.home / self._get_value('KOSPEX_ASSESSMENTS_DIRNAME')
+        return self._path_setting('KOSPEX_ASSESSMENTS') or self.home / self._get_value('KOSPEX_ASSESSMENTS_DIRNAME')
 
     @property
     def deps_enrich(self) -> bool:
@@ -578,7 +578,8 @@ class HabitatConfig:
 # Uncomment and modify settings as needed
 
 # KOSPEX_CODE=~/code
-# KOSPEX_HOME=~/kospex
+# KOSPEX_DB=~/kospex/kospex.db
+# KOSPEX_LOGS=~/kospex/logs
 
 # Look dependencies up on deps.dev and PyPI during kospex sca / krunner osi.
 # false = parse and save only, nothing is sent (override with -enrich).

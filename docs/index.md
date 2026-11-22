@@ -17,7 +17,9 @@ to model data from git repositories.
 
 ## Getting started
 
-Follow our guide on [Installation and setup](getting-started).
+Follow our guide on [Installation and setup](getting-started). To move the
+database, repos or logs, or to set tokens and preferences in one file, see
+[Configuration](configuration).
 
 Also check out the [list of commands](commands) that are part of the kospex toolkit,
 and the [Web UI guide](kweb/) for exploring the data.

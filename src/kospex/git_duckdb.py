@@ -337,8 +337,8 @@ class GitDuckDB:
 
     def _get_default_path(self) -> str:
         """Get default DuckDB path in KOSPEX_HOME directory."""
-        kospex_home = os.getenv("KOSPEX_HOME", os.path.expanduser("~/kospex"))
-        return os.path.join(kospex_home, DUCKDB_FILENAME)
+        from kospex.habitat_config import HabitatConfig
+        return str(HabitatConfig.get_instance().duckdb_path)
 
     def connect(self, force: bool = False, create_new: bool = False, verbose: bool = False):
         """Establish database connection.
