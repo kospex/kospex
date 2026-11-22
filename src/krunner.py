@@ -30,7 +30,6 @@ import krunner_utils as KrunnerUtils
 from kospex_core import Kospex, RepoPathConflict
 from kospex_query import KospexQuery
 from kospex_dependencies import KospexDependencies
-from kospex_email import EmailAnalyzer
 from kospex_git import KospexGit
 from kospex_utils import KospexTimer
 from kospex.assessment_types import AssessmentTypes
@@ -663,15 +662,7 @@ def _generated_at():
 
 
 def _is_bot():
-    analyzer = EmailAnalyzer()
-    cache = {}
-
-    def is_bot(email):
-        if email not in cache:
-            cache[email] = analyzer.analyze(email).is_bot
-        return cache[email]
-
-    return is_bot
+    return KospexAuthorship.bot_checker()
 
 
 def _cell(value, pct=False):

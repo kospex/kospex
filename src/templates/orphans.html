@@ -35,21 +35,26 @@
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
                 <div class="p-6">
                     <h1 class="text-3xl font-bold text-gray-900 mb-4">Orphaned Repositories</h1>
-                    <p class="text-gray-600 mb-4">Repositories where there are no active developers with knowledge working.</p>
-                    
+                    <p class="text-gray-600 mb-2">A repository is orphaned when no one who authored its code is still here: none of its authors has committed in the last year.</p>
+                    <p class="text-gray-600 mb-4">Authors are everyone who authored a commit to the repository, matched by author email. Merge commits and bots are not counted as authoring. A <em>Last sync</em> in red is more than {{ stale_days }} days ago, so that repository needs a sync before its status can be trusted.</p>
+
+                    <form method="get" class="flex flex-wrap items-center gap-4 mb-4">
+                        <label for="active_in" class="text-sm font-medium text-gray-700">Still working for us means committed to</label>
+                        <select id="active_in" name="active_in" onchange="this.form.submit()"
+                                class="border border-gray-300 rounded-md px-2 py-1 text-sm">
+                            <option value="estate" {% if active_in == 'estate' %}selected{% endif %}>any synced repository</option>
+                            <option value="server" {% if active_in == 'server' %}selected{% endif %}>a repository on the same git server</option>
+                            <option value="org" {% if active_in == 'org' %}selected{% endif %}>a repository in the same org</option>
+                        </select>
+                        <noscript><button type="submit" class="border border-gray-300 rounded-md px-2 py-1 text-sm">Apply</button></noscript>
+                    </form>
+
                     <div class="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                        <div class="flex items-start">
-                            <div class="flex-shrink-0">
-                                <svg class="h-5 w-5 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-                                </svg>
-                            </div>
-                            <div class="ml-3">
-                                <h3 class="text-sm font-medium text-orange-800">Orphan Status</h3>
-                                <div class="mt-2 text-sm text-orange-700">
-                                    <p>{{ data|length if data else 0 }} orphaned repositories found.</p>
-                                </div>
-                            </div>
+                        <h3 class="text-sm font-medium text-orange-800">Orphan Status</h3>
+                        <div class="mt-2 text-sm text-orange-700">
+                            <p>
+                                {{ summary }}
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -58,46 +63,125 @@
             <!-- Orphaned Repositories Table -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Repository Analysis</h2>
-                    
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">Repository Analysis</h2>
+                    <p class="mb-6">
+                        <a
+                            href="#column_details"
+                            id="column_toggle"
+                            role="button"
+                            aria-expanded="false"
+                            aria-controls="column_details"
+                            class="text-sm text-blue-600 hover:text-blue-800 underline"
+                            >explain column headings and table</a
+                        >
+                    </p>
+                    <script>
+                        // Plain JS, bound before the table, as on the OSI page.
+                        (function () {
+                            const toggle = document.getElementById("column_toggle");
+                            toggle.addEventListener("click", function (e) {
+                                e.preventDefault();
+                                const details = document.getElementById("column_details");
+                                const expanded = toggle.getAttribute("aria-expanded") === "true";
+                                details.classList.toggle("hidden", expanded);
+                                toggle.setAttribute("aria-expanded", String(!expanded));
+                                toggle.textContent = expanded ? "explain column headings and table" : "hide";
+                            });
+                        })();
+                    </script>
+                    <div id="column_details" class="hidden mb-6 text-sm text-gray-700 space-y-2">
+                        <p>One row per repository. "Still here" means committed in the last year to
+                            {% if active_in == 'org' %}a repository in the same org{% elif active_in == 'server' %}a repository on the same git server{% else %}any synced repository{% endif %}
+                            (change it with the menu above).</p>
+                        <dl class="space-y-2">
+                            <div>
+                                <dt class="font-semibold">Status</dt>
+                                <dd>
+                                    <ul class="list-disc list-inside mt-1">
+                                        <li><span class="font-medium">Orphaned</span> - no author is still here</li>
+                                        <li><span class="font-medium">Knowledge</span> - at least one author is still here</li>
+                                        <li><span class="font-medium">No authors</span> - no person has authored a commit (bots may have)</li>
+                                    </ul>
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Authors</dt>
+                                <dd class="inline">- everyone (by author email) who has authored a commit to this repository, all time. Merge commits and bots are not counted.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Present</dt>
+                                <dd class="inline">- how many of those authors committed in the last 365 days: still here. Each counts once, whether they wrote half the code or one line. A year is what research that tested the threshold chose for "has left" (Avelino et al. 2019, Calefato et al. 2022): 90 days wrongly marks many people who pause and come back as gone.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">% Here</dt>
+                                <dd class="inline">- Present as a percentage of Authors; blank when there are no authors.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Active</dt>
+                                <dd class="inline">- how many of those authors committed in the last 90 days, so their knowledge is fresh. Present but not Active is someone still around who may need time to get back into the code.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Last commit</dt>
+                                <dd class="inline">- the repository's latest commit, so a repository nobody has touched for years is visible.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Bots active</dt>
+                                <dd class="inline">- bots that committed to this repository in the last 90 days. Orphaned with bots active means dependencies are still being updated with no one left who worked on it.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Last sync</dt>
+                                <dd class="inline">- days since kospex last fetched or synced this repository. In red, it is more than {{ stale_days }} days ago: commits since then are missing, so its authors, and anyone who is only active there, may look less active than they are. It needs a sync: <code>{{ sync_command }}</code></dd>
+                            </div>
+                        </dl>
+                    </div>
+                    {% if stale_count %}
+                    <div class="mb-6 text-sm text-red-600">
+                        <p><span class="font-bold text-orange-600">Warning:</span> {{ stale_count }} of {{ data|length }} repositories last synced more than {{ stale_days }} days ago need a sync:</p>
+                        <pre id="stale_sync_command" class="mt-1 p-2 bg-white border border-gray-200 rounded font-mono text-xs text-gray-900 overflow-x-auto">{{ sync_command }}</pre>
+                    </div>
+                    {% endif %}
+
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200" id="myTable">
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repository</th>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Orphaned</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Active Developers</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Developers</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">% Developers Here</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Authors</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Present</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">% Here</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Bots active</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last commit</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last sync</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for row in data %}
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <a href="/repo/{{ row['_repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline font-medium">
-                                            {{ row['_git_repo'] }}
+                                        <a href="/repo/{{ row['repo_id'] }}" class="text-blue-600 hover:text-blue-800 underline font-medium">
+                                            {{ row['repo_id'] }}
                                         </a>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
-                                        {% if row.get('orphaned') %}
-                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                                                Yes
-                                            </span>
+                                        {% if row['status'] == 'Orphaned' %}
+                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Orphaned</span>
+                                        {% elif row['status'] == 'Knowledge' %}
+                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Knowledge</span>
                                         {% else %}
-                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                                No
-                                            </span>
+                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">{{ row['status'] }}</span>
                                         {% endif %}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
-                                        {{ row.get('intersection', 0) }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
-                                        {{ row.get('committers', 0) }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
-                                        {{ row.get('percentage', 0) }}%
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ row['authors'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ row['present'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{% if row['pct_here'] != '' %}{{ '%.2f' % row['pct_here'] }}%{% endif %}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ row['active'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ row['bots_active'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ (row['last_commit'] or '')[:10] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium {% if row['refresh_stale'] is sameas true %}text-red-600{% else %}text-gray-900{% endif %}"
+                                        data-order="{{ row['refresh_age_days'] if row['refresh_age_days'] != '' else 999999 }}">
+                                        {% if row['refresh_age_days'] != '' %}{{ row['refresh_age_days'] }}d{% else %}never{% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -114,7 +198,7 @@
         <script>
             $(document).ready(function () {
                 $("#myTable").DataTable({
-                    order: [[4, "asc"]],
+                    order: [[1, "desc"], [2, "desc"]],
                     responsive: true,
                     pageLength: 25,
                     lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],

@@ -1592,20 +1592,6 @@ def get_status_table(status):
 
     return table
 
-def orphan_prettytable():
-    """ Return a prettytable object for showing orphaned repos."""
-
-    table = PrettyTable()
-    headers = ["_repo_id", "committers", "active", "Orphaned", "% Here"]
-    table.field_names = headers
-    table.align["_repo_id"] = "l"
-    table.align["committers"] = "r"
-    table.align["active"] = "r"
-    table.align["Orphaned"] = "l"
-    table.align["% Here"] = "r"
-
-    return table
-
 def parse_docker_image(image):
     """
     Take a Docker image and return a Dict with the keys

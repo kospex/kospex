@@ -239,3 +239,18 @@ def bus_factor_row(repo, authors, thresholds, active_days, generated_at, is_bot)
         for t, v in none_to_blank(values).items():
             row[f"{prefix}_{t}"] = v
     return {f: row[f] for f in bus_factor_fields(thresholds)}
+
+
+def bot_checker():
+    """A cached is_bot(email), shared by krunner key-person / bus-factor and kospex orphans."""
+    from kospex_email import EmailAnalyzer
+
+    analyzer = EmailAnalyzer()
+    cache = {}
+
+    def is_bot(email):
+        if email not in cache:
+            cache[email] = analyzer.analyze(email).is_bot
+        return cache[email]
+
+    return is_bot
