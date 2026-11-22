@@ -895,8 +895,12 @@ def syncs_run(request: Request, run_id: str):
         if page.get("available"):
             org_key = page["run"]["org_key"]
             parsed = KospexUtils.parse_org_key(org_key)
-            if parsed and KospexQuery().scope_exists({"org_key": org_key}):
-                context["crumb"] = parsed
+            if parsed:
+                # "github.com / acme" reads better than the org key. parse_org_key
+                # decodes a nested group's "~~" back to "/".
+                context["org_title"] = f"{parsed['git_server']} / {parsed['org']}"
+                if KospexQuery().scope_exists({"org_key": org_key}):
+                    context["crumb"] = parsed
         return templates.TemplateResponse(request, "syncs_run.html", context)
     except HTTPException:
         # The 404 above, not a 500 from the handler below. (#210)

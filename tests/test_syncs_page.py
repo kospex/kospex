@@ -341,3 +341,16 @@ def test_no_breadcrumb_before_the_org_has_repos_in_kospex(db):
     assert status == 200
     assert 'aria-label="Breadcrumb"' not in body
     assert "← Syncs</a>" in body
+
+
+@pytest.mark.parametrize("org_key, title", [
+    ("github.com~acme", "github.com / acme"),
+    # A GitLab subgroup: "~~" in the key is a "/" in the group's path.
+    ("gitlab.com~group~~sub", "gitlab.com / group/sub"),
+])
+def test_run_page_title_is_server_slash_org(db, org_key, title):
+    run_id = M.save_listing(db, org_key, [{**_item("x"), "_repo_id": f"{org_key}~x"}])
+    status, body = _get_run(run_id)
+    assert status == 200
+    assert f">{title}</h1>" in body
+    assert f"Repos kospex has under {title} that" in body
