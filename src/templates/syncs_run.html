@@ -44,7 +44,7 @@
                     <p class="text-gray-600 mb-6">Org sync run <span class="font-mono">{{ run.run_id }}</span>.
                     {#- Only when there's a command here to copy: a finished run with
                         every visibility recorded has none. #}
-                    {% if page.continue_command or page.visibility_note %} kweb doesn't run commands. To sync repos, refresh the inventory or update repo details, copy a command from this page and run it in a terminal.{% endif %}</p>
+                    {% if page.continue_command or page.visibility_note %}<br>kweb doesn't run commands. To sync repos, refresh the inventory or update repo details, copy a command from this page and run it in a terminal.{% endif %}</p>
 
                     {% if page.visibility_banner %}
                     <div id="visibility-banner" class="border border-purple-200 bg-purple-50 rounded-lg p-4 mb-6">
