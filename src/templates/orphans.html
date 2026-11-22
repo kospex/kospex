@@ -135,7 +135,10 @@
                         </dl>
                     </div>
                     {% if stale_count %}
-                    <p class="mb-6 text-sm text-red-600">{{ stale_count }} of {{ data|length }} repositories last synced more than {{ stale_days }} days ago need a sync: <code>{{ sync_command }}</code></p>
+                    <div class="mb-6 text-sm text-red-600">
+                        <p><span class="font-bold text-orange-600">Warning:</span> {{ stale_count }} of {{ data|length }} repositories last synced more than {{ stale_days }} days ago need a sync:</p>
+                        <pre id="stale_sync_command" class="mt-1 p-2 bg-white border border-gray-200 rounded font-mono text-xs text-gray-900 overflow-x-auto">{{ sync_command }}</pre>
+                    </div>
                     {% endif %}
 
                     <div class="overflow-x-auto">

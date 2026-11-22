@@ -1772,10 +1772,11 @@ def orphans(here_days, days, window, stale_days, active_in, server, target_list,
             f"{counts[KospexOrphans.ORPHANED] / with_people * 100:.2f}% orphaned.")
     stale = sum(1 for r in rows if r["refresh_stale"] is True)
     if stale:
-        console.print(
+        console.print(Text.assemble(
+            ("Warning:", "bold dark_orange"), " ",
             f"{stale} of {len(rows)} repos not synced in {stale_days} days: their status "
             f"may be out of date, and so may who is still active. They need a sync: "
-            f"{KospexOrphans.sync_command(stale_days, server=None if target_list else server)}",
+            f"{KospexOrphans.sync_command(stale_days, server=None if target_list else server)}"),
             soft_wrap=True)
     console.print()
 
