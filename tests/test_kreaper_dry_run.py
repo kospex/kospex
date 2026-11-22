@@ -167,3 +167,65 @@ def test_no_stale_not_implemented_warning(kospex_env, monkeypatch):
     result = _run(monkeypatch, k, ["delete-repo", "-repo_id", repo_id, "-dry-run"])
 
     assert "only implements table" not in result.output
+
+
+# -table (#472): the dry run counts the one table the real delete touches.
+
+def test_counts_limited_to_tables(kospex_env):
+    from kospex_core import Kospex
+
+    k = Kospex()
+    repo_id, _ = _seed(k)
+
+    assert k.repo_id_row_counts(repo_id, tables=["commits"]) == {"commits": 2}
+    assert k.repo_id_row_counts(repo_id, tables=["not_a_table"]) == {}
+
+
+def test_dry_run_with_table_counts_only_that_table(kospex_env, monkeypatch):
+    from kospex_core import Kospex
+
+    k = Kospex()
+    repo_id, _ = _seed(k)
+
+    result = _run(monkeypatch, k, ["delete-repo", "-repo_id", repo_id,
+                                   "-table", "commits", "-dry-run"])
+
+    assert result.exit_code == 0
+    listed = [l.split()[0] for l in result.output.splitlines() if l.startswith("  ")]
+    assert listed == ["commits", "TOTAL"], result.output
+    assert "in table commits" in result.output
+    assert k.repo_id_row_counts(repo_id)["commits"] == 2, "dry run deleted rows"
+
+
+def test_dry_run_with_invalid_table_says_so(kospex_env, monkeypatch):
+    from kospex_core import Kospex
+
+    k = Kospex()
+    repo_id, _ = _seed(k)
+
+    result = _run(monkeypatch, k, ["delete-repo", "-repo_id", repo_id,
+                                   "-table", "nope", "-dry-run"])
+
+    assert "nope is NOT a valid table name" in result.output
+    assert "Dry run" not in result.output
+
+
+def test_dry_run_matches_table_delete(kospex_env, monkeypatch):
+    """What the dry run lists is what -yes removes, and repos survives, so
+    `kgit pull REPO_ID` still finds the clone."""
+    from kospex_core import Kospex
+
+    k = Kospex()
+    repo_id, other = _seed(k)
+    before = k.repo_id_row_counts(repo_id)
+    would = k.repo_id_row_counts(repo_id, tables=["commits"])
+
+    result = _run(monkeypatch, k, ["delete-repo", "-repo_id", repo_id,
+                                   "-table", "commits", "-yes"])
+
+    assert result.exit_code == 0
+    after = k.repo_id_row_counts(repo_id)
+    gone = {t: n - after.get(t, 0) for t, n in before.items() if n != after.get(t, 0)}
+    assert gone == would == {"commits": 2}
+    assert after["repos"] == 1
+    assert k.repo_id_row_counts(other)["commits"] == 1

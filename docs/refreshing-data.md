@@ -310,10 +310,32 @@ listed here predates the current ingest.
 
 ### Re-syncing a repo
 
-A re-sync has to start from an empty slate, because `sync_repo` derives its
-window from the newest commit already recorded. Clearing the repo removes its
-`repos` row along with everything else, which resets the sync provenance so the
-next sync walks the full history.
+A re-sync has to start with no commits recorded for the repo, because
+`sync_repo` derives its window from the newest commit already in `commits`.
+There are two ways to get there.
+
+**Clear only its commits, then `kgit pull`.** The `repos` row stays, so
+`kgit pull REPO_ID` still knows where the clone is, and pulls and re-syncs it
+in one step:
+
+```bash
+# See what would be removed - read-only, deletes nothing
+kreaper delete-repo -repo_id github.com~owner~repo -table commits -dry-run
+
+# Clear this repo's commits only
+kreaper delete-repo -repo_id github.com~owner~repo -table commits -yes
+
+# Pull and re-sync; with no commits recorded it reads the full history
+kgit pull github.com~owner~repo
+```
+
+The sync prints `Syncing all commits...` and rewrites every commit with
+`parents` filled in. `commit_files` and `file_metadata` are updated in place by
+the same sync, and the repo's other data (dependencies, observations, OSI runs)
+is kept.
+
+**Or clear everything for the repo, then `kospex sync-directory`.** This
+removes the `repos` row too, which resets the sync provenance:
 
 ```bash
 # See what would be removed - read-only, deletes nothing
@@ -330,8 +352,14 @@ kospex sync-directory ~/code/github.com/owner/repo
 it, so pointing it at one repo syncs just that one, and pointing it at
 `~/code` re-syncs everything.
 
-To pull and re-sync in one step for clones kospex already knows about, use
-[`kgit pull`](kgit) instead.
+After a full clear, `kgit pull REPO_ID` can't find the repo: it looks the
+clone up through the `repos` row that was just deleted. Use `sync-directory`, or
+the commits-only route above if you want [`kgit pull`](kgit).
+
+To check a re-sync worked, the repo should be gone from the
+[stale query](#which-repos-are-stale) above. A repo can appear there with only
+its older commits missing `parents`, if it was synced before 0.1.0 and has
+synced incrementally since; it needs the same re-sync.
 
 ### One thing a re-sync will not fix
 
@@ -354,7 +382,8 @@ DELETE FROM commit_files WHERE file_path LIKE '"%';
 ```
 
 These rows are orphans that nothing joins to; the correct rows are recreated by
-the re-sync.
+the re-sync. The commits-only route leaves them in place, so run this delete
+with it; a full clear removes them along with the rest of `commit_files`.
 
 ### Back up first
 

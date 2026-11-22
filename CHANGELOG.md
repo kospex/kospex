@@ -19,6 +19,11 @@ it, `kospex orphans` and `/orphans/` work but read every commit.
 
 ### Fixed
 
+- **`kreaper delete-repo -dry-run` ignored `-table`** (#472). It listed every
+  table, `repos` included, while `-table TABLE -yes` deletes from that table
+  only. It now counts just that table, and an unknown table name is reported
+  before the dry run. `docs/refreshing-data.md` adds the re-sync this enables:
+  `-table commits`, then `kgit pull REPO_ID`, which keeps the `repos` row.
 - **Internal repositories looked public.** On an organisation owned by a GitHub
   Enterprise account, internal repositories (readable across the enterprise,
   not by the public) were recorded only as `private = 0`, the same as public
