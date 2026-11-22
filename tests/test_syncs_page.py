@@ -345,6 +345,26 @@ def test_no_breadcrumb_before_the_org_has_repos_in_kospex(db):
     assert "← Syncs</a>" in body
 
 
+RUNS_NOTHING = ("kweb doesn't run commands. To sync repos, refresh the inventory or update "
+                "repo details, copy a command from this page and run it in a terminal.")
+
+
+def test_says_kweb_runs_nothing_when_there_is_a_command(db):
+    status, body = _get_run(_run(db))
+    assert 'id="continue-command"' in body
+    assert RUNS_NOTHING in " ".join(body.split())
+
+
+def test_no_such_sentence_when_the_page_has_no_command(db):
+    # Finished, and every repo's visibility recorded: nothing to copy.
+    run_id = _run(db)
+    db.execute(f"UPDATE {M.TBL_ORG_SYNC_RUNS} SET finished_at = '2026-11-20T00:00:00Z'")
+    status, body = _get_run(run_id)
+    assert status == 200
+    assert 'id="continue-command"' not in body and 'id="relist-command"' not in body
+    assert "kweb doesn't run commands" not in body
+
+
 @pytest.mark.parametrize("org_key, title", [
     ("github.com~acme", "github.com / acme"),
     # A GitLab subgroup: "~~" in the key is a "/" in the group's path.
