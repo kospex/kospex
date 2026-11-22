@@ -889,7 +889,15 @@ def syncs_run(request: Request, run_id: str):
         except KeyError:
             raise HTTPException(status_code=404, detail="No org sync run with that id.")
         page["title"] = "Org sync run"
-        return templates.TemplateResponse(request, "syncs_run.html", {"page": page})
+        context = {"page": page}
+        # The server / org breadcrumb, as on the org's other pages. Only when the
+        # org has repos in kospex: before any are synced, its crumbs would 404.
+        if page.get("available"):
+            org_key = page["run"]["org_key"]
+            parsed = KospexUtils.parse_org_key(org_key)
+            if parsed and KospexQuery().scope_exists({"org_key": org_key}):
+                context["crumb"] = parsed
+        return templates.TemplateResponse(request, "syncs_run.html", context)
     except HTTPException:
         # The 404 above, not a 500 from the handler below. (#210)
         raise

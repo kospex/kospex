@@ -172,3 +172,6 @@ Where it differs from the plan, or settled what the plan left open:
   still works there.
 - **The internal marker is blue** (`bg-blue-100 text-blue-800`, already in the
   committed CSS), private stays purple. No CSS rebuild.
+- **Also on the run page: the server / org breadcrumb** (`_breadcrumb.html`, as
+  on `/osi/` and the org's other pages), under the "← Syncs" link. It is left
+  out until the org has repos in kospex, because its crumbs would 404 before then.

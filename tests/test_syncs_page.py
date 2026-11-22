@@ -316,3 +316,28 @@ def test_run_page_not_linked_from_anywhere_but_syncs():
     linking = sorted(p.name for p in templates.glob("*.html")
                      if "/syncs/run/" in p.read_text())
     assert linking == ["syncs.html"]
+
+
+def _breadcrumb(body):
+    import re
+    nav = body.split('aria-label="Breadcrumb"')[1].split("</nav>")[0]
+    return re.findall(r'<(?:a href="([^"]*)"|span)[^>]*>([^<]+)<', nav)
+
+
+def test_run_page_has_the_org_breadcrumb_and_keeps_the_syncs_link(db):
+    status, body = _get_run(_run(db))
+    assert status == 200
+    crumbs = [(href, text) for href, text in _breadcrumb(body) if text != "/"]
+    assert crumbs == [("/orgs/github.com", "github.com"),
+                      ("/org/github.com~acme", "acme"), ("", "Org sync run")]
+    assert "← Syncs</a>" in body
+
+
+def test_no_breadcrumb_before_the_org_has_repos_in_kospex(db):
+    # Its crumbs would link to an org page that 404s.
+    run_id = M.save_listing(db, "github.com~nobody", [
+        {**_item("x"), "_repo_id": "github.com~nobody~x"}])
+    status, body = _get_run(run_id)
+    assert status == 200
+    assert 'aria-label="Breadcrumb"' not in body
+    assert "← Syncs</a>" in body
