@@ -383,7 +383,9 @@ def test_visibility_note_carries_the_options_that_decide_the_listing():
 
 def test_run_view_on_a_db_behind_0014():
     db = _db()
-    db.execute(f"ALTER TABLE {M.TBL_ORG_SYNC_ITEMS} DROP COLUMN visibility")
+    # transform() rebuilds the table: ALTER TABLE DROP COLUMN needs SQLite 3.35,
+    # and kospex supports 3.26 (RHEL 9 ships 3.34).
+    db[M.TBL_ORG_SYNC_ITEMS].transform(drop={"visibility"})
     assert V.run_view(db, "anything") == {"available": False}
 
 

@@ -23,6 +23,8 @@ looked and it is not" are different facts — the same distinction
 migration 0006 drew for `last_checked`.
 """
 import os
+import shutil
+import subprocess
 
 import pytest
 import sqlite_utils
@@ -323,32 +325,47 @@ def test_unknown_is_null_not_false():
 
 
 # --- against the real lockfile ----------------------------------------------
+#
+# Counted against real clones, read at the commit the counts were taken from.
+# Reading the working tree made the tests fail whenever the clone was pulled:
+# the counts describe one version of the file, not whatever is checked out.
 
-@pytest.mark.skipif(
-    not os.path.exists(os.path.expanduser("~/code/github.com/chartjs/Chart.js/pnpm-lock.yaml")),
-    reason="needs the chart.js clone this was measured against")
-def test_the_real_lockfile_flag_counts_match_the_file():
+CHARTJS_REPO = os.path.expanduser("~/code/github.com/chartjs/Chart.js")
+CHARTJS_SHA = "cb02e1d2"    # pnpm lockfile v6, before Chart.js moved to pnpm 12
+
+V9_REPO = os.path.expanduser(
+    "~/code/" + "/".join(["gith" + "ub.com", "tailwindlabs", "tailwindcss"]))
+V9_SHA = "35a3e9c5"
+
+
+def _lockfile_at(repo, sha, tmp_path):
+    """Write `repo`'s pnpm-lock.yaml at `sha` to tmp_path; skip if unavailable."""
+    if shutil.which("git") is None or not os.path.isdir(repo):
+        pytest.skip(f"needs the {os.path.basename(repo)} clone this was measured against")
+    result = subprocess.run(
+        ["git", "-C", repo, "show", f"{sha}:pnpm-lock.yaml"],
+        capture_output=True, check=False)
+    if result.returncode != 0:
+        pytest.skip(f"{os.path.basename(repo)} clone doesn't have commit {sha}")
+    p = tmp_path / "pnpm-lock.yaml"
+    p.write_bytes(result.stdout)
+    return str(p)
+
+
+def test_the_real_lockfile_flag_counts_match_the_file(tmp_path):
     """Guard against the parser silently reading nothing.
 
     Counts taken directly from the file: dev=True 876, requiresBuild=True 50,
     optional=True 35.
     """
-    rows = extract_pnpm_lock(
-        os.path.expanduser("~/code/github.com/chartjs/Chart.js/pnpm-lock.yaml"))
+    rows = extract_pnpm_lock(_lockfile_at(CHARTJS_REPO, CHARTJS_SHA, tmp_path))
 
     assert sum(1 for r in rows if r["is_dev"]) == 876
     assert sum(1 for r in rows if r["runs_install_script"]) == 50
     assert sum(1 for r in rows if r["is_optional"]) == 35
 
 
-V9_REAL = os.path.expanduser(
-    "~/code/" + "/".join(["gith" + "ub.com", "tailwindlabs", "tailwindcss"])
-    + "/pnpm-lock.yaml")
-
-
-@pytest.mark.skipif(not os.path.exists(V9_REAL),
-                    reason="needs the tailwindcss clone this was measured against")
-def test_the_real_v9_lockfile_is_not_recorded_as_all_false():
+def test_the_real_v9_lockfile_is_not_recorded_as_all_false(tmp_path):
     """The regression this PR exists to fix.
 
     The first cut of _install_state read `dev` / `optional` / `requiresBuild`
@@ -356,7 +373,7 @@ def test_the_real_v9_lockfile_is_not_recorded_as_all_false():
     none of them there, so it wrote a confident False for all 569 entries --
     including 209 that `snapshots:` marks optional. Counts taken from the file.
     """
-    rows = extract_pnpm_lock(V9_REAL)
+    rows = extract_pnpm_lock(_lockfile_at(V9_REPO, V9_SHA, tmp_path))
     assert len(rows) == 569
 
     assert sum(1 for r in rows if r["is_optional"]) == 208, \
