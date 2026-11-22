@@ -245,7 +245,8 @@ def test_unrecorded_visibility_says_how_to_fill_it_in(db):
     run_id = _run(db, new="internal")
     db.execute(f"UPDATE {M.TBL_ORG_SYNC_ITEMS} SET visibility = NULL")
     status, body = _get_run(run_id)
-    assert "Visibility not recorded for 3 repos" in body
+    assert ("Visibility not recorded for 3 repos. To update, without cloning, run the "
+            "following:") in " ".join(body.split())  # as the browser shows it
     assert "kgit sync --org acme -inventory -refresh" in body
     assert 'id="visibility-banner"' not in body
     assert body.count(">not recorded<") == 3
@@ -256,7 +257,8 @@ def test_a_finished_run_relists_as_a_new_run(db):
     db.execute(f"UPDATE {M.TBL_ORG_SYNC_ITEMS} SET visibility = NULL")
     db.execute(f"UPDATE {M.TBL_ORG_SYNC_RUNS} SET finished_at = '2026-11-20T00:00:00Z'")
     status, body = _get_run(run_id)
-    assert "This run is finished, so it can't be listed again." in body
+    assert ("This run is finished, so it can't be updated. To record visibility in a new "
+            "run, without cloning, run the following:") in body
     assert "kgit sync --org acme -inventory<" in body
     assert "-refresh" not in body
 
