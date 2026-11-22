@@ -22,6 +22,10 @@ No database migration. Nothing new is stored.
   checked**, not always `~/code`.
 - **Logs are written to `KOSPEX_LOGS` when it is set.** They always went to
   `$KOSPEX_HOME/logs`.
+- **`KOSPEX_LOG_LEVEL`, `KOSPEX_LOG_RETENTION_DAYS` and `KOSPEX_CONSOLE_LOGGING`
+  work from `kospex.env`.** They were ignored there by every command, because
+  logging is set up before `kospex.env` is loaded. The environment still wins
+  over `kospex.env`, and `~/kospex/config.json` over both.
 
 ### Changed
 

@@ -225,6 +225,20 @@ class HabitatConfig:
             value = self._config_values.get(key)
         return Path(value).expanduser() if value else None
 
+    def setting(self, key: str) -> Optional[str]:
+        """A plain setting's value: override, environment, then kospex.env.
+
+        For settings read where they are used (e.g. KOSPEX_LOG_LEVEL) rather
+        than through a property. None when unset or empty everywhere. Not for
+        KOSPEX_HOME / KOSPEX_CONFIG, which kospex.env cannot set.
+        """
+        value = self._overrides.get(key) or os.getenv(key)
+        if not value and key not in self._ENV_ONLY:
+            if not self._config_loaded:
+                self._load_config_file()
+            value = self._config_values.get(key)
+        return value or None
+
     def source(self, key: str) -> str:
         """Where a setting's value comes from.
 
