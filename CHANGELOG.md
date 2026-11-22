@@ -4,9 +4,10 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
-Database migration `0014`: back up `~/kospex/kospex.db`, then run
+Database migrations `0014` and `0015`: back up `~/kospex/kospex.db`, then run
 `kospex upgrade-db -apply`. `kgit sync --org` / `--user` can't save a listing
-until it is applied.
+until `0014` is applied. `0015` adds a small index on merge commits; without
+it, `kospex orphans` and `/orphans/` work but read every commit.
 
 ### Added
 
@@ -46,18 +47,23 @@ until it is applied.
 
 ### Changed
 
-- **`kospex orphans` is no longer experimental.** It counted a repo's people
-  by committer email but "still active" by author email, so a GitHub web merge
-  (committer `noreply@github.com`) always looked like someone who had left; on
-  a 403-repo database it reported 139 repos Orphaned where 69 are. People are
-  now author email and author date, bots are not counted as people (a
-  `Bots active` column shows them), a repo with no one in the window is
-  `Dormant` and a `-target-list` repo not in the DB is `Not synced`. The
+- **`kospex orphans` is no longer experimental, and orphaned now means "no
+  one who authored this code is still here".** A repo's authors are everyone
+  who authored a commit to it, all time (`-window DAYS` limits that), with
+  merge commits and bots excluded; it is Orphaned when none of them has
+  committed in the last year (`-here-days`, default 365, the threshold
+  research that tested it chose for "has left"). An `Active` column counts
+  the authors who committed in the last 90 days (`-days`). It used to count only the last 365 days, by
+  committer email against an author-email active list, so a GitHub web merge
+  (committer `noreply@github.com`) always looked like someone who had left,
+  and a repo with no recent commits was reported Orphaned whoever wrote it.
+  Bots now have their own `Bots active` column, a repo with no human author is
+  `No authors`, and a `-target-list` repo not in the DB is `Not synced`. The
   output is one status line per repo and a rich table, without the author
-  table it printed first. A `Last sync` column shows days since each repo
-  was last fetched or synced, in red past the new `-stale-days` (default 30),
-  with the `kgit pull` command that syncs them. The `-csv` columns changed;
-  see `docs/kospex.md`.
+  table it printed first. New columns: `Last commit`, and `Last sync` (days
+  since each repo was last fetched or synced, in red past the new
+  `-stale-days`, default 30, with the `kgit pull` command that syncs them).
+  The `-csv` columns changed; see `docs/kospex.md`.
 - **Every path setting follows one order: environment, then `kospex.env`,
   then the default.** That covers `KOSPEX_DB`, `KOSPEX_CODE` and `KOSPEX_LOGS`,
   and the less common `KOSPEX_KRUNNER`, `KOSPEX_STAGING` and `KOSPEX_ASSESSMENTS`.
@@ -75,9 +81,10 @@ until it is applied.
   as still here: any synced repo (the default), the repo's git server, or its
   kospex org (`server~owner`, so GitLab nested groups and self-hosted servers
   work too).
-- **kweb `/orphans/` uses the same rule as the CLI.** It dated people by
-  committer date, counted bots as people and showed repos with no commits as
-  orphaned. It now shows the same statuses, bots and last sync, with a menu
+- **kweb `/orphans/` uses the same rule as the CLI.** It counted only the
+  last 365 days by committer date, counted bots and merges as authorship, and
+  showed repos with no recent commits as orphaned. It now shows the same
+  statuses, bots, last commit and last sync, with a menu
   for the `active_in` scope and an "explain column headings and table"
   toggle.
 

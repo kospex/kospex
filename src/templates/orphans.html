@@ -35,8 +35,8 @@
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-8">
                 <div class="p-6">
                     <h1 class="text-3xl font-bold text-gray-900 mb-4">Orphaned Repositories</h1>
-                    <p class="text-gray-600 mb-2">A repository is orphaned when everyone who committed to it in the last 365 days has stopped working for you: none of them has committed in the last 90 days.</p>
-                    <p class="text-gray-600 mb-4">People are matched by author email. Bots are never counted as people. A <em>Last sync</em> in red is more than {{ stale_days }} days ago, so that repository needs a sync before its status can be trusted.</p>
+                    <p class="text-gray-600 mb-2">A repository is orphaned when no one who authored its code is still here: none of its authors has committed in the last year.</p>
+                    <p class="text-gray-600 mb-4">Authors are everyone who authored a commit to the repository, matched by author email. Merge commits and bots are not counted as authoring. A <em>Last sync</em> in red is more than {{ stale_days }} days ago, so that repository needs a sync before its status can be trusted.</p>
 
                     <form method="get" class="flex flex-wrap items-center gap-4 mb-4">
                         <label for="active_in" class="text-sm font-medium text-gray-700">Still working for us means committed to</label>
@@ -90,7 +90,7 @@
                         })();
                     </script>
                     <div id="column_details" class="hidden mb-6 text-sm text-gray-700 space-y-2">
-                        <p>One row per repository. "Still here" means committed in the last 90 days to
+                        <p>One row per repository. "Still here" means committed in the last year to
                             {% if active_in == 'org' %}a repository in the same org{% elif active_in == 'server' %}a repository on the same git server{% else %}any synced repository{% endif %}
                             (change it with the menu above).</p>
                         <dl class="space-y-2">
@@ -98,23 +98,31 @@
                                 <dt class="font-semibold">Status</dt>
                                 <dd>
                                     <ul class="list-disc list-inside mt-1">
-                                        <li><span class="font-medium">Orphaned</span> - people committed in the last 365 days, and none of them is still here</li>
-                                        <li><span class="font-medium">Knowledge</span> - at least one of them is still here</li>
-                                        <li><span class="font-medium">Dormant</span> - no person committed in the last 365 days (bots may have)</li>
+                                        <li><span class="font-medium">Orphaned</span> - no author is still here</li>
+                                        <li><span class="font-medium">Knowledge</span> - at least one author is still here</li>
+                                        <li><span class="font-medium">No authors</span> - no person has authored a commit (bots may have)</li>
                                     </ul>
                                 </dd>
                             </div>
                             <div>
-                                <dt class="font-semibold inline">People</dt>
-                                <dd class="inline">- people (by author email) who committed to this repository in the last 365 days. Bots are not counted.</dd>
+                                <dt class="font-semibold inline">Authors</dt>
+                                <dd class="inline">- everyone (by author email) who has authored a commit to this repository, all time. Merge commits and bots are not counted.</dd>
                             </div>
                             <div>
                                 <dt class="font-semibold inline">Present</dt>
-                                <dd class="inline">- how many of those people are still here.</dd>
+                                <dd class="inline">- how many of those authors committed in the last 365 days: still here. Each counts once, whether they wrote half the code or one line. A year is what research that tested the threshold chose for "has left" (Avelino et al. 2019, Calefato et al. 2022): 90 days wrongly marks many people who pause and come back as gone.</dd>
                             </div>
                             <div>
                                 <dt class="font-semibold inline">% Here</dt>
-                                <dd class="inline">- Present as a percentage of People; blank when there are no people.</dd>
+                                <dd class="inline">- Present as a percentage of Authors; blank when there are no authors.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Active</dt>
+                                <dd class="inline">- how many of those authors committed in the last 90 days, so their knowledge is fresh. Present but not Active is someone still around who may need time to get back into the code.</dd>
+                            </div>
+                            <div>
+                                <dt class="font-semibold inline">Last commit</dt>
+                                <dd class="inline">- the repository's latest commit, so a repository nobody has touched for years is visible.</dd>
                             </div>
                             <div>
                                 <dt class="font-semibold inline">Bots active</dt>
@@ -122,7 +130,7 @@
                             </div>
                             <div>
                                 <dt class="font-semibold inline">Last sync</dt>
-                                <dd class="inline">- days since kospex last fetched or synced this repository. In red, it is more than {{ stale_days }} days ago: commits since then are missing, so its people, and anyone who is only active there, may look less active than they are. It needs a sync: <code>{{ sync_command }}</code></dd>
+                                <dd class="inline">- days since kospex last fetched or synced this repository. In red, it is more than {{ stale_days }} days ago: commits since then are missing, so its authors, and anyone who is only active there, may look less active than they are. It needs a sync: <code>{{ sync_command }}</code></dd>
                             </div>
                         </dl>
                     </div>
@@ -136,10 +144,12 @@
                                 <tr>
                                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repository</th>
                                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">People</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Authors</th>
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Present</th>
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">% Here</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Active</th>
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Bots active</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last commit</th>
                                     <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last sync</th>
                                 </tr>
                             </thead>
@@ -160,10 +170,12 @@
                                             <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">{{ row['status'] }}</span>
                                         {% endif %}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ row['people'] }}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ row['people_active'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ row['authors'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ row['present'] }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{% if row['pct_here'] != '' %}{{ '%.2f' % row['pct_here'] }}%{% endif %}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ row['active'] }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ row['bots_active'] }}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">{{ (row['last_commit'] or '')[:10] }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right font-medium {% if row['refresh_stale'] is sameas true %}text-red-600{% else %}text-gray-900{% endif %}"
                                         data-order="{{ row['refresh_age_days'] if row['refresh_age_days'] != '' else 999999 }}">
                                         {% if row['refresh_age_days'] != '' %}{{ row['refresh_age_days'] }}d{% else %}never{% endif %}

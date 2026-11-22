@@ -313,16 +313,85 @@ prefixes match.
 
 ## orphans
 
-A repo is orphaned when everyone who worked on it is no longer working for
-you: people committed to it in the last year, and none of them has committed
-to *any* synced repo in the last 90 days. Someone who moved to another
-project is still here, so their old repo is not orphaned; someone who has left
-the organisation stops committing everywhere, and that is what kospex sees.
+A repo is orphaned when no one who authored its code is still here: none of
+its authors has committed to *any* synced repo in the last year.
+
+```bash
+kospex orphans                     # every synced repo
+kospex orphans -server github.com  # one git server
+```
+
+Each repo gets a status line, then a table:
+
+```
+repo_id: github.com~acme~api, Orphaned, Present: 0, Active: 0, Total: 3 authors.
+```
+
+| Column | Meaning |
+|---|---|
+| `Status` | `Orphaned`, `Knowledge`, `No authors` or `Not synced` (below) |
+| `Authors` | everyone who has authored a commit to the repo, all time |
+| `Present` | how many of them committed in the last `-here-days` (365): still here |
+| `% Here` | `Present` as a percentage of `Authors` |
+| `Active` | how many of them committed in the last `-days` (90): recently active |
+| `Bots active` | bots that committed to this repo in the last `-days` |
+| `Last commit` | the repo's latest commit |
+| `Last sync` | days since kospex last fetched or synced the repo |
+
+- **Orphaned**: no author is still here.
+- **Knowledge**: at least one author is still here.
+- **No authors**: no person has authored a commit. Bots may have; the
+  `Bots active` column says so.
+- **Not synced**: listed in `-target-list` but not in the kospex database.
+
+A repo nobody has touched for years still gets a verdict: if its authors are
+still here, someone can pick it up. `Last commit` shows how long it has been.
+
+### Who counts as an author
+
+Authors are identified by author email and dated by author date. A merge made
+in GitHub's web UI is committed by `noreply@github.com`, and a rebase gives an
+old commit a new committer date, so committer fields are not used. Merge
+commits don't count as authoring, because a merge's author merged the code
+rather than wrote it. Bots never count as people: an Orphaned repo with bots
+active is one whose dependencies are still being updated with no one left who
+wrote it.
+
+Each author counts once, whether they wrote half the code or one line, so
+`% Here` is a head count, not a share of the code.
+
+`-window DAYS` limits authors to those who committed to the repo in the last
+DAYS, to ask "of the people who worked on it recently, is anyone still here?"
+A repo with no commits in that window is then `No authors`.
+
+### Who counts as still here
+
+Two windows, because they answer different questions:
+
+- **Present** (`-here-days`, default 365): still here. Orphaned is decided on
+  this.
+- **Active** (`-days`, default 90): recently active, so their knowledge of the
+  code is fresh. Present but not Active is someone still around who may need
+  time to get back into it.
+
+A year is the threshold that research testing it chose for "has left":
+Avelino et al. (ESEM 2019) found a 3-month rule wrongly marked 62% of core
+developers as gone at least once, and Calefato et al. (EMSE 2022) rejected 3
+and 6 months for the same reason. Both studied open-source projects, where
+people pause; in a company a 90-day gap is more often a real departure, so set
+`-here-days 90` if that is the rule you want.
+
+Any commit counts as being here, merges included: merging is still being
+here. Someone who moved
+to another project is still here, so their old repo is not orphaned; someone
+who has left the organisation stops committing everywhere, and that is what
+kospex sees. Someone who stops committing but stays, for example by moving
+into management, looks as if they have left.
 
 "Working for us" is whatever you have synced. For a company, sync its git
 servers or orgs and it means the company. It is less direct for open source,
 but still useful: sync an org such as `github.com~apache` and a developer who
-left one Apache project but still commits to several others counts as active,
+left one Apache project but still commits to several others counts as here,
 so the project they left shows the knowledge is still in the org.
 
 When your database holds more than one organisation, `-active-in` narrows
@@ -338,60 +407,42 @@ GitHub, GitLab, Bitbucket or a self-hosted server. A GitLab nested group is
 its whole path: `gitlab.com~group~~sub-a` and `gitlab.com~group~~sub-b` are
 different orgs. The default, `estate`, is every synced repo.
 
-The kweb page `/orphans/` (and `/orphans/ORG_KEY`, `/orphans/SERVER`) shows
-the same results, with a menu to choose the same three scopes.
+### Speed
 
-```bash
-kospex orphans                    # every synced repo
-kospex orphans -server github.com # one git server
-```
+Telling merge commits apart needs a small index on them, added by migration
+0015. Without it, `kospex orphans` and `/orphans/` read every commit: about 10
+seconds on a 1.4-million-commit database, against about 3 with it. If kospex shows the "database schema is out
+of date" banner, run `kospex upgrade-db -apply`.
 
-Each repo gets a status line, then a table:
+### Out-of-date data
 
-```
-repo_id: github.com~acme~api, Orphaned, Present: 0, Total: 3 in 365 days.
-```
+Because still here is measured across the synced repos, the result is only as
+current as the sync. A `Last sync` shown in red is older than `-stale-days`,
+and the summary says how many repos that is and gives the command that syncs
+them: `kgit pull --all --stale 30`, or `--server SERVER` when you passed
+`-server`. `kgit pull` needs a scope, so use `--org ORG_KEY` for one org.
 
-| Column | Meaning |
-|---|---|
-| `Status` | `Orphaned`, `Knowledge`, `Dormant` or `Not synced` (below) |
-| `People` | people who committed to the repo in the window |
-| `Present` | how many of them committed to any synced repo in the last `-days` |
-| `% Here` | `Present` as a percentage of `People` |
-| `Bots active` | bots that committed to this repo in the last `-days` |
-| `Last sync` | days since kospex last fetched or synced the repo |
+### A subset of repos
 
-- **Orphaned**: people worked on it, and none of them is still active.
-- **Knowledge**: at least one of them is still active.
-- **Dormant**: no person committed in the window. Bots may have; the
-  `Bots active` column says so.
-- **Not synced**: listed in `-target-list` but not in the kospex database.
-
-People are identified by author email and dated by author date. A merge made
-in GitHub's web UI is committed by `noreply@github.com`, and a rebase gives an
-old commit a new committer date, so neither is used. Bots never count as
-people: an Orphaned repo with bots active is one whose dependencies are still
-being updated with no one left who worked on it.
-
-Because "still active" means anywhere in the synced repos, the result is
-only as current as the sync: a `Last sync` shown in red is older than
-`-stale-days`, and the summary says how many repos that is. Those repos need a
-sync, and the summary gives the command: `kgit pull --all --stale 30`, or
-`--server SERVER` when you passed `-server`. `kgit pull` needs a scope, so
-use `--org ORG_KEY` to sync one org.
-
-To check a subset of repos, pass a file with one git URL or `repo_id` per
-line (blank lines and lines starting with `#` are skipped):
+Pass a file with one git URL or `repo_id` per line (blank lines and lines
+starting with `#` are skipped):
 
 ```bash
 kospex orphans -target-list FILE
 ```
 
+### In kweb
+
+The page `/orphans/` (and `/orphans/ORG_KEY`, `/orphans/SERVER`) shows the
+same results, with a menu for the `-active-in` scope and an "explain column
+headings and table" link that describes each column.
+
 **Parameters**
 
-- `-days` — a person who committed anywhere in the last X days is still here (default 90)
-- `-window` — whose knowledge counts: people who committed to the repo in the last X days (default 365)
-- `-stale-days` — flag repos whose last refresh is older than X days (default 30)
+- `-here-days` — an author who committed anywhere in the last X days is still here; decides Orphaned (default 365)
+- `-days` — an author who committed anywhere in the last X days is recently active (default 90)
+- `-window` — only count authors who committed to the repo in the last X days (default: all time)
+- `-stale-days` — flag repos whose last sync is older than X days (default 30)
 - `-active-in` — where a person counts as still here: `estate` (any synced repo, the default), `server` or `org`
 - `-server` — only repos on this git server
 - `-target-list` — a file of repos to check

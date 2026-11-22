@@ -3,6 +3,7 @@
 Design: changes/202611-orphans-author-bots-refresh.md
 """
 import csv
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -28,48 +29,56 @@ def _ago(days):
 
 # --- orphan_row: the pure rule ---------------------------------------------------
 
-def _row(authors, active, repo=None, stale_days=30):
+def _row(authors, here, active=None, repo=None, stale_days=30):
+    """orphan_row with `here` as the present set; `active` defaults to the same."""
     repo = {"_repo_id": "r", "last_sync": "2026-11-20T00:00:00Z"} if repo is None else repo
-    return KospexOrphans.orphan_row("r", repo, authors, active, _is_bot, NOW, stale_days)
+    active = here if active is None else active
+    return KospexOrphans.orphan_row("r", repo, authors, here, active, _is_bot, NOW, stale_days)
 
 
 def test_people_none_active_is_orphaned():
-    row = _row({"gone@acme.com": False}, active=set())
-    assert (row["status"], row["people"], row["people_active"]) == ("Orphaned", 1, 0)
+    row = _row({"gone@acme.com": False}, here=set())
+    assert (row["status"], row["authors"], row["present"]) == ("Orphaned", 1, 0)
     assert row["pct_here"] == 0
 
 
 def test_one_person_still_active_is_knowledge():
-    row = _row({"gone@acme.com": False, "here@acme.com": False}, active={"here@acme.com"})
-    assert (row["status"], row["people_active"], row["pct_here"]) == ("Knowledge", 1, 50.0)
+    row = _row({"gone@acme.com": False, "here@acme.com": False}, here={"here@acme.com"})
+    assert (row["status"], row["present"], row["pct_here"]) == ("Knowledge", 1, 50.0)
 
 
-def test_no_commits_in_window_is_dormant_not_orphaned():
-    row = _row({}, active=set())
-    assert row["status"] == "Dormant"
+def test_no_authors_is_not_orphaned():
+    row = _row({}, here=set())
+    assert row["status"] == "No authors"
     assert row["pct_here"] == ""   # undefined, not 0%
+
+
+def test_last_commit_is_the_repos_last_seen():
+    row = _row({"a@acme.com": False}, here=set(),
+               repo={"last_sync": "2026-11-20T00:00:00Z", "last_seen": "2021-03-04T05:06:07Z"})
+    assert row["last_commit"] == "2021-03-04T05:06:07Z"
 
 
 def test_an_active_bot_is_not_working_knowledge():
     """The bot is active, the only person is gone: Orphaned, bot shown separately."""
-    row = _row({"gone@acme.com": False, BOT: True}, active={BOT})
-    assert (row["status"], row["people"], row["bots"], row["bots_active"]) == (
+    row = _row({"gone@acme.com": False, BOT: True}, here={BOT})
+    assert (row["status"], row["authors"], row["bots"], row["bots_active"]) == (
         "Orphaned", 1, 1, 1)
 
 
-def test_bots_only_is_dormant_with_bots_active():
-    row = _row({BOT: True}, active={BOT})
-    assert (row["status"], row["people"], row["bots_active"]) == ("Dormant", 0, 1)
+def test_bots_only_is_no_authors_with_bots_active():
+    row = _row({BOT: True}, here={BOT})
+    assert (row["status"], row["authors"], row["bots_active"]) == ("No authors", 0, 1)
 
 
 def test_bots_active_means_on_this_repo():
     """A bot busy elsewhere says nothing about this repo."""
-    row = _row({BOT: False}, active={BOT})
+    row = _row({BOT: False}, here={BOT})
     assert (row["bots"], row["bots_active"]) == (1, 0)
 
 
 def test_not_in_db_is_not_synced():
-    row = KospexOrphans.orphan_row("r", None, {}, set(), _is_bot, NOW, 30)
+    row = KospexOrphans.orphan_row("r", None, {}, set(), set(), _is_bot, NOW, 30)
     assert row["status"] == "Not synced"
     assert row["refresh_stale"] == ""
 
@@ -80,7 +89,7 @@ def test_not_in_db_is_not_synced():
     ({}, "", True),                                              # never refreshed
 ])
 def test_refresh_age_uses_the_staleness_rule(repo, age, stale):
-    row = _row({"a@acme.com": False}, active=set(), repo=repo)
+    row = _row({"a@acme.com": False}, here=set(), repo=repo)
     assert (row["refresh_age_days"], row["refresh_stale"]) == (age, stale)
 
 
@@ -106,14 +115,16 @@ def _owner(repo_id):
     return server, rest.rsplit("~", 1)[0].replace("~~", "/")
 
 
-def _commit(repo_id, hash_value, author, author_days, committer="same", committer_days=None):
+def _commit(repo_id, hash_value, author, author_days, committer="same", committer_days=None,
+            merge=False):
     committer_days = author_days if committer_days is None else committer_days
     server, owner = _owner(repo_id)
     return {"_repo_id": repo_id, "hash": hash_value,
             "_git_server": server, "_git_owner": owner,
             "author_email": author, "author_when": _ago(author_days),
             "committer_email": author if committer == "same" else committer,
-            "committer_when": _ago(committer_days), "parents": 1, "_files": 1}
+            "committer_when": _ago(committer_days),
+            "parents": 2 if merge else 1, "_files": 0 if merge else 1}
 
 
 REPOS = [
@@ -121,6 +132,7 @@ REPOS = [
     "github.com~acme~rebased",
     "github.com~acme~botonly",
     "github.com~acme~quiet",
+    "github.com~acme~merged",
     "gitlab.com~beta~svc",
     # A GitLab nested group, and a sibling subgroup of it
     "gitlab.com~group~~old~legacy",
@@ -137,7 +149,8 @@ def _seed(stale=False):
         repo = repo_id.rsplit("~", 1)[1]
         db[KospexSchema.TBL_REPOS].insert({
             "_repo_id": repo_id, "_git_server": server, "_git_owner": owner,
-            "_git_repo": repo, "last_sync": _ago(100 if stale else 1)})
+            "_git_repo": repo, "last_sync": _ago(100 if stale else 1),
+            "last_seen": "2024-01-02T03:04:05Z"})
     rows = [
         # Merged on GitHub's web UI: the committer is GitHub, the author is a
         # developer who is still active (on another server, even).
@@ -148,6 +161,9 @@ def _seed(stale=False):
         _commit("github.com~acme~rebased", "r1", "gone@acme.com", 900, committer_days=7),
         _commit("github.com~acme~botonly", "b1", BOT, 3),
         _commit("github.com~acme~quiet", "q1", "gone@acme.com", 800),
+        # The only author has gone; a maintainer still here only merged it.
+        _commit("github.com~acme~merged", "x1", "gone@acme.com", 400),
+        _commit("github.com~acme~merged", "x2", "maintainer@acme.com", 5, merge=True),
         # moved from one subgroup to its sibling
         _commit("gitlab.com~group~~old~legacy", "l1", "mover@acme.com", 200),
         _commit("gitlab.com~group~~new~app", "n1", "mover@acme.com", 10),
@@ -156,20 +172,75 @@ def _seed(stale=False):
     return KospexQuery(kospex_db=db)
 
 
+def test_present_but_not_active_is_still_knowledge():
+    """Present (365 days) decides the status; Active (90 days) is shown beside it."""
+    row = _row({"paused@acme.com": False}, here={"paused@acme.com"}, active=set())
+    assert (row["status"], row["present"], row["active"]) == ("Knowledge", 1, 0)
+
+
+def _active(kq, days):
+    return set(kq.author_last_active(days))
+
+
 def test_active_authors_are_author_emails_by_author_date():
-    active = _seed().active_author_emails(days=90)
+    active = _active(_seed(), 90)
     assert "dev@acme.com" in active
     assert BOT in active
     assert "noreply@github.com" not in active
     assert "gone@acme.com" not in active   # its commit was only re-committed recently
 
 
-def test_repo_authors_use_author_email_and_author_date():
+def test_repo_authors_are_all_time_by_default():
+    got = _seed().repo_author_emails(list(REPOS), days=90)
+    assert got["github.com~acme~quiet"] == {"gone@acme.com": False}
+    assert got["github.com~acme~rebased"] == {"gone@acme.com": False}
+    assert got["github.com~acme~webmerged"] == {"dev@acme.com": False}
+    assert got["github.com~acme~botonly"] == {BOT: True}
+
+
+def test_repo_authors_window_uses_author_date():
     got = _seed().repo_author_emails(list(REPOS), window=365, days=90)
     assert got["github.com~acme~webmerged"] == {"dev@acme.com": False}
-    assert got["github.com~acme~rebased"] == {}
-    assert got["github.com~acme~botonly"] == {BOT: True}
+    assert got["github.com~acme~rebased"] == {}   # authored 900 days ago, rebased last week
     assert got["github.com~acme~quiet"] == {}
+
+
+def test_a_merge_is_not_authorship():
+    got = _seed().repo_author_emails(list(REPOS))
+    assert got["github.com~acme~merged"] == {"gone@acme.com": False}
+
+
+def test_a_merge_still_counts_as_being_here():
+    assert "maintainer@acme.com" in _active(_seed(), 90)
+
+
+def test_author_last_active_by_scope():
+    got = _seed().author_last_active(90, key=lambda server, owner: (server, owner))
+    assert "dev@acme.com" in got[("gitlab.com", "beta")]
+    assert "dev@acme.com" not in got.get(("github.com", "acme"), {})
+    assert got[("gitlab.com", "beta")]["dev@acme.com"] == _ago(5)[:10]
+
+
+MERGE_INDEX_SQL = (Path(__file__).resolve().parents[1] / "src" / "kospex" / "db"
+                   / "migrations" / "0015_commits_merge_index.sql")
+
+
+def test_merge_query_uses_the_partial_index():
+    """The WHERE must match the index's exactly, or SQLite scans every commit."""
+    kq = _seed()
+    kq.kospex_db.execute(MERGE_INDEX_SQL.read_text())
+    plan = kq.kospex_db.execute(
+        "EXPLAIN QUERY PLAN SELECT _repo_id, author_email, COUNT(*) FROM commits "
+        f"WHERE _repo_id IN (?, ?) AND {KospexQuery.MERGE_COMMIT} "
+        "GROUP BY _repo_id, author_email", ["a", "b"]).fetchall()
+    assert any("idx_commits_merge_authors" in str(step) for step in plan), plan
+
+
+def test_repo_authors_are_the_same_with_the_index():
+    kq = _seed()
+    before = kq.repo_author_emails(list(REPOS))
+    kq.kospex_db.execute(MERGE_INDEX_SQL.read_text())
+    assert before and kq.repo_author_emails(list(REPOS)) == before
 
 
 def test_repo_authors_chunk_large_scopes():
@@ -220,9 +291,10 @@ def test_cli_statuses(cli):
     result = CliRunner().invoke(cli(), ["orphans"])
     assert result.exit_code == 0, result.output
     assert _statuses(result.output) == {
-        "github.com~acme~botonly": "Dormant",
-        "github.com~acme~quiet": "Dormant",
-        "github.com~acme~rebased": "Dormant",
+        "github.com~acme~botonly": "No authors",
+        "github.com~acme~quiet": "Orphaned",
+        "github.com~acme~rebased": "Orphaned",
+        "github.com~acme~merged": "Orphaned",   # the maintainer only merged
         "github.com~acme~webmerged": "Knowledge",
         "gitlab.com~beta~svc": "Knowledge",
         "gitlab.com~group~~old~legacy": "Knowledge",
@@ -232,7 +304,9 @@ def test_cli_statuses(cli):
 
 def test_cli_status_line_is_one_line(cli):
     result = CliRunner().invoke(cli(), ["orphans", "-server", "github.com"])
-    assert ("repo_id: github.com~acme~webmerged, Knowledge, Present: 1, Total: 1 in 365 days."
+    assert ("repo_id: github.com~acme~webmerged, Knowledge, Present: 1, Active: 1, Total: 1 author."
+            in result.output.splitlines())
+    assert ("repo_id: github.com~acme~botonly, No authors, Present: 0, Active: 0, Total: 0 authors."
             in result.output.splitlines())
     assert "gitlab.com~beta~svc" not in result.output   # scoped, but dev is still present
 
@@ -243,11 +317,12 @@ def test_cli_does_not_print_the_author_table(cli):
     assert "active developers" not in result.output
 
 
-def test_cli_window_changes_who_counts(cli):
-    result = CliRunner().invoke(cli(), ["orphans", "-window", "1000"])
+def test_cli_window_limits_who_counts(cli):
+    result = CliRunner().invoke(cli(), ["orphans", "-window", "365"])
     statuses = _statuses(result.output)
-    assert statuses["github.com~acme~quiet"] == "Orphaned"
-    assert "in 1000 days." in result.output
+    assert statuses["github.com~acme~quiet"] == "No authors"
+    assert statuses["github.com~acme~webmerged"] == "Knowledge"
+    assert "Total: 1 author in 365 days." in result.output
 
 
 def test_cli_target_list_reports_repos_not_in_db(cli, tmp_path):
@@ -258,7 +333,7 @@ def test_cli_target_list_reports_repos_not_in_db(cli, tmp_path):
     assert result.exit_code == 0, result.output
     assert _statuses(result.output) == {
         "github.com~acme~webmerged": "Knowledge",
-        "github.com~acme~quiet": "Dormant",
+        "github.com~acme~quiet": "Orphaned",
         "github.com~acme~missing": "Not synced",
     }
     assert "Skipping 'not a url'" in result.output
@@ -268,7 +343,7 @@ def test_cli_flags_stale_refresh(cli):
     fresh = CliRunner().invoke(cli(), ["orphans"]).output
     assert "not synced in" not in fresh
     stale = CliRunner().invoke(cli(stale=True), ["orphans"]).output
-    assert "7 of 7 repos not synced in 30 days" in stale
+    assert "8 of 8 repos not synced in 30 days" in stale
     assert "kgit pull --all --stale 30" in stale
     scoped = CliRunner().invoke(cli(stale=True), ["orphans", "-server", "gitlab.com"]).output
     assert "kgit pull --server gitlab.com --stale 30" in scoped
@@ -296,7 +371,10 @@ def test_cli_csv(cli, tmp_path):
 
 def _status(kq, repo_id, active_in):
     repos = kq.repos_table()
-    rows = KospexOrphans.report(kq, list(repos), repos, _is_bot, active_in=active_in)
+    # The seeded "moved on" commits are 200 days old: a 90-day Present window
+    # makes them gone, so these tests are about the scope, not the window.
+    rows = KospexOrphans.report(kq, list(repos), repos, _is_bot, here_days=90,
+                                active_in=active_in)
     found = {r["repo_id"]: r["status"] for r in rows}
     assert found, rows
     return found[repo_id]
@@ -328,7 +406,7 @@ def test_scope_key_matches_org_key():
 
 
 def test_cli_active_in(cli):
-    result = CliRunner().invoke(cli(), ["orphans", "-active-in", "org"])
+    result = CliRunner().invoke(cli(), ["orphans", "-active-in", "org", "-here-days", "90"])
     assert result.exit_code == 0, result.output
     assert _statuses(result.output)["github.com~acme~webmerged"] == "Orphaned"
     bad = CliRunner().invoke(cli(), ["orphans", "-active-in", "galaxy"])
@@ -351,7 +429,7 @@ def test_get_orphans_scopes_to_an_org():
     rows = kq.get_orphans(id={"org_key": "github.com~acme"}, is_bot=_is_bot)
     assert {r["repo_id"] for r in rows} == {
         "github.com~acme~webmerged", "github.com~acme~rebased",
-        "github.com~acme~botonly", "github.com~acme~quiet"}
+        "github.com~acme~botonly", "github.com~acme~quiet", "github.com~acme~merged"}
     # active is still estate-wide by default
     assert {r["repo_id"]: r["status"] for r in rows}["github.com~acme~webmerged"] == "Knowledge"
 
@@ -379,7 +457,8 @@ def test_page_renders_statuses_bots_and_scope_choice(kweb):
     response = kweb.orphans(_request("/orphans/"), id=None, active_in="org")
     assert response.status_code == 200
     html = response.body.decode()
-    for text in ("Orphaned", "Knowledge", "Dormant", "Bots active", "Last sync",
+    for text in ("Orphaned", "Knowledge", "No authors", "Bots active", "Last sync",
+                 "Last commit", "2024-01-02",
                  "explain column headings and table", "kgit pull --all --stale 30",
                  "gitlab.com~group~~old~legacy",
                  '<option value="org" selected>'):
@@ -394,8 +473,8 @@ def test_page_refuses_an_unknown_active_in(kweb):
 
 
 def test_summary_leaves_out_empty_statuses_without_a_gap():
-    rows = [{"status": "Orphaned"}, {"status": "Dormant"}]
-    assert KospexOrphans.summary(rows) == "Orphaned: 1 | Knowledge: 0 | Dormant: 1 | Total: 2"
+    rows = [{"status": "Orphaned"}, {"status": "No authors"}]
+    assert KospexOrphans.summary(rows) == "Orphaned: 1 | Knowledge: 0 | No authors: 1 | Total: 2"
 
 
 @pytest.mark.parametrize("scope, expected", [
@@ -411,3 +490,12 @@ def test_sync_command_always_has_a_scope(scope, expected):
 def test_page_sync_command_follows_the_scope(kweb):
     html = kweb.orphans(_request("/orphans/github.com~acme"), id="github.com~acme").body.decode()
     assert "kgit pull --org github.com~acme --stale 30" in html
+
+
+def test_present_uses_here_days_and_active_uses_days(cli):
+    """dev@acme.com committed to github.com~acme 200 days ago, and nowhere else
+    in that org since: Present over a year, not Active over 90 days."""
+    result = CliRunner().invoke(cli(), ["orphans", "-active-in", "org"])
+    assert result.exit_code == 0, result.output
+    assert ("repo_id: github.com~acme~webmerged, Knowledge, Present: 1, Active: 0, "
+            "Total: 1 author." in result.output.splitlines())

@@ -2245,61 +2245,75 @@ class KospexQuery:
                 })
         return results
 
-    def active_author_emails(self, days=90):
-        """Every author_email with a commit in the last ``days`` days, anywhere in the DB.
+    # Matches the partial index idx_commits_merge_authors (migration 0015)
+    # exactly, so SQLite uses it. Not the same as NOT AUTHORSHIP_COMMIT for a
+    # NULL parents: an unknown parent count is not treated as a merge.
+    MERGE_COMMIT = "NOT (parents <= 1 OR _files > 0)"
 
-        Used by `kospex orphans` for "is this person still here": a developer
-        active in any synced repo counts, whichever server or scope was asked
-        for. Author time, not committer time, so a rebase or cherry-pick of an
-        old commit does not make its author look recent. Merges count: merging
-        is still activity.
-        """
-        sql = f"""SELECT DISTINCT author_email FROM {KospexSchema.TBL_COMMITS}
-            WHERE date(author_when) > date('now', ?)"""
-        rows = self.kospex_db.execute(sql, [f"-{int(days)} day"]).fetchall()
-        return {row[0] for row in rows}
+    def repo_author_emails(self, repo_ids, window=None, days=90, chunk_size=500):
+        """Per repo, everyone who authored code in it: {repo_id: {author_email: recent}}.
 
-    def active_author_emails_by_scope(self, days=90, key=None):
-        """active_author_emails(), grouped: {key(_git_server, _git_owner): {email, ...}}.
+        Authorship only: an author whose every commit is a merge is left out,
+        because a merge's author merged the code rather than wrote it (#170).
+        All time, unless ``window`` limits it to the last ``window`` days.
+        ``recent`` is True when that author authored a non-merge commit here in
+        the last ``days``. A repo with no authors maps to {}. Author time.
 
-        For `kospex orphans -active-in server|org`, where "still here" is looked
-        for only in the repo's own server or kospex org.
-        """
-        sql = f"""SELECT DISTINCT _git_server, _git_owner, author_email
-            FROM {KospexSchema.TBL_COMMITS}
-            WHERE date(author_when) > date('now', ?)"""
-        grouped = {}
-        for server, owner, email in self.kospex_db.execute(
-                sql, [f"-{int(days)} day"]).fetchall():
-            grouped.setdefault(key(server, owner), set()).add(email)
-        return grouped
-
-    def repo_author_emails(self, repo_ids, window=365, days=90, chunk_size=500):
-        """Per repo, the authors with a commit in the last ``window`` days.
-
-        Returns {repo_id: {author_email: recent}}, where ``recent`` is True when
-        that author also committed to the repo in the last ``days`` days. A repo
-        with no commits in the window maps to {}. Author time throughout, merges
-        included; see active_author_emails(). repo_ids is chunked for SQLite's
-        999-variable limit (kospex supports 3.26).
+        Two grouped queries: every commit, from idx_commits_repo_author_when,
+        and merge commits, from the partial index idx_commits_merge_authors.
+        Filtering merges in one query reads every commit row instead (about
+        10s on a 1.4M-commit DB, against about 1s). repo_ids is chunked for
+        SQLite's 999-variable limit (kospex supports 3.26).
         """
         repo_ids = list(repo_ids)
         results = {repo_id: {} for repo_id in repo_ids}
         for start in range(0, len(repo_ids), chunk_size):
             chunk = repo_ids[start:start + chunk_size]
             placeholders = ", ".join("?" for _ in chunk)
-            sql = f"""
-                SELECT _repo_id, author_email,
-                    MAX(date(author_when) > date('now', ?)) AS recent
-                FROM {KospexSchema.TBL_COMMITS}
-                WHERE _repo_id IN ({placeholders})
-                    AND date(author_when) > date('now', ?)
-                GROUP BY _repo_id, author_email
-            """
-            params = [f"-{int(days)} day", *chunk, f"-{int(window)} day"]
-            for repo_id, email, recent in self.kospex_db.execute(sql, params).fetchall():
-                results[repo_id][email] = bool(recent)
+            params = [f"-{int(days)} day", *chunk]
+            window_sql = ""
+            if window is not None:
+                window_sql = "AND date(author_when) > date('now', ?)"
+                params.append(f"-{int(window)} day")
+            counts = {}
+            for merges_only in (False, True):
+                merge_sql = f"AND {self.MERGE_COMMIT}" if merges_only else ""
+                sql = f"""
+                    SELECT _repo_id, author_email, COUNT(*),
+                        SUM(date(author_when) > date('now', ?))
+                    FROM {KospexSchema.TBL_COMMITS}
+                    WHERE _repo_id IN ({placeholders}) {merge_sql} {window_sql}
+                    GROUP BY _repo_id, author_email
+                """
+                for repo_id, email, n, recent in self.kospex_db.execute(sql, params).fetchall():
+                    total = counts.setdefault((repo_id, email), [0, 0])
+                    sign = -1 if merges_only else 1
+                    total[0] += sign * n
+                    total[1] += sign * (recent or 0)
+            for (repo_id, email), (authored, recent) in counts.items():
+                if authored > 0:
+                    results[repo_id][email] = recent > 0
         return results
+
+    def author_last_active(self, days, key=None):
+        """When each author last committed, for anyone who did in the last ``days``.
+
+        Returns {author_email: 'YYYY-MM-DD'}, or with ``key`` grouped:
+        {key(_git_server, _git_owner): {author_email: 'YYYY-MM-DD'}}. Any commit
+        counts, merges included: merging is still being here. One query serves
+        several presence windows (`kospex orphans` Present and Active).
+        """
+        sql = f"""SELECT _git_server, _git_owner, author_email, MAX(date(author_when))
+            FROM {KospexSchema.TBL_COMMITS}
+            WHERE date(author_when) > date('now', ?)
+            GROUP BY _git_server, _git_owner, author_email"""
+        found = {}
+        for server, owner, email, last in self.kospex_db.execute(
+                sql, [f"-{int(days)} day"]).fetchall():
+            target = found if key is None else found.setdefault(key(server, owner), {})
+            if last > target.get(email, ""):
+                target[email] = last
+        return found
 
     def repos_table(self, server=None, repo_ids=None, id_params=None):
         """Rows from the repos table, by _repo_id.

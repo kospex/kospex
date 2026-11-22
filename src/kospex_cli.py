@@ -1611,13 +1611,19 @@ def groups(name, add, remove, delete, show, file, value, email, repo):
 
 @cli.command("orphans")
 @click.option(
-    "-days", type=int, default=90,
-    help="A person who committed anywhere in the last X days is still here. (default 90)"
+    "-here-days", "here_days", type=int, default=365,
+    help="An author who committed anywhere in the last X days is still here "
+         "(Present). Orphaned is decided on this. (default 365)"
 )
 @click.option(
-    "-window", type=int, default=365,
-    help="Whose knowledge counts: people who committed to the repo in the last X days. "
-         "(default 365)"
+    "-days", type=int, default=90,
+    help="An author who committed anywhere in the last X days is recently "
+         "active (Active). (default 90)"
+)
+@click.option(
+    "-window", type=int, default=None,
+    help="Only count authors who committed to the repo in the last X days. "
+         "(default: all time)"
 )
 @click.option(
     "-stale-days", type=int, default=30,
@@ -1640,15 +1646,22 @@ def groups(name, add, remove, delete, show, file, value, email, repo):
     type=click.Path(dir_okay=False, writable=True),
     help="Write results to this CSV file (spreadsheet-safe).",
 )
-def orphans(days, window, stale_days, active_in, server, target_list, csv_path):
+def orphans(here_days, days, window, stale_days, active_in, server, target_list, csv_path):
     """
     Find orphaned repos.
 
-    A repo is Orphaned when everyone who worked on it is no longer working
-    for you: people committed to it in the window (default 365 days), and
-    none of them has committed to any synced repo in the last X days
-    (default 90). Someone who moved to another synced project is still
-    here. "Present" counts those people still active.
+    A repo is Orphaned when no one who authored its code is still here:
+    none of its authors has committed to any synced repo in the last year
+    (-here-days, default 365). Authors are everyone who authored a commit to
+    the repo, all time (or the last -window days), merges and bots
+    excluded. Someone who moved to another synced project is still here.
+
+    \b
+    Present  authors who committed in the last -here-days (365): still here
+    Active   authors who committed in the last -days (90): fresh knowledge
+
+    One year is what research that tested the threshold chose for "has
+    left"; 90 days wrongly flags many people who pause and come back.
 
     "Still here" is any synced repo by default. -active-in org looks only in
     the repo's own kospex org (server~owner, e.g. github.com~apache or
@@ -1656,23 +1669,25 @@ def orphans(days, window, stale_days, active_in, server, target_list, csv_path):
 
     \b
     Statuses:
-      Orphaned    people worked on it, none of them is still active
-      Knowledge   at least one of them is still active
-      Dormant     no person committed in the window (bots may have)
+      Orphaned    no author is still here
+      Knowledge   at least one author is still here
+      No authors  no person authored a commit (bots may have)
       Not synced  in -target-list but not in the kospex DB
 
     Author email and author date are used, so a GitHub web merge
     (committer noreply@github.com) or a rebase does not distort the result.
     Bots are never counted as people; "bots active" is bots that committed
-    to the repo in the last X days. "Last sync" is days since kospex last
+    to the repo in the last -days. "Last commit" is the repo's latest
+    commit, so a repo nobody has touched for years is visible. "Last sync" is days since kospex last
     fetched or synced the repo; in red, it is older than -stale-days, so
     that repo's data may be out of date, and so may the activity of its
     people. It needs a sync: kgit pull --all --stale DAYS (or --org /
     --server).
     """
     kq = kospex.kospex_query
-    for name, value in (("-days", days), ("-window", window), ("-stale-days", stale_days)):
-        if value < 1:
+    for name, value in (("-here-days", here_days), ("-days", days), ("-window", window),
+                        ("-stale-days", stale_days)):
+        if value is not None and value < 1:
             raise click.UsageError(f"{name} must be 1 or more.")
 
     if target_list:
@@ -1703,16 +1718,18 @@ def orphans(days, window, stale_days, active_in, server, target_list, csv_path):
         return
 
     rows = KospexOrphans.report(
-        kq, repo_ids, repos, KospexAuthorship.bot_checker(), days=days, window=window,
-        stale_days=stale_days, active_in=active_in)
+        kq, repo_ids, repos, KospexAuthorship.bot_checker(), days=days,
+        here_days=here_days, window=window, stale_days=stale_days, active_in=active_in)
 
     table = Table()
     table.add_column("repo_id")
     table.add_column("Status")
-    table.add_column("People", justify="right")
+    table.add_column("Authors", justify="right")
     table.add_column("Present", justify="right")
     table.add_column("% Here", justify="right")
+    table.add_column("Active", justify="right")
     table.add_column("Bots active", justify="right")
+    table.add_column("Last commit", justify="right")
     table.add_column("Last sync", justify="right")
 
     for row in rows:
@@ -1722,8 +1739,10 @@ def orphans(days, window, stale_days, active_in, server, target_list, csv_path):
             console.print(f"repo_id: {shown_id}, {row['status']}", soft_wrap=True)
         else:
             console.print(
-                f"repo_id: {shown_id}, {row['status']}, Present: {row['people_active']}, "
-                f"Total: {row['people']} in {window} days.",
+                f"repo_id: {shown_id}, {row['status']}, Present: {row['present']}, "
+                f"Active: {row['active']}, "
+                f"Total: {row['authors']} author{'' if row['authors'] == 1 else 's'}"
+                f"{'' if window is None else f' in {window} days'}.",
                 soft_wrap=True,
             )
         age = row["refresh_age_days"]
@@ -1733,9 +1752,12 @@ def orphans(days, window, stale_days, active_in, server, target_list, csv_path):
         pct = row["pct_here"]
         table.add_row(
             Text(shown_id), row["status"],
-            str(row["people"]), str(row["people_active"]),
+            str(row["authors"]), str(row["present"]),
             "" if pct == "" else f"{pct:.2f}%",
-            str(row["bots_active"]), refreshed,
+            str(row["active"]),
+            str(row["bots_active"]),
+            KospexUtils.terminal_safe((row["last_commit"] or "")[:10]) or "-",
+            refreshed,
         )
 
     console.print()
@@ -1746,7 +1768,7 @@ def orphans(days, window, stale_days, active_in, server, target_list, csv_path):
     with_people = counts[KospexOrphans.ORPHANED] + counts[KospexOrphans.KNOWLEDGE]
     if with_people:
         console.print(
-            f"Of {with_people} repos with people in the window: "
+            f"Of {with_people} repos with authors: "
             f"{counts[KospexOrphans.ORPHANED] / with_people * 100:.2f}% orphaned.")
     stale = sum(1 for r in rows if r["refresh_stale"] is True)
     if stale:
