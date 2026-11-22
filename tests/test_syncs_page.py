@@ -266,7 +266,9 @@ def test_a_finished_run_relists_as_a_new_run(db):
 def test_run_page_on_a_db_behind_0014(db):
     # Review focus: kweb doesn't migrate; the page says how, rather than a 500.
     run_id = _run(db)
-    db.execute(f"ALTER TABLE {M.TBL_ORG_SYNC_ITEMS} DROP COLUMN visibility")
+    # transform() rebuilds the table: ALTER TABLE DROP COLUMN needs SQLite 3.35,
+    # and kospex supports 3.26 (RHEL 9 ships 3.34).
+    db[M.TBL_ORG_SYNC_ITEMS].transform(drop={"visibility"})
     status, body = _get_run(run_id)
     assert status == 200
     assert "kospex upgrade-db" in body
