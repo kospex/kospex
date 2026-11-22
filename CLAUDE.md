@@ -284,6 +284,16 @@ Design / spec: `changes/202605-db-migration-system.md` (migration system), `chan
   Worth knowing because the refusal looks like a permissions problem and the obvious
   next move, dropping the `PYTHONPATH`, silently tests the main checkout.
 
+#### Decode subprocess output with `KospexUtils.SUBPROCESS_TEXT`, never `text=True`
+
+git prints path bytes and author names as they are, so one name that isn't UTF-8
+anywhere in a repo's history made a strict decode fail the command for the whole
+repo (#479: androidx, after 16 minutes, on a file deleted in 2022). Pass
+`**KospexUtils.SUBPROCESS_TEXT` (`errors="replace"`, matching how `commit_files`
+stores such paths). `tests/test_non_utf8_git_output.py` fails on a new
+`text=True` or `check_output(...).decode()` under `src/`. To test a name like
+that on disk you need Linux: macOS refuses to create the file, so those tests skip.
+
 #### SQL must run on SQLite 3.26
 
 kospex uses whatever SQLite the user's Python was built with. A distro-packaged Python

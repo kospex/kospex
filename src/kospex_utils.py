@@ -1212,6 +1212,18 @@ def list_dict_2_csv(list_of_dicts, csv_file, headers=None):
         # Write the remaining rows
         dict_writer.writerows(list_of_dicts)
 
+# How every subprocess's output is decoded: pass as **SUBPROCESS_TEXT in place
+# of text=True. git prints path bytes as they are with core.quotePath=false
+# (#116) and commit metadata with no encoding header as raw bytes, so one
+# filename or author name that isn't UTF-8, anywhere in a repo's history, made
+# a strict decode fail the command for the whole repo (#479). "replace" turns
+# each invalid byte into U+FFFD, which is how commit_files already stores such
+# a path, so the paths still match; "surrogateescape" would give strings that
+# match nothing and that sqlite3 refuses to bind.
+# tests/test_non_utf8_git_output.py fails on a new strict decode.
+SUBPROCESS_TEXT = {"encoding": "utf-8", "errors": "replace"}
+
+
 def get_directory_size(directory):
     """
     Get the size of a directory in kilobytes.
@@ -1221,7 +1233,8 @@ def get_directory_size(directory):
     """
     # Running the 'du' command with '-s' (summarize) and '-k' (kilobytes) options
     result = subprocess.run(['du', '-sk', directory],
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            **SUBPROCESS_TEXT)
 
     if result.stderr:
         raise OSError(f"Error in du command: {result.stderr}")
@@ -1246,7 +1259,8 @@ def run_git_command(directory, args):
     result = None
     #return subprocess.check_output(['git', '-C', directory] + args).decode().strip()
     try:
-        result = subprocess.check_output(['git', '-C', directory] + args).decode().strip()
+        result = subprocess.check_output(['git', '-C', directory] + args,
+                                         **SUBPROCESS_TEXT).strip()
     except subprocess.CalledProcessError as e:
         # Get a logger for this utility function
         logger = get_kospex_logger('kospex_utils')
@@ -1669,7 +1683,7 @@ def get_scc_build_effort(directory):
     """
 
     try:
-        result = subprocess.run(['scc', directory], capture_output=True, text=True, check=True)
+        result = subprocess.run(['scc', directory], capture_output=True, **SUBPROCESS_TEXT, check=True)
         output = result.stdout
     except subprocess.CalledProcessError as e:
         logger = get_kospex_logger('kospex_utils')

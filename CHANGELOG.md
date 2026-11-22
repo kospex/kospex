@@ -19,6 +19,20 @@ No database migration.
   offsets could miscount commits near the 90-day cutoff. This is fixed on `/repos/` when it
   reads `developer_stats`, not yet on other pages that count active developers.
 
+- **One filename or author name that isn't UTF-8 no longer fails a whole
+  repository** (#479). git prints such bytes as they are, and kospex decoded
+  its output strictly, so a single path anywhere in the history, even a file
+  deleted years ago, made `krunner file-metadata` raise `UnicodeDecodeError`
+  and rebuild nothing for that repository. Seen on androidx/androidx after 16
+  minutes. Commit sync, `scc`, the author queries, `kgit pull` (with
+  `core.quotePath=false`) and the background agent's pull decoded the same
+  way. Each invalid byte is now replaced with U+FFFD, which is how
+  `commit_files` already stores such a path, so the paths still match. On an
+  existing database, run `krunner file-metadata -force REPO_ID` for a
+  repository that failed, then `krunner osi REPO_ID`. Output is now decoded
+  as UTF-8 whatever the locale: on a machine with a non-UTF-8 locale, a
+  re-sync stores non-ASCII names correctly where earlier syncs garbled them.
+
 ## 0.5.2 - 2026-11-25
 
 No database migration: `pip install -U kospex` is all that is needed.

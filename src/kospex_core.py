@@ -204,11 +204,32 @@ def _git_log(repo_dir, *args, window=None):
     cmd += list(window or [])
     try:
         return subprocess.run(
-            cmd, capture_output=True, text=True, check=True
+            cmd, capture_output=True, **KospexUtils.SUBPROCESS_TEXT, check=True
         ).stdout
     except (subprocess.CalledProcessError, OSError) as exc:
         log.debug("git log failed in %s: %s", repo_dir, exc)
         return ""
+
+
+def scc_metrics_by_file(repo_dir):
+    """{path: {Lines, Code, Comments, Blanks, Complexity, Bytes}} from scc,
+    for the files scc can analyse under repo_dir. Paths are relative to it."""
+    metadata = subprocess.run(
+        ["scc", "--by-file", "-f", "csv"],
+        cwd=str(repo_dir),
+        stdout=subprocess.PIPE,
+        **KospexUtils.SUBPROCESS_TEXT,
+        check=False,
+    )
+    # scc columns: Language,Provider,Filename,Lines,Code,Comments,
+    # Blanks,Complexity,Bytes[,ULOC] — Provider is the file path.
+    scc_cols = ("Lines", "Code", "Comments", "Blanks", "Complexity", "Bytes")
+    metrics = {}
+    for scc_row in csv.DictReader(metadata.stdout.splitlines()):
+        provider = scc_row.get("Provider")
+        if provider:
+            metrics[provider] = {c: scc_row[c] for c in scc_cols if c in scc_row}
+    return metrics
 
 
 def _merge_content_mask(repo_dir, window=None):
@@ -339,7 +360,7 @@ def scc_version():
         return None
     try:
         out = subprocess.run(
-            ["scc", "--version"], stdout=subprocess.PIPE, text=True, check=False
+            ["scc", "--version"], stdout=subprocess.PIPE, **KospexUtils.SUBPROCESS_TEXT, check=False
         ).stdout
         # e.g. "scc version 3.7.0" -> "3.7.0"
         parts = out.split()
@@ -1340,21 +1361,7 @@ class Kospex:
             # rest, including its UNKNOWN default.
             scc_metrics = {}
             if which("scc"):
-                metadata = subprocess.run(
-                    ["scc", "--by-file", "-f", "csv"],
-                    stdout=subprocess.PIPE,
-                    text=True,
-                    check=False,
-                )
-                # scc columns: Language,Provider,Filename,Lines,Code,Comments,
-                # Blanks,Complexity,Bytes[,ULOC] — Provider is the file path.
-                scc_cols = ("Lines", "Code", "Comments", "Blanks", "Complexity", "Bytes")
-                for scc_row in csv.DictReader(metadata.stdout.splitlines()):
-                    provider = scc_row.get("Provider")
-                    if provider:
-                        scc_metrics[provider] = {
-                            c: scc_row[c] for c in scc_cols if c in scc_row
-                        }
+                scc_metrics = scc_metrics_by_file(self.repo_directory)
             else:
                 print("""WARNING: scc is not installed.
                          Please install scc from https://github.com/boyter/scc""")

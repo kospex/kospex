@@ -200,7 +200,7 @@ def branches(sync, repo):
     kgit.set_repo(repo)
     os.chdir(repo)
     cmd = ['git', 'branch', '--all']
-    result = subprocess.run(cmd, capture_output=True, text=True).stdout.split('\n')
+    result = subprocess.run(cmd, capture_output=True, **KospexUtils.SUBPROCESS_TEXT).stdout.split('\n')
     bob = []
     for i in result:
         if i.lstrip():
@@ -931,12 +931,12 @@ def _git_pull(path, no_prompt=False):
 
     def _head():
         r = subprocess.run(["git", "-C", path, "rev-parse", "HEAD"],
-                           capture_output=True, text=True)
+                           capture_output=True, **KospexUtils.SUBPROCESS_TEXT)
         return r.stdout.strip() if r.returncode == 0 else None
 
     before = _head()
     argv, env_over = _pull_command(path, no_prompt=no_prompt)
-    proc = subprocess.run(argv, capture_output=True, text=True,
+    proc = subprocess.run(argv, capture_output=True, **KospexUtils.SUBPROCESS_TEXT,
                           env={**os.environ, **env_over})
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "fetch failed").strip().splitlines()
@@ -948,7 +948,7 @@ def _git_pull(path, no_prompt=False):
     count = 0
     if before and after:
         r = subprocess.run(["git", "-C", path, "rev-list", "--count",
-                            f"{before}..{after}"], capture_output=True, text=True)
+                            f"{before}..{after}"], capture_output=True, **KospexUtils.SUBPROCESS_TEXT)
         count = int(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else 0
     return True, f"updated {count} commits", count
 
