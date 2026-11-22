@@ -419,6 +419,8 @@ class KospexGithub:
                 'id': repo.get('id'),
                 'name': repo.get('full_name'),
                 'visibility': repo.get('visibility'),
+                # True for internal repos too: visibility tells them apart.
+                'private': repo.get('private'),
                 # The repo's own owner, not the account asked about: a user's
                 # listing includes other owners' repos (-include-member).
                 'type': (repo.get('owner') or {}).get('type') or owner_type,

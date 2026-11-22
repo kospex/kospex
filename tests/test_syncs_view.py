@@ -168,7 +168,8 @@ def _item(name, **kw):
     return {"_repo_id": f"{ORG}~{name}", "clone_url": f"https://github.com/acme/{name}.git",
             "ssh_url": f"git@github.com:acme/{name}.git",
             "provider_repo_id": f"github.com:{name}", "archived": False, "fork": False,
-            "private": False, "pushed_at": "2026-11-01T00:00:00Z", **kw}
+            "private": False, "visibility": "public", "pushed_at": "2026-11-01T00:00:00Z",
+            **kw}
 
 
 def _command(db, run_id, options, finished=True, auth=AUTH, started="2026-11-15T01:00:00Z"):
@@ -308,7 +309,7 @@ def _run_db():
     ], pk="_repo_id", alter=True)
     run_id = M.save_listing(db, ORG, [
         _item("a"),
-        _item("b", private=True),
+        _item("b", private=True, visibility="private"),
         _item("c", fork=True, fork_parent="up/c", fork_source="root/c"),
         _item("d", fork=True, fork_parent="up/d", fork_source="up/d"),
     ])
@@ -336,12 +337,13 @@ def test_run_view_header_items_and_counts():
     assert view["continue_command"] == "kgit sync --org acme"
 
 
-def test_run_view_drift_and_private_come_from_inventory():
+def test_run_view_drift_and_visibility_come_from_inventory():
     db, run_id = _run_db()
     view = V.run_view(db, run_id)
     # `old` is in kospex under acme but not listed; `other~x` is another org.
     assert view["drift"] == M.inventory(db, run_id)["gone"] == [f"{ORG}~old"]
-    assert (view["private"], view["listed"]) == (1, 4)
+    assert view["visibility_banner"] == "This run includes 1 private repo out of 4."
+    assert view["visibility_note"] is None
 
 
 def test_run_view_gone_items_are_shown_but_not_counted_as_listed():
@@ -351,7 +353,38 @@ def test_run_view_gone_items_are_shown_but_not_counted_as_listed():
     assert [i["_repo_id"] for i in view["rows"] if i["gone"]] == [f"{ORG}~b"]
     assert ("gone", 1) in view["filters"]
     # b was the private one, and isn't in the current listing any more.
-    assert (view["private"], view["listed"]) == (0, 3)
+    assert view["visibility_banner"] is None and view["listed"] == 3
+
+
+@pytest.mark.parametrize("counts, text", [
+    ({"internal": 2500}, "This run includes 2,500 internal repos out of 2,500."),
+    ({"private": 1}, "This run includes 1 private repo out of 2,500."),
+    ({"internal": 3, "private": 1},
+     "This run includes 3 internal and 1 private repos out of 2,500."),
+    ({"internal": 3, "private": 1, "visibility_other": 2},
+     "This run includes 3 internal, 1 private and 2 other non-public repos out of 2,500."),
+    ({}, None),
+])
+def test_visibility_banner(counts, text):
+    inventory = {"internal": 0, "private": 0, "visibility_other": 0, "listed": 2500, **counts}
+    assert V.visibility_banner(inventory) == text
+
+
+def test_visibility_note_carries_the_options_that_decide_the_listing():
+    db, run_id = _run_db()
+    db.execute(f"UPDATE {M.TBL_ORG_SYNC_ITEMS} SET visibility = NULL WHERE run_id = ?",
+               [run_id])
+    _command(db, run_id, "-active 90 -next 10 -skip-forks -no-auth")
+    note = V.run_view(db, run_id)["visibility_note"]
+    assert note["unknown"] == 4 and note["finished"] is False
+    # -inventory refuses -active and -next, so they're dropped.
+    assert note["command"] == "kgit sync --org acme -inventory -refresh -skip-forks -no-auth"
+
+
+def test_run_view_on_a_db_behind_0014():
+    db = _db()
+    db.execute(f"ALTER TABLE {M.TBL_ORG_SYNC_ITEMS} DROP COLUMN visibility")
+    assert V.run_view(db, "anything") == {"available": False}
 
 
 def test_run_view_unknown_run_raises_key_error():

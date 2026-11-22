@@ -177,18 +177,29 @@ def _item(name, **kw):
             "clone_url": f"https://github.com/acme/{name}.git",
             "ssh_url": f"git@github.com:acme/{name}.git",
             "provider_repo_id": f"github.com:{name}", "archived": False, "fork": False,
-            "private": False, "pushed_at": "2026-11-01T00:00:00Z", **kw}
+            "private": False, "visibility": "public", "pushed_at": "2026-11-01T00:00:00Z",
+            **kw}
 
 
-def _run(db, private=True):
+def _vis(visibility):
+    return {"visibility": visibility, "private": visibility == "private"}
+
+
+def _run(db, new="private", forked="public"):
     # `old` is in kospex and listed; `fresh` and the hostile id are in kospex
     # but not listed, so they're the drift.
     run_id = M.save_listing(db, "github.com~acme", [
-        _item("old"), _item("new", private=private),
-        _item("forked", fork=True, fork_parent="up/forked", fork_source="root/forked"),
+        _item("old"), _item("new", **_vis(new)),
+        _item("forked", fork=True, fork_parent="up/forked", fork_source="root/forked",
+              **_vis(forked)),
     ])
     M.mark(db, run_id, "github.com~acme~new", M.FAILED, f"clone failed {HOSTILE}")
     return run_id
+
+
+def _markers(items):
+    import re
+    return re.findall(r'class="visibility-marker[^"]*">([^<]*)<', items)
 
 
 def _get_run(run_id):
@@ -199,7 +210,7 @@ def _get_run(run_id):
     return response.status_code, response.body.decode()
 
 
-def test_run_page_shows_items_drift_and_private_banner(db):
+def test_run_page_shows_items_drift_and_visibility_banner(db):
     run_id = _run(db)
     status, body = _get_run(run_id)
     assert status == 200
@@ -207,16 +218,58 @@ def test_run_page_shows_items_drift_and_private_banner(db):
     assert "github.com~acme~new" in items and "github.com~acme~forked" in items
     assert "up/forked" in items and "source: root/forked" in items
     assert 'data-search="failed"' in items
-    assert items.count('class="private-marker') == 1
+    assert _markers(items) == ["private"]
     assert "github.com~acme~fresh" in drift and "github.com~acme~old" not in drift
-    assert "This run includes <span class=\"font-semibold\">1</span> private repo out of 3." in body
+    assert "This run includes 1 private repo out of 3." in body
+    assert 'id="visibility-note"' not in body
 
 
-def test_run_page_has_no_banner_without_private_repos(db):
-    status, body = _get_run(_run(db, private=False))
+def test_internal_and_private_are_told_apart(db):
+    # GitHub Enterprise internal repos are readable across the enterprise:
+    # not private, and not public either.
+    status, body = _get_run(_run(db, new="internal", forked="private"))
+    items = body.split('id="itemsTable"')[1]
+    assert _markers(items) == ["private", "internal"]  # forked, new: by repo id
+    assert "This run includes 1 internal and 1 private repos out of 3." in body
+
+
+def test_run_page_has_no_banner_when_every_repo_is_public(db):
+    status, body = _get_run(_run(db, new="public"))
     assert status == 200
-    assert 'id="private-banner"' not in body
-    assert 'class="private-marker' not in body
+    assert 'id="visibility-banner"' not in body
+    assert _markers(body) == []
+
+
+def test_unrecorded_visibility_says_how_to_fill_it_in(db):
+    # A run listed before 0014: visibility NULL, never guessed from private = 0.
+    run_id = _run(db, new="internal")
+    db.execute(f"UPDATE {M.TBL_ORG_SYNC_ITEMS} SET visibility = NULL")
+    status, body = _get_run(run_id)
+    assert ("Visibility not recorded for 3 repos. To update, without cloning, run the "
+            "following:") in " ".join(body.split())  # as the browser shows it
+    assert "kgit sync --org acme -inventory -refresh" in body
+    assert 'id="visibility-banner"' not in body
+    assert body.count(">not recorded<") == 3
+
+
+def test_a_finished_run_relists_as_a_new_run(db):
+    run_id = _run(db)
+    db.execute(f"UPDATE {M.TBL_ORG_SYNC_ITEMS} SET visibility = NULL")
+    db.execute(f"UPDATE {M.TBL_ORG_SYNC_RUNS} SET finished_at = '2026-11-20T00:00:00Z'")
+    status, body = _get_run(run_id)
+    assert ("This run is finished, so it can't be updated. To record visibility in a new "
+            "run, without cloning, run the following:") in body
+    assert "kgit sync --org acme -inventory<" in body
+    assert "-refresh" not in body
+
+
+def test_run_page_on_a_db_behind_0014(db):
+    # Review focus: kweb doesn't migrate; the page says how, rather than a 500.
+    run_id = _run(db)
+    db.execute(f"ALTER TABLE {M.TBL_ORG_SYNC_ITEMS} DROP COLUMN visibility")
+    status, body = _get_run(run_id)
+    assert status == 200
+    assert "kospex upgrade-db" in body
 
 
 def test_run_page_escapes_repo_ids_and_details(db):
@@ -265,3 +318,61 @@ def test_run_page_not_linked_from_anywhere_but_syncs():
     linking = sorted(p.name for p in templates.glob("*.html")
                      if "/syncs/run/" in p.read_text())
     assert linking == ["syncs.html"]
+
+
+def _breadcrumb(body):
+    import re
+    nav = body.split('aria-label="Breadcrumb"')[1].split("</nav>")[0]
+    return re.findall(r'<(?:a href="([^"]*)"|span)[^>]*>([^<]+)<', nav)
+
+
+def test_run_page_has_the_org_breadcrumb_and_keeps_the_syncs_link(db):
+    status, body = _get_run(_run(db))
+    assert status == 200
+    crumbs = [(href, text) for href, text in _breadcrumb(body) if text != "/"]
+    assert crumbs == [("/orgs/github.com", "github.com"),
+                      ("/org/github.com~acme", "acme"), ("", "Org sync run")]
+    assert "← Syncs</a>" in body
+
+
+def test_no_breadcrumb_before_the_org_has_repos_in_kospex(db):
+    # Its crumbs would link to an org page that 404s.
+    run_id = M.save_listing(db, "github.com~nobody", [
+        {**_item("x"), "_repo_id": "github.com~nobody~x"}])
+    status, body = _get_run(run_id)
+    assert status == 200
+    assert 'aria-label="Breadcrumb"' not in body
+    assert "← Syncs</a>" in body
+
+
+RUNS_NOTHING = ("kweb doesn't run commands. To sync repos, refresh the inventory or update "
+                "repo details, copy a command from this page and run it in a terminal.")
+
+
+def test_says_kweb_runs_nothing_when_there_is_a_command(db):
+    status, body = _get_run(_run(db))
+    assert 'id="continue-command"' in body
+    assert RUNS_NOTHING in " ".join(body.split())
+
+
+def test_no_such_sentence_when_the_page_has_no_command(db):
+    # Finished, and every repo's visibility recorded: nothing to copy.
+    run_id = _run(db)
+    db.execute(f"UPDATE {M.TBL_ORG_SYNC_RUNS} SET finished_at = '2026-11-20T00:00:00Z'")
+    status, body = _get_run(run_id)
+    assert status == 200
+    assert 'id="continue-command"' not in body and 'id="relist-command"' not in body
+    assert "kweb doesn't run commands" not in body
+
+
+@pytest.mark.parametrize("org_key, title", [
+    ("github.com~acme", "github.com / acme"),
+    # A GitLab subgroup: "~~" in the key is a "/" in the group's path.
+    ("gitlab.com~group~~sub", "gitlab.com / group/sub"),
+])
+def test_run_page_title_is_server_slash_org(db, org_key, title):
+    run_id = M.save_listing(db, org_key, [{**_item("x"), "_repo_id": f"{org_key}~x"}])
+    status, body = _get_run(run_id)
+    assert status == 200
+    assert f">{title}</h1>" in body
+    assert f"Repos kospex has under {title} that" in body

@@ -4,10 +4,27 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
-No database migration. Nothing new is stored.
+Database migration `0014`: back up `~/kospex/kospex.db`, then run
+`kospex upgrade-db -apply`. `kgit sync --org` / `--user` can't save a listing
+until it is applied.
+
+### Added
+
+- **`kgit sync --org` records each repository's visibility: `public`,
+  `private` or `internal`**, as GitHub reports it, in
+  `org_sync_items.visibility`. Each listing counts internal repositories in
+  `org_sync_listings.internal`. `-inventory` and `-status` print a
+  `public / private / internal` line, and `-history` has an `internal` column.
 
 ### Fixed
 
+- **Internal repositories looked public.** On an organisation owned by a GitHub
+  Enterprise account, internal repositories (readable across the enterprise,
+  not by the public) were recorded only as `private = 0`, the same as public
+  ones. `private` keeps its meaning, so existing rows stay correct.
+  Repositories listed before `0014` have no recorded visibility. For an
+  unfinished run, `kgit sync --org OWNER -inventory -refresh` fills it in
+  without cloning.
 - **`KOSPEX_DB` and `KOSPEX_CONFIG` now take effect** (#466). Every command
   replaced them with their defaults at startup, so
   `KOSPEX_DB=/path/to/copy.db kospex upgrade-db -apply` migrated

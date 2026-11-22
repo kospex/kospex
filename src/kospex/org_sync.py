@@ -207,6 +207,23 @@ def listing_is_stale(listed_at, max_days, now=None):
     return age is None or max_days == 0 or age >= max_days
 
 
+def visibility(repo):
+    """A listed repo's visibility as GitHub sent it, lowercased: `public`,
+    `private`, `internal`, or a value GitHub adds later, kept as sent.
+
+    Without `visibility` (older GitHub Enterprise Server), GitHub's `private`
+    boolean decides between private and public. Without either, None: not
+    known, and not guessed. Design: changes/202611-org-sync-visibility.md
+    """
+    value = repo.get("visibility")
+    if value:
+        return str(value).strip().lower()
+    flag = repo.get("private")
+    if flag is None:
+        return None
+    return manifest.PRIVATE if flag else manifest.PUBLIC
+
+
 def build_items(repos, owner, include_forks=False, skip_archived=False,
                 host=GITHUB_HOST):
     """Turn a listing into manifest items. Returns `(items, others)`.
@@ -236,10 +253,11 @@ def build_items(repos, owner, include_forks=False, skip_archived=False,
             "fork": bool(repo.get("fork")),
             "fork_parent": repo.get("fork_parent"),
             "fork_source": repo.get("fork_source"),
-            "private": (repo.get("visibility") or "").lower() == "private",
+            "visibility": visibility(repo),
             "pushed_at": repo.get("pushed_at"),
             "created_at": repo.get("created_at"),
         }
+        item["private"] = item["visibility"] == manifest.PRIVATE
         if item["fork"] and not include_forks:
             item["status"], item["detail"] = manifest.SKIPPED, SKIP_FORK
         elif item["archived"] and skip_archived:
