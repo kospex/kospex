@@ -64,6 +64,16 @@ it, `kospex orphans` and `/orphans/` work but read every commit.
   since each repo was last fetched or synced, in red past the new
   `-stale-days`, default 30, with the `kgit pull` command that syncs them).
   The `-csv` columns changed; see `docs/kospex.md`.
+- **`kospex orphans -active-in estate|server|org`.** Where a person counts
+  as still here: any synced repo (the default), the repo's git server, or its
+  kospex org (`server~owner`, so GitLab nested groups and self-hosted servers
+  work too).
+- **kweb `/orphans/` uses the same rule as the CLI.** It counted only the
+  last 365 days by committer date, counted bots and merges as authorship, and
+  showed repos with no recent commits as orphaned. It now shows the same
+  statuses, bots, last commit and last sync, with a menu
+  for the `active_in` scope and an "explain column headings and table"
+  toggle.
 - **Every path setting follows one order: environment, then `kospex.env`,
   then the default.** That covers `KOSPEX_DB`, `KOSPEX_CODE` and `KOSPEX_LOGS`,
   and the less common `KOSPEX_KRUNNER`, `KOSPEX_STAGING` and `KOSPEX_ASSESSMENTS`.
@@ -77,16 +87,6 @@ it, `kospex orphans` and `/orphans/` work but read every commit.
 - **New page: [Configuration](https://docs.kospex.io/configuration).** It covers
   where kospex keeps its files, which value wins, the `kospex.env` format, and
   the preference, credential and logging settings.
-- **`kospex orphans -active-in estate|server|org`.** Where a person counts
-  as still here: any synced repo (the default), the repo's git server, or its
-  kospex org (`server~owner`, so GitLab nested groups and self-hosted servers
-  work too).
-- **kweb `/orphans/` uses the same rule as the CLI.** It counted only the
-  last 365 days by committer date, counted bots and merges as authorship, and
-  showed repos with no recent commits as orphaned. It now shows the same
-  statuses, bots, last commit and last sync, with a menu
-  for the `active_in` scope and an "explain column headings and table"
-  toggle.
 
 ## 0.4.2 - 2026-11-20
 
