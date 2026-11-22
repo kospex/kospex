@@ -40,15 +40,28 @@ def delete_repo(repo_id,table,yes,dry_run):
     provenance goes too and the next sync walks the full history - which is
     what makes this the way to reset a repo before a re-sync.
 
-    Use -dry-run first to see the row counts per table.
+    -table TABLE deletes from that one table only. `-table commits`, then
+    `kgit pull REPO_ID`, re-reads a repo's full history and keeps its 'repos'
+    row, so the pull still finds the clone.
+
+    Use -dry-run first to see the row counts per table. With -table it counts
+    that table only.
     """
+    if table and table not in get_kospex_tables(kospex.kospex_db):
+        print(f"table {table} is NOT a valid table name.")
+        print("Here's a list of valid tables:")
+        for name in sorted(get_kospex_tables(kospex.kospex_db)):
+            print(name)
+        return
+
     if dry_run and repo_id:
-        counts = kospex.repo_id_row_counts(repo_id)
+        counts = kospex.repo_id_row_counts(repo_id, tables=[table] if table else None)
+        where = f" in table {table}" if table else ""
         if not counts:
-            print(f"No rows found for repo_id {repo_id}")
+            print(f"No rows found for repo_id {repo_id}{where}")
             return
 
-        print(f"Dry run - would delete the following for repo_id {repo_id}:\n")
+        print(f"Dry run - would delete the following for repo_id {repo_id}{where}:\n")
         for name in sorted(counts):
             print(f"  {name:<20} {counts[name]:>8} rows")
         print(f"\n  {'TOTAL':<20} {sum(counts.values()):>8} rows")
@@ -56,23 +69,15 @@ def delete_repo(repo_id,table,yes,dry_run):
         return
 
     if table:
-        if table in get_kospex_tables(kospex.kospex_db):
-            print(f"table {table} is a valid table name.")
-            if not yes:
-                print("Please specify -yes to confirm deletion.")
-                return
-            else:
-                print()
-                print(f"About to delete repo_id {repo_id}")
-                print(f"from table {table}")
-                results = kospex.delete_repo_id_from_table(table,repo_id)
-                print(f"{results} rows deleted.\n")
-
-        else:
-            print(f"table {table} is NOT a valid table name.")
-            print("Here's a list of valid tables:")
-            for table in sorted(get_kospex_tables(kospex.kospex_db)):
-                print(table)
+        print(f"table {table} is a valid table name.")
+        if not yes:
+            print("Please specify -yes to confirm deletion.")
+            return
+        print()
+        print(f"About to delete repo_id {repo_id}")
+        print(f"from table {table}")
+        results = kospex.delete_repo_id_from_table(table,repo_id)
+        print(f"{results} rows deleted.\n")
 
     elif repo_id:
 

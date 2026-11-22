@@ -1645,18 +1645,23 @@ class Kospex:
 
         return table
 
-    def repo_id_row_counts(self, repo_id):
+    def repo_id_row_counts(self, repo_id, tables=None):
         """{table: row_count} for every repo table holding rows for repo_id.
 
         Tables with no rows are omitted — a repo touches a handful of the repo
         tables, and listing the empty ones is noise in a confirmation prompt.
+        `tables` limits the count to those tables (`delete-repo -table`); a
+        name that isn't a repo table is skipped.
 
         Read-only. Backs `kreaper delete-repo -dry-run`, so what gets counted
         here and what gets deleted there come from the same table list.
         """
         counts = {}
+        repo_tables = get_repo_tables(self.kospex_db)
+        if tables is not None:
+            repo_tables = repo_tables & set(tables)
 
-        for table in sorted(get_repo_tables(self.kospex_db)):
+        for table in sorted(repo_tables):
             row = self.kospex_db.execute(
                 f"SELECT COUNT(*) FROM [{table}] WHERE _repo_id = ?", [repo_id]
             ).fetchone()
