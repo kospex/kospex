@@ -49,10 +49,10 @@ Only four keys of each input line are read:
 
 | Key | Used for |
 |---|---|
-| `package_ecosystem` | GitHub's ecosystem name, mapped to a package type (below) |
-| `package_name` | The package name |
-| `current_version` | The installed version; empty or null means unknown |
-| `patched_version` | The first fixed version; empty or null means no fix |
+| `package_ecosystem` | GitHub's ecosystem name, mapped to a package type (below). Null or missing is `unsupported_ecosystem` |
+| `package_name` | The package name. Must be a non-empty string |
+| `current_version` | The installed version; empty or null means unknown. Must be a string or null |
+| `patched_version` | The first fixed version; empty or null means no fix. Must be a string or null |
 
 Other keys are copied through and ignored.
 
@@ -75,12 +75,12 @@ could not be enriched keeps its reason in `sca_status` and leaves the rest null.
 
 The distance from the installed version to the **latest** release, using the same rule as
 `versions_behind` elsewhere in kospex (pre-releases excluded). Null unless
-`current_version` is known and the package was found.
+`current_version` is known and the package was found. A **pre-release** installed version (`1.0.0-rc.1`) gives a null `sca_latest_version` and null `behind_*` fields while `sca_status` stays `ok`: release numbers alone would read it as the plain release.
 
 | Field | Meaning |
 |---|---|
 | `sca_latest_version` | The latest release |
-| `sca_behind_level` | `major`, `minor`, `patch` or `none`: the largest component that differs |
+| `sca_behind_level` | `major`, `minor`, `patch` or `none`: the largest component that differs; `ahead` when the installed version is above the latest release (deps.dev's default can trail a release), in which case the counts are null |
 | `sca_behind_major`, `sca_behind_minor`, `sca_behind_patch` | How far behind, by version number, per component |
 | `sca_behind_releases` | How many releases have been published since the installed one |
 | `sca_current_age_days` | Age of the installed version in days. Null when deps.dev has no publish date or that lookup failed; a failed lookup here does not change `sca_status` |
@@ -133,7 +133,7 @@ when `patched_version` is present even if `current_version` is not.
 | `private_skipped` | The package matches `KOSPEX_DEPS_PRIVATE` (or `GOPRIVATE` for Go). Nothing is sent to deps.dev |
 | `unsupported_ecosystem` | The ecosystem is not one of the mapped ones |
 | `not_found` | deps.dev **answered 404** for the package (or answered 200 with no versions), or answered 404 for the patched version. Only a 404 counts: it means "deps.dev has no such record". A patched version deps.dev does not know is `not_found`, not `ok` |
-| `lookup_error` | Any other failed lookup: network error, TLS error, 5xx, rate limit. These are not cached, so a later alert for the same package retries |
+| `lookup_error` | Any other failed lookup: network error, TLS error, 5xx, rate limit. This includes a failed fetch of any one advisory record on the patched version (deps.dev answered the version but not an advisory): the three `sca_patched_version_*` / `sca_patched_ghsa_ids` fields are then null, never a partial count or a maximum over the advisories that did load. These are not cached, so a later alert for the same package retries |
 
 If both `current_version` and `patched_version` are missing, `no_current_version` wins.
 Rows are never dropped.
@@ -147,7 +147,7 @@ lookup, then the version rules above. A failed package lookup therefore reports
 GitHub's names map as follows; anything else is `unsupported_ecosystem` (matched
 case-insensitively).
 
-| GitHub `ecosystem` | Package type |
+| GitHub `package_ecosystem` | Package type |
 |---|---|
 | `pip` | `pypi` |
 | `npm` | `npm` |
@@ -159,6 +159,16 @@ case-insensitively).
 
 `composer`, `actions`, `pub`, `swift`, `erlang`, `elm` and the rest are unsupported.
 
+### Go versions
+
+GitHub writes Go versions without the `v` (`0.17.0`), but deps.dev only knows the `v`
+spelling (`v0.17.0`; the unprefixed form answers 404). For `go`, a version that starts
+with a digit gets a leading `v` before the deps.dev lookups, for both `current_version`
+and `patched_version`, and the latest release and the behind counts are measured against
+deps.dev's own list, which also has the `v`. A version that already has the `v` is used
+as is. `sca_latest_version` is therefore reported as deps.dev spells it (`v0.30.0`). The
+input columns are never changed. Other ecosystems send versions unchanged.
+
 ### Private packages
 
 Packages matching `KOSPEX_DEPS_PRIVATE` (comma-separated `ecosystem:prefix`, `maven` and
@@ -169,7 +179,9 @@ anything runs.
 ## Errors
 
 - **A bad input line stops the run.** A line that is blank, not valid UTF-8, not valid
-  JSON, or JSON that is not an object is an error naming the **1-based line number**, and
+  JSON, JSON that is not an object, or an object whose `package_name` is missing, null,
+  empty or not a string, or whose `current_version` / `patched_version` is neither a
+  string nor null, is an error naming the **1-based line number**, and
   the partial output file is **deleted**, so a half-written file never looks complete.
   The message ends `<out> was not written.` Exit code 1.
 - **Same file refused.** `-out` equal to the input (checked through symlinks and hard
@@ -206,7 +218,8 @@ after any of these.
   `ECOSYSTEM_MAP` in `src/kospex/dependabot_enrich.py`. Also check how GitHub spells the
   existing ones (`pip` / `rust` are GitHub's names, not deps.dev's).
 - **`current_version` semantics.** The enricher trusts it as one exact version. If GitHub
-  starts putting a range or a `v` prefix in it, the diff fields silently go null or wrong.
+  starts putting a range in it, the diff fields silently go null or wrong. (A `v` on a Go
+  version is handled: see [Go versions](#go-versions).)
 - **deps.dev status codes.** `not_found` relies on a 404 (or a 200 with no versions); any
   other status is `lookup_error`. If deps.dev starts answering a missing package with a
   different code, rows move from `not_found` to `lookup_error`. The same applies to how
