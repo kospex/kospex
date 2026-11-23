@@ -1,6 +1,6 @@
 # `kospex sca -dependabot`: enrich Dependabot alerts
 
-Status: design, approved 2026-11-23. Not built.
+Status: built (see docs/sca-dependabot.md).
 
 ## Overview
 
@@ -82,3 +82,23 @@ migration); a separate top-level command (project preference is a mode on `sca`)
 Silent for now: documented in a `docs/` page not linked from other pages or
 `sitemap.xml`, and no CHANGELOG entry, until the `kgit github --dependabot`
 content is released together. Register it as a silent feature.
+
+## Differences from the design
+
+Found comparing the built code to this design (2026-11-24):
+
+- **Input key names.** The design says the enricher reads the alert's ecosystem and
+  package, and the code reads `ecosystem` and `package`. The file `kgit github
+  --dependabot` writes names them `package_ecosystem` and `package_name`, so a real
+  alerts file comes out all `unsupported_ecosystem`. Measured with four alerts built from
+  `ALERT_KEYS`: 4 of 4 unsupported; the same alerts with `ecosystem` / `package` added
+  enriched normally. Needs a fix in the enricher (read the real key names).
+- **Input errors.** Beyond "not JSON", a blank line, invalid UTF-8 and JSON that is not
+  an object are also errors naming the line; the partial output is deleted.
+- **Same-file refusal.** `-out` equal to the input is refused (not in the design).
+- **Patched version unknown to deps.dev.** Reported as `not_found`, not `ok`.
+- **Only a 404 is `not_found`;** any other failed lookup is `lookup_error` and is not
+  cached.
+- **No current-version advisories.** The `sca -h` text says the output has deps.dev
+  advisories "for the current and patched versions"; only the patched version's are
+  looked up, as the design says.
