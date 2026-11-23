@@ -8,6 +8,10 @@ The alert's `ecosystem`, `package`, `current_version` and `patched_version`
 keys are read. Lookups go through KospexDependencies (deps.dev) and are cached
 per package and per (package, version), negative results included.
 """
+import collections
+import json
+import os
+
 from kospex.dependencies.version_diff import change_level, version_diff
 
 # GitHub ecosystem name (lower case) -> kospex / deps.dev package type.
@@ -158,3 +162,61 @@ class Enricher:
         if detail is not None or status in _ANSWERED:
             self._details[key] = result
         return result
+
+
+class DependabotInputError(Exception):
+    """A line of the input file is not a JSON object. `line_no` is 1-based."""
+
+    def __init__(self, line_no, msg):
+        super().__init__(f"line {line_no}: {msg}")
+        self.line_no = line_no
+
+
+def enrich_file(in_path, out_path, enricher, on_progress=None):
+    """Enrich a JSONL file of Dependabot alerts into `out_path`.
+
+    Returns a Counter of `sca_status` over the rows written. On any error the
+    partial output is closed and deleted before the error is re-raised, so a
+    half-written file never looks complete. Raises ValueError, before the
+    input is opened or the output touched, when both paths are the same file.
+    """
+    if os.path.realpath(in_path) == os.path.realpath(out_path) or (
+            os.path.exists(out_path) and os.path.exists(in_path)
+            and os.path.samefile(in_path, out_path)):
+        raise ValueError("output path must differ from the input path")
+
+    counts = collections.Counter()
+    out = None
+    opened = False
+    try:
+        with open(in_path, "r", encoding="utf-8", newline="") as src:
+            out = open(out_path, "w", encoding="utf-8", newline="\n")
+            opened = True
+            for line_no, raw in enumerate(src, start=1):
+                line = raw.rstrip("\r\n")
+                if not line.strip():
+                    raise DependabotInputError(line_no, "blank line")
+                try:
+                    alert = json.loads(line)
+                except ValueError as exc:
+                    raise DependabotInputError(line_no, f"invalid JSON: {exc}") from exc
+                if not isinstance(alert, dict):
+                    raise DependabotInputError(line_no, "not a JSON object")
+                row = enricher.enrich(alert)
+                out.write(json.dumps(row, ensure_ascii=False) + "\n")
+                status = row["sca_status"]
+                counts[status] += 1
+                if on_progress:
+                    on_progress(line_no, status)
+            out.close()
+            out = None
+    except BaseException:
+        if out is not None:
+            out.close()
+        if opened:   # never delete a file we did not truncate
+            try:
+                os.remove(out_path)
+            except FileNotFoundError:
+                pass
+        raise
+    return counts
