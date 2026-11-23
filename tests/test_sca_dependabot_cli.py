@@ -63,6 +63,17 @@ def test_refused_with_json_scope_save_package_repo_file(run, paths, extra, tmp_p
     assert run.stub.calls["release_list"] == []
 
 
+def test_osv_is_refused_with_dependabot(run, paths):
+    """-osv belongs to -package; with -dependabot it gets that option's own usage error
+    (both options were merged into `sca` from separate branches)."""
+    src, out = paths
+    r = run(["-dependabot", str(src), "-out", str(out), "-osv"])
+    assert r.exit_code == 2
+    assert "-osv only applies to -package" in r.output
+    assert not out.exists()
+    assert run.stub.calls["release_list"] == []
+
+
 def test_default_scope_not_refused(run, paths):
     src, out = paths
     r = run(["-dependabot", str(src), "-out", str(out)])
