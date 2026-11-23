@@ -130,3 +130,50 @@ def test_summary_on_stderr_counts_statuses(run, paths):
         ln.split()[0] for ln in status_lines)
     assert [row["sca_status"] for row in _rows(out)] == [
         "ok", "unsupported_ecosystem", "ok"]
+
+
+@pytest.mark.parametrize("first", [
+    _alert(ecosystem="nosuch"), _alert(),
+], ids=["unsupported_first_row", "normal_first_row"])
+def test_invalid_private_setting_fails_before_any_work(run, tmp_path, monkeypatch, first):
+    from kospex.habitat_config import HabitatConfig
+    src = tmp_path / "a.jsonl"
+    src.write_text(json.dumps(first) + "\n" + json.dumps(_alert()) + "\n")
+    out = tmp_path / "out.jsonl"
+    monkeypatch.setenv("KOSPEX_DEPS_PRIVATE", "npm:*bad")
+    HabitatConfig.reset_instance()
+    try:
+        r = run(["-dependabot", str(src), "-out", str(out)])
+    finally:
+        monkeypatch.delenv("KOSPEX_DEPS_PRIVATE")
+        HabitatConfig.reset_instance()
+    assert r.exit_code == 1
+    assert "KOSPEX_DEPS_PRIVATE" in r.stderr
+    assert not out.exists()
+    assert all(not calls for calls in run.stub.calls.values())
+
+
+def test_valid_private_setting_yields_private_skipped(run, paths, monkeypatch):
+    from kospex.habitat_config import HabitatConfig
+    src, out = paths
+    monkeypatch.setenv("KOSPEX_DEPS_PRIVATE", "maven:com.example")
+    HabitatConfig.reset_instance()
+    run.stub.permitted = (False, "KOSPEX_DEPS_PRIVATE npm:cookie")
+    try:
+        r = run(["-dependabot", str(src), "-out", str(out)])
+    finally:
+        monkeypatch.delenv("KOSPEX_DEPS_PRIVATE")
+        HabitatConfig.reset_instance()
+    assert r.exit_code == 0, r.stderr
+    assert "private_skipped" in [row["sca_status"] for row in _rows(out)]
+
+
+def test_unwritable_out_exits_1_without_traceback(run, paths, tmp_path):
+    src, _ = paths
+    out = tmp_path / "missing_dir" / "out.jsonl"
+    r = run(["-dependabot", str(src), "-out", str(out)])
+    assert r.exit_code == 1
+    assert str(out) in r.stderr
+    assert "Traceback" not in r.stderr
+    assert not isinstance(r.exception, OSError)
+    assert not out.exists()

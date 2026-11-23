@@ -826,6 +826,11 @@ def _sca_dependabot(dependabot_path, out, file_path, save, as_json, package_spec
     if getattr(kdeps.kospex_query, "url_failures", None) is not None:
         kdeps.kospex_query.url_failures.clear()
 
+    if os.path.exists(out) and os.path.samefile(dependabot_path, out):
+        err.print("Error: -out must differ from the -dependabot input file.",
+                  style="red", markup=False)
+        exit(1)
+
     def progress(done, _status):
         if done % 25 == 0:
             err.print(f"{done} alerts enriched...", markup=False)
@@ -836,7 +841,15 @@ def _sca_dependabot(dependabot_path, out, file_path, save, as_json, package_spec
         err.print(f"Error: {dependabot_path}: {e}. {out} was not written.",
                   style="red", markup=False)
         exit(1)
+    except OSError as e:
+        # A missing directory or no permission, on -out or the input. The
+        # partial output (if any) has already been removed by enrich_file.
+        err.print(f"Error: cannot read {dependabot_path} or write {out}: {e}",
+                  style="red", markup=False)
+        exit(1)
     except ValueError as e:
+        # Backstop: an invalid KOSPEX_DEPS_PRIVATE is normally refused up
+        # front by enrich_decision(), before this function runs.
         err.print(f"Error: {e}.", style="red", markup=False)
         exit(1)
 
