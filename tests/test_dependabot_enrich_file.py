@@ -11,7 +11,7 @@ import pytest
 from kospex.dependabot_enrich import (
     SCA_FIELDS, DependabotInputError, Enricher, enrich_file,
 )
-from tests.test_dependabot_enrich import StubDeps, _alert
+from test_dependabot_enrich import StubDeps, _alert
 
 
 def _write(path, text):
@@ -116,6 +116,18 @@ def test_unexpected_exception_deletes_output_and_reraises(tmp_path):
     out = tmp_path / "out.jsonl"
     with pytest.raises(RuntimeError):
         enrich_file(src, out, Boom(StubDeps()))
+    assert not out.exists()
+
+
+def test_invalid_utf8_is_input_error_with_line_number(tmp_path):
+    good = json.dumps(_alert()).encode("utf-8")
+    src = tmp_path / "in.jsonl"
+    src.write_bytes(good + b"\n" + good + b"\n" + b'{"package": "\xff\xfe"}\n')
+    out = tmp_path / "out.jsonl"
+    with pytest.raises(DependabotInputError) as exc:
+        enrich_file(src, out, _enricher())
+    assert exc.value.line_no == 3
+    assert "UTF-8" in str(exc.value)
     assert not out.exists()
 
 

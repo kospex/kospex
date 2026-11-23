@@ -189,11 +189,18 @@ def enrich_file(in_path, out_path, enricher, on_progress=None):
     out = None
     opened = False
     try:
-        with open(in_path, "r", encoding="utf-8", newline="") as src:
+        # Binary + per-line decode: text-mode decoding is chunked, so it
+        # cannot say which line held the bad bytes.
+        with open(in_path, "rb") as src:
             out = open(out_path, "w", encoding="utf-8", newline="\n")
             opened = True
             for line_no, raw in enumerate(src, start=1):
-                line = raw.rstrip("\r\n")
+                try:
+                    line = raw.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise DependabotInputError(
+                        line_no, f"not valid UTF-8: {exc}") from exc
+                line = line.rstrip("\r\n")
                 if not line.strip():
                     raise DependabotInputError(line_no, "blank line")
                 try:
