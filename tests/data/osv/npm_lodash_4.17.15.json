@@ -1,0 +1,1403 @@
+{
+ "query": {
+  "package": {
+   "ecosystem": "npm",
+   "name": "lodash"
+  },
+  "version": "4.17.15"
+ },
+ "response": {
+  "vulns": [
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-29mw-wpgm-hmr9/GHSA-29mw-wpgm-hmr9.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash",
+       "purl": "pkg:npm/lodash"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.17.21"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-29mw-wpgm-hmr9/GHSA-29mw-wpgm-hmr9.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash-es",
+       "purl": "pkg:npm/lodash-es"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.17.21"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-29mw-wpgm-hmr9/GHSA-29mw-wpgm-hmr9.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.trimend",
+       "purl": "pkg:npm/lodash.trimend"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "last_affected": "4.5.1"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-29mw-wpgm-hmr9/GHSA-29mw-wpgm-hmr9.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.trim",
+       "purl": "pkg:npm/lodash.trim"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "last_affected": "4.5.1"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-29mw-wpgm-hmr9/GHSA-29mw-wpgm-hmr9.json"
+      },
+      "package": {
+       "ecosystem": "RubyGems",
+       "name": "lodash-rails",
+       "purl": "pkg:gem/lodash-rails"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.17.21"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "4.0.0",
+       "4.11.2",
+       "4.17.15"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2020-28500"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-1333",
+      "CWE-400"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2021-03-19T22:45:28Z",
+     "nvd_published_at": "2021-02-15T11:15:00Z",
+     "severity": "MODERATE"
+    },
+    "details": "All versions of package lodash prior to 4.17.21 are vulnerable to Regular Expression Denial of Service (ReDoS) via the `toNumber`, `trim` and `trimEnd` functions. \n\nSteps to reproduce (provided by reporter Liyuan Chen):\n```js\nvar lo = require('lodash');\n\nfunction build_blank(n) {\n    var ret = \"1\"\n    for (var i = 0; i < n; i++) {\n        ret += \" \"\n    }\n    return ret + \"1\";\n}\nvar s = build_blan",
+    "id": "GHSA-29mw-wpgm-hmr9",
+    "modified": "2025-09-29T21:12:31.102523Z",
+    "published": "2022-01-06T20:30:46Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-28500"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/github/advisory-database/pull/6139"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/pull/5065"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/pull/5065/commits/02906b8191d3c100c193fe6f7b27d1c40f200bb7"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/commit/c4847ebe7d14540bb28a8b932a9ce1b9ecbfee1a"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpuoct2021.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujul2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujan2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com//security-alerts/cpujul2021.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JS-LODASH-1018905"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JAVA-ORGWEBJARSNPM-1074893"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JAVA-ORGWEBJARSBOWERGITHUBLODASH-1074895"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JAVA-ORGWEBJARSBOWER-1074892"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JAVA-ORGWEBJARS-1074894"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JAVA-ORGFUJIONWEBJARS-1074896"
+     },
+     {
+      "type": "WEB",
+      "url": "https://security.netapp.com/advisory/ntap-20210312-0006"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/rubysec/ruby-advisory-db/blob/master/gems/lodash-rails/CVE-2020-28500.yml"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/blob/npm/trimEnd.js%23L8"
+     },
+     {
+      "type": "PACKAGE",
+      "url": "https://github.com/lodash/lodash"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-637483.pdf"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+      "type": "CVSS_V3"
+     }
+    ],
+    "summary": "Regular Expression Denial of Service (ReDoS) in lodash"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/05/GHSA-35jh-r3h4-6jhm/GHSA-35jh-r3h4-6jhm.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash",
+       "purl": "pkg:npm/lodash"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "fixed": "4.17.21"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/05/GHSA-35jh-r3h4-6jhm/GHSA-35jh-r3h4-6jhm.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash-es",
+       "purl": "pkg:npm/lodash-es"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "fixed": "4.17.21"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/05/GHSA-35jh-r3h4-6jhm/GHSA-35jh-r3h4-6jhm.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.template",
+       "purl": "pkg:npm/lodash.template"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "last_affected": "4.5.0"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/05/GHSA-35jh-r3h4-6jhm/GHSA-35jh-r3h4-6jhm.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash-template",
+       "purl": "pkg:npm/lodash-template"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "last_affected": "1.0.0"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/05/GHSA-35jh-r3h4-6jhm/GHSA-35jh-r3h4-6jhm.json"
+      },
+      "package": {
+       "ecosystem": "RubyGems",
+       "name": "lodash-rails",
+       "purl": "pkg:gem/lodash-rails"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "fixed": "4.17.21"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "0.10.0",
+       "0.7.0",
+       "4.17.15"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2021-23337"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-77",
+      "CWE-94"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2021-03-31T23:59:26Z",
+     "nvd_published_at": "2021-02-15T13:15:00Z",
+     "severity": "HIGH"
+    },
+    "details": "`lodash` versions prior to 4.17.21 are vulnerable to Command Injection via the template function.",
+    "id": "GHSA-35jh-r3h4-6jhm",
+    "modified": "2026-10-17T02:55:38.085813876Z",
+    "published": "2021-05-06T16:05:51Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-23337"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/commit/3469357cff396a26c363f8c1b5a91dde28ba4b1c"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpuoct2021.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujul2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujan2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com//security-alerts/cpujul2021.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JS-LODASH-1040724"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JAVA-ORGWEBJARSNPM-1074929"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JAVA-ORGWEBJARSBOWERGITHUBLODASH-1074931"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JAVA-ORGWEBJARSBOWER-1074928"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JAVA-ORGWEBJARS-1074930"
+     },
+     {
+      "type": "WEB",
+      "url": "https://snyk.io/vuln/SNYK-JAVA-ORGFUJIONWEBJARS-1074932"
+     },
+     {
+      "type": "WEB",
+      "url": "https://security.netapp.com/advisory/ntap-20210312-0006"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/rubysec/ruby-advisory-db/blob/master/gems/lodash-rails/CVE-2021-23337.yml"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/blob/ddfd9b11a0126db2302cb70ec9973b66baec0975/lodash.js#L14851"
+     },
+     {
+      "type": "PACKAGE",
+      "url": "https://github.com/lodash/lodash"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-637483.pdf"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "type": "CVSS_V3"
+     }
+    ],
+    "summary": "Command Injection in lodash"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2020/07/GHSA-p6mc-m468-83gw/GHSA-p6mc-m468-83gw.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash",
+       "purl": "pkg:npm/lodash"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "3.7.0"
+         },
+         {
+          "fixed": "4.17.19"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2020/07/GHSA-p6mc-m468-83gw/GHSA-p6mc-m468-83gw.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash-es",
+       "purl": "pkg:npm/lodash-es"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "3.7.0"
+         },
+         {
+          "fixed": "4.17.20"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2020/07/GHSA-p6mc-m468-83gw/GHSA-p6mc-m468-83gw.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.pick",
+       "purl": "pkg:npm/lodash.pick"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "last_affected": "4.4.0"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2020/07/GHSA-p6mc-m468-83gw/GHSA-p6mc-m468-83gw.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.set",
+       "purl": "pkg:npm/lodash.set"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "3.7.0"
+         },
+         {
+          "last_affected": "4.3.2"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2020/07/GHSA-p6mc-m468-83gw/GHSA-p6mc-m468-83gw.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.setwith",
+       "purl": "pkg:npm/lodash.setwith"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "last_affected": "4.3.2"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2020/07/GHSA-p6mc-m468-83gw/GHSA-p6mc-m468-83gw.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.update",
+       "purl": "pkg:npm/lodash.update"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "last_affected": "4.10.2"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2020/07/GHSA-p6mc-m468-83gw/GHSA-p6mc-m468-83gw.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.updatewith",
+       "purl": "pkg:npm/lodash.updatewith"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "last_affected": "4.10.2"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2020/07/GHSA-p6mc-m468-83gw/GHSA-p6mc-m468-83gw.json"
+      },
+      "package": {
+       "ecosystem": "RubyGems",
+       "name": "lodash-rails",
+       "purl": "pkg:gem/lodash-rails"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "3.7.0"
+         },
+         {
+          "fixed": "4.17.19"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "3.10.0",
+       "3.10.1",
+       "4.17.15"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2020-8203"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-1321",
+      "CWE-770"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2020-07-15T19:14:58Z",
+     "nvd_published_at": "2020-07-15T17:15:00Z",
+     "severity": "HIGH"
+    },
+    "details": "Versions of lodash prior to 4.17.19 are vulnerable to Prototype Pollution. The functions `pick`, `set`, `setWith`, `update`, `updateWith`, and `zipObjectDeep` allow a malicious user to modify the prototype of Object if the property identifiers are user-supplied. Being affected by this issue requires manipulating objects based on user-provided property values or arrays.\n\nThis vulnerability causes t",
+    "id": "GHSA-p6mc-m468-83gw",
+    "modified": "2025-08-12T21:56:17.174859Z",
+    "published": "2020-07-15T19:15:48Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-8203"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/issues/4744"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/issues/4874"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/github/advisory-database/pull/2884"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/commit/c84fe82760fb2d3e03a63379b297a1cc1a2fce12"
+     },
+     {
+      "type": "WEB",
+      "url": "https://hackerone.com/reports/712065"
+     },
+     {
+      "type": "WEB",
+      "url": "https://hackerone.com/reports/864701"
+     },
+     {
+      "type": "PACKAGE",
+      "url": "https://github.com/lodash/lodash"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/wiki/Changelog#v41719"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/rubysec/ruby-advisory-db/blob/master/gems/lodash-rails/CVE-2020-8203.yml"
+     },
+     {
+      "type": "WEB",
+      "url": "https://security.netapp.com/advisory/ntap-20200724-0006"
+     },
+     {
+      "type": "WEB",
+      "url": "https://web.archive.org/web/20210914001339/https://github.com/lodash/lodash/issues/4744"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:H/A:H",
+      "type": "CVSS_V3"
+     }
+    ],
+    "summary": "Prototype Pollution in lodash"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "last_known_affected_version_range": "<= 4.17.23",
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-r5fr-rjxr-66jc/GHSA-r5fr-rjxr-66jc.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash",
+       "purl": "pkg:npm/lodash"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.18.0"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "last_known_affected_version_range": "<= 4.17.23",
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-r5fr-rjxr-66jc/GHSA-r5fr-rjxr-66jc.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash-es",
+       "purl": "pkg:npm/lodash-es"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.18.0"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "last_known_affected_version_range": "<= 4.17.23",
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-r5fr-rjxr-66jc/GHSA-r5fr-rjxr-66jc.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash-amd",
+       "purl": "pkg:npm/lodash-amd"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.18.0"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-r5fr-rjxr-66jc/GHSA-r5fr-rjxr-66jc.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.template",
+       "purl": "pkg:npm/lodash.template"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.18.0"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2026-4800"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-94"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2026-04-01T23:51:12Z",
+     "nvd_published_at": "2026-03-31T20:16:29Z",
+     "severity": "HIGH"
+    },
+    "details": "### Impact\n\nThe fix for [CVE-2021-23337](https://github.com/advisories/GHSA-35jh-r3h4-6jhm) added validation for the `variable` option in `_.template` but did not apply the same validation to `options.imports` key names. Both paths flow into the same `Function()` constructor sink.\n\nWhen an application passes untrusted input as `options.imports` key names, an attacker can inject default-parameter e",
+    "id": "GHSA-r5fr-rjxr-66jc",
+    "modified": "2026-10-17T02:56:15.633068434Z",
+    "published": "2026-04-01T23:51:12Z",
+    "references": [
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/security/advisories/GHSA-r5fr-rjxr-66jc"
+     },
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-4800"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/commit/3469357cff396a26c363f8c1b5a91dde28ba4b1c"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cna.openjsf.org/security-advisories.html"
+     },
+     {
+      "type": "ADVISORY",
+      "url": "https://github.com/advisories/GHSA-35jh-r3h4-6jhm"
+     },
+     {
+      "type": "PACKAGE",
+      "url": "https://github.com/lodash/lodash"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "type": "CVSS_V3"
+     }
+    ],
+    "summary": "lodash vulnerable to Code Injection via `_.template` imports key names"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "last_known_affected_version_range": "<= 4.17.22",
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/01/GHSA-xxjr-mmjv-4gpg/GHSA-xxjr-mmjv-4gpg.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash",
+       "purl": "pkg:npm/lodash"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.17.23"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "last_known_affected_version_range": "<= 4.17.22",
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/01/GHSA-xxjr-mmjv-4gpg/GHSA-xxjr-mmjv-4gpg.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash-amd",
+       "purl": "pkg:npm/lodash-amd"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.17.23"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/01/GHSA-xxjr-mmjv-4gpg/GHSA-xxjr-mmjv-4gpg.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash-es",
+       "purl": "pkg:npm/lodash-es"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.17.23"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/01/GHSA-xxjr-mmjv-4gpg/GHSA-xxjr-mmjv-4gpg.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.omit",
+       "purl": "pkg:npm/lodash.omit"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.18.0"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/01/GHSA-xxjr-mmjv-4gpg/GHSA-xxjr-mmjv-4gpg.json"
+      },
+      "package": {
+       "ecosystem": "npm",
+       "name": "lodash.unset",
+       "purl": "pkg:npm/lodash.unset"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "4.0.0"
+         },
+         {
+          "fixed": "4.18.0"
+         }
+        ],
+        "type": "SEMVER"
+       }
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2025-13465"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-1321"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2026-01-21T23:01:22Z",
+     "nvd_published_at": "2026-01-21T20:16:05Z",
+     "severity": "MODERATE"
+    },
+    "details": "### Impact\n\nThe `_.unset`, `_.omit`, and `_.pullAt` functions are vulnerable to prototype pollution. An attacker can pass crafted paths which cause Lodash to delete methods from global prototypes.\n\nThe issue permits deletion of properties but does not allow overwriting their original behavior.\n\n### Patches\n\nThe issue is patched from 4.17.23 to 4.18.0 depending on the package: `lodash`, `lodash-es`",
+    "id": "GHSA-xxjr-mmjv-4gpg",
+    "modified": "2026-11-04T03:15:10.832238351Z",
+    "published": "2026-01-21T23:01:22Z",
+    "references": [
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/security/advisories/GHSA-xxjr-mmjv-4gpg"
+     },
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-13465"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/lodash/lodash/commit/edadd452146f7e4bad4ea684e955708931d84d81"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:41941"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:41928"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:41064"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:40984"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:40945"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:40138"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:40118"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3962"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3960"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3958"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3884"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3874"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3870"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3869"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3825"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3782"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3710"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:36882"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:36651"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:34608"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3422"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:34100"
+     },
+     {
+      "type": "WEB",
+      "url": "https://security.access.redhat.com/data/csaf/v2/vex/2025/cve-2025-13465.json"
+     },
+     {
+      "type": "PACKAGE",
+      "url": "https://github.com/lodash/lodash"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cna.openjsf.org/security-advisories.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/html/ssa-253495.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://bugzilla.redhat.com/show_bug.cgi?id=2431740"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/security/cve/CVE-2025-13465"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:9848"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:8229"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:8218"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:6567"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:6497"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:6288"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:6192"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:57487"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:5636"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:5633"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:4782"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:4630"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:4467"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:4466"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:4423"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:41944"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:24331"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:21658"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2149"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2148"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2147"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2145"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2119"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2078"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:20088"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:20042"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:19712"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:18868"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:18480"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:1845"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:17469"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:15091"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:14871"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:14870"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:14774"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:13829"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:13548"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:13542"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:11414"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:33371"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:33154"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:3087"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2990"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2984"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2926"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2900"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2819"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2818"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2817"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2816"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2694"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2675"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2672"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2661"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2651"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:25089"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2484"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2469"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2465"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2462"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2452"
+     },
+     {
+      "type": "WEB",
+      "url": "https://access.redhat.com/errata/RHSA-2026:2438"
+     }
+    ],
+    "schema_version": "1.9.2",
+    "severity": [
+     {
+      "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:L",
+      "type": "CVSS_V3"
+     },
+     {
+      "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:L/VA:L/SC:H/SI:H/SA:H/E:P",
+      "type": "CVSS_V4"
+     }
+    ],
+    "summary": "Lodash has Prototype Pollution Vulnerability in `_.unset`, `_.omit`, and `_.pullAt` functions"
+   }
+  ]
+ }
+}
