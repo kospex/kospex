@@ -1,7 +1,8 @@
 # OSV integration (MVP: `kospex sca -package ... -osv`)
 
-Status: **design only**, nothing implemented. The open questions are settled (see
-Decisions at the end).
+Status: **implemented** for `sca -package TYPE:NAME@VERSION -osv`; CVSS scoring shipped
+earlier as `kospex.scoring.cvss`. The open questions are settled (see Decisions). See
+"What was built, and what changed from the design" at the end. Phase 2 is not started.
 
 ## Overview
 
@@ -278,3 +279,36 @@ formula.
 4. **Withdrawn advisories** are shown, marked `(withdrawn)` with the date, and not
    counted in the headline total. Revisit once there is evidence for how often it
    happens and whether anyone wants them.
+
+## What was built, and what changed from the design
+
+Built as designed: `integrations/osv/{client,queries}.py`, `-osv` on `sca -package`,
+mocked tests, real fixtures (`tests/data/osv/`, captured by
+`tests/manual/osv_capture.py`). Where real responses differed from the plan:
+
+- **Records are merged by alias.** `POST /query` returns one record per ID, so a
+  vulnerability filed as a GHSA and a PYSEC appears twice (requests 2.25.0: 8 records,
+  4 vulnerabilities). Without merging, the count and the comparison with deps.dev were
+  double what deps.dev says. Records sharing any ID or alias are now one row, with the
+  worst severity, the union of fixed versions and the earliest date. The sources can
+  disagree on the score of one vulnerability (requests' PYSEC-2026-2275 is 5.5 where
+  its GHSA twin is 4.4); the worst is shown, per Decisions.
+- **v4-only records are common, not an edge case.** Four of the eight log4j-core 2.14.1
+  advisories carry only a CVSS v4 vector. All four have GitHub's label, so they show
+  `MEDIUM (GitHub)`. `UNSCORED (CVSS 4)` appears only when there is a v4 vector and no
+  label.
+- **"Fixed in" needs the release line.** A record can list several `affected[]` entries
+  for one package (log4j-core: 2.0-beta9 to 2.3.1, 2.4 to 2.12.2, 2.13.0 to 2.15.0).
+  Comparing versions would need a per-ecosystem ordering, so the entry whose
+  `versions[]` contains the requested version picks the line. When none does, every
+  fixed version is shown with `*` and a note rather than presented as the answer.
+- **A record names every package it affects, in any ecosystem** (a lodash advisory
+  lists the RubyGems lodash-rails), so `affected[]` is filtered by ecosystem and name
+  (PyPI names compared as PEP 503 normalises them).
+- **No paging-link check.** OSV pages by a token in the request body, so there is no
+  link to a second host; redirects are simply never followed.
+- **`vuln(id)` goes through `url_cache`** when given a `cached_get`, so a future
+  estate lookup shares records across packages. `-package` does not use it and
+  `POST /query` is never cached, as designed. Nothing calls `vuln()` yet.
+- **Severity ties are broken by the number**, not just by having one: two MEDIUM
+  candidates give the higher score.

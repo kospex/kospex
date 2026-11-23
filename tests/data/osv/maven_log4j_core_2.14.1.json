@@ -1,0 +1,1937 @@
+{
+ "query": {
+  "package": {
+   "ecosystem": "Maven",
+   "name": "org.apache.logging.log4j:log4j-core"
+  },
+  "version": "2.14.1"
+ },
+ "response": {
+  "vulns": [
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-3pxv-7cmr-fjr4/GHSA-3pxv-7cmr-fjr4.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.0-alpha1"
+         },
+         {
+          "fixed": "2.25.4"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.0",
+       "2.0-alpha1",
+       "2.14.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-3pxv-7cmr-fjr4/GHSA-3pxv-7cmr-fjr4.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "3.0.0-alpha1"
+         },
+         {
+          "last_affected": "3.0.0-beta3"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "3.0.0-alpha1",
+       "3.0.0-beta1"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2026-34480"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-116"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2026-04-10T21:16:41Z",
+     "nvd_published_at": "2026-04-10T16:16:31Z",
+     "severity": "MODERATE"
+    },
+    "details": "Apache Log4j Core's [`XmlLayout`](https://logging.apache.org/log4j/2.x/manual/layouts.html#XmlLayout), in versions up to and including 2.25.3, fails to sanitize characters forbidden by the [XML 1.0 specification](https://www.w3.org/TR/xml/#charsets), producing invalid XML output whenever a log message or MDC value contains such characters.\n\nThe impact depends on the StAX implementation in use:\n\n  ",
+    "id": "GHSA-3pxv-7cmr-fjr4",
+    "modified": "2026-09-10T03:50:42.492278990Z",
+    "published": "2026-04-10T18:31:17Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-34480"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/apache/logging-log4j2/pull/4077"
+     },
+     {
+      "type": "PACKAGE",
+      "url": "https://github.com/apache/logging-log4j2"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.apache.org/thread/5x0hcnng0chhghp6jgjdp3qmbbhfjzhb"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/cyclonedx/vdr.xml"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/manual/layouts.html#XmlLayout"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/security.html#CVE-2026-34480"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2026/04/10/9"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:N/SC:N/SI:L/SA:N",
+      "type": "CVSS_V4"
+     }
+    ],
+    "summary": "Apache Log4j Core: Silent log event loss in XmlLayout due to unescaped XML 1.0 forbidden characters"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-6hg6-v5c8-fphq/GHSA-6hg6-v5c8-fphq.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.12.0"
+         },
+         {
+          "fixed": "2.25.4"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.12.0",
+       "2.12.1",
+       "2.14.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-6hg6-v5c8-fphq/GHSA-6hg6-v5c8-fphq.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "3.0.0-alpha1"
+         },
+         {
+          "last_affected": "3.0.0-beta3"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "3.0.0-alpha1",
+       "3.0.0-beta1"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2026-34477"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-297"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2026-04-14T00:11:55Z",
+     "nvd_published_at": "2026-04-10T16:16:30Z",
+     "severity": "MODERATE"
+    },
+    "details": "The fix for  CVE-2025-68161 was incomplete: it addressed hostname verification only when enabled via the  [`log4j2.sslVerifyHostName`](https://logging.apache.org/log4j/2.x/manual/systemproperties.html#log4j2.sslVerifyHostName) system property, but not when configured through the [`verifyHostName`](https://logging.apache.org/log4j/2.x/manual/appenders/network.html#SslConfiguration-attr-verifyHostNa",
+    "id": "GHSA-6hg6-v5c8-fphq",
+    "modified": "2026-09-10T03:50:43.570169134Z",
+    "published": "2026-04-10T18:31:17Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-34477"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/apache/logging-log4j2/pull/4075"
+     },
+     {
+      "type": "PACKAGE",
+      "url": "https://github.com/apache/logging-log4j2"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.apache.org/thread/lkx8cl46t2bvkcwfcb2pd43ygc097lq4"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/cyclonedx/vdr.xml"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/manual/appenders/network.html#SslConfiguration-attr-verifyHostName"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/security.html#CVE-2026-34477"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:4.0/AV:N/AC:H/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:L/SA:N",
+      "type": "CVSS_V4"
+     }
+    ],
+    "summary": "Apache Log4j Core: `verifyHostName` attribute silently ignored in TLS configuration"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-7rjr-3q55-vv33/GHSA-7rjr-3q55-vv33.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.13.0"
+         },
+         {
+          "fixed": "2.16.0"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.13.0",
+       "2.13.1",
+       "2.14.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-7rjr-3q55-vv33/GHSA-7rjr-3q55-vv33.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.4.0"
+         },
+         {
+          "fixed": "2.12.2"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.10.0",
+       "2.11.0"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-7rjr-3q55-vv33/GHSA-7rjr-3q55-vv33.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.8.0"
+         },
+         {
+          "fixed": "1.9.2"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.8.0",
+       "1.8.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-7rjr-3q55-vv33/GHSA-7rjr-3q55-vv33.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.10.0"
+         },
+         {
+          "fixed": "1.10.8"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.10.0",
+       "1.10.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-7rjr-3q55-vv33/GHSA-7rjr-3q55-vv33.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.11.0"
+         },
+         {
+          "fixed": "1.11.11"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.11.0",
+       "1.11.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-7rjr-3q55-vv33/GHSA-7rjr-3q55-vv33.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.0.0"
+         },
+         {
+          "fixed": "2.0.12"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.0.0",
+       "2.0.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-7rjr-3q55-vv33/GHSA-7rjr-3q55-vv33.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "fixed": "2.3.1"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.0",
+       "2.0-alpha1"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2021-45046"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-502",
+      "CWE-917"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2021-12-14T17:55:00Z",
+     "nvd_published_at": "2021-12-14T19:15:00Z",
+     "severity": "CRITICAL"
+    },
+    "details": "# Impact\n\nThe fix to address [CVE-2021-44228](https://nvd.nist.gov/vuln/detail/CVE-2021-44228) in Apache Log4j 2.15.0 was incomplete in certain non-default configurations. This could allow attackers with control over Thread Context Map (MDC) input data when the logging configuration uses a non-default Pattern Layout with either a Context Lookup (for example, $${ctx:loginId}) or a Thread Context Ma",
+    "id": "GHSA-7rjr-3q55-vv33",
+    "modified": "2026-10-02T20:30:05.438504645Z",
+    "published": "2021-12-14T18:01:28Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-45046"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujul2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujan2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpuapr2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/alert-cve-2021-44228.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.openwall.com/lists/oss-security/2021/12/18/1"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.openwall.com/lists/oss-security/2021/12/15/3"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.openwall.com/lists/oss-security/2021/12/14/4"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.kb.cert.org/vuls/id/930724"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.intel.com/content/www/us/en/security-center/advisory/intel-sa-00646.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.debian.org/security/2021/dsa-5022"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.cve.org/CVERecord?id=CVE-2021-44228"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog?field_cve=CVE-2021-45046"
+     },
+     {
+      "type": "WEB",
+      "url": "https://security.gentoo.org/glsa/202310-16"
+     },
+     {
+      "type": "WEB",
+      "url": "https://sec.cloudapps.cisco.com/security/center/content/CiscoSecurityAdvisory/cisco-sa-apache-log4j-qRuKNEbd"
+     },
+     {
+      "type": "WEB",
+      "url": "https://psirt.global.sonicwall.com/vuln-detail/SNWLID-2021-0032"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/security.html#CVE-2021-45046"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/security.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/SIG7FZULMNK2XF6FZRU4VWYDQXNMUGAJ"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/EOKPQGV24RRBBI4TBZUDQMM4MEH7MXCY"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/apache/logging-log4j2/compare/rel/2.3...rel/2.3.1"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-714170.pdf"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-661247.pdf"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-479842.pdf"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-397453.pdf"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H",
+      "type": "CVSS_V3"
+     }
+    ],
+    "summary": "Incomplete fix for Apache Log4j vulnerability"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-8489-44mv-ggj8/GHSA-8489-44mv-ggj8.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.0-beta7"
+         },
+         {
+          "fixed": "2.3.2"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.0",
+       "2.0-beta7"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-8489-44mv-ggj8/GHSA-8489-44mv-ggj8.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.4"
+         },
+         {
+          "fixed": "2.12.4"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.10.0",
+       "2.11.0"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-8489-44mv-ggj8/GHSA-8489-44mv-ggj8.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.13.0"
+         },
+         {
+          "fixed": "2.17.1"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.13.0",
+       "2.13.1",
+       "2.14.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-8489-44mv-ggj8/GHSA-8489-44mv-ggj8.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.8.0"
+         },
+         {
+          "fixed": "1.9.2"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.8.0",
+       "1.8.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-8489-44mv-ggj8/GHSA-8489-44mv-ggj8.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.10.0"
+         },
+         {
+          "fixed": "1.10.9"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.10.0",
+       "1.10.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-8489-44mv-ggj8/GHSA-8489-44mv-ggj8.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.11.0"
+         },
+         {
+          "fixed": "1.11.13"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.11.0",
+       "1.11.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2022/01/GHSA-8489-44mv-ggj8/GHSA-8489-44mv-ggj8.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.0.0"
+         },
+         {
+          "fixed": "2.0.14"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.0.0",
+       "2.0.1"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2021-44832"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-20",
+      "CWE-74"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2021-12-28T21:14:19Z",
+     "nvd_published_at": "2021-12-28T20:15:00Z",
+     "severity": "MODERATE"
+    },
+    "details": "Apache Log4j2 versions 2.0-beta7 through 2.17.0 (excluding security fix releases 2.3.2 and 2.12.4) are vulnerable to an attack where an attacker with permission to modify the logging configuration file can construct a malicious configuration using a JDBC Appender with a data source referencing a JNDI URI which can execute remote code. This issue is fixed by limiting JNDI data source names to the j",
+    "id": "GHSA-8489-44mv-ggj8",
+    "modified": "2026-06-09T10:45:14.253296471Z",
+    "published": "2022-01-04T16:14:20Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-44832"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-784507.pdf"
+     },
+     {
+      "type": "PACKAGE",
+      "url": "https://github.com/apache/logging-log4j2"
+     },
+     {
+      "type": "WEB",
+      "url": "https://issues.apache.org/jira/browse/LOG4J2-3293"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.apache.org/thread/s1o5vlo78ypqxnzn6p8zf6t9shtq5143"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.debian.org/debian-lts-announce/2021/12/msg00036.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/EVV25FXL4FU5X6X5BSL7RLQ7T6F65MRA"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/T57MPJUW3MA6QGWZRTMCHHMMPQNVKGFC"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/EVV25FXL4FU5X6X5BSL7RLQ7T6F65MRA"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/T57MPJUW3MA6QGWZRTMCHHMMPQNVKGFC"
+     },
+     {
+      "type": "WEB",
+      "url": "https://sec.cloudapps.cisco.com/security/center/content/CiscoSecurityAdvisory/cisco-sa-apache-log4j-qRuKNEbd"
+     },
+     {
+      "type": "WEB",
+      "url": "https://security.netapp.com/advisory/ntap-20220104-0001"
+     },
+     {
+      "type": "WEB",
+      "url": "https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/cisco-sa-apache-log4j-qRuKNEbd"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpuapr2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujan2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujul2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2021/12/28/1"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:H/A:H",
+      "type": "CVSS_V3"
+     }
+    ],
+    "summary": "Improper Input Validation and Injection in Apache Log4j2"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-h383-gmxw-35v2/GHSA-h383-gmxw-35v2.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.7"
+         },
+         {
+          "fixed": "2.25.4"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.10.0",
+       "2.11.0",
+       "2.14.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/04/GHSA-h383-gmxw-35v2/GHSA-h383-gmxw-35v2.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "3.0.0-beta1"
+         },
+         {
+          "last_affected": "3.0.0-beta2"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "3.0.0-beta1",
+       "3.0.0-beta2"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2026-34479"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-116"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2026-04-14T00:10:59Z",
+     "nvd_published_at": "2026-04-10T16:16:31Z",
+     "severity": "MODERATE"
+    },
+    "details": "The `Log4j1XmlLayout` from the Apache Log4j 1-to-Log4j 2 bridge fails to escape characters forbidden by the XML 1.0 standard, producing malformed XML output. Conforming XML parsers are required to reject documents containing such characters with a fatal error, which may cause downstream log processing systems to drop or fail to index affected records.\n\nTwo groups of users are affected:\n\n* Those us",
+    "id": "GHSA-h383-gmxw-35v2",
+    "modified": "2026-10-26T15:30:05.719203570Z",
+    "published": "2026-04-10T18:31:18Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-34479"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/apache/logging-log4j2/pull/4078"
+     },
+     {
+      "type": "PACKAGE",
+      "url": "https://github.com/apache/logging-log4j2"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.apache.org/thread/gd0hp6mj17rn3kj279vgy4p7kd4zz5on"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/cyclonedx/vdr.xml"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/migrate-from-log4j1.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/security.html#CVE-2026-34479"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2026/04/10/8"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:N/SC:N/SI:L/SA:N",
+      "type": "CVSS_V4"
+     }
+    ],
+    "summary": "Apache Log4j 1 to Log4j 2 bridge: silent log event loss in Log4j1XmlLayout due to unescaped XML 1.0 forbidden characters"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-jfh8-c2jp-5v3q/GHSA-jfh8-c2jp-5v3q.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.13.0"
+         },
+         {
+          "fixed": "2.15.0"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.13.0",
+       "2.13.1",
+       "2.14.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-jfh8-c2jp-5v3q/GHSA-jfh8-c2jp-5v3q.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.0-beta9"
+         },
+         {
+          "fixed": "2.3.1"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.0",
+       "2.0-beta9"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-jfh8-c2jp-5v3q/GHSA-jfh8-c2jp-5v3q.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.4"
+         },
+         {
+          "fixed": "2.12.2"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.10.0",
+       "2.11.0"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-jfh8-c2jp-5v3q/GHSA-jfh8-c2jp-5v3q.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "com.guicedee.services:log4j-core",
+       "purl": "pkg:maven/com.guicedee.services/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "last_affected": "1.2.1.2-jre17"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.0.10.0",
+       "1.0.10.0-jre13"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-jfh8-c2jp-5v3q/GHSA-jfh8-c2jp-5v3q.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.xbib.elasticsearch:log4j",
+       "purl": "pkg:maven/org.xbib.elasticsearch/log4j"
+      },
+      "versions": [
+       "6.3.2.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-jfh8-c2jp-5v3q/GHSA-jfh8-c2jp-5v3q.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "uk.co.nichesolutions.logging.log4j:log4j-core",
+       "purl": "pkg:maven/uk.co.nichesolutions.logging.log4j/log4j-core"
+      },
+      "versions": [
+       "2.6.3-CUSTOM"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-jfh8-c2jp-5v3q/GHSA-jfh8-c2jp-5v3q.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.8.0"
+         },
+         {
+          "fixed": "1.9.2"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.8.0",
+       "1.8.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-jfh8-c2jp-5v3q/GHSA-jfh8-c2jp-5v3q.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.10.0"
+         },
+         {
+          "fixed": "1.10.8"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.10.0",
+       "1.10.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-jfh8-c2jp-5v3q/GHSA-jfh8-c2jp-5v3q.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.11.0"
+         },
+         {
+          "fixed": "1.11.10"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.11.0",
+       "1.11.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-jfh8-c2jp-5v3q/GHSA-jfh8-c2jp-5v3q.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.0.0"
+         },
+         {
+          "fixed": "2.0.11"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.0.0",
+       "2.0.1"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2021-44228"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-20",
+      "CWE-400",
+      "CWE-502",
+      "CWE-917"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2021-12-10T00:40:41Z",
+     "nvd_published_at": "2021-12-10T10:15:00Z",
+     "severity": "CRITICAL"
+    },
+    "details": "# Summary\n\nLog4j versions prior to 2.16.0 are subject to a remote code execution vulnerability via the ldap JNDI parser.\nAs per [Apache's Log4j security guide](https://logging.apache.org/log4j/2.x/security.html): Apache Log4j2 <=2.14.1 JNDI features used in configuration, log messages, and parameters do not protect against attacker controlled LDAP and other JNDI related endpoints. An attacker who ",
+    "id": "GHSA-jfh8-c2jp-5v3q",
+    "modified": "2025-10-22T19:37:02.616807Z",
+    "published": "2021-12-10T00:40:56Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/apache/logging-log4j2/pull/608"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/github/advisory-database/pull/5501"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-397453.pdf"
+     },
+     {
+      "type": "WEB",
+      "url": "https://packetstormsecurity.com/files/165673/UniFi-Network-Application-Unauthenticated-Log4Shell-Remote-Code-Execution.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://packetstormsecurity.com/files/167794/Open-Xchange-App-Suite-7.10.x-Cross-Site-Scripting-Command-Injection.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://packetstormsecurity.com/files/167917/MobileIron-Log4Shell-Remote-Command-Execution.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://packetstormsecurity.com/files/171626/AD-Manager-Plus-7122-Remote-Code-Execution.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://psirt.global.sonicwall.com/vuln-detail/SNWLID-2021-0032"
+     },
+     {
+      "type": "WEB",
+      "url": "https://sec.cloudapps.cisco.com/security/center/content/CiscoSecurityAdvisory/cisco-sa-apache-log4j-qRuKNEbd"
+     },
+     {
+      "type": "WEB",
+      "url": "https://seclists.org/fulldisclosure/2022/Dec/2"
+     },
+     {
+      "type": "WEB",
+      "url": "https://seclists.org/fulldisclosure/2022/Jul/11"
+     },
+     {
+      "type": "WEB",
+      "url": "https://seclists.org/fulldisclosure/2022/Mar/23"
+     },
+     {
+      "type": "WEB",
+      "url": "https://security.netapp.com/advisory/ntap-20211210-0007"
+     },
+     {
+      "type": "WEB",
+      "url": "https://support.apple.com/kb/HT213189"
+     },
+     {
+      "type": "WEB",
+      "url": "https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/cisco-sa-apache-log4j-qRuKNEbd"
+     },
+     {
+      "type": "WEB",
+      "url": "https://twitter.com/kurtseifried/status/1469345530182455296"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.bentley.com/en/common-vulnerability-exposure/be-2022-0001"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.cisa.gov/known-exploited-vulnerabilities-catalog?field_cve=CVE-2021-44228"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.debian.org/security/2021/dsa-5020"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.intel.com/content/www/us/en/security-center/advisory/intel-sa-00646.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.kb.cert.org/vuls/id/930724"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.nu11secur1ty.com/2021/12/cve-2021-44228.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/alert-cve-2021-44228.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpuapr2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujan2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-479842.pdf"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-661247.pdf"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-714170.pdf"
+     },
+     {
+      "type": "ADVISORY",
+      "url": "https://github.com/advisories/GHSA-7rjr-3q55-vv33"
+     },
+     {
+      "type": "PACKAGE",
+      "url": "https://github.com/apache/logging-log4j2"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/cisagov/log4j-affected-db"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/cisagov/log4j-affected-db/blob/develop/SOFTWARE-LIST.md"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/nu11secur1ty/CVE-mitre/tree/main/CVE-2021-44228"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/tangxiaofeng7/apache-log4j-poc"
+     },
+     {
+      "type": "WEB",
+      "url": "https://issues.apache.org/jira/browse/LOG4J2-3198"
+     },
+     {
+      "type": "WEB",
+      "url": "https://issues.apache.org/jira/browse/LOG4J2-3201"
+     },
+     {
+      "type": "WEB",
+      "url": "https://issues.apache.org/jira/browse/LOG4J2-3214"
+     },
+     {
+      "type": "WEB",
+      "url": "https://issues.apache.org/jira/browse/LOG4J2-3221"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.debian.org/debian-lts-announce/2021/12/msg00007.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/M5CSVUNV4HWZZXGOKNSK6L7RPM7BOKIB"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce%40lists.fedoraproject.org/message/VU57UJDCFIASIO35GC55JMKSRXJMCDFM"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/M5CSVUNV4HWZZXGOKNSK6L7RPM7BOKIB"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/VU57UJDCFIASIO35GC55JMKSRXJMCDFM"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/changes-report.html#a2.15.0"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/manual/lookups.html#JndiLookup"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/manual/migration.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/security.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://msrc-blog.microsoft.com/2021/12/11/microsofts-response-to-cve-2021-44228-apache-log4j2"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165225/Apache-Log4j2-2.14.1-Remote-Code-Execution.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165260/VMware-Security-Advisory-2021-0028.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165261/Apache-Log4j2-2.14.1-Information-Disclosure.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165270/Apache-Log4j2-2.14.1-Remote-Code-Execution.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165281/Log4j2-Log4Shell-Regexes.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165282/Log4j-Payload-Generator.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165306/L4sh-Log4j-Remote-Code-Execution.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165307/Log4j-Remote-Code-Execution-Word-Bypassing.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165311/log4j-scan-Extensive-Scanner.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165371/VMware-Security-Advisory-2021-0028.4.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165532/Log4Shell-HTTP-Header-Injection.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165642/VMware-vCenter-Server-Unauthenticated-Log4Shell-JNDI-Injection-Remote-Code-Execution.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/165673/UniFi-Network-Application-Unauthenticated-Log4Shell-Remote-Code-Execution.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/167794/Open-Xchange-App-Suite-7.10.x-Cross-Site-Scripting-Command-Injection.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/167917/MobileIron-Log4Shell-Remote-Command-Execution.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://packetstormsecurity.com/files/171626/AD-Manager-Plus-7122-Remote-Code-Execution.html"
+     },
+     {
+      "type": "WEB",
+      "url": "http://seclists.org/fulldisclosure/2022/Dec/2"
+     },
+     {
+      "type": "WEB",
+      "url": "http://seclists.org/fulldisclosure/2022/Jul/11"
+     },
+     {
+      "type": "WEB",
+      "url": "http://seclists.org/fulldisclosure/2022/Mar/23"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2021/12/10/1"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2021/12/10/2"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2021/12/10/3"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2021/12/13/1"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2021/12/13/2"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2021/12/14/4"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2021/12/15/3"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H/E:H",
+      "type": "CVSS_V3"
+     }
+    ],
+    "summary": "Remote code injection in Log4j"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-p6xc-xr62-6r2g/GHSA-p6xc-xr62-6r2g.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.4.0"
+         },
+         {
+          "fixed": "2.12.3"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.10.0",
+       "2.11.0"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-p6xc-xr62-6r2g/GHSA-p6xc-xr62-6r2g.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.13.0"
+         },
+         {
+          "fixed": "2.17.0"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.13.0",
+       "2.13.1",
+       "2.14.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-p6xc-xr62-6r2g/GHSA-p6xc-xr62-6r2g.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "0"
+         },
+         {
+          "fixed": "2.3.1"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.0",
+       "2.0-alpha1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-p6xc-xr62-6r2g/GHSA-p6xc-xr62-6r2g.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.8.0"
+         },
+         {
+          "fixed": "1.9.2"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.8.0",
+       "1.8.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-p6xc-xr62-6r2g/GHSA-p6xc-xr62-6r2g.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.10.0"
+         },
+         {
+          "fixed": "1.10.9"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.10.0",
+       "1.10.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-p6xc-xr62-6r2g/GHSA-p6xc-xr62-6r2g.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "1.11.0"
+         },
+         {
+          "fixed": "1.11.12"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "1.11.0",
+       "1.11.1"
+      ]
+     },
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2021/12/GHSA-p6xc-xr62-6r2g/GHSA-p6xc-xr62-6r2g.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.ops4j.pax.logging:pax-logging-log4j2",
+       "purl": "pkg:maven/org.ops4j.pax.logging/pax-logging-log4j2"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.0.0"
+         },
+         {
+          "fixed": "2.0.13"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.0.0",
+       "2.0.1"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2021-45105"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-20",
+      "CWE-674"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2021-12-18T17:59:37Z",
+     "nvd_published_at": "2021-12-18T12:15:00Z",
+     "severity": "HIGH"
+    },
+    "details": "Apache Log4j2 versions 2.0-alpha1 through 2.16.0 (excluding 2.12.3) did not protect from uncontrolled recursion from self-referential lookups. This allows an attacker with control over Thread Context Map data to cause a denial of service when a crafted string is interpreted. This issue was fixed in Log4j 2.17.0 and 2.12.3.\n\n\n# Affected packages\nOnly the `org.apache.logging.log4j:log4j-core` packag",
+    "id": "GHSA-p6xc-xr62-6r2g",
+    "modified": "2026-06-09T10:30:14.432177927Z",
+    "published": "2021-12-18T18:00:07Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-45105"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.zerodayinitiative.com/advisories/ZDI-21-1541"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujul2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpujan2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.oracle.com/security-alerts/cpuapr2022.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.kb.cert.org/vuls/id/930724"
+     },
+     {
+      "type": "WEB",
+      "url": "https://www.debian.org/security/2021/dsa-5024"
+     },
+     {
+      "type": "WEB",
+      "url": "https://tools.cisco.com/security/center/content/CiscoSecurityAdvisory/cisco-sa-apache-log4j-qRuKNEbd"
+     },
+     {
+      "type": "WEB",
+      "url": "https://security.netapp.com/advisory/ntap-20211218-0001"
+     },
+     {
+      "type": "WEB",
+      "url": "https://sec.cloudapps.cisco.com/security/center/content/CiscoSecurityAdvisory/cisco-sa-apache-log4j-qRuKNEbd"
+     },
+     {
+      "type": "WEB",
+      "url": "https://psirt.global.sonicwall.com/vuln-detail/SNWLID-2021-0032"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/security.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/SIG7FZULMNK2XF6FZRU4VWYDQXNMUGAJ"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.fedoraproject.org/archives/list/package-announce@lists.fedoraproject.org/message/EOKPQGV24RRBBI4TBZUDQMM4MEH7MXCY"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.debian.org/debian-lts-announce/2021/12/msg00017.html"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-501673.pdf"
+     },
+     {
+      "type": "WEB",
+      "url": "https://cert-portal.siemens.com/productcert/pdf/ssa-479842.pdf"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2021/12/19/1"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:N/I:N/A:H",
+      "type": "CVSS_V3"
+     }
+    ],
+    "summary": "Apache Log4j2 vulnerable to Improper Input Validation and Uncontrolled Recursion"
+   },
+   {
+    "affected": [
+     {
+      "database_specific": {
+       "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2025/12/GHSA-vc5p-v9hr-52mj/GHSA-vc5p-v9hr-52mj.json"
+      },
+      "package": {
+       "ecosystem": "Maven",
+       "name": "org.apache.logging.log4j:log4j-core",
+       "purl": "pkg:maven/org.apache.logging.log4j/log4j-core"
+      },
+      "ranges": [
+       {
+        "events": [
+         {
+          "introduced": "2.0-beta9"
+         },
+         {
+          "fixed": "2.25.3"
+         }
+        ],
+        "type": "ECOSYSTEM"
+       }
+      ],
+      "versions": [
+       "2.0",
+       "2.0-beta9",
+       "2.14.1"
+      ]
+     }
+    ],
+    "aliases": [
+     "CVE-2025-68161"
+    ],
+    "database_specific": {
+     "cwe_ids": [
+      "CWE-297"
+     ],
+     "github_reviewed": true,
+     "github_reviewed_at": "2025-12-19T22:08:02Z",
+     "nvd_published_at": "2025-12-18T21:15:57Z",
+     "severity": "MODERATE"
+    },
+    "details": "The Socket Appender in Apache Log4j Core versions 2.0-beta9 through 2.25.2 does not perform TLS hostname verification of the peer certificate, even when the  [verifyHostName](https://logging.apache.org/log4j/2.x/manual/appenders/network.html#SslConfiguration-attr-verifyHostName)  configuration attribute or the  [log4j2.sslVerifyHostName](https://logging.apache.org/log4j/2.x/manual/systemproperties",
+    "id": "GHSA-vc5p-v9hr-52mj",
+    "modified": "2026-09-10T03:50:32.126499218Z",
+    "published": "2025-12-18T21:31:44Z",
+    "references": [
+     {
+      "type": "ADVISORY",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2025-68161"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/apache/logging-log4j2/pull/4002"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/apache/logging-log4j2/commit/3b93748497e1adbbd027fda8a5e7268ec5d0d578"
+     },
+     {
+      "type": "WEB",
+      "url": "https://github.com/apache/logging-log4j2"
+     },
+     {
+      "type": "WEB",
+      "url": "https://lists.apache.org/thread/xr33kyxq3sl67lwb61ggvm1fzc8k7dvx"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/cyclonedx/vdr.xml"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/manual/appenders/network.html#SslConfiguration-attr-verifyHostName"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/log4j/2.x/manual/systemproperties.html#log4j2.sslVerifyHostName"
+     },
+     {
+      "type": "WEB",
+      "url": "https://logging.apache.org/security.html#CVE-2025-68161"
+     },
+     {
+      "type": "WEB",
+      "url": "http://www.openwall.com/lists/oss-security/2025/12/18/1"
+     }
+    ],
+    "schema_version": "1.9.0",
+    "severity": [
+     {
+      "score": "CVSS:4.0/AV:N/AC:H/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:L/SA:N",
+      "type": "CVSS_V4"
+     }
+    ],
+    "summary": "Apache Log4j does not verify the TLS hostname in its Socket Appender"
+   }
+  ]
+ }
+}

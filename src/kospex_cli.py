@@ -31,6 +31,8 @@ from kospex.habitat_config import HabitatConfig
 from kospex.db.migrator import warn_if_behind
 from kospex.dependencies import version_diff as vdiff
 from kospex.extractors.registry import package_types
+from kospex.integrations.osv import queries as osv_queries
+from kospex.integrations.osv.client import OsvClient, OsvError
 from kospex.integrations.snyk.cli import snyk
 from kospex_core import GitRepo, Kospex, RepoPathConflict
 from kospex_dependencies import KospexDependencies
@@ -803,7 +805,7 @@ def _explain_no_package_record(package_type, package_name):
                                     f" ({package_type})."))
 
 
-def _sca_package(package_spec, file_path, save, out, as_json):
+def _sca_package(package_spec, file_path, save, out, as_json, osv=False):
     """`kospex sca -package TYPE:NAME[@VERSION]`: one package's releases (#390).
 
     The name is everything after the first colon, so a Maven
@@ -829,6 +831,10 @@ def _sca_package(package_spec, file_path, save, out, as_json):
     package_name, version = _split_package_version(package_name)
     if version == "":
         raise click.UsageError(f"-package {package_spec!r} has an empty version after '@'.")
+    if osv and version is None:
+        # OSV answers "which advisories affect this version". Every advisory a
+        # package has ever had is a different report (advisory history).
+        raise click.UsageError("-osv needs a version: -package TYPE:NAME@VERSION.")
 
     permitted, reason = kospex.dependencies.lookup_permitted(package_type, package_name)
     if not permitted:
@@ -932,6 +938,8 @@ def _sca_package(package_spec, file_path, save, out, as_json):
                       "them may be older than the dates above.")
     if requested:
         _print_requested_version(package_type, package_name, requested)
+    if osv and requested:
+        _print_osv_section(package_type, package_name, requested)
     console.print()
 
 
@@ -1038,6 +1046,82 @@ def _print_requested_version(package_type, package_name, requested):
                   "https://osv.dev/vulnerability/<ID from the Advisory column>")
 
 
+def _osv_severity_cell(row):
+    """`HIGH 7.5 (CVSS 3.1)`, `MEDIUM (GitHub)`, `UNSCORED (CVSS 4)`, or `-`."""
+    if not row["severity"]:
+        return "-"
+    score = "" if row["severity_score"] is None else f" {row['severity_score']:.1f}"
+    return f"{row['severity']}{score} ({row['severity_source']})"
+
+
+def _osv_fixed_cell(row):
+    """The fixed version, with `*` when OSV did not say which release line applies."""
+    if row["fixed_in"]:
+        shown = ", ".join(row["fixed_in"])
+        return shown + ("" if row["fix_matched"] or len(row["fixed_in"]) == 1 else " *")
+    if row["last_affected"]:
+        return f"none (last affected {', '.join(row['last_affected'])})"
+    return "-"
+
+
+def _print_osv_section(package_type, package_name, requested):
+    """The OSV block under the deps.dev output, for `sca -package ... -osv`.
+
+    Appended after deps.dev's, never merged into its table: the two sources
+    disagree for real reasons and the reader should see which said what. A failure
+    here is one line and changes nothing above it or the exit code.
+
+    The caller has already passed lookup_permitted() for this package. Everything
+    OSV returns is third-party text and goes through terminal_safe() (CWE-150).
+    """
+    safe = KospexUtils.terminal_safe
+    version = requested["version"]
+    console.print()
+    ecosystem = osv_queries.ecosystem_for(package_type)
+    if ecosystem is None:
+        console.print(f"OSV has no ecosystem for {safe(package_type)}.")
+        return
+    try:
+        records = OsvClient().query(ecosystem, package_name, version)
+    except OsvError as error:
+        console.print(f"OSV did not answer: {safe(error)}.")
+        return
+
+    rows = osv_queries.advisory_rows(records, ecosystem, package_name, version)
+    live = [row for row in rows if not row["withdrawn"]]
+    withdrawn = len(rows) - len(live)
+    extra = f", and {withdrawn} withdrawn" if withdrawn else ""
+    console.print(f"OSV: {len(live)} advisor{'y' if len(live) == 1 else 'ies'} for "
+                  f"{safe(package_type)} {safe(package_name)} {safe(version)}{extra}.")
+    if rows:
+        table = Table(title=f"OSV advisories: {package_type} {package_name} {version}")
+        for column in ("Advisory", "Severity", "Fixed in", "Published", "Summary"):
+            table.add_column(column)
+        for row in rows:
+            ids = "\n".join(safe(i) for i in [row["id"]] + row["aliases"])
+            if row["withdrawn"]:
+                ids += f"\n(withdrawn {safe(row['withdrawn'])})"
+            table.add_row(ids, safe(_osv_severity_cell(row)), safe(_osv_fixed_cell(row)),
+                          safe(row["published"]), safe(row["summary"]),
+                          style="dim" if row["withdrawn"] else None)
+        KospexUtils.print_table(table, console)
+        if any(r["fixed_in"] and not r["fix_matched"] and len(r["fixed_in"]) > 1
+               for r in rows):
+            console.print(f"* One fixed version per release line; OSV does not say which "
+                          f"applies to {safe(version)}.")
+        if any(r["severity"] == osv_queries.UNSCORED for r in rows):
+            console.print("UNSCORED: the advisory is rated only under CVSS 4, which "
+                          "kospex does not calculate.")
+
+    both, only_osv, only_deps = osv_queries.compare(rows, requested["advisories"])
+    console.print(f"Compared with deps.dev: {len(both)} in both, {len(only_osv)} only "
+                  f"in OSV, {len(only_deps)} only in deps.dev.")
+    for row in only_osv:
+        console.print(f"  only in OSV: {safe(row['id'])}")
+    for advisory in only_deps:
+        console.print(f"  only in deps.dev: {safe(advisory['id'])}")
+
+
 @cli.command("sca")
 @click.option("-repo", type=GitRepo(), help="NOT IMPLEMENTED - File path to git repo.")
 @click.option(
@@ -1065,11 +1149,15 @@ def _print_requested_version(package_type, package_name, requested):
               "their age, and release counts. Add @VERSION (pypi:requests@2.25.0) "
               "to place that version among them, with its releases behind and "
               "known advisories.")
+@click.option("-osv", "osv", is_flag=True, default=False,
+              help="With -package TYPE:NAME@VERSION, also list OSV's advisories for "
+              "that version after deps.dev's, with the fixed version, and say where "
+              "the two sources differ.")
 @click.option("-enrich/-no-enrich", "enrich", default=None,
               help="Look packages up on deps.dev, or only parse the file. "
                    "Overrides KOSPEX_DEPS_ENRICH (default: enrich).")
 @click.argument("file_path", required=False, type=click.Path(exists=True))
-def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_path):
+def sca(repo, scope, save, malware, as_json, out, package_spec, osv, enrich, file_path):
     """
     Run a lightweight software composition analysis (SCA) of a dependency file
     (e.g. requirements.txt, package.json), using deps.dev.
@@ -1084,6 +1172,8 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_pat
     answer. Versions deps.dev lists without a publish date are counted, since
     any of them may be older. TYPE:NAME@VERSION adds that exact version to the
     table, with how many releases it is behind and its known advisories.
+    Add -osv to follow that with OSV's advisories for the version (the fixed
+    version, severity, withdrawn ones marked) and a comparison with deps.dev's.
 
     With -no-enrich, or KOSPEX_DEPS_ENRICH=false, nothing is looked up: the
     file is parsed and its packages listed (and saved with -save) as not
@@ -1106,6 +1196,9 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_pat
         err.print(problem, style="red", markup=False)
         exit(1)
 
+    if osv and not package_spec:
+        raise click.UsageError("-osv only applies to -package TYPE:NAME@VERSION.")
+
     if package_spec:
         if not enrich:
             # -package is nothing but a lookup, so there is no parse-only form.
@@ -1113,7 +1206,7 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, enrich, file_pat
                       f"({why_not}). Add -enrich to look it up anyway.", markup=False)
             exit(1)
         _sca_package(package_spec, file_path=file_path, save=save, out=out,
-                     as_json=as_json)
+                     as_json=as_json, osv=osv)
         return
 
     if repo:

@@ -2,6 +2,19 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+### Added
+
+- **`kospex sca -package TYPE:NAME@VERSION -osv`** adds OSV's advisories for that
+  version after deps.dev's: the fixed version, the worst severity with where it came
+  from, withdrawn advisories marked, and a comparison of what each source lists. It
+  needs the `@VERSION`, and an OSV failure leaves deps.dev's output and the exit code
+  alone. Records OSV files under several IDs are shown once. CVSS v3 vectors are scored
+  by kospex (`kospex.scoring.cvss`); a CVSS v4-only advisory shows the database's label
+  or `UNSCORED`. Only the package name, ecosystem and version are sent, and never for a
+  name in `KOSPEX_DEPS_PRIVATE`.
+
 ## 0.5.0 - 2026-11-22
 
 Database migrations `0014` and `0015`: back up `~/kospex/kospex.db`, then run
