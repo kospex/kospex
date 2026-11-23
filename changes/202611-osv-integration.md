@@ -81,6 +81,11 @@ different IDs by each source. Anything only one side lists is named underneath.
 src/kospex/integrations/osv/__init__.py
 src/kospex/integrations/osv/client.py    # OsvClient
 src/kospex/integrations/osv/queries.py   # pure functions: raw JSON -> rows
+src/kospex/scoring/__init__.py
+src/kospex/scoring/cvss.py               # CVSS base scoring, pure, no I/O
+tests/data/cvss_v3_golden.json
+tests/manual/cvss_oracle.py              # regenerates the golden file (needs `cvss`)
+tests/test_cvss.py
 src/kospex_cli.py                        # -osv option; _print_osv_section()
 tests/osv_fixtures.py
 tests/test_osv_client.py
@@ -221,6 +226,48 @@ Decision: **show the worst severity the record carries.**
   dependency-floor rule, or leaving v4 as is.
 - Worst-of is deliberate for a security view, but a v3 and a v4 score are not
   strictly comparable. The source tag keeps that visible.
+
+## CVSS scoring module
+
+`src/kospex/scoring/cvss.py`: pure functions, no I/O, no kospex imports. It is
+published-standard plumbing (the FIRST base-score formula), not risk methodology:
+it computes the spec's base score and rating and does nothing that weights, ranks
+or adjusts for context. `scoring/` is a package so other standard calculations can
+sit beside it later; each is held to the same line.
+
+- `parse(vector)` -> `(version, metrics)` or `None` for a malformed or unsupported
+  vector. Strict: unknown metrics, missing metrics, duplicates and bad values are
+  rejected, never guessed.
+- `score(vector)` -> `(version, base_score, rating)` or `None`. v3.0 and v3.1 only
+  (they differ in the round-up function). v2 and v4 return `None`.
+- `rating(score)` -> `NONE` / `LOW` / `MEDIUM` / `HIGH` / `CRITICAL` by the
+  0.1, 4.0, 7.0, 9.0 bands.
+- Written from the FIRST specification, **not** from the Red Hat `cvss` package's
+  source, which is LGPL-3.0 (the same reason PyGitHub was removed). `cvss` is never
+  a dependency.
+
+### Testing against `cvss` without depending on it
+
+`cvss` (3.6) is used once, as an oracle, from a manual script, and its output is
+committed as data:
+
+1. `tests/manual/cvss_oracle.py` enumerates **every** v3 base vector, 4 AV x 2 AC x
+   3 PR x 2 UI x 2 S x 3 C x 3 I x 3 A = 2,592, for both `CVSS:3.0` and `CVSS:3.1`
+   (5,184 vectors), plus every distinct `cvss3Vector` in `url_cache`. It scores each
+   with `cvss` and writes `tests/data/cvss_v3_golden.json`: vector, score, rating,
+   and the `cvss` version that produced it in the header.
+2. `tests/test_cvss.py` checks our `score()` against that file on every run. No
+   `cvss` import, so nothing skips silently.
+3. The FIRST specification's worked examples are plain unit tests.
+4. Malformed vectors (truncated, repeated metric, unknown value, wrong prefix, v2,
+   v4) must give `None` from ours; the oracle script records that `cvss` also
+   rejects them, so the two agree on what is invalid.
+
+`cvss` is installed only in the environment that runs the script. It is not in
+`pyproject.toml` or the `test` extra. The golden file holds numbers, not code.
+Any disagreement is resolved by reading the spec, not by assuming the library is
+right; the likely suspects are the v3.0 vs v3.1 round-up and the Scope-changed
+formula.
 
 ## Decisions
 
