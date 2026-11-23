@@ -136,3 +136,45 @@ def test_missing_input_leaves_no_output(tmp_path):
     with pytest.raises(FileNotFoundError):
         enrich_file(tmp_path / "nope.jsonl", out, _enricher())
     assert not out.exists()
+
+
+# A line that is valid JSON but the wrong type ends the run as an input error
+# naming the line, not as a traceback from inside a lookup.
+@pytest.mark.parametrize("over", [
+    {"package_name": None},
+    {"package_name": ""},
+    {"package_name": 42},
+    {"package_name": ["cookie"]},
+    {"current_version": 1.5},
+    {"current_version": ["0.4.0"]},
+    {"patched_version": 7},
+    {"patched_version": {"v": "0.7.0"}},
+])
+def test_wrong_typed_alert_fields_are_input_errors(tmp_path, over):
+    good = json.dumps(_alert())
+    bad = json.dumps({**_alert(), **over})
+    err = _assert_fails(tmp_path, f"{good}\n{bad}\n", 2)
+    assert "line 2" in str(err)
+
+
+def test_missing_package_name_is_input_error(tmp_path):
+    good = json.dumps(_alert())
+    bad = _alert()
+    del bad["package_name"]
+    _assert_fails(tmp_path, f"{good}\n{good}\n{json.dumps(bad)}\n", 3)
+
+
+def test_input_error_does_not_echo_the_value(tmp_path):
+    bad = json.dumps({**_alert(), "current_version": 123456789})
+    err = _assert_fails(tmp_path, bad + "\n", 1)
+    assert "123456789" not in str(err)
+
+
+def test_null_versions_and_ecosystem_stay_legal(tmp_path):
+    alerts = [_alert(current_version=None), _alert(patched_version=None),
+              _alert(package_ecosystem=None)]
+    src = _write(tmp_path / "in.jsonl", _lines(alerts))
+    out = tmp_path / "out.jsonl"
+    counts = enrich_file(src, out, _enricher())
+    assert dict(counts) == {"no_current_version": 1, "no_patched_version": 1,
+                            "unsupported_ecosystem": 1}

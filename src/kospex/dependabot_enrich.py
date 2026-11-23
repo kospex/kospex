@@ -64,6 +64,13 @@ SCA_FIELDS = (
 _ANSWERED = (200, 404)
 
 
+def _deps_dev_version(package_type, version):
+    """`version` as deps.dev spells it. Go versions there start with `v`."""
+    if package_type == "go" and version and version[:1].isdigit():
+        return "v" + version
+    return version
+
+
 class Enricher:
     """Adds SCA_FIELDS to Dependabot alerts using `kdeps` (KospexDependencies)."""
 
@@ -97,22 +104,28 @@ class Enricher:
 
         current = alert.get(_K_CURRENT) or None
         patched = alert.get(_K_PATCHED) or None
+        # The spelling deps.dev knows: GitHub writes Go versions without the `v`.
+        current_lookup = _deps_dev_version(package_type, current)
+        patched_lookup = _deps_dev_version(package_type, patched)
 
         if current:
-            behind = self.kdeps.behind_fields(package_type, name, current, releases)
+            behind = self.kdeps.behind_fields(package_type, name, current_lookup, releases)
             fields["sca_latest_version"] = behind.get("latest_version")
             for key in ("level", "major", "minor", "patch", "releases"):
                 fields[f"sca_behind_{key}"] = behind.get(f"behind_{key}")
             # Age only: a failed lookup leaves it None and does not change the status.
-            detail, _status = self._detail(package_type, name, current, releases)
+            detail, _status = self._detail(package_type, name, current_lookup, releases)
             if detail:
                 fields["sca_current_age_days"] = detail.get("age_days")
 
         patched_status = OK
         if patched:
-            detail, status = self._detail(package_type, name, patched, releases)
+            detail, status = self._detail(package_type, name, patched_lookup, releases)
             if detail is None:
                 patched_status = NOT_FOUND if status in _ANSWERED else LOOKUP_ERROR
+            elif any(a.get("lookup_failed") for a in detail.get("advisories") or []):
+                # A count or maximum over a partial set would understate the risk.
+                patched_status = LOOKUP_ERROR
             else:
                 advisories = detail.get("advisories") or []
                 scores = [a["cvss3_score"] for a in advisories
@@ -168,17 +181,37 @@ class Enricher:
         detail, status = self.kdeps.version_detail(
             package_type, name, version, releases, now=self.now)
         result = (detail, status)
-        if detail is not None or status in _ANSWERED:
+        failed = detail is not None and any(
+            a.get("lookup_failed") for a in detail.get("advisories") or [])
+        if not failed and (detail is not None or status in _ANSWERED):
             self._details[key] = result
         return result
 
 
 class DependabotInputError(Exception):
-    """A line of the input file is not a JSON object. `line_no` is 1-based."""
+    """A line of the input file is unusable. `line_no` is 1-based."""
 
     def __init__(self, line_no, msg):
         super().__init__(f"line {line_no}: {msg}")
         self.line_no = line_no
+
+
+def _check_alert_types(line_no, alert):
+    """Raise DependabotInputError for a valid-JSON line the enricher cannot read.
+
+    The message names the key and the type, never the value.
+    """
+    name = alert.get(_K_PACKAGE)
+    if not isinstance(name, str) or not name:
+        got = ("a missing key" if _K_PACKAGE not in alert
+               else "null" if name is None else type(name).__name__)
+        raise DependabotInputError(
+            line_no, f"{_K_PACKAGE} must be a non-empty string, got {got}")
+    for key in (_K_CURRENT, _K_PATCHED):
+        value = alert.get(key)
+        if value is not None and not isinstance(value, str):
+            raise DependabotInputError(
+                line_no, f"{key} must be a string or null, got {type(value).__name__}")
 
 
 def enrich_file(in_path, out_path, enricher, on_progress=None):
@@ -218,6 +251,7 @@ def enrich_file(in_path, out_path, enricher, on_progress=None):
                     raise DependabotInputError(line_no, f"invalid JSON: {exc}") from exc
                 if not isinstance(alert, dict):
                     raise DependabotInputError(line_no, "not a JSON object")
+                _check_alert_types(line_no, alert)
                 row = enricher.enrich(alert)
                 out.write(json.dumps(row, ensure_ascii=False) + "\n")
                 status = row["sca_status"]

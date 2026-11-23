@@ -1260,8 +1260,9 @@ def sca(repo, scope, save, malware, as_json, out, dependabot_path, package_spec,
     columns added: the latest release, how far behind the current version
     is, its age, the size of the upgrade to the patched version, and the
     deps.dev advisories still on the patched version. A line
-    that is not a JSON object stops the run, names the line, and leaves no
-    OUT. Needs lookups on (-enrich if KOSPEX_DEPS_ENRICH=false), and cannot
+    that is not a JSON object, or whose package_name is not a non-empty
+    string or whose versions are neither strings nor null, stops the run,
+    names the line, and leaves no OUT. Needs lookups on (-enrich if KOSPEX_DEPS_ENRICH=false), and cannot
     be combined with -json, -save, -scope, -repo, -package or FILE_PATH.
     """
     err = Console(stderr=True, soft_wrap=True)

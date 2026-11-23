@@ -2329,8 +2329,12 @@ class KospexDependencies:
         each other. An ID that is an alias of one already listed is folded
         into it (`also`), not listed again.
 
-        Each entry is {"id", "also", "cves", "title", "cvss3_score", "url"}.
-        When the advisory lookup fails, only "id" and "also" are filled in.
+        Each entry is {"id", "also", "cves", "title", "cvss3_score", "url",
+        "lookup_failed"}. When the advisory lookup fails (any HTTP failure,
+        a 404, or an unreadable body), `lookup_failed` is True and only "id"
+        and "also" are filled in: its score is unknown, not "unscored", and
+        its aliases are not merged. A caller that reports a count or a maximum
+        score must check it.
 
         `cvss3_score` is None when deps.dev has no CVSS 3 vector. It sends
         `cvss3Score: 0` then, not null -- including for advisories scored only
@@ -2351,7 +2355,8 @@ class KospexDependencies:
                      "cves": [a for a in aliases if a.startswith("CVE-")],
                      "title": record.get("title") or "",
                      "cvss3_score": score if record.get("cvss3Vector") else None,
-                     "url": record.get("url") or ""}
+                     "url": record.get("url") or "",
+                     "lookup_failed": not record}
             merged.append(entry)
             by_id[advisory_id] = entry
             for alias in aliases:
