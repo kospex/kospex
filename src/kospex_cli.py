@@ -805,6 +805,52 @@ def _explain_no_package_record(package_type, package_name):
                                     f" ({package_type})."))
 
 
+def _sca_dependabot(dependabot_path, out, file_path, save, as_json, package_spec):
+    """`kospex sca -dependabot FILE -out OUT`: enrich Dependabot alerts (JSONL)."""
+    from kospex.dependabot_enrich import (  # pylint: disable=import-outside-toplevel
+        DependabotInputError, Enricher, enrich_file)
+
+    ctx = click.get_current_context()
+    refused = [name for name, given in (
+        ("FILE_PATH", file_path), ("-repo", ctx.params.get("repo")), ("-save", save),
+        ("-json", as_json), ("-package", package_spec),
+        ("-scope", ctx.get_parameter_source("scope") == ParameterSource.COMMANDLINE))
+        if given]
+    if refused:
+        raise click.UsageError(f"-dependabot cannot be used with {', '.join(refused)}.")
+    if not out:
+        raise click.UsageError("-dependabot needs -out FILE for the enriched JSONL.")
+
+    err = Console(stderr=True, soft_wrap=True)
+    kdeps = kospex.dependencies
+    if getattr(kdeps.kospex_query, "url_failures", None) is not None:
+        kdeps.kospex_query.url_failures.clear()
+
+    def progress(done, _status):
+        if done % 25 == 0:
+            err.print(f"{done} alerts enriched...", markup=False)
+
+    try:
+        counts = enrich_file(dependabot_path, out, Enricher(kdeps), on_progress=progress)
+    except DependabotInputError as e:
+        err.print(f"Error: {dependabot_path}: {e}. {out} was not written.",
+                  style="red", markup=False)
+        exit(1)
+    except ValueError as e:
+        err.print(f"Error: {e}.", style="red", markup=False)
+        exit(1)
+
+    failures = getattr(kdeps.kospex_query, "url_failures", None)
+    for line in KospexUtils.url_failure_summary(failures):
+        err.print(line, style="yellow", markup=False)
+    if line := KospexUtils.url_failure_log_line(failures):
+        log.warning("sca -dependabot %s: %s", dependabot_path, line)
+
+    err.print(f"Wrote {sum(counts.values())} alerts to {out}", markup=False)
+    for status in sorted(counts):
+        err.print(f"  {status}: {counts[status]}", markup=False)
+
+
 def _sca_package(package_spec, file_path, save, out, as_json, osv=False):
     """`kospex sca -package TYPE:NAME[@VERSION]`: one package's releases (#390).
 
@@ -1148,7 +1194,12 @@ def _print_osv_section(package_type, package_name, requested):
 @click.option("-malware", is_flag=True, default=False, help="DEPRECATED, ignored.")
 @click.option("-json", "as_json", is_flag=True, default=False,
               help="Print the results as JSON on stdout, and nothing else.")
-@click.option("-out", type=click.STRING, help="filename to write CSV results to.")
+@click.option("-out", type=click.STRING,
+              help="filename to write CSV results to (JSONL with -dependabot).")
+@click.option("-dependabot", "dependabot_path", metavar="FILE",
+              type=click.Path(exists=True, dir_okay=False),
+              help="Enrich a JSONL file of Dependabot alerts with deps.dev data, "
+              "one output line per input line. Needs -out for the JSONL result.")
 @click.option("-package", "package_spec", metavar="TYPE:NAME[@VERSION]",
               help="Look up one package instead of a file, e.g. pypi:requests or "
               "maven:io.netty:netty-handler. Shows its first and latest releases, "
@@ -1163,7 +1214,8 @@ def _print_osv_section(package_type, package_name, requested):
               help="Look packages up on deps.dev, or only parse the file. "
                    "Overrides KOSPEX_DEPS_ENRICH (default: enrich).")
 @click.argument("file_path", required=False, type=click.Path(exists=True))
-def sca(repo, scope, save, malware, as_json, out, package_spec, osv, enrich, file_path):
+def sca(repo, scope, save, malware, as_json, out, dependabot_path, package_spec, osv,
+        enrich, file_path):
     """
     Run a lightweight software composition analysis (SCA) of a dependency file
     (e.g. requirements.txt, package.json), using deps.dev.
@@ -1187,6 +1239,15 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, osv, enrich, fil
 
     Package names matching KOSPEX_DEPS_PRIVATE (or GOPRIVATE, for Go) are
     never looked up, even with -enrich, and are listed as private_skipped.
+
+    With -dependabot FILE -out OUT, reads a JSONL file of Dependabot alerts
+    (one JSON object per line: ecosystem, package, current_version,
+    patched_version) and writes OUT with every input line kept and sca_*
+    columns added: the latest release, how far behind the current version
+    is, and deps.dev advisories for the current and patched versions. A line
+    that is not a JSON object stops the run, names the line, and leaves no
+    OUT. Needs lookups on (-enrich if KOSPEX_DEPS_ENRICH=false), and cannot
+    be combined with -json, -save, -scope, -repo, -package or FILE_PATH.
     """
     err = Console(stderr=True, soft_wrap=True)
 
@@ -1204,6 +1265,15 @@ def sca(repo, scope, save, malware, as_json, out, package_spec, osv, enrich, fil
 
     if osv and not package_spec:
         raise click.UsageError("-osv only applies to -package TYPE:NAME@VERSION.")
+
+    if dependabot_path:
+        if not enrich:
+            err.print(f"-dependabot looks alerts up on deps.dev, and lookups are off "
+                      f"({why_not}). Add -enrich to look it up anyway.", markup=False)
+            exit(1)
+        _sca_dependabot(dependabot_path, out=out, file_path=file_path, save=save,
+                        as_json=as_json, package_spec=package_spec)
+        return
 
     if package_spec:
         if not enrich:
