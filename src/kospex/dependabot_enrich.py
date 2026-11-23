@@ -47,7 +47,8 @@ SCA_FIELDS = (
     "sca_patched_ghsa_ids",
 )
 
-_MISSING = object()
+# HTTP statuses meaning deps.dev answered: found, or has no such record.
+_ANSWERED = (200, 404)
 
 
 class Enricher:
@@ -89,15 +90,16 @@ class Enricher:
             fields["sca_latest_version"] = behind.get("latest_version")
             for key in ("level", "major", "minor", "patch", "releases"):
                 fields[f"sca_behind_{key}"] = behind.get(f"behind_{key}")
-            detail = self._detail(package_type, name, current, releases)
+            # Age only: a failed lookup leaves it None and does not change the status.
+            detail, _status = self._detail(package_type, name, current, releases)
             if detail:
                 fields["sca_current_age_days"] = detail.get("age_days")
 
-        patched_known = True
+        patched_status = OK
         if patched:
-            detail = self._detail(package_type, name, patched, releases)
+            detail, status = self._detail(package_type, name, patched, releases)
             if detail is None:
-                patched_known = False
+                patched_status = NOT_FOUND if status in _ANSWERED else LOOKUP_ERROR
             else:
                 advisories = detail.get("advisories") or []
                 scores = [a["cvss3_score"] for a in advisories
@@ -118,28 +120,41 @@ class Enricher:
             return NO_CURRENT_VERSION
         if not patched:
             return NO_PATCHED_VERSION
-        return OK if patched_known else NOT_FOUND
+        return patched_status
 
     def _release_list(self, package_type, name):
-        """(releases, failure_status): releases None when the lookup failed."""
+        """(releases, failure_status): releases None when the lookup failed.
+
+        not_found means deps.dev answered 404 (or 200 with no versions); any
+        other failure is lookup_error and is not cached, so a later alert for
+        the same package retries.
+        """
         key = (package_type, name)
-        if key not in self._releases:
-            releases = self.kdeps.release_list(package_type, name)
-            failure = None
-            if releases is None:
-                # Read straight after the request: the query resets
-                # last_url_error on each one, so only this lookup's error shows.
-                error = getattr(getattr(self.kdeps, "kospex_query", None),
-                                "last_url_error", None)
-                failure = LOOKUP_ERROR if error is not None else NOT_FOUND
-            self._releases[key] = (releases, failure)
-        return self._releases[key]
+        if key in self._releases:
+            return self._releases[key]
+        releases = self.kdeps.release_list(package_type, name)
+        if releases is not None:
+            result = (releases, None)
+        else:
+            # Read straight after the request: the query resets both on each one.
+            query = getattr(self.kdeps, "kospex_query", None)
+            error = getattr(query, "last_url_error", None)
+            status = getattr(query, "last_url_status", None)
+            if error is None and status in _ANSWERED:
+                result = (None, NOT_FOUND)
+            else:
+                return None, LOOKUP_ERROR
+        self._releases[key] = result
+        return result
 
     def _detail(self, package_type, name, version, releases):
+        """(detail | None, status). Only answered lookups are cached."""
         key = (package_type, name, version)
-        detail = self._details.get(key, _MISSING)
-        if detail is _MISSING:
-            detail, _status = self.kdeps.version_detail(
-                package_type, name, version, releases, now=self.now)
-            self._details[key] = detail
-        return detail
+        if key in self._details:
+            return self._details[key]
+        detail, status = self.kdeps.version_detail(
+            package_type, name, version, releases, now=self.now)
+        result = (detail, status)
+        if detail is not None or status in _ANSWERED:
+            self._details[key] = result
+        return result

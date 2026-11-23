@@ -13,16 +13,19 @@ from kospex.dependabot_enrich import (
 
 class _Query:
     last_url_error = None
+    last_url_status = 404
 
 
 class StubDeps:
     def __init__(self, latest="0.7.2", advisories=None, releases=True,
-                 permitted=(True, ""), unknown_versions=()):
+                 permitted=(True, ""), unknown_versions=(), release_status=404, detail_status=404):
         self.latest = latest
         self.advisories = advisories or {}
         self.releases = releases
         self.permitted = permitted
         self.unknown_versions = unknown_versions
+        self.detail_status = detail_status
+        self.kospex_query_status = release_status
         self.kospex_query = _Query()
         self.calls = {"release_list": [], "behind_fields": [],
                       "version_detail": [], "lookup_permitted": []}
@@ -33,6 +36,8 @@ class StubDeps:
 
     def release_list(self, package_type, name, cache=None):
         self.calls["release_list"].append((package_type, name))
+        self.kospex_query.last_url_status = (200 if self.releases
+                                             else self.kospex_query_status)
         return [{"version": self.latest}] if self.releases else None
 
     def behind_fields(self, package_type, name, version, releases=None):
@@ -45,7 +50,7 @@ class StubDeps:
     def version_detail(self, package_type, name, version, releases, **_kw):
         self.calls["version_detail"].append((package_type, name, version))
         if version in self.unknown_versions:
-            return None, 404
+            return None, self.detail_status
         return {"version": version, "age_days": 400,
                 "advisories": self.advisories.get(version, [])}, 200
 
@@ -190,3 +195,56 @@ def test_negative_detail_cached():
     for _ in range(2):
         enricher.enrich(_alert())
     assert stub.calls["version_detail"].count(("npm", "cookie", "0.7.0")) == 1
+
+
+import pytest
+
+
+@pytest.mark.parametrize("status", [429, 503, 500, 403, None])
+def test_release_list_transient_is_lookup_error(status):
+    out = _enrich(_alert(), releases=False, release_status=status)
+    assert out["sca_status"] == LOOKUP_ERROR
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_patched_detail_transient_is_lookup_error(status):
+    out = _enrich(_alert(), unknown_versions=("0.7.0",), detail_status=status)
+    assert out["sca_status"] == LOOKUP_ERROR
+    assert out["sca_patched_version_vulnerabilities"] is None
+
+
+def test_patched_detail_404_is_not_found():
+    out = _enrich(_alert(), unknown_versions=("0.7.0",), detail_status=404)
+    assert out["sca_status"] == NOT_FOUND
+
+
+def test_transient_release_failure_is_retried_but_404_is_not():
+    stub = StubDeps(releases=False, release_status=503)
+    enricher = Enricher(stub)
+    enricher.enrich(_alert())
+    enricher.enrich(_alert())
+    assert len(stub.calls["release_list"]) == 2
+    stub = StubDeps(releases=False, release_status=404)
+    enricher = Enricher(stub)
+    enricher.enrich(_alert())
+    enricher.enrich(_alert())
+    assert len(stub.calls["release_list"]) == 1
+
+
+def test_transient_detail_failure_is_retried_but_404_is_not():
+    stub = StubDeps(unknown_versions=("0.7.0",), detail_status=503)
+    enricher = Enricher(stub)
+    enricher.enrich(_alert())
+    enricher.enrich(_alert())
+    assert stub.calls["version_detail"].count(("npm", "cookie", "0.7.0")) == 2
+
+
+def test_current_age_failure_keeps_status_and_is_not_cached():
+    stub = StubDeps(unknown_versions=("0.4.0",), detail_status=503)
+    enricher = Enricher(stub)
+    out = enricher.enrich(_alert())
+    assert out["sca_status"] == OK
+    assert out["sca_current_age_days"] is None
+    assert out["sca_behind_level"] == "minor"
+    enricher.enrich(_alert())
+    assert stub.calls["version_detail"].count(("npm", "cookie", "0.4.0")) == 2
