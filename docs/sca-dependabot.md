@@ -71,6 +71,11 @@ could not be enriched keeps its reason in `sca_status` and leaves the rest null.
 |---|---|
 | `sca_status` | `ok` or the reason the row is incomplete. See [Statuses](#statuses) |
 
+Every `*_age_days` field is whole days from that version's publish date on deps.dev to the
+day the command runs, so the same file gives larger numbers when re-run later. The three
+ages describe three different versions: the installed one (`sca_current_age_days`), the first
+fixed one (`sca_patched_age_days`) and the latest release (`sca_latest_age_days`).
+
 ### Current version to latest release (the `behind_*` fields)
 
 The distance from the installed version to the **latest** release, using the same rule as
@@ -80,10 +85,11 @@ The distance from the installed version to the **latest** release, using the sam
 | Field | Meaning |
 |---|---|
 | `sca_latest_version` | The latest release |
+| `sca_latest_age_days` | Age of the latest release in days. Null with `sca_latest_version`, or when deps.dev lists that release without a publish date. Read from the release list, so it costs no extra request |
 | `sca_behind_level` | `major`, `minor`, `patch` or `none`: the largest component that differs; `ahead` when the installed version is above the latest release (deps.dev's default can trail a release), in which case the counts are null |
 | `sca_behind_major`, `sca_behind_minor`, `sca_behind_patch` | How far behind, by version number, per component |
 | `sca_behind_releases` | How many releases have been published since the installed one |
-| `sca_current_age_days` | Age of the installed version in days. Null when deps.dev has no publish date or that lookup failed; a failed lookup here does not change `sca_status` |
+| `sca_current_age_days` | Age in days of the installed version (the alert's `current_version`, not the fix or the latest). Null when deps.dev has no publish date or that lookup failed; a failed lookup here does not change `sca_status` |
 
 ### Current version to patched version (the `sca_patched_diff_*` fields)
 
@@ -113,6 +119,7 @@ into one entry each.
 
 | Field | Meaning |
 |---|---|
+| `sca_patched_age_days` | Age in days of the patched version, the first fixed release (not the installed one or the latest). Null when there is no `patched_version`, deps.dev has no publish date for it, or the lookup failed or found no such version. Kept when only the advisory lookup failed, so a `lookup_error` row can still carry it |
 | `sca_patched_version_vulnerabilities` | Count of **all** advisories deps.dev lists on `patched_version`. Nothing is subtracted: the patched version cannot contain the advisory it fixes, so any listed are other advisories |
 | `sca_patched_version_max_cvss` | Highest CVSS 3 score among them. **Null when none is scored, never 0**: deps.dev sends `0` with no vector for an unscored advisory, and kospex treats that as unscored |
 | `sca_patched_ghsa_ids` | The advisory ids, as a list. An empty list means none |
@@ -198,7 +205,7 @@ An alert as `kgit github --dependabot` writes it (see the
 lookups (abbreviated, `...` marks unchanged input keys):
 
 ```json
-{"repo_id": "github.com~acme~payments", ..., "package_ecosystem": "npm", "package_name": "cookie", ..., "current_version": "0.4.0", "patched_version": "0.7.0", ..., "sca_status": "ok", "sca_latest_version": "2.0.2", "sca_behind_level": "major", "sca_behind_major": 2, "sca_behind_minor": 4, "sca_behind_patch": 5, "sca_behind_releases": 15, "sca_current_age_days": 2748, "sca_patched_diff_level": "minor", "sca_patched_diff_major": 0, "sca_patched_diff_minor": 3, "sca_patched_diff_patch": 0, "sca_patched_version_vulnerabilities": 0, "sca_patched_version_max_cvss": null, "sca_patched_ghsa_ids": []}
+{"repo_id": "github.com~acme~payments", ..., "package_ecosystem": "npm", "package_name": "cookie", ..., "current_version": "0.4.0", "patched_version": "0.7.0", ..., "sca_status": "ok", "sca_latest_version": "2.0.2", "sca_latest_age_days": 17, "sca_behind_level": "major", "sca_behind_major": 2, "sca_behind_minor": 4, "sca_behind_patch": 5, "sca_behind_releases": 15, "sca_current_age_days": 2748, "sca_patched_diff_level": "minor", "sca_patched_diff_major": 0, "sca_patched_diff_minor": 3, "sca_patched_diff_patch": 0, "sca_patched_age_days": 781, "sca_patched_version_vulnerabilities": 0, "sca_patched_version_max_cvss": null, "sca_patched_ghsa_ids": []}
 ```
 
 Reading it: the installed `cookie` 0.4.0 is two majors behind the latest release (2.0.2)

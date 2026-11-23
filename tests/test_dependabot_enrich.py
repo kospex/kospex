@@ -3,6 +3,7 @@
 The Enricher is driven with a stub of KospexDependencies: no HTTP.
 """
 import copy
+import datetime
 
 from kospex.dependabot_enrich import (
     ALERT_KEYS_READ, ECOSYSTEM_MAP, SCA_FIELDS, Enricher, OK, NO_CURRENT_VERSION,
@@ -10,6 +11,9 @@ from kospex.dependabot_enrich import (
     LOOKUP_ERROR,
 )
 from kospex.github_dependabot import ALERT_KEYS, alert_line
+from kospex_dependencies import KospexDependencies
+
+NOW = datetime.datetime(2026, 11, 24, tzinfo=datetime.timezone.utc)
 
 
 class _Query:
@@ -19,8 +23,11 @@ class _Query:
 
 class StubDeps:
     def __init__(self, latest="0.7.2", advisories=None, releases=True,
-                 permitted=(True, ""), unknown_versions=(), release_status=404, detail_status=404):
+                 permitted=(True, ""), unknown_versions=(), release_status=404, detail_status=404,
+                 ages=None, latest_published="2026-11-14T00:00:00Z"):
         self.latest = latest
+        self.ages = ages or {}
+        self.latest_published = latest_published
         self.advisories = advisories or {}
         self.releases = releases
         self.permitted = permitted
@@ -39,7 +46,11 @@ class StubDeps:
         self.calls["release_list"].append((package_type, name))
         self.kospex_query.last_url_status = (200 if self.releases
                                              else self.kospex_query_status)
-        return [{"version": self.latest}] if self.releases else None
+        return ([{"version": self.latest, "published_at": self.latest_published}]
+                if self.releases else None)
+
+    # The real static helper, so the stub cannot disagree with production on ages.
+    _age_days = staticmethod(KospexDependencies._age_days)
 
     def behind_fields(self, package_type, name, version, releases=None):
         self.calls["behind_fields"].append((package_type, name, version))
@@ -52,7 +63,7 @@ class StubDeps:
         self.calls["version_detail"].append((package_type, name, version))
         if version in self.unknown_versions:
             return None, self.detail_status
-        return {"version": version, "age_days": 400,
+        return {"version": version, "age_days": self.ages.get(version, 400),
                 "advisories": self.advisories.get(version, [])}, 200
 
 
@@ -93,7 +104,7 @@ TWO = [{"id": "GHSA-aaaa-bbbb-cccc", "cvss3_score": 5.3},
 
 
 def _enrich(alert, **kw):
-    return Enricher(StubDeps(**kw)).enrich(alert)
+    return Enricher(StubDeps(**kw), now=NOW).enrich(alert)
 
 
 def test_all_keys_present_and_input_keys_first():
@@ -103,7 +114,7 @@ def test_all_keys_present_and_input_keys_first():
     out = _enrich(alert)
     assert list(out) == list(alert) + list(SCA_FIELDS)
     assert alert == before
-    assert len(SCA_FIELDS) == 15
+    assert len(SCA_FIELDS) == 17
 
 
 def test_ok_row():
@@ -121,6 +132,38 @@ def test_ok_row():
     assert out["sca_current_age_days"] == 400
 
 
+def test_ages_of_current_patched_and_latest_are_separate():
+    out = _enrich(_alert(), ages={"0.4.0": 2748, "0.7.0": 120})
+    assert out["sca_current_age_days"] == 2748
+    assert out["sca_patched_age_days"] == 120
+    assert out["sca_latest_age_days"] == 10   # published 2026-11-14, now 2026-11-24
+    assert len({out["sca_current_age_days"], out["sca_patched_age_days"],
+                out["sca_latest_age_days"]}) == 3
+
+
+def test_latest_age_null_when_release_is_undated():
+    out = _enrich(_alert(), latest_published="")
+    assert out["sca_latest_version"] == "0.7.2"
+    assert out["sca_latest_age_days"] is None
+
+
+def test_patched_age_null_without_a_patched_version():
+    out = _enrich(_alert(patched_version=None))
+    assert out["sca_status"] == NO_PATCHED_VERSION
+    assert out["sca_patched_age_days"] is None
+    assert out["sca_latest_age_days"] == 10
+    assert out["sca_current_age_days"] == 400
+
+
+def test_patched_age_kept_when_advisory_fetch_failed():
+    """The patched version's date is known even when its advisory count is not."""
+    failed = [{"id": "GHSA-aaaa-bbbb-cccc", "cvss3_score": None, "lookup_failed": True}]
+    out = _enrich(_alert(), advisories={"0.7.0": failed}, ages={"0.7.0": 120})
+    assert out["sca_status"] == LOOKUP_ERROR
+    assert out["sca_patched_version_vulnerabilities"] is None
+    assert out["sca_patched_age_days"] == 120
+
+
 def test_raw_diff_preserved():
     out = _enrich(_alert(current_version="1.9.9", patched_version="3.0.0"))
     assert out["sca_patched_diff_level"] == "major"
@@ -133,8 +176,9 @@ def test_current_version_null():
     assert out["sca_status"] == NO_CURRENT_VERSION == "no_current_version"
     for key in ("sca_patched_diff_level", "sca_patched_diff_major",
                 "sca_behind_level", "sca_behind_major", "sca_behind_releases",
-                "sca_current_age_days"):
+                "sca_current_age_days", "sca_latest_age_days"):
         assert out[key] is None
+    assert out["sca_patched_age_days"] == 400
     assert out["sca_patched_version_vulnerabilities"] == 2
     assert out["sca_patched_version_max_cvss"] == 5.3
 

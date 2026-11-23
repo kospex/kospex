@@ -10,6 +10,7 @@ KospexDependencies (deps.dev) and are cached per package and per (package,
 version) when deps.dev answered.
 """
 import collections
+import datetime
 import json
 import os
 
@@ -45,6 +46,7 @@ LOOKUP_ERROR = "lookup_error"
 SCA_FIELDS = (
     "sca_status",
     "sca_latest_version",
+    "sca_latest_age_days",
     "sca_behind_level",
     "sca_behind_major",
     "sca_behind_minor",
@@ -55,6 +57,7 @@ SCA_FIELDS = (
     "sca_patched_diff_major",
     "sca_patched_diff_minor",
     "sca_patched_diff_patch",
+    "sca_patched_age_days",
     "sca_patched_version_vulnerabilities",
     "sca_patched_version_max_cvss",
     "sca_patched_ghsa_ids",
@@ -111,6 +114,8 @@ class Enricher:
         if current:
             behind = self.kdeps.behind_fields(package_type, name, current_lookup, releases)
             fields["sca_latest_version"] = behind.get("latest_version")
+            fields["sca_latest_age_days"] = self._release_age_days(
+                releases, behind.get("latest_version"))
             for key in ("level", "major", "minor", "patch", "releases"):
                 fields[f"sca_behind_{key}"] = behind.get(f"behind_{key}")
             # Age only: a failed lookup leaves it None and does not change the status.
@@ -121,6 +126,9 @@ class Enricher:
         patched_status = OK
         if patched:
             detail, status = self._detail(package_type, name, patched_lookup, releases)
+            if detail is not None:
+                # Known even when the advisory lookup below failed.
+                fields["sca_patched_age_days"] = detail.get("age_days")
             if detail is None:
                 patched_status = NOT_FOUND if status in _ANSWERED else LOOKUP_ERROR
             elif any(a.get("lookup_failed") for a in detail.get("advisories") or []):
@@ -147,6 +155,18 @@ class Enricher:
         if not patched:
             return NO_PATCHED_VERSION
         return patched_status
+
+    def _release_age_days(self, releases, version):
+        """Whole days since `version` was published, from the release list, or None.
+
+        No request: the list already carries publish dates. None when the
+        version is not in the list or deps.dev lists it without a date.
+        """
+        release = next((r for r in releases or () if r.get("version") == version), None)
+        if release is None:
+            return None
+        now = self.now or datetime.datetime.now(datetime.timezone.utc)
+        return self.kdeps._age_days(release.get("published_at"), now)
 
     def _release_list(self, package_type, name):
         """(releases, failure_status): releases None when the lookup failed.

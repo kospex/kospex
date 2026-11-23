@@ -5,6 +5,7 @@ catch a wrong assumption about what deps.dev says or how KospexDependencies
 reads it. Here only the HTTP edge is faked: `url_request_with_status` serves
 deps.dev-shaped JSON. Alerts come from the production `alert_line()` writer.
 """
+import datetime
 import json
 import pathlib
 from urllib.parse import quote
@@ -79,8 +80,8 @@ def _alert(ecosystem, name, current, patched):
     return alert_line(api, "acme", "app", 1, "2026-11-24T00:00:00Z")
 
 
-def _enrich(query, alert):
-    return Enricher(KospexDependencies(kospex_query=query)).enrich(alert)
+def _enrich(query, alert, now=None):
+    return Enricher(KospexDependencies(kospex_query=query), now=now).enrich(alert)
 
 
 @pytest.fixture(autouse=True)
@@ -152,6 +153,36 @@ def test_pypi_pin_is_canonicalised():
     assert out["sca_latest_version"] == "2.32.0"
     assert out["sca_behind_level"] == "minor"
     assert out["sca_current_age_days"] is not None
+
+
+def test_ages_of_current_patched_and_latest_versions():
+    """Whole days from each version's publishedAt to `now`, for the three versions."""
+    r = {}
+    _add_package(r, "pypi", "requests", [
+        _ver("pypi", "requests", "2.25.0", "2020-11-11T00:00:00Z"),
+        _ver("pypi", "requests", "2.31.0", "2023-05-22T00:00:00Z"),
+        _ver("pypi", "requests", "2.32.0", "2024-05-20T00:00:00Z", default=True)])
+    now = datetime.datetime(2024, 6, 19, tzinfo=datetime.timezone.utc)
+    out = _enrich(FakeQuery(r), _alert("pip", "requests", "= 2.25.0", "2.31.0"), now=now)
+    assert out["sca_status"] == "ok"
+    assert out["sca_latest_version"] == "2.32.0"
+    assert out["sca_current_age_days"] == 1316
+    assert out["sca_patched_age_days"] == 394
+    assert out["sca_latest_age_days"] == 30
+
+
+def test_latest_age_for_go_uses_the_v_prefixed_release():
+    name = "golang.org/x/crypto"
+    r = {}
+    _add_package(r, "go", name, [
+        _ver("go", name, "v0.14.0", "2023-10-01T00:00:00Z"),
+        _ver("go", name, "v0.17.0", "2023-12-18T00:00:00Z"),
+        _ver("go", name, "v0.30.0", "2024-12-01T00:00:00Z", default=True)])
+    now = datetime.datetime(2024, 12, 11, tzinfo=datetime.timezone.utc)
+    out = _enrich(FakeQuery(r), _alert("go", name, "0.14.0", "0.17.0"), now=now)
+    assert out["sca_latest_version"] == "v0.30.0"
+    assert out["sca_latest_age_days"] == 10
+    assert out["sca_patched_age_days"] == 359   # 2023-12-18 -> 2024-12-11
 
 
 def test_prerelease_current_version_is_ok_with_null_behind():

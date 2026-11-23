@@ -1257,9 +1257,10 @@ def sca(repo, scope, save, malware, as_json, out, dependabot_path, package_spec,
     (one JSON object per line, as kgit github --dependabot writes it; the
     keys read are package_ecosystem, package_name, current_version and
     patched_version) and writes OUT with every input line kept and sca_*
-    columns added: the latest release, how far behind the current version
-    is, its age, the size of the upgrade to the patched version, and the
-    deps.dev advisories still on the patched version. A line
+    columns added: the latest release and its age, how far behind the current
+    version is and its age, the size of the upgrade to the patched version and
+    the patched version's age, and the deps.dev advisories still on the
+    patched version. A line
     that is not a JSON object, or whose package_name is not a non-empty
     string or whose versions are neither strings nor null, stops the run,
     names the line, and leaves no OUT. Needs lookups on (-enrich if KOSPEX_DEPS_ENRICH=false), and cannot

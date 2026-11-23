@@ -31,7 +31,10 @@ Current -> latest release (existing `behind_fields()`, by version number):
 
 - `sca_latest_version`, `sca_behind_level`, `sca_behind_major`, `sca_behind_minor`,
   `sca_behind_patch`, `sca_behind_releases`
-- `sca_current_age_days`
+- `sca_current_age_days`: age of the installed version
+- `sca_latest_age_days`: age of the latest release, from the release list (no extra request)
+- `sca_patched_age_days`: age of the patched version, from the patched-version lookup
+  already made for its advisories
 
 Current -> patched version (existing `version_diff()` / `change_level()` in
 `kospex.dependencies.version_diff`, offline, raw per-component difference):
@@ -100,3 +103,11 @@ Found comparing the built code to this design (2026-11-24):
   cached.
 - **No current-version advisories.** Only the patched version's advisories are looked
   up; the current version is fetched for its age only. The `sca -h` text now says so.
+
+## Added after the design: patched and latest ages
+
+`sca_patched_age_days` and `sca_latest_age_days` were added on request, to sit beside
+`sca_current_age_days` so all three versions have an age. Neither costs a request: the
+patched version's age comes from the lookup already made for its advisories, the latest
+release's from the release list. Whole days to the run date, null when deps.dev has no
+publish date.
