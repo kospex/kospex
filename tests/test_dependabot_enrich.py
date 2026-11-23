@@ -5,10 +5,11 @@ The Enricher is driven with a stub of KospexDependencies: no HTTP.
 import copy
 
 from kospex.dependabot_enrich import (
-    ECOSYSTEM_MAP, SCA_FIELDS, Enricher, OK, NO_CURRENT_VERSION,
+    ALERT_KEYS_READ, ECOSYSTEM_MAP, SCA_FIELDS, Enricher, OK, NO_CURRENT_VERSION,
     NO_PATCHED_VERSION, PRIVATE_SKIPPED, UNSUPPORTED_ECOSYSTEM, NOT_FOUND,
     LOOKUP_ERROR,
 )
+from kospex.github_dependabot import ALERT_KEYS, alert_line
 
 
 class _Query:
@@ -56,10 +57,35 @@ class StubDeps:
 
 
 def _alert(**over):
-    alert = {"ecosystem": "npm", "package": "cookie",
-             "current_version": "0.4.0", "patched_version": "0.7.0"}
+    """An alert with exactly the keys `kgit github --dependabot` writes."""
+    alert = dict.fromkeys(ALERT_KEYS)
+    alert.update({"package_ecosystem": "npm", "package_name": "cookie",
+                  "current_version": "0.4.0", "patched_version": "0.7.0"})
+    for key in over:
+        assert key in alert, f"{key} is not an alert key"
     alert.update(over)
     return alert
+
+
+def test_real_alert_line_is_enriched():
+    """An alert built by the production writer, not by hand."""
+    api_alert = {
+        "dependency": {"package": {"ecosystem": "npm", "name": "cookie"},
+                       "manifest_path": "package.json",
+                       "version_requirement": "0.4.0"},
+        "security_vulnerability": {"first_patched_version": {"identifier": "0.7.0"}},
+        "security_advisory": {"ghsa_id": "GHSA-pxg6-pf52-xh8x"},
+    }
+    line = alert_line(api_alert, "acme", "payments", 1, "2026-11-24T00:00:00Z")
+    assert line["package_ecosystem"] == "npm" and line["current_version"] == "0.4.0"
+    out = _enrich(line)
+    assert out["sca_status"] == OK
+    assert out["sca_patched_diff_level"] == "minor"
+
+
+def test_alert_keys_read_are_written_by_kgit_github():
+    assert ALERT_KEYS_READ
+    assert set(ALERT_KEYS_READ) <= set(ALERT_KEYS)
 
 
 TWO = [{"id": "GHSA-aaaa-bbbb-cccc", "cvss3_score": 5.3},
@@ -71,7 +97,8 @@ def _enrich(alert, **kw):
 
 
 def test_all_keys_present_and_input_keys_first():
-    alert = _alert(extra="x")
+    alert = _alert()
+    alert["extra"] = "x"
     before = copy.deepcopy(alert)
     out = _enrich(alert)
     assert list(out) == list(alert) + list(SCA_FIELDS)
@@ -124,7 +151,7 @@ def test_patched_version_null():
 
 def test_unsupported_ecosystem():
     stub = StubDeps()
-    out = Enricher(stub).enrich(_alert(ecosystem="composer"))
+    out = Enricher(stub).enrich(_alert(package_ecosystem="composer"))
     assert out["sca_status"] == UNSUPPORTED_ECOSYSTEM == "unsupported_ecosystem"
     assert all(not calls for calls in stub.calls.values())
     assert all(out[k] is None for k in SCA_FIELDS if k != "sca_status")
@@ -132,7 +159,7 @@ def test_unsupported_ecosystem():
 
 def test_private_skipped():
     stub = StubDeps(permitted=(False, "maven:com.acme"))
-    out = Enricher(stub).enrich(_alert(ecosystem="maven", package="com.acme:x"))
+    out = Enricher(stub).enrich(_alert(package_ecosystem="maven", package_name="com.acme:x"))
     assert out["sca_status"] == PRIVATE_SKIPPED == "private_skipped"
     assert stub.calls["lookup_permitted"] == [("maven", "com.acme:x")]
     assert stub.calls["release_list"] == []
@@ -152,7 +179,7 @@ def test_lookup_error_not_stale_across_packages():
     assert enricher.enrich(_alert())["sca_status"] == LOOKUP_ERROR == "lookup_error"
     # A later plain 404 for another package must not inherit the old error.
     stub.kospex_query.last_url_error = None
-    assert enricher.enrich(_alert(package="other"))["sca_status"] == NOT_FOUND
+    assert enricher.enrich(_alert(package_name="other"))["sca_status"] == NOT_FOUND
 
 
 def test_patched_version_unknown_to_deps_dev_is_not_found():
@@ -164,7 +191,7 @@ def test_patched_version_unknown_to_deps_dev_is_not_found():
 
 def test_ecosystem_case_insensitive():
     stub = StubDeps()
-    out = Enricher(stub).enrich(_alert(ecosystem="PIP", package="requests"))
+    out = Enricher(stub).enrich(_alert(package_ecosystem="PIP", package_name="requests"))
     assert stub.calls["release_list"] == [("pypi", "requests")]
     assert out["sca_status"] == OK
     assert ECOSYSTEM_MAP == {"pip": "pypi", "npm": "npm", "maven": "maven",

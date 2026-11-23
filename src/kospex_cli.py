@@ -1254,10 +1254,12 @@ def sca(repo, scope, save, malware, as_json, out, dependabot_path, package_spec,
     never looked up, even with -enrich, and are listed as private_skipped.
 
     With -dependabot FILE -out OUT, reads a JSONL file of Dependabot alerts
-    (one JSON object per line: ecosystem, package, current_version,
+    (one JSON object per line, as kgit github --dependabot writes it; the
+    keys read are package_ecosystem, package_name, current_version and
     patched_version) and writes OUT with every input line kept and sca_*
     columns added: the latest release, how far behind the current version
-    is, and deps.dev advisories for the current and patched versions. A line
+    is, its age, the size of the upgrade to the patched version, and the
+    deps.dev advisories still on the patched version. A line
     that is not a JSON object stops the run, names the line, and leaves no
     OUT. Needs lookups on (-enrich if KOSPEX_DEPS_ENRICH=false), and cannot
     be combined with -json, -save, -scope, -repo, -package or FILE_PATH.

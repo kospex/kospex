@@ -30,7 +30,7 @@ def run(monkeypatch, tmp_path):
 def paths(tmp_path):
     src = tmp_path / "alerts.jsonl"
     src.write_text("\n".join(json.dumps(a) for a in (
-        _alert(), _alert(ecosystem="nosuch"), _alert(package="other"))) + "\n")
+        _alert(), _alert(package_ecosystem="nosuch"), _alert(package_name="other"))) + "\n")
     return src, tmp_path / "out.jsonl"
 
 
@@ -133,7 +133,7 @@ def test_summary_on_stderr_counts_statuses(run, paths):
 
 
 @pytest.mark.parametrize("first", [
-    _alert(ecosystem="nosuch"), _alert(),
+    _alert(package_ecosystem="nosuch"), _alert(),
 ], ids=["unsupported_first_row", "normal_first_row"])
 def test_invalid_private_setting_fails_before_any_work(run, tmp_path, monkeypatch, first):
     from kospex.habitat_config import HabitatConfig

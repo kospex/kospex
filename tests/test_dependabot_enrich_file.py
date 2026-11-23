@@ -28,8 +28,8 @@ def _enricher():
 
 
 def test_enrich_file_round_trip(tmp_path):
-    alerts = [_alert(package="a"), _alert(package="b", patched_version=None),
-              _alert(package="c", ecosystem="cobol")]
+    alerts = [_alert(package_name="a"), _alert(package_name="b", patched_version=None),
+              _alert(package_name="c", package_ecosystem="cobol")]
     src = _write(tmp_path / "in.jsonl", _lines(alerts))
     out = tmp_path / "out.jsonl"
     seen = []
@@ -38,7 +38,7 @@ def test_enrich_file_round_trip(tmp_path):
     text = out.read_text(encoding="utf-8")
     assert text.endswith("\n")
     rows = [json.loads(line) for line in text.splitlines()]
-    assert [r["package"] for r in rows] == ["a", "b", "c"]
+    assert [r["package_name"] for r in rows] == ["a", "b", "c"]
     for r in rows:
         assert all(f in r for f in SCA_FIELDS)
     assert [r["sca_status"] for r in rows] == [
@@ -50,7 +50,7 @@ def test_enrich_file_round_trip(tmp_path):
 
 
 def test_non_ascii_written_as_utf8(tmp_path):
-    src = _write(tmp_path / "in.jsonl", _lines([_alert(package="café")]))
+    src = _write(tmp_path / "in.jsonl", _lines([_alert(package_name="café")]))
     out = tmp_path / "out.jsonl"
     enrich_file(src, out, _enricher())
     assert "café".encode("utf-8") in out.read_bytes()
@@ -107,12 +107,12 @@ def test_error_leaves_no_complete_looking_output(tmp_path):
 def test_unexpected_exception_deletes_output_and_reraises(tmp_path):
     class Boom(Enricher):
         def enrich(self, alert):
-            if alert["package"] == "b":
+            if alert["package_name"] == "b":
                 raise RuntimeError("boom")
             return super().enrich(alert)
 
     src = _write(tmp_path / "in.jsonl",
-                 _lines([_alert(package="a"), _alert(package="b")]))
+                 _lines([_alert(package_name="a"), _alert(package_name="b")]))
     out = tmp_path / "out.jsonl"
     with pytest.raises(RuntimeError):
         enrich_file(src, out, Boom(StubDeps()))

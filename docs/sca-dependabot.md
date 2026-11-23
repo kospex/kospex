@@ -49,21 +49,16 @@ Only four keys of each input line are read:
 
 | Key | Used for |
 |---|---|
-| `ecosystem` | GitHub's ecosystem name, mapped to a package type (below) |
-| `package` | The package name |
+| `package_ecosystem` | GitHub's ecosystem name, mapped to a package type (below) |
+| `package_name` | The package name |
 | `current_version` | The installed version; empty or null means unknown |
 | `patched_version` | The first fixed version; empty or null means no fix |
 
 Other keys are copied through and ignored.
 
-> **Known mismatch, check before relying on this.** The alerts file written by
-> `kgit github --dependabot` names the first two keys `package_ecosystem` and
-> `package_name` (`ALERT_KEYS` in `src/kospex/github_dependabot.py`), but the enricher
-> reads `ecosystem` and `package`. Fed a real alerts file, every line comes out
-> `unsupported_ecosystem`. Measured on 2026-11-24 with four alerts built from
-> `ALERT_KEYS`: 4 of 4 `unsupported_ecosystem`; with `ecosystem` / `package` added to
-> the same lines, the same alerts enriched normally. Remove this note when the key names
-> agree.
+These are the names `kgit github --dependabot` writes (`ALERT_KEYS` in
+`src/kospex/github_dependabot.py`); the enricher exposes the ones it reads as
+`ALERT_KEYS_READ`, and a test checks they are all in `ALERT_KEYS`.
 
 ## Output fields
 
@@ -186,12 +181,12 @@ anything runs.
 
 ## Example
 
-An alert from the [queryables page](kgit-github-queryables.md), with the two key names
-the enricher reads added (`ecosystem`, `package`; see the known mismatch above), enriched
-on 2026-11-24 with real deps.dev lookups (abbreviated, `...` marks unchanged input keys):
+An alert as `kgit github --dependabot` writes it (see the
+[queryables page](kgit-github-queryables.md)), enriched on 2026-11-24 with real deps.dev
+lookups (abbreviated, `...` marks unchanged input keys):
 
 ```json
-{"repo_id": "github.com~acme~payments", ..., "package_ecosystem": "npm", "package_name": "cookie", ..., "current_version": "0.4.0", "patched_version": "0.7.0", ..., "ecosystem": "npm", "package": "cookie", "sca_status": "ok", "sca_latest_version": "2.0.2", "sca_behind_level": "major", "sca_behind_major": 2, "sca_behind_minor": 4, "sca_behind_patch": 5, "sca_behind_releases": 15, "sca_current_age_days": 2748, "sca_patched_diff_level": "minor", "sca_patched_diff_major": 0, "sca_patched_diff_minor": 3, "sca_patched_diff_patch": 0, "sca_patched_version_vulnerabilities": 0, "sca_patched_version_max_cvss": null, "sca_patched_ghsa_ids": []}
+{"repo_id": "github.com~acme~payments", ..., "package_ecosystem": "npm", "package_name": "cookie", ..., "current_version": "0.4.0", "patched_version": "0.7.0", ..., "sca_status": "ok", "sca_latest_version": "2.0.2", "sca_behind_level": "major", "sca_behind_major": 2, "sca_behind_minor": 4, "sca_behind_patch": 5, "sca_behind_releases": 15, "sca_current_age_days": 2748, "sca_patched_diff_level": "minor", "sca_patched_diff_major": 0, "sca_patched_diff_minor": 3, "sca_patched_diff_patch": 0, "sca_patched_version_vulnerabilities": 0, "sca_patched_version_max_cvss": null, "sca_patched_ghsa_ids": []}
 ```
 
 Reading it: the installed `cookie` 0.4.0 is two majors behind the latest release (2.0.2)
@@ -205,10 +200,9 @@ releases are published.
 What to check when upstream changes. Run a small alerts file with a known-good package
 after any of these.
 
-- **GitHub's alert shape.** The enricher reads four keys, and the file written by
-  `kgit github --dependabot` currently names two of them differently (see the known
-  mismatch). Check the key names against `ALERT_KEYS` first, and whether GitHub has added
-  ecosystems to Dependabot: a new one is `unsupported_ecosystem` until mapped in
+- **GitHub's alert shape.** The enricher reads four keys (`ALERT_KEYS_READ`), all written
+  by `kgit github --dependabot`. Check the key names against `ALERT_KEYS` first, and
+  whether GitHub has added ecosystems to Dependabot: a new one is `unsupported_ecosystem` until mapped in
   `ECOSYSTEM_MAP` in `src/kospex/dependabot_enrich.py`. Also check how GitHub spells the
   existing ones (`pip` / `rust` are GitHub's names, not deps.dev's).
 - **`current_version` semantics.** The enricher trusts it as one exact version. If GitHub

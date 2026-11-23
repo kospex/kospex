@@ -4,9 +4,10 @@
 appended (None when unknown), so each output row has the same shape. A row
 that cannot be enriched is kept, with the reason in `sca_status`.
 
-The alert's `ecosystem`, `package`, `current_version` and `patched_version`
-keys are read. Lookups go through KospexDependencies (deps.dev) and are cached
-per package and per (package, version), negative results included.
+The alert's `package_ecosystem`, `package_name`, `current_version` and
+`patched_version` keys are read (ALERT_KEYS_READ). Lookups go through
+KospexDependencies (deps.dev) and are cached per package and per (package,
+version) when deps.dev answered.
 """
 import collections
 import json
@@ -24,6 +25,14 @@ ECOSYSTEM_MAP = {
     "rubygems": "rubygems",
     "rust": "cargo",
 }
+
+# The alert keys read, named as the alerts file writer names them (ALERT_KEYS in
+# kospex.github_dependabot; a test checks these against it).
+_K_ECOSYSTEM = "package_ecosystem"
+_K_PACKAGE = "package_name"
+_K_CURRENT = "current_version"
+_K_PATCHED = "patched_version"
+ALERT_KEYS_READ = (_K_ECOSYSTEM, _K_PACKAGE, _K_CURRENT, _K_PATCHED)
 
 OK = "ok"
 NO_CURRENT_VERSION = "no_current_version"
@@ -74,8 +83,8 @@ class Enricher:
 
     def _fill(self, alert, fields):
         """Fill `fields` in place and return the status."""
-        package_type = ECOSYSTEM_MAP.get(str(alert.get("ecosystem") or "").lower())
-        name = alert.get("package")
+        package_type = ECOSYSTEM_MAP.get(str(alert.get(_K_ECOSYSTEM) or "").lower())
+        name = alert.get(_K_PACKAGE)
         if package_type is None:
             return UNSUPPORTED_ECOSYSTEM
         permitted, _reason = self.kdeps.lookup_permitted(package_type, name)
@@ -86,8 +95,8 @@ class Enricher:
         if releases is None:
             return failure
 
-        current = alert.get("current_version") or None
-        patched = alert.get("patched_version") or None
+        current = alert.get(_K_CURRENT) or None
+        patched = alert.get(_K_PATCHED) or None
 
         if current:
             behind = self.kdeps.behind_fields(package_type, name, current, releases)
