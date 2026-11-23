@@ -140,6 +140,18 @@ class TestOutput:
         assert "MEDIUM 5.3 (CVSS 3.1)" in out
         assert "Compared with deps.dev: 4 in both, 0 only in OSV, 0 only in deps.dev." in out
 
+    def test_a_comparison_is_flagged_when_deps_dev_details_could_not_be_read(self, run):
+        # advisories() fills in only id and `also` when its lookup fails.
+        bare = [{"id": "GHSA-9hjg-9r4m-mvj7", "also": ["PYSEC-2026-1872"], "cves": [],
+                 "title": "", "cvss3_score": None, "url": ""}]
+        degraded = run("-package", "pypi:requests@2.25.0", "-osv", deps=bare,
+                       osv_records=records("pypi_requests_2.25.0"))
+        healthy = run("-package", "pypi:requests@2.25.0", "-osv", deps=REQUESTS_DEPS,
+                      osv_records=records("pypi_requests_2.25.0"))
+
+        assert "may overstate the differences" in " ".join(degraded.output.split())
+        assert "may overstate" not in healthy.output
+
     def test_a_difference_is_named(self, run):
         result = run("-package", "pypi:requests@2.25.0", "-osv", deps=REQUESTS_DEPS[:3],
                      osv_records=records("pypi_requests_2.25.0"))

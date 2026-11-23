@@ -23,6 +23,7 @@ DEFAULT_API_URL = "https://api.osv.dev/v1"
 TIMEOUT = 30
 MAX_RETRIES = 3
 MAX_RATE_LIMIT_WAIT = 60
+MAX_TOTAL_WAIT = 20   # seconds slept across one call's retries: a CLI should not hang
 MAX_PAGES = 20   # a package with this many pages of advisories has other problems
 
 
@@ -86,6 +87,7 @@ class OsvClient:
 
     def _request(self, method, path, **kwargs):
         url = self.base_url + path
+        waited = 0.0
         for attempt in range(MAX_RETRIES + 1):
             self.requests_made += 1
             try:
@@ -99,8 +101,11 @@ class OsvClient:
                 return self._json(response.text, path, status)
             retryable = status == 429 or status >= 500
             if retryable and attempt < MAX_RETRIES:
-                self._sleep(self._wait(response, attempt))
-                continue
+                wait = self._wait(response, attempt)
+                if waited + wait <= MAX_TOTAL_WAIT:
+                    waited += wait
+                    self._sleep(wait)
+                    continue
             raise OsvError(f"{method} {path} answered HTTP {status}", status=status,
                            path=path)
         raise OsvError(f"{method} {path} failed", path=path)   # pragma: no cover

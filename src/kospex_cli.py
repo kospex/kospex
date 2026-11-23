@@ -1114,12 +1114,18 @@ def _print_osv_section(package_type, package_name, requested):
                           "kospex does not calculate.")
 
     both, only_osv, only_deps = osv_queries.compare(rows, requested["advisories"])
+    # advisories() fills in only id and `also` when deps.dev's advisory lookup fails,
+    # and without CVEs an OSV record filed only under a CVE cannot match.
+    degraded = any(not a.get("title") and not a.get("cves") for a in requested["advisories"])
     console.print(f"Compared with deps.dev: {len(both)} in both, {len(only_osv)} only "
                   f"in OSV, {len(only_deps)} only in deps.dev.")
     for row in only_osv:
         console.print(f"  only in OSV: {safe(row['id'])}")
     for advisory in only_deps:
         console.print(f"  only in deps.dev: {safe(advisory['id'])}")
+    if degraded:
+        console.print("deps.dev's details for some advisories could not be read, so this "
+                      "comparison may overstate the differences.")
 
 
 @cli.command("sca")

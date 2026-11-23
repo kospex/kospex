@@ -80,6 +80,11 @@ def fixed_versions(record, ecosystem, name, version=None):
     version of the package is returned, and the caller must not present them as the
     one answer.
 
+    For Go, OSV leaves `versions[]` empty, so no line is ever matched: a Go advisory
+    with several release lines shows every fix with the `*` note, and one with a single
+    line shows its fix. That fails safe; it is not a wrong answer. OSV's Go fixes are
+    spelled without the `v` that deps.dev uses (`0.3.3`, not `v0.3.3`).
+
     `last_affected` is returned only for ranges with no `fixed` event: there is no
     fix, and the last affected version is what OSV knows. GIT ranges are commit
     hashes, not versions, and are skipped.
@@ -183,7 +188,7 @@ def _merge(rows):
     """One row for rows that are the same vulnerability filed under several IDs.
 
     The first row (OSV's order) keeps its `id`; the others' IDs become aliases.
-    Severity is the worst of the group (the sources can disagree: requests'
+    Fixed versions come from the live records only. Severity is the worst of the group (the sources can disagree: requests'
     PYSEC-2026-2275 is 5.5 where its GHSA twin is 4.4), fixed versions are the union,
     the date is the earliest, and it is withdrawn only if every record is.
     """
@@ -192,9 +197,12 @@ def _merge(rows):
     first["aliases"] = [a for a in dict.fromkeys(
         alias for row in rows for alias in [row["id"], *row["aliases"]]) if a in everything]
     first["cves"] = [a for a in first["aliases"] if a.startswith("CVE-")]
+    # A retracted record's fix is not evidence: use only the live ones, unless every
+    # record is withdrawn, when the row is shown as withdrawn and its fix is all there is.
+    evidence = [row for row in rows if not row["withdrawn"]] or rows
     for field in ("fixed_in", "last_affected"):
-        first[field] = list(dict.fromkeys(v for row in rows for v in row[field]))
-    first["fix_matched"] = all(row["fix_matched"] for row in rows if row["fixed_in"])
+        first[field] = list(dict.fromkeys(v for row in evidence for v in row[field]))
+    first["fix_matched"] = all(row["fix_matched"] for row in evidence if row["fixed_in"])
     worst = max(rows, key=lambda r: _worst(r["severity"], r["severity_score"]))
     first["severity"], first["severity_score"], first["severity_source"] = (
         worst["severity"], worst["severity_score"], worst["severity_source"])
@@ -215,11 +223,17 @@ def advisory_rows(records, ecosystem, name, version=None):
     """
     groups = []
     for row in (advisory_row(record, ecosystem, name, version) for record in records):
-        touching = [g for g in groups if any(_ids(row) & _ids(member) for member in g)]
-        for group in touching:
-            groups.remove(group)
-        # Earlier records first, so the first one keeps the id.
-        groups.append([member for group in touching for member in group] + [row])
+        touching = [i for i, group in enumerate(groups)
+                    if any(_ids(row) & _ids(member) for member in group)]
+        if not touching:
+            groups.append([row])
+            continue
+        # The merged group takes the place of the earliest group it touches, so a
+        # later alias does not move an advisory below unrelated ones.
+        members = [member for i in touching for member in groups[i]] + [row]
+        for i in reversed(touching[1:]):
+            del groups[i]
+        groups[touching[0]] = members
     return [_merge(group) for group in groups]
 
 

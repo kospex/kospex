@@ -137,6 +137,15 @@ class TestFixedVersions:
             {"introduced": "0"}, {"fixed": "3f2a9b1c0d4e5f60718293a4b5c6d7e8f9012345"}])])
         assert q.fixed_versions(rec, "npm", "pkg")["fixed"] == []
 
+    def test_go_leaves_versions_empty_so_a_line_is_never_matched(self):
+        # Hand-built to match what OSV returns for golang.org/x/text: no versions[],
+        # bare fixed versions. It fails safe: the fix is shown, as not matched.
+        rec = record(affected=[affected("golang.org/x/text", "Go",
+                                        events=[{"introduced": "0"}, {"fixed": "0.3.3"}],
+                                        versions=[])])
+        assert q.fixed_versions(rec, "Go", "golang.org/x/text", "v0.3.0") == {
+            "fixed": ["0.3.3"], "last_affected": [], "matched": False}
+
     def test_no_ranges_at_all(self):
         rec = record(affected=[{"package": {"name": "pkg", "ecosystem": "npm"}}])
         assert q.fixed_versions(rec, "npm", "pkg") == {
@@ -268,6 +277,31 @@ class TestAdvisoryRows:
                record(id="B", aliases=["A"])]
         assert q.advisory_rows(both, "npm", "pkg")[0]["withdrawn"] == "2024-01-01"
         assert q.advisory_rows(one, "npm", "pkg")[0]["withdrawn"] == ""
+
+    def test_osv_order_is_kept_when_a_later_record_aliases_an_earlier_one(self):
+        a = record(id="A", aliases=[])
+        b = record(id="B", aliases=[])
+        a_twin = record(id="A2", aliases=["A"])
+        rows = q.advisory_rows([a, b, a_twin], "npm", "pkg")
+        assert [r["id"] for r in rows] == ["A", "B"]
+
+    def test_a_withdrawn_records_fix_is_not_evidence_when_a_live_twin_exists(self):
+        fix = [{"introduced": "0"}, {"fixed": "1.0"}]
+        other = [{"introduced": "0"}, {"fixed": "2.0"}]
+        withdrawn = record(id="A", aliases=["B"], withdrawn="2024-01-01T00:00:00Z",
+                           affected=[affected(events=fix)])
+        live = record(id="B", aliases=["A"], affected=[affected(events=other)])
+
+        (row,) = q.advisory_rows([withdrawn, live], "npm", "pkg")
+
+        assert row["withdrawn"] == ""
+        assert row["fixed_in"] == ["2.0"]
+
+    def test_when_every_record_is_withdrawn_their_fix_is_kept(self):
+        fix = [{"introduced": "0"}, {"fixed": "1.0"}]
+        rec = record(id="A", withdrawn="2024-01-01T00:00:00Z", affected=[affected(events=fix)])
+        (row,) = q.advisory_rows([rec], "npm", "pkg")
+        assert (row["withdrawn"], row["fixed_in"]) == ("2024-01-01", ["1.0"])
 
     def test_no_records_no_rows(self):
         assert q.advisory_rows([], "npm", "pkg") == []

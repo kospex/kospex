@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from kospex.integrations.osv.client import MAX_PAGES, OsvClient, OsvError
+from kospex.integrations.osv.client import MAX_PAGES, MAX_TOTAL_WAIT, OsvClient, OsvError
 
 
 class FakeResponse:
@@ -95,11 +95,26 @@ class TestRetriesAndErrors:
         assert client.query("npm", "x", "1") == []
         assert sleeps == [7.0]
 
-    def test_retry_after_is_capped(self):
-        client, _, sleeps = make([FakeResponse(429, headers={"Retry-After": "9999"}),
-                                  FakeResponse(200, {})])
-        client.query("npm", "x", "1")
-        assert sleeps == [60.0]
+    def test_a_wait_longer_than_the_budget_gives_up_at_once(self):
+        # A CLI must not sit silent for minutes: 60s is more than the 20s budget.
+        client, session, sleeps = make([FakeResponse(429, headers={"Retry-After": "60"})])
+
+        with pytest.raises(OsvError) as caught:
+            client.query("npm", "x", "1")
+
+        assert caught.value.status == 429
+        assert sleeps == []
+        assert len(session.calls) == 1
+
+    def test_total_waiting_is_bounded(self):
+        client, session, sleeps = make([FakeResponse(429, headers={"Retry-After": "9"})] * 10)
+
+        with pytest.raises(OsvError):
+            client.query("npm", "x", "1")
+
+        assert sleeps == [9.0, 9.0]          # a third 9s would pass the 20s budget
+        assert sum(sleeps) <= MAX_TOTAL_WAIT
+        assert len(session.calls) == 3
 
     def test_5xx_backs_off_then_succeeds(self):
         client, _, sleeps = make([FakeResponse(503), FakeResponse(503), FakeResponse(200, {})])
