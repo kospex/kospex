@@ -1,0 +1,192 @@
+"""Enricher for Dependabot alerts (`kospex sca -dependabot`).
+
+The Enricher is driven with a stub of KospexDependencies: no HTTP.
+"""
+import copy
+
+from kospex.dependabot_enrich import (
+    ECOSYSTEM_MAP, SCA_FIELDS, Enricher, OK, NO_CURRENT_VERSION,
+    NO_PATCHED_VERSION, PRIVATE_SKIPPED, UNSUPPORTED_ECOSYSTEM, NOT_FOUND,
+    LOOKUP_ERROR,
+)
+
+
+class _Query:
+    last_url_error = None
+
+
+class StubDeps:
+    def __init__(self, latest="0.7.2", advisories=None, releases=True,
+                 permitted=(True, ""), unknown_versions=()):
+        self.latest = latest
+        self.advisories = advisories or {}
+        self.releases = releases
+        self.permitted = permitted
+        self.unknown_versions = unknown_versions
+        self.kospex_query = _Query()
+        self.calls = {"release_list": [], "behind_fields": [],
+                      "version_detail": [], "lookup_permitted": []}
+
+    def lookup_permitted(self, package_type, name):
+        self.calls["lookup_permitted"].append((package_type, name))
+        return self.permitted
+
+    def release_list(self, package_type, name, cache=None):
+        self.calls["release_list"].append((package_type, name))
+        return [{"version": self.latest}] if self.releases else None
+
+    def behind_fields(self, package_type, name, version, releases=None):
+        self.calls["behind_fields"].append((package_type, name, version))
+        return {"latest_version": self.latest, "behind_level": "minor",
+                "behind_major": 0, "behind_minor": 3, "behind_patch": 2,
+                "behind_other": 0, "behind_releases": 5,
+                "behind_on_major": 0, "latest_on_major": 0}
+
+    def version_detail(self, package_type, name, version, releases, **_kw):
+        self.calls["version_detail"].append((package_type, name, version))
+        if version in self.unknown_versions:
+            return None, 404
+        return {"version": version, "age_days": 400,
+                "advisories": self.advisories.get(version, [])}, 200
+
+
+def _alert(**over):
+    alert = {"ecosystem": "npm", "package": "cookie",
+             "current_version": "0.4.0", "patched_version": "0.7.0"}
+    alert.update(over)
+    return alert
+
+
+TWO = [{"id": "GHSA-aaaa-bbbb-cccc", "cvss3_score": 5.3},
+       {"id": "GHSA-dddd-eeee-ffff", "cvss3_score": None}]
+
+
+def _enrich(alert, **kw):
+    return Enricher(StubDeps(**kw)).enrich(alert)
+
+
+def test_all_keys_present_and_input_keys_first():
+    alert = _alert(extra="x")
+    before = copy.deepcopy(alert)
+    out = _enrich(alert)
+    assert list(out) == list(alert) + list(SCA_FIELDS)
+    assert alert == before
+    assert len(SCA_FIELDS) == 15
+
+
+def test_ok_row():
+    out = _enrich(_alert(), advisories={"0.7.0": TWO})
+    assert out["sca_status"] == OK == "ok"
+    assert out["sca_patched_diff_level"] == "minor"
+    assert (out["sca_patched_diff_major"], out["sca_patched_diff_minor"],
+            out["sca_patched_diff_patch"]) == (0, 3, 0)
+    assert out["sca_patched_version_vulnerabilities"] == 2
+    assert out["sca_patched_version_max_cvss"] == 5.3
+    assert out["sca_patched_ghsa_ids"] == ["GHSA-aaaa-bbbb-cccc", "GHSA-dddd-eeee-ffff"]
+    assert out["sca_latest_version"] == "0.7.2"
+    assert out["sca_behind_level"] == "minor"
+    assert out["sca_behind_releases"] == 5
+    assert out["sca_current_age_days"] == 400
+
+
+def test_raw_diff_preserved():
+    out = _enrich(_alert(current_version="1.9.9", patched_version="3.0.0"))
+    assert out["sca_patched_diff_level"] == "major"
+    assert (out["sca_patched_diff_major"], out["sca_patched_diff_minor"],
+            out["sca_patched_diff_patch"]) == (2, -9, -9)
+
+
+def test_current_version_null():
+    out = _enrich(_alert(current_version=None), advisories={"0.7.0": TWO})
+    assert out["sca_status"] == NO_CURRENT_VERSION == "no_current_version"
+    for key in ("sca_patched_diff_level", "sca_patched_diff_major",
+                "sca_behind_level", "sca_behind_major", "sca_behind_releases",
+                "sca_current_age_days"):
+        assert out[key] is None
+    assert out["sca_patched_version_vulnerabilities"] == 2
+    assert out["sca_patched_version_max_cvss"] == 5.3
+
+
+def test_patched_version_null():
+    out = _enrich(_alert(patched_version=None))
+    assert out["sca_status"] == NO_PATCHED_VERSION == "no_patched_version"
+    for key in ("sca_patched_diff_level", "sca_patched_version_vulnerabilities",
+                "sca_patched_version_max_cvss", "sca_patched_ghsa_ids"):
+        assert out[key] is None
+    assert out["sca_behind_level"] == "minor"
+    assert out["sca_latest_version"] == "0.7.2"
+
+
+def test_unsupported_ecosystem():
+    stub = StubDeps()
+    out = Enricher(stub).enrich(_alert(ecosystem="composer"))
+    assert out["sca_status"] == UNSUPPORTED_ECOSYSTEM == "unsupported_ecosystem"
+    assert all(not calls for calls in stub.calls.values())
+    assert all(out[k] is None for k in SCA_FIELDS if k != "sca_status")
+
+
+def test_private_skipped():
+    stub = StubDeps(permitted=(False, "maven:com.acme"))
+    out = Enricher(stub).enrich(_alert(ecosystem="maven", package="com.acme:x"))
+    assert out["sca_status"] == PRIVATE_SKIPPED == "private_skipped"
+    assert stub.calls["lookup_permitted"] == [("maven", "com.acme:x")]
+    assert stub.calls["release_list"] == []
+    assert stub.calls["version_detail"] == []
+
+
+def test_unknown_package():
+    out = _enrich(_alert(), releases=False)
+    assert out["sca_status"] == NOT_FOUND == "not_found"
+    assert out["sca_latest_version"] is None
+
+
+def test_lookup_error_not_stale_across_packages():
+    stub = StubDeps(releases=False)
+    stub.kospex_query.last_url_error = ConnectionError("boom")
+    enricher = Enricher(stub)
+    assert enricher.enrich(_alert())["sca_status"] == LOOKUP_ERROR == "lookup_error"
+    # A later plain 404 for another package must not inherit the old error.
+    stub.kospex_query.last_url_error = None
+    assert enricher.enrich(_alert(package="other"))["sca_status"] == NOT_FOUND
+
+
+def test_patched_version_unknown_to_deps_dev_is_not_found():
+    out = _enrich(_alert(), unknown_versions=("0.7.0",))
+    assert out["sca_status"] == NOT_FOUND
+    assert out["sca_patched_version_vulnerabilities"] is None
+    assert out["sca_patched_diff_level"] == "minor"
+
+
+def test_ecosystem_case_insensitive():
+    stub = StubDeps()
+    out = Enricher(stub).enrich(_alert(ecosystem="PIP", package="requests"))
+    assert stub.calls["release_list"] == [("pypi", "requests")]
+    assert out["sca_status"] == OK
+    assert ECOSYSTEM_MAP == {"pip": "pypi", "npm": "npm", "maven": "maven",
+                             "nuget": "nuget", "go": "go",
+                             "rubygems": "rubygems", "rust": "cargo"}
+
+
+def test_zero_advisories():
+    out = _enrich(_alert(), advisories={"0.7.0": []})
+    assert out["sca_patched_version_vulnerabilities"] == 0
+    assert out["sca_patched_version_max_cvss"] is None
+    assert out["sca_patched_ghsa_ids"] == []
+
+
+def test_caching():
+    stub = StubDeps()
+    enricher = Enricher(stub)
+    for _ in range(3):
+        enricher.enrich(_alert())
+    assert len(stub.calls["release_list"]) == 1
+    assert sorted(stub.calls["version_detail"]) == [
+        ("npm", "cookie", "0.4.0"), ("npm", "cookie", "0.7.0")]
+
+
+def test_negative_detail_cached():
+    stub = StubDeps(unknown_versions=("0.7.0",))
+    enricher = Enricher(stub)
+    for _ in range(2):
+        enricher.enrich(_alert())
+    assert stub.calls["version_detail"].count(("npm", "cookie", "0.7.0")) == 1
