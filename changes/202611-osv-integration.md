@@ -1,6 +1,7 @@
 # OSV integration (MVP: `kospex sca -package ... -osv`)
 
-Status: **design only**, nothing implemented.
+Status: **design only**, nothing implemented. The open questions are settled (see
+Decisions at the end).
 
 ## Overview
 
@@ -32,9 +33,11 @@ kospex sca -package pypi:requests@2.25.0 -osv
 kospex sca -package maven:io.netty:netty-handler@4.2.18.Final -osv
 ```
 
-- `-osv` requires `@VERSION`. OSV answers "which advisories affect this version";
-  without a version the question is "every advisory ever", which is a different
-  report. `-osv` with no version is a usage error (see open questions).
+- `-osv` requires `@VERSION`; without it, it is a usage error. OSV answers "which
+  advisories affect this version". The other question, "every advisory this package
+  has had", is advisory history and belongs in its own command. `kospex
+  advisory-history` already exists as a stub ("being redesigned"), and OSV can feed
+  it later. It is not part of this change.
 - `-osv` is refused without `-package`: with a file, there is no section to append
   to, and a per-row OSV lookup is the phase-2 estate work below.
 - The existing `-package` refusals (`-repo`, `-save`, `-out`, `-json`, `-scope`,
@@ -111,9 +114,8 @@ because it shares that function's console and refusal handling.
   `summary`, `url`.
 - `fixed_versions(record, ecosystem, name)` -> the `fixed` events from the
   `affected[]` entry for **this package** only. A record can list several packages.
-- `cvss_score(vector)` -> numeric score from a CVSS v3 vector, computed locally
-  (OSV gives a vector, not a number). v4 vectors are shown as the vector's severity
-  where `database_specific.severity` supplies one, else `-`.
+- `severity(record)` -> `(label, score, source)`, the worst of what the record
+  carries (see Severity below).
 - `compare(osv_rows, depsdev_advisories)` -> `(both, only_osv, only_depsdev)` by
   alias set.
 
@@ -195,16 +197,37 @@ Listed so the MVP does not close them off.
   a tool that reads source repositories.
 - **`-osv` only** (skip the deps.dev section) once someone wants it.
 
-## Open questions
+## Severity
 
-1. **`-osv` without `@VERSION`:** usage error (proposed), or list every advisory for
-   the package with its affected and fixed ranges? The second is useful for "has this
-   package ever had problems" but is a different table.
-2. **CVSS v3 scoring:** compute locally from the vector (proposed; small, pure,
-   testable) or depend on a library? Per the dependency-floor rule, a library is
-   only worth it if it is maintained; the v3.1 base-score formula is about 40 lines.
-3. **Which severity to show** when a record carries several (v3 and v4, or a
-   database label that disagrees with the vector). Proposal: v3 score if present,
-   else the database label, else `-`, and say which it is.
-4. **Withdrawn advisories:** show, struck or marked, in the table (proposed) or hide
-   unless asked.
+OSV does not give a number. `severity[]` holds `{type, score}`, where `score` is a
+**CVSS vector string** (`CVSS:3.1/AV:N/...`, `CVSS:4.0/...`), not a base score. Many
+records also carry a label in `database_specific.severity` (GitHub's are
+`LOW`/`MODERATE`/`HIGH`/`CRITICAL`), but that is database-specific and absent from
+some sources.
+
+Decision: **show the worst severity the record carries.**
+
+- Candidates: each CVSS vector in `severity[]` plus the `database_specific` label.
+- Order by label rank (`CRITICAL` > `HIGH` > `MODERATE`/`MEDIUM` > `LOW`), taking a
+  numeric score into a label by the CVSS bands (9.0, 7.0, 4.0). The worst wins; the
+  column says where it came from (`HIGH (CVSS 3.1)`, `HIGH (GitHub)`).
+- v3.x vectors are scored locally (the base-score formula is about 40 lines, pure
+  and testable against published examples). A v2 vector is scored the same way if
+  it is cheap, else shown as the vector's presence only.
+- **CVSS 4 is the exception.** Scoring v4 needs lookup tables, so it is not
+  hand-rolled here. A v4 vector counts only through the record's label, else it
+  shows `CVSS 4 (unscored)`. If v4-only records turn out to be common in practice,
+  the options are the Red Hat `cvss` package (supports v2, v3 and v4) under the
+  dependency-floor rule, or leaving v4 as is.
+- Worst-of is deliberate for a security view, but a v3 and a v4 score are not
+  strictly comparable. The source tag keeps that visible.
+
+## Decisions
+
+1. **`-osv` without `@VERSION`** is a usage error. Advisory history is a separate
+   command.
+2. **Scoring:** compute v3 locally from the vector, no new dependency. v4 as above.
+3. **Severity shown:** the worst of those the record carries, with its source.
+4. **Withdrawn advisories** are shown, marked `(withdrawn)` with the date, and not
+   counted in the headline total. Revisit once there is evidence for how often it
+   happens and whether anyone wants them.
