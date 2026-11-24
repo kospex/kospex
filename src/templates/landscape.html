@@ -35,22 +35,46 @@
             <!-- Chart Section -->
             <div class="bg-white rounded-lg shadow-sm mb-8">
                 <div class="p-6">
+                    {% if git_server %}{% include '_breadcrumb.html' %}{% endif %}
                     <h1 class="text-3xl font-bold text-gray-900 mb-6">Observed Technology Landscape</h1>
-                    <canvas id="barChart"></canvas>
+                    {% if scope_name %}{% include '_scope_label.html' %}{% endif %}
+                    <div class="mb-4 text-sm text-gray-700">
+                        <label for="topN" class="font-medium">Show</label>
+                        <select id="topN" class="top-n ml-1 border border-gray-300 rounded px-2 py-1">
+                            <option value="5">Top 5</option>
+                            <option value="10" selected>Top 10</option>
+                            <option value="20">Top 20</option>
+                            <option value="all">All</option>
+                        </select>
+                        <span class="text-gray-500 ml-2">by number of files</span>
+                    </div>
+                    <div style="position: relative; height: 280px;">
+                        <canvas id="barChart"></canvas>
+                    </div>
                 </div>
             </div>
 
             <!-- Download Section -->
             <div class="bg-white rounded-lg shadow-sm mb-6">
                 <div class="p-4">
-                    <a href="/landscape/{{id}}?download=true" class="text-blue-600 hover:text-blue-800 underline">Download</a>
+                    <a href="{{ download_url }}" class="text-blue-600 hover:text-blue-800 underline">Download</a>
                 </div>
             </div>
 
             <!-- Technology Table -->
             <div class="bg-white rounded-lg shadow-sm">
                 <div class="p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Technology Breakdown</h2>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">Technology Breakdown</h2>
+                    <div class="mb-4 text-sm text-gray-700">
+                        <label for="topN2" class="font-medium">Show</label>
+                        <select id="topN2" class="top-n ml-1 border border-gray-300 rounded px-2 py-1">
+                            <option value="5">Top 5</option>
+                            <option value="10" selected>Top 10</option>
+                            <option value="20">Top 20</option>
+                            <option value="all">All</option>
+                        </select>
+                        <span id="topNStatus" class="text-gray-500 ml-2"></span>
+                    </div>
                     
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200" id="myTable">
@@ -63,13 +87,13 @@
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for row in data %}
-                                <tr class="hover:bg-gray-50">
+                                <tr class="hover:bg-gray-50" data-rank="{{ loop.index0 }}">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <a href="/tech/{{ row['Language'] | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['Language'] }}</a>
+                                        <a href="/tech/{{ row['Language'] | urlencode }}{{ repo_qs }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['Language'] }}</a>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ row['count'] }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
-                                        <a href="/tech/{{ row['Language'] | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['repos'] }}</a>
+                                        <a href="/tech/{{ row['Language'] | urlencode }}{{ repo_qs }}" class="text-blue-600 hover:text-blue-800 underline">{{ row['repos'] }}</a>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -84,13 +108,15 @@
         <script src="/static/js/chart.min.js"></script>
         <script>
             const ctx = document.getElementById('barChart').getContext('2d');
-            new Chart(ctx, {
+            const allLabels = {{ data|map(attribute='Language')|list|tojson }};
+            const allCounts = {{ data|map(attribute='count')|list|tojson }};
+            const barChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: {{ data|map(attribute='Language')|list|tojson }},
+                    labels: allLabels.slice(0, 10),
                     datasets: [{
                         label: '# of Occurrences',
-                        data: {{ data|map(attribute='count')|list|tojson }},
+                        data: allCounts.slice(0, 10),
                         backgroundColor: [
                             'rgba(99, 102, 241, 0.5)',
                             'rgba(34, 197, 94, 0.5)',
@@ -112,6 +138,7 @@
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: false,
                     plugins: {
                         legend: {
                             display: false
@@ -139,12 +166,39 @@
 
         <script>
             $(document).ready(function () {
-                $("#myTable").DataTable({
+                // Top-N selector: rows arrive ranked by file count, so a row's
+                // data-rank is its position regardless of the table's sort.
+                let topN = 10;
+                $.fn.dataTable.ext.search.push(function (settings, _data, dataIndex) {
+                    if (settings.nTable.id !== "myTable") return true;
+                    const tr = settings.aoData[dataIndex].nTr;
+                    return topN === Infinity || Number(tr.dataset.rank) < topN;
+                });
+                const table = $("#myTable").DataTable({
                     responsive: true,
+                    language: { lengthMenu: "Show _MENU_ entries per page" },
                     pageLength: 25,
                     lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
                     dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
                 });
+                function applyTopN() {
+                    const v = $("#topN").val();
+                    topN = v === "all" ? Infinity : Number(v);
+                    const total = allLabels.length;
+                    $("#topNStatus").text(topN >= total
+                        ? "Showing all " + total + " technologies, ranked by number of files"
+                        : "Showing the top " + topN + " of " + total + " technologies, ranked by number of files");
+                    barChart.data.labels = allLabels.slice(0, topN);
+                    barChart.data.datasets[0].data = allCounts.slice(0, topN);
+                    barChart.update();
+                    table.draw();
+                }
+                // Both dropdowns drive the same state.
+                $(".top-n").on("change", function () {
+                    $(".top-n").val($(this).val());
+                    applyTopN();
+                });
+                applyTopN();
             });
         </script>
     </body>

@@ -38,7 +38,7 @@
                     <div class="p-6 text-center">
                         <h4 class="text-lg font-medium text-gray-900 mb-2"># of Authors</h4>
                         <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ data['authors'] }}</h2>
-                        <a href="/developers/" class="text-blue-600 hover:text-blue-800 underline">View More</a>
+                        <a href="{{ more_url }}" class="text-blue-600 hover:text-blue-800 underline">View More</a>
                     </div>
                 </div>
 
@@ -47,7 +47,7 @@
                     <div class="p-6 text-center">
                         <h4 class="text-lg font-medium text-gray-900 mb-2"># of Committers</h4>
                         <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ data['committers'] }}</h2>
-                        <a href="/developers/" class="text-blue-600 hover:text-blue-800 underline">View More</a>
+                        <a href="{{ more_url }}" class="text-blue-600 hover:text-blue-800 underline">View More</a>
                     </div>
                 </div>
             </div>
@@ -56,9 +56,9 @@
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-6">
                 <div class="p-4">
                     <div class="flex flex-wrap gap-4 text-sm">
-                        <a href="/developers/?download=true" class="text-blue-600 hover:text-blue-800 underline">Download</a>
+                        <a href="{{ download_url }}" class="text-blue-600 hover:text-blue-800 underline">Download</a>
                         <span class="text-gray-500">|</span>
-                        <a href="/developers/?days=90" class="text-blue-600 hover:text-blue-800 underline">Show active developers (last 90 days)</a>
+                        <a href="{{ active_url }}" class="text-blue-600 hover:text-blue-800 underline">Show active developers (last 90 days)</a>
                     </div>
                 </div>
             </div>

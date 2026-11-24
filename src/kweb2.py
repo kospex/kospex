@@ -9,7 +9,7 @@ from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from typing import Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import (
@@ -1180,9 +1180,28 @@ def landscape(request: Request, id: Optional[str] = None):
             # Download tech landscape data as CSV
             return download_csv_fastapi(data, "tech_landscape.csv")
         else:
+            # Repo scope: breadcrumb (server / org / repo / page), and the
+            # per-technology links carry repo_id so /tech/ lists only this
+            # repo's files.
+            crumbs = (KospexWeb.scope_context(
+                {"repo_id": repo_id} if repo_id else {"org_key": org_key},
+                "Technology Landscape") if (repo_id or org_key) else {})
+            repo_qs = (f"?repo_id={quote(repo_id, safe='')}" if repo_id else
+                       f"?org_key={quote(org_key, safe='')}" if org_key else "")
+            # Download keeps whichever scope the page was opened with: a path
+            # id, ?repo_id= or ?org_key= (an empty id rendered "/landscape/None").
+            if id:
+                download_url = f"/landscape/{quote(id, safe='~')}?download=true"
+            elif repo_id:
+                download_url = f"/landscape/?repo_id={quote(repo_id, safe='')}&download=true"
+            elif org_key:
+                download_url = f"/landscape/?org_key={quote(org_key, safe='')}&download=true"
+            else:
+                download_url = "/landscape/?download=true"
             return templates.TemplateResponse(
                 request, "landscape.html",
-                {"data": data, "org_key": org_key, "id": id},
+                {"data": data, "org_key": org_key, "id": id,
+                 "repo_qs": repo_qs, "download_url": download_url, **crumbs},
             )
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any
@@ -1200,16 +1219,20 @@ def developers(request: Request, id: Optional[str] = None):
     """Developer info page"""
     try:
         logger.info("Developers page requested")
-        _require_known_scope(KospexWeb.get_id_params(id), id)
+        params = KospexWeb.get_id_params(id)
+        _require_known_scope(params, id)
 
         author_email = request.query_params.get("author_email")
         download = request.query_params.get("download")
         days = request.query_params.get("days")
-        org_key = request.query_params.get("org_key")
+        repo_id = request.query_params.get("repo_id") or params.get("repo_id")
+        org_key = request.query_params.get("org_key") or params.get("org_key")
+        if repo_id:
+            org_key = None
         debug = locals()
         logger.info(debug)
 
-        devs = KospexQuery().authors(days=days, org_key=org_key)
+        devs = KospexQuery().authors(days=days, org_key=org_key, repo_id=repo_id)
 
         if author_email:
             logger.info(f"Developer view requested for: {author_email}")
@@ -1245,9 +1268,24 @@ def developers(request: Request, id: Optional[str] = None):
         elif download:
             return download_csv_fastapi(devs, "developers.csv")
         else:
-            data = KospexQuery().summary(days=days, org_key=org_key)
+            data = KospexQuery().summary(
+                days=days, org_key=org_key, repo_id=repo_id)
+
+            # Links on the page keep whichever scope it was opened with.
+            scope = ({"repo_id": repo_id} if repo_id else
+                     {"org_key": org_key} if org_key else {})
+
+            def _url(**extra):
+                query = urlencode({**scope, **extra})
+                return "/developers/" + (f"?{query}" if query else "")
+
             return templates.TemplateResponse(
-                request, "developers.html", {"authors": devs, "data": data}
+                request, "developers.html",
+                {"authors": devs, "data": data,
+                 "more_url": _url(),
+                 "download_url": _url(download="true",
+                                      **({"days": days} if days else {})),
+                 "active_url": _url(days=90)},
             )
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any
@@ -1481,6 +1519,10 @@ def repo_with_tech(request: Request, tech: str):
         logger.info(f"Tech filtering page requested for technology: {tech}")
 
         repo_id = request.query_params.get("repo_id")
+        # Org scope only narrows the repository listing; a repo_id wins.
+        org_key = None if repo_id else request.query_params.get("org_key")
+        if org_key:
+            _require_known_scope({"org_key": org_key}, org_key)
         absent = _absent_requested(request)
         kospex = KospexQuery()
         template = "repos-tech.html"
@@ -1496,10 +1538,10 @@ def repo_with_tech(request: Request, tech: str):
                 repos_with_tech = kospex.repo_files(tech, repo_id=repo_id)
                 template = "repo_files.html"
             elif absent:
-                repos_with_tech = kospex.repos_without_tech(tech)
-                universe = kospex.count_repos_with_file_metadata()
+                repos_with_tech = kospex.repos_without_tech(tech, org_key=org_key)
+                universe = kospex.count_repos_with_file_metadata(org_key=org_key)
             else:
-                repos_with_tech = kospex.repos_with_tech(tech)
+                repos_with_tech = kospex.repos_with_tech(tech, org_key=org_key)
                 if not repos_with_tech:
                     # No current file anywhere has it, so this is a bad URL,
                     # not an estate with none of it. A 200 with an empty table
@@ -1509,7 +1551,7 @@ def repo_with_tech(request: Request, tech: str):
                 # The other side of the estate, as on /tag/: how many
                 # repositories we have looked at and found no file of this
                 # technology in.
-                universe = kospex.count_repos_with_file_metadata()
+                universe = kospex.count_repos_with_file_metadata(org_key=org_key)
                 absent_count = max(universe - len(repos_with_tech), 0)
         except ValueError as error:
             # Both words, because /tech/ serves scc's `Language` and what the
@@ -1526,7 +1568,12 @@ def repo_with_tech(request: Request, tech: str):
 
         # Breadcrumb for the per-repository drill-down: server / org / repo / page.
         crumbs = (KospexWeb.scope_context({"repo_id": repo_id}, f"Technology: {tech}")
-                  if repo_id else {"page": {}})
+                  if repo_id else
+                  KospexWeb.scope_context({"org_key": org_key}, f"Technology: {tech}")
+                  if org_key else {"page": {}})
+        absent_url = f"/tech/{quote(tech, safe='')}?absent=true"
+        if org_key:
+            absent_url += f"&org_key={quote(org_key, safe='')}"
 
         return templates.TemplateResponse(
             request, template,
@@ -1537,7 +1584,7 @@ def repo_with_tech(request: Request, tech: str):
              "repo_count": None if repo_id else len(repos_with_tech),
              "absent_view": absent and not repo_id,
              "absent_count": absent_count,
-             "absent_url": f"/tech/{quote(tech, safe='')}?absent=true",
+             "absent_url": absent_url,
              "universe_count": universe,
              **crumbs},
         )
@@ -1603,6 +1650,10 @@ def repo_with_tag(request: Request, tag: str):
         logger.info(f"Tag filtering page requested for tag: {tag}")
 
         repo_id = request.query_params.get("repo_id")
+        # Org scope only narrows the repository listing; a repo_id wins.
+        org_key = None if repo_id else request.query_params.get("org_key")
+        if org_key:
+            _require_known_scope({"org_key": org_key}, org_key)
         absent = _absent_requested(request)
         kospex = KospexQuery()
         template = "repos-tech.html"
@@ -1616,15 +1667,15 @@ def repo_with_tag(request: Request, tag: str):
                 data = kospex.repo_files_by_tag(tag, repo_id=repo_id)
                 template = "repo_files.html"
             elif absent:
-                data = kospex.repos_without_tag(tag)
-                universe = kospex.count_repos_with_file_metadata()
+                data = kospex.repos_without_tag(tag, org_key=org_key)
+                universe = kospex.count_repos_with_file_metadata(org_key=org_key)
             else:
-                data = kospex.repos_with_tag(tag)
+                data = kospex.repos_with_tag(tag, org_key=org_key)
                 # The other side of the estate: how many repositories we have
                 # looked at and found no file with this tag. This is the
                 # adoption question -- "everyone should have a Dependabot
                 # file" is only readable next to how many don't.
-                universe = kospex.count_repos_with_file_metadata()
+                universe = kospex.count_repos_with_file_metadata(org_key=org_key)
                 absent_count = max(universe - len(data), 0)
         except ValueError as error:
             # where_tag() rejects a tag panopticas does not define. That is a
@@ -1638,7 +1689,12 @@ def repo_with_tag(request: Request, tag: str):
         retired, replacement = retired_tag_replacement(tag)
         # Breadcrumb for the per-repository drill-down: server / org / repo / page.
         crumbs = (KospexWeb.scope_context({"repo_id": repo_id}, f"Tag: {tag}")
-                  if repo_id else {"page": {}})
+                  if repo_id else
+                  KospexWeb.scope_context({"org_key": org_key}, f"Tag: {tag}")
+                  if org_key else {"page": {}})
+        absent_url = f"/tag/{quote(tag, safe='')}?absent=true"
+        if org_key:
+            absent_url += f"&org_key={quote(org_key, safe='')}"
 
         return templates.TemplateResponse(
             request, template,
@@ -1648,7 +1704,7 @@ def repo_with_tag(request: Request, tag: str):
              "repo_count": None if repo_id else len(data),
              "absent_view": absent and not repo_id,
              "absent_count": absent_count,
-             "absent_url": f"/tag/{quote(tag, safe='')}?absent=true",
+             "absent_url": absent_url,
              "universe_count": universe,
              **crumbs},
         )

@@ -377,7 +377,7 @@ class _FakeQuery:
          "_git_owner": "acme", "_git_repo": "two", "count": 1},
     ]
 
-    def repos_with_tag(self, tag):
+    def repos_with_tag(self, tag, org_key=None):
         if self.reject:
             raise ValueError(f"Tag '{tag}' is not a known tag")
         self.calls.append(("repos_with_tag", tag))
@@ -388,17 +388,17 @@ class _FakeQuery:
          "_git_owner": "acme", "_git_repo": "three", "count": 9},
     ]
 
-    def repos_without_tag(self, tag):
+    def repos_without_tag(self, tag, org_key=None):
         if self.reject:
             raise ValueError(f"Tag '{tag}' is not a known tag")
         self.calls.append(("repos_without_tag", tag))
         return list(self._ABSENT)
 
-    def count_repos_with_file_metadata(self):
+    def count_repos_with_file_metadata(self, org_key=None):
         self.calls.append(("count_repos_with_file_metadata",))
         return 3
 
-    def repos_with_tech(self, tech):
+    def repos_with_tech(self, tech, org_key=None):
         self.calls.append(("repos_with_tech", tech))
         # Unlike repos_with_tag(), this never raises -- there is no vocabulary
         # to reject a Language against, so an unknown one is simply empty, and
@@ -409,7 +409,7 @@ class _FakeQuery:
         self.calls.append(("has_tech", tech))
         return not self.reject
 
-    def repos_without_tech(self, tech):
+    def repos_without_tech(self, tech, org_key=None):
         if self.reject:
             raise ValueError(f"No files with technology '{tech}'")
         self.calls.append(("repos_without_tech", tech))
@@ -551,7 +551,7 @@ class TestRenderedListing:
         fake = _FakeQuery()
         monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: fake)
         monkeypatch.setattr(
-            fake, "repos_with_tag", lambda tag: [_FakeQuery._REPOS[0]])
+            fake, "repos_with_tag", lambda tag, org_key=None: [_FakeQuery._REPOS[0]])
         request = Request({
             "type": "http", "method": "GET", "path": "/tag/llms.txt",
             "headers": [], "query_string": b"", "app": kweb2.app,
@@ -793,7 +793,7 @@ class TestPositiveViewMentionsAbsent:
             self, fake_query, monkeypatch):
         fake = _FakeQuery()
         monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: fake)
-        monkeypatch.setattr(fake, "count_repos_with_file_metadata", lambda: 5)
+        monkeypatch.setattr(fake, "count_repos_with_file_metadata", lambda org_key=None: 5)
 
         body = kweb2.repo_with_tag(_request(), tag="AI").body.decode()
 
