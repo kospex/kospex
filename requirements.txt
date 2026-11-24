@@ -2,7 +2,7 @@ annotated-doc==0.0.7
 annotated-types==0.8.0
 anyio==4.16.0
 certifi==2026.11.20
-charset-normalizer==3.5.2
+charset-normalizer==3.5.3
 click-default-group==1.2.4
 click==8.5.1
 fastapi==0.146.0
@@ -13,7 +13,7 @@ markdown-it-py==4.3.0
 markupsafe==3.0.4
 mdurl==0.1.2
 opentelemetry-api==1.45.2
-packaging==26.3
+packaging==26.4
 panopticas==0.0.24
 pathspec==1.1.1
 pip==26.3
