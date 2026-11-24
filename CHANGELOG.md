@@ -6,6 +6,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 
+- **Landscape page scoping.** `/landscape/` with `?repo_id=` or `?org_key=` now has
+  the server / org / repo breadcrumb and scope label, and its technology links stay in
+  that scope. `/tech/{tech}` accepts `?org_key=` (the repository list, the "do not
+  have" view and its counts), and the Organisation page's Tech links use it. A
+  Top 5 / 10 / 20 / All selector, above the chart and in the Technology Breakdown,
+  limits both chart and table. The chart has a fixed height, and the Download link
+  no longer renders `/landscape/None` for a `?repo_id=` scope.
+
 - **`kospex sca -package TYPE:NAME@VERSION -osv`** adds OSV's advisories for that
   version after deps.dev's: the fixed version, the worst severity with where it came
   from, withdrawn advisories marked, and a comparison of what each source lists. It

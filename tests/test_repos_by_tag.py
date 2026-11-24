@@ -394,11 +394,11 @@ class _FakeQuery:
         self.calls.append(("repos_without_tag", tag))
         return list(self._ABSENT)
 
-    def count_repos_with_file_metadata(self):
+    def count_repos_with_file_metadata(self, org_key=None):
         self.calls.append(("count_repos_with_file_metadata",))
         return 3
 
-    def repos_with_tech(self, tech):
+    def repos_with_tech(self, tech, org_key=None):
         self.calls.append(("repos_with_tech", tech))
         # Unlike repos_with_tag(), this never raises -- there is no vocabulary
         # to reject a Language against, so an unknown one is simply empty, and
@@ -409,7 +409,7 @@ class _FakeQuery:
         self.calls.append(("has_tech", tech))
         return not self.reject
 
-    def repos_without_tech(self, tech):
+    def repos_without_tech(self, tech, org_key=None):
         if self.reject:
             raise ValueError(f"No files with technology '{tech}'")
         self.calls.append(("repos_without_tech", tech))

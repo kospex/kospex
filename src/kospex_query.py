@@ -291,15 +291,21 @@ class KospexQuery:
 
         return data
 
-    def repos_with_tech(self, tech):
-        """Find repos with the given technology."""
+    def repos_with_tech(self, tech, org_key=None):
+        """Find repos with the given technology, optionally within one org."""
 
         params = []
         params.append(tech)
 
-        summary_sql = """SELECT _repo_id, _git_server, _git_owner, _git_repo, count(*) 'count'
+        org_clause = ""
+        if org_key:
+            server, org = _org_key_parts(org_key)
+            params.extend([server, org])
+            org_clause = "AND _git_server = ? AND _git_owner = ?"
+
+        summary_sql = f"""SELECT _repo_id, _git_server, _git_owner, _git_repo, count(*) 'count'
         FROM file_metadata
-        WHERE Language = ? AND latest = 1
+        WHERE Language = ? AND latest = 1 {org_clause}
         GROUP BY _repo_id
         ORDER BY count DESC
         """
@@ -334,7 +340,7 @@ class KospexQuery:
 
         return kd.execute()
 
-    def repos_with_file_metadata(self):
+    def repos_with_file_metadata(self, org_key=None):
         """Every repository we have current file metadata for, with its size.
 
         The universe for any "which repositories are missing X?" question.
@@ -349,12 +355,16 @@ class KospexQuery:
         kd.select("_repo_id", "_git_server", "_git_owner", "_git_repo")
         kd.select_as("count(*)", "count")
         kd.where("latest", "=", 1)
+        if org_key:
+            server, org = _org_key_parts(org_key)
+            kd.where("_git_server", "=", server)
+            kd.where("_git_owner", "=", org)
         kd.group_by("_repo_id")
         kd.order_by("count")
 
         return kd.execute()
 
-    def count_repos_with_file_metadata(self):
+    def count_repos_with_file_metadata(self, org_key=None):
         """How many repositories repos_with_file_metadata() would return.
 
         Its own query because the count is wanted on the tag listing, where
@@ -367,6 +377,10 @@ class KospexQuery:
         # argument for the space, and then drops the column silently.
         kd.select_raw("count(DISTINCT _repo_id) AS count")
         kd.where("latest", "=", 1)
+        if org_key:
+            server, org = _org_key_parts(org_key)
+            kd.where("_git_server", "=", server)
+            kd.where("_git_owner", "=", org)
 
         rows = kd.execute()
 
@@ -413,7 +427,7 @@ class KospexQuery:
 
         return bool(kd.execute())
 
-    def repos_without_tech(self, tech):
+    def repos_without_tech(self, tech, org_key=None):
         """Repositories with current file metadata and no file of that Language.
 
         The Language counterpart of repos_without_tag(), sharing the same
@@ -433,7 +447,7 @@ class KospexQuery:
             raise ValueError(
                 f"No current file has the technology '{tech}'")
 
-        return [row for row in self.repos_with_file_metadata()
+        return [row for row in self.repos_with_file_metadata(org_key=org_key)
                 if row["_repo_id"] not in present]
 
     def repo_files_by_tag(self, tag, repo_id=None):
