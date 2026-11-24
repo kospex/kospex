@@ -109,6 +109,7 @@ def test_go_version_without_v_is_found():
     assert out["sca_behind_releases"] == 2
     assert out["sca_patched_version_vulnerabilities"] == 0
     assert out["sca_patched_diff_level"] == "minor"
+    assert out["sca_patched_releases"] == 1     # v0.17.0 only; latest is two releases away
 
 
 def test_go_version_with_v_is_not_doubled():
@@ -169,6 +170,38 @@ def test_ages_of_current_patched_and_latest_versions():
     assert out["sca_current_age_days"] == 1316
     assert out["sca_patched_age_days"] == 394
     assert out["sca_latest_age_days"] == 30
+
+
+def _requests_with_a_prerelease():
+    r = {}
+    _add_package(r, "pypi", "requests", [
+        _ver("pypi", "requests", "2.25.0", "2020-11-11T00:00:00Z"),
+        _ver("pypi", "requests", "2.26.0", "2021-07-13T00:00:00Z"),
+        _ver("pypi", "requests", "2.27.0", "2022-01-03T00:00:00Z"),
+        _ver("pypi", "requests", "2.28.0", "2022-06-09T00:00:00Z"),
+        _ver("pypi", "requests", "2.30.0rc1", "2023-04-20T00:00:00Z"),
+        _ver("pypi", "requests", "2.31.0", "2023-05-22T00:00:00Z"),
+        _ver("pypi", "requests", "2.32.0", "2024-05-20T00:00:00Z", default=True)])
+    return r
+
+
+def test_patched_releases_counts_to_patched_while_behind_counts_to_latest():
+    """2.25.0 -> patched 2.28.0 is 3 releases; to latest 2.32.0 it is 5 (the 2.30.0rc1
+    pre-release is skipped by both)."""
+    out = _enrich(FakeQuery(_requests_with_a_prerelease()),
+                  _alert("pip", "requests", "= 2.25.0", "2.28.0"))
+    assert out["sca_status"] == "ok"
+    assert out["sca_patched_releases"] == 3
+    assert out["sca_behind_releases"] == 5
+    assert out["sca_latest_version"] == "2.32.0"
+
+
+def test_patched_releases_null_when_the_patched_version_is_below_the_current():
+    out = _enrich(FakeQuery(_requests_with_a_prerelease()),
+                  _alert("pip", "requests", "= 2.31.0", "2.28.0"))
+    assert out["sca_patched_diff_level"] == "downgrade"
+    assert out["sca_patched_releases"] is None
+    assert out["sca_behind_releases"] == 1      # the latest count is unaffected
 
 
 def test_latest_age_for_go_uses_the_v_prefixed_release():

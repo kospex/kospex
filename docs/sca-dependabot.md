@@ -87,20 +87,22 @@ The distance from the installed version to the **latest** release, using the sam
 | `sca_latest_version` | The latest release |
 | `sca_latest_age_days` | Age of the latest release in days. Null with `sca_latest_version`, or when deps.dev lists that release without a publish date. Read from the release list, so it costs no extra request |
 | `sca_behind_level` | `major`, `minor`, `patch` or `none`: the largest component that differs; `ahead` when the installed version is above the latest release (deps.dev's default can trail a release), in which case the counts are null |
-| `sca_behind_major`, `sca_behind_minor`, `sca_behind_patch` | How far behind, by version number, per component |
-| `sca_behind_releases` | How many releases have been published since the installed one |
+| `sca_behind_major`, `sca_behind_minor`, `sca_behind_patch` | How far behind along the **upgrade path**, per component: the first release of each minor line plus the patches of the newest minor line of each major. Patches to a minor line that a newer minor superseded are not on the path, so these three do not add up to `sca_behind_releases` |
+| `sca_behind_releases` | How many releases lie between the installed version and the **latest** release, counted by **version number, not by publish date**: every stable release deps.dev lists above the installed version, up to and including the latest. It includes patches to minor lines a newer minor superseded, and skips pre-releases. A backport published later but numbered below the installed version is not counted. To the first *fixed* version instead, see `sca_patched_releases` |
 | `sca_current_age_days` | Age in days of the installed version (the alert's `current_version`, not the fix or the latest). Null when deps.dev has no publish date or that lookup failed; a failed lookup here does not change `sca_status` |
 
 ### Current version to patched version (the `sca_patched_diff_*` fields)
 
-The size of the **minimum upgrade**: installed version to the first fixed version. Computed
-offline by `kospex.dependencies.version_diff`. Null unless both `current_version` and
-`patched_version` are present and both parse as versions.
+The size of the **minimum upgrade**: installed version to the first fixed version. The
+`sca_patched_diff_*` fields are computed offline by `kospex.dependencies.version_diff` and
+are null unless both `current_version` and `patched_version` are present and both parse as
+versions. `sca_patched_releases` counts releases from deps.dev's release list instead.
 
 | Field | Meaning |
 |---|---|
 | `sca_patched_diff_level` | `major`, `minor`, `patch`, `none` or `downgrade` |
 | `sca_patched_diff_major`, `_minor`, `_patch` | The **raw per-component difference**, patched minus current |
+| `sca_patched_releases` | How many releases lie between the installed version and the **patched** version, counted exactly as `sca_behind_releases` is (by version number, stable releases, above the installed version up to and including the patched one) but stopping at the first fixed version instead of the latest. Null when either version is a pre-release, when the patched version is below the installed one (`sca_patched_diff_level` is `downgrade`), when a version has no leading number, or when `current_version` or `patched_version` is missing. It does not need deps.dev to know the patched version, so a `not_found` row can still carry it |
 
 **The raw-diff caveat.** The components are subtracted independently, so they can be
 negative: `1.9.9` to `3.0.0` is major `2`, minor `-9`, patch `-9`. Read
@@ -205,7 +207,7 @@ An alert as `kgit github --dependabot` writes it (see the
 lookups (abbreviated, `...` marks unchanged input keys):
 
 ```json
-{"repo_id": "github.com~acme~payments", ..., "package_ecosystem": "npm", "package_name": "cookie", ..., "current_version": "0.4.0", "patched_version": "0.7.0", ..., "sca_status": "ok", "sca_latest_version": "2.0.2", "sca_latest_age_days": 17, "sca_behind_level": "major", "sca_behind_major": 2, "sca_behind_minor": 4, "sca_behind_patch": 5, "sca_behind_releases": 15, "sca_current_age_days": 2748, "sca_patched_diff_level": "minor", "sca_patched_diff_major": 0, "sca_patched_diff_minor": 3, "sca_patched_diff_patch": 0, "sca_patched_age_days": 781, "sca_patched_version_vulnerabilities": 0, "sca_patched_version_max_cvss": null, "sca_patched_ghsa_ids": []}
+{"repo_id": "github.com~acme~payments", ..., "package_ecosystem": "npm", "package_name": "cookie", ..., "current_version": "0.4.0", "patched_version": "0.7.0", ..., "sca_status": "ok", "sca_latest_version": "2.0.2", "sca_latest_age_days": 17, "sca_behind_level": "major", "sca_behind_major": 2, "sca_behind_minor": 4, "sca_behind_patch": 5, "sca_behind_releases": 15, "sca_current_age_days": 2748, "sca_patched_diff_level": "minor", "sca_patched_diff_major": 0, "sca_patched_diff_minor": 3, "sca_patched_diff_patch": 0, "sca_patched_releases": 5, "sca_patched_age_days": 781, "sca_patched_version_vulnerabilities": 0, "sca_patched_version_max_cvss": null, "sca_patched_ghsa_ids": []}
 ```
 
 Reading it: the installed `cookie` 0.4.0 is two majors behind the latest release (2.0.2)

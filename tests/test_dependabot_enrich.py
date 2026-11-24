@@ -24,8 +24,11 @@ class _Query:
 class StubDeps:
     def __init__(self, latest="0.7.2", advisories=None, releases=True,
                  permitted=(True, ""), unknown_versions=(), release_status=404, detail_status=404,
-                 ages=None, latest_published="2026-11-14T00:00:00Z"):
+                 ages=None, latest_published="2026-11-14T00:00:00Z",
+                 patched_releases=4, between_level="minor"):
         self.latest = latest
+        self.patched_releases = patched_releases
+        self.between_level = between_level
         self.ages = ages or {}
         self.latest_published = latest_published
         self.advisories = advisories or {}
@@ -35,7 +38,7 @@ class StubDeps:
         self.detail_status = detail_status
         self.kospex_query_status = release_status
         self.kospex_query = _Query()
-        self.calls = {"release_list": [], "behind_fields": [],
+        self.calls = {"release_list": [], "behind_fields": [], "releases_between": [],
                       "version_detail": [], "lookup_permitted": []}
 
     def lookup_permitted(self, package_type, name):
@@ -58,6 +61,11 @@ class StubDeps:
                 "behind_major": 0, "behind_minor": 3, "behind_patch": 2,
                 "behind_other": 0, "behind_releases": 5,
                 "behind_on_major": 0, "latest_on_major": 0}
+
+    def releases_between(self, package_type, name, from_version, to_version=None,
+                         releases=None):
+        self.calls["releases_between"].append((package_type, name, from_version, to_version))
+        return {"level": self.between_level, "releases": self.patched_releases}
 
     def version_detail(self, package_type, name, version, releases, **_kw):
         self.calls["version_detail"].append((package_type, name, version))
@@ -114,7 +122,7 @@ def test_all_keys_present_and_input_keys_first():
     out = _enrich(alert)
     assert list(out) == list(alert) + list(SCA_FIELDS)
     assert alert == before
-    assert len(SCA_FIELDS) == 17
+    assert len(SCA_FIELDS) == 18
 
 
 def test_ok_row():
@@ -139,6 +147,37 @@ def test_ages_of_current_patched_and_latest_are_separate():
     assert out["sca_latest_age_days"] == 10   # published 2026-11-14, now 2026-11-24
     assert len({out["sca_current_age_days"], out["sca_patched_age_days"],
                 out["sca_latest_age_days"]}) == 3
+
+
+def test_patched_releases_counts_to_the_patched_version_not_latest():
+    stub = StubDeps(patched_releases=4)   # behind_fields (to latest) says 5
+    out = Enricher(stub, now=NOW).enrich(_alert())
+    assert out["sca_patched_releases"] == 4
+    assert out["sca_behind_releases"] == 5
+    assert stub.calls["releases_between"] == [("npm", "cookie", "0.4.0", "0.7.0")]
+
+
+def test_patched_releases_null_without_both_versions():
+    for over in ({"current_version": None}, {"patched_version": None}):
+        stub = StubDeps()
+        out = Enricher(stub, now=NOW).enrich(_alert(**over))
+        assert out["sca_patched_releases"] is None
+        assert stub.calls["releases_between"] == []
+
+
+def test_patched_releases_null_on_a_downgrade():
+    out = _enrich(_alert(current_version="2.0.0", patched_version="1.9.0"),
+                  between_level="downgrade", patched_releases=0)
+    assert out["sca_patched_diff_level"] == "downgrade"
+    assert out["sca_patched_releases"] is None
+
+
+def test_patched_releases_null_for_a_prerelease_current_or_patched():
+    for over in ({"current_version": "1.0.0-rc.1"}, {"patched_version": "1.2.0-beta.1"}):
+        stub = StubDeps()
+        out = Enricher(stub, now=NOW).enrich(_alert(**over))
+        assert out["sca_patched_releases"] is None
+        assert stub.calls["releases_between"] == []
 
 
 def test_latest_age_null_when_release_is_undated():

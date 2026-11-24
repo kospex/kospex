@@ -41,6 +41,8 @@ Current -> patched version (existing `version_diff()` / `change_level()` in
 
 - `sca_patched_diff_level` (major / minor / patch / none / downgrade)
 - `sca_patched_diff_major`, `sca_patched_diff_minor`, `sca_patched_diff_patch`
+- `sca_patched_releases`: how many releases lie between the installed and the patched
+  version, counted like `sca_behind_releases` (see "Added after the design")
 
 Raw means 1.9.9 -> 3.0.0 is major 2, minor -9, patch -9; read the level for
 direction. This is the rough size of the minimum upgrade. The `behind_*` fields
@@ -111,3 +113,12 @@ Found comparing the built code to this design (2026-11-24):
 patched version's age comes from the lookup already made for its advisories, the latest
 release's from the release list. Whole days to the run date, null when deps.dev has no
 publish date.
+
+`sca_patched_releases` was added the same way, because `sca_behind_releases` only measures
+to the *latest* release and nothing counted the releases to the *fixed* one. It uses
+`releases_between(current, to_version=patched)`: stable releases by version number above the
+installed version up to and including the patched one. Null when either version is a
+pre-release, on a downgrade, or when either version is missing. The `sca_behind_releases`
+wording in `docs/sca-dependabot.md` was also tightened: it counts by version number, not
+publish date, and includes patches to superseded minor lines, which is why the
+`sca_behind_major` / `_minor` / `_patch` upgrade-path counts do not sum to it.

@@ -15,6 +15,7 @@ import json
 import os
 
 from kospex.dependencies.version_diff import change_level, version_diff
+from kospex.prerelease import is_prerelease
 
 # GitHub ecosystem name (lower case) -> kospex / deps.dev package type.
 ECOSYSTEM_MAP = {
@@ -57,6 +58,7 @@ SCA_FIELDS = (
     "sca_patched_diff_major",
     "sca_patched_diff_minor",
     "sca_patched_diff_patch",
+    "sca_patched_releases",
     "sca_patched_age_days",
     "sca_patched_version_vulnerabilities",
     "sca_patched_version_max_cvss",
@@ -149,12 +151,31 @@ class Enricher:
                 fields["sca_patched_diff_major"] = diff["major"]
                 fields["sca_patched_diff_minor"] = diff["minor"]
                 fields["sca_patched_diff_patch"] = diff["patch"]
+            fields["sca_patched_releases"] = self._releases_to_patched(
+                package_type, name, current_lookup, patched_lookup, releases)
 
         if not current:
             return NO_CURRENT_VERSION
         if not patched:
             return NO_PATCHED_VERSION
         return patched_status
+
+    def _releases_to_patched(self, package_type, name, current, patched, releases):
+        """Releases deps.dev lists above `current`, up to and including `patched`.
+
+        Counted like `sca_behind_releases` (by version number, pre-releases
+        skipped) but to the first fixed version instead of the latest. None
+        when either version is a pre-release (release numbers alone would read
+        `1.2.3-rc.1` as 1.2.3), when `patched` is below `current`, or when a
+        version has no leading number.
+        """
+        if is_prerelease(package_type, current) or is_prerelease(package_type, patched):
+            return None
+        between = self.kdeps.releases_between(
+            package_type, name, current, to_version=patched, releases=releases)
+        if between is None or between["level"] == "downgrade":
+            return None
+        return between["releases"]
 
     def _release_age_days(self, releases, version):
         """Whole days since `version` was published, from the release list, or None.
