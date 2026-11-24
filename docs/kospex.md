@@ -307,6 +307,37 @@ score and title.
   deps.dev doesn't have exits with an error.
 - The version follows the last `@`, so npm scopes work as written.
 
+**Adding OSV.** `-osv` follows deps.dev's output with the advisories
+[OSV](https://osv.dev) lists for the same version. It needs `@VERSION`:
+
+```bash
+kospex sca -package pypi:requests@2.25.0 -osv
+```
+
+```
+OSV: 4 advisories for pypi requests 2.25.0.
+  Advisory             Severity               Fixed in   Published    Summary
+  GHSA-9hjg-9r4m-...   MEDIUM 5.3 (CVSS 3.1)  2.32.4     2025-06-09   Requests vulnerable to ...
+Compared with deps.dev: 4 in both, 0 only in OSV, 0 only in deps.dev.
+```
+
+- **Fixed in** is the version that fixes it, which deps.dev's table doesn't
+  give. A `*` means OSV lists a fix for each release line and doesn't say
+  which applies to yours. OSV doesn't list a Go package's versions, so a Go
+  advisory with several release lines always shows it.
+- **Severity** is the worst the advisory carries, with its source. CVSS 3
+  vectors are scored by kospex. CVSS 4 is not scored, so an advisory rated
+  only under CVSS 4 shows the database's own label (such as `MEDIUM (GitHub)`),
+  or `UNSCORED` when there is none.
+- OSV files one vulnerability under several IDs (a GHSA and a PYSEC record), so
+  records that share an ID or alias are shown once. Withdrawn advisories are
+  shown, marked, and not counted.
+- The last line compares the two sources and names any advisory only one of
+  them lists.
+- If OSV doesn't answer, deps.dev's output and the exit code are unchanged.
+- Only the package name, ecosystem and version are sent, and never for a
+  name that matches `KOSPEX_DEPS_PRIVATE`.
+
 `maven:` entries cover Gradle files too. See
 [krunner osi, Private packages](krunner.md#private-packages) for how
 prefixes match.
