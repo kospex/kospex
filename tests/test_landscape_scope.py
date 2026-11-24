@@ -284,3 +284,211 @@ class TestOrgViewLinks:
                ).read_text()
 
         assert "?org_key={{ org_key | urlencode }}" in src
+
+
+# --- /tag/ org scope and the Developers page ---------------------------------
+
+def _tag_row(org, repo, filename, tags):
+    row = _row(org, repo, filename, "Markdown")
+    row["tech_type"] = tags
+    return row
+
+
+def _seed_tag_db():
+    db = sqlite_utils.Database(memory=True)
+    db.execute(KospexSchema.SQL_CREATE_FILE_METADATA)
+    db[KospexSchema.TBL_FILE_METADATA].insert_all([
+        _tag_row("acme", "one", "CLAUDE.md", "|AI|"),
+        _tag_row("acme", "two", "README.md", "|license|"),
+        _tag_row("other", "three", "CLAUDE.md", "|AI|"),
+    ], pk=["Provider", "hash", "_repo_id"])
+    return db
+
+
+class TestTagOrgScopedQueries:
+
+    def test_repos_with_tag_org_scope_excludes_the_other_org(self):
+        kq = KospexQuery(kospex_db=_seed_tag_db())
+
+        assert {r["_repo_id"] for r in kq.repos_with_tag("AI")} == {
+            "github.com~acme~one", "github.com~other~three"}
+        assert [r["_repo_id"] for r in kq.repos_with_tag(
+            "AI", org_key="github.com~acme")] == ["github.com~acme~one"]
+
+    def test_repos_without_tag_is_relative_to_the_org(self):
+        rows = KospexQuery(kospex_db=_seed_tag_db()).repos_without_tag(
+            "AI", org_key="github.com~acme")
+
+        assert [r["_repo_id"] for r in rows] == ["github.com~acme~two"]
+
+
+def _commit(org, repo, email):
+    return {
+        "hash": f"{repo}-{email}", "_repo_id": f"github.com~{org}~{repo}",
+        "_git_server": "github.com", "_git_owner": org, "_git_repo": repo,
+        "author_email": email, "committer_email": email,
+        "author_when": "2026-01-01T00:00:00+00:00",
+        "committer_when": "2026-01-01T00:00:00+00:00",
+    }
+
+
+class TestAuthorsScope:
+
+    def _kq(self):
+        db = sqlite_utils.Database(memory=True)
+        db.execute(KospexSchema.SQL_CREATE_COMMITS)
+        db[KospexSchema.TBL_COMMITS].insert_all([
+            _commit("acme", "one", "a@example.com"),
+            _commit("acme", "two", "b@example.com"),
+            _commit("other", "three", "c@example.com"),
+        ], pk=["hash", "_repo_id"])
+        return KospexQuery(kospex_db=db)
+
+    def test_unscoped_lists_everyone(self):
+        assert {r["author_email"] for r in self._kq().authors()} == {
+            "a@example.com", "b@example.com", "c@example.com"}
+
+    def test_org_scope(self):
+        rows = self._kq().authors(org_key="github.com~acme")
+
+        assert {r["author_email"] for r in rows} == {
+            "a@example.com", "b@example.com"}
+
+    def test_repo_scope(self):
+        rows = self._kq().authors(repo_id="github.com~acme~one")
+
+        assert [r["author_email"] for r in rows] == ["a@example.com"]
+
+
+class _DevFake(_FakeQuery):
+
+    def authors(self, days=None, org_key=None, repo_id=None):
+        self.calls.append(("authors", days, org_key, repo_id))
+        return []
+
+    def summary(self, days=None, repo_id=None, org_key=None):
+        self.calls.append(("summary", days, repo_id, org_key))
+        return {"repos": 0, "commits": 0, "authors": 0, "committers": 0,
+                "servers": 0, "orgs": 0}
+
+
+def _developers(query=b"", id=None):
+    return kweb2.developers(_request("/developers/", query), id=id).body.decode()
+
+
+@pytest.fixture
+def devfake(monkeypatch):
+    f = _DevFake()
+    monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: f)
+    return f
+
+
+class TestDevelopersScope:
+
+    def test_unscoped_links_are_unchanged(self, devfake):
+        html = _developers()
+
+        assert 'href="/developers/?download=true"' in html
+        assert 'href="/developers/?days=90"' in html
+
+    def test_repo_scope_reaches_the_queries_and_the_links(self, devfake):
+        html = _developers(b"repo_id=github.com~acme~one")
+
+        assert ("authors", None, None, "github.com~acme~one") in devfake.calls
+        assert ("summary", None, "github.com~acme~one", None) in devfake.calls
+        assert ('href="/developers/?repo_id=github.com~acme~one&amp;download=true"'
+                in html)
+        assert ('href="/developers/?repo_id=github.com~acme~one&amp;days=90"'
+                in html)
+
+    def test_org_scope_download_keeps_the_window(self, devfake):
+        html = _developers(b"org_key=github.com~acme&days=90")
+
+        assert ("authors", "90", "github.com~acme", None) in devfake.calls
+        assert ('href="/developers/?org_key=github.com~acme&amp;download=true'
+                '&amp;days=90"') in html
+
+    def test_repo_id_wins_over_org_key(self, devfake):
+        _developers(b"repo_id=github.com~acme~one&org_key=github.com~acme")
+
+        assert ("authors", None, None, "github.com~acme~one") in devfake.calls
+
+    def test_path_id_scopes_like_the_query(self, devfake):
+        _developers(id="github.com~acme~one")
+
+        assert ("authors", None, None, "github.com~acme~one") in devfake.calls
+
+    def test_scoped_download_is_a_csv_of_that_scope(self, monkeypatch):
+        class Rows(_DevFake):
+            def authors(self, days=None, org_key=None, repo_id=None):
+                self.calls.append(("authors", days, org_key, repo_id))
+                return [{"author_email": "a@example.com", "commits": 1}]
+
+        rows = Rows()
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: rows)
+
+        response = kweb2.developers(
+            _request("/developers/", b"repo_id=github.com~acme~one&download=true"),
+            id=None)
+
+        assert "a@example.com" in response.body.decode()
+        assert ("authors", None, None, "github.com~acme~one") in rows.calls
+
+
+class _TagFake(_FakeQuery):
+
+    def repos_with_tag(self, tag, org_key=None):
+        self.calls.append(("repos_with_tag", tag, org_key))
+        return [{"_repo_id": "github.com~acme~one", "_git_server": "github.com",
+                 "_git_owner": "acme", "_git_repo": "one", "count": 2}]
+
+    def repos_without_tag(self, tag, org_key=None):
+        self.calls.append(("repos_without_tag", tag, org_key))
+        return []
+
+    def repo_files_by_tag(self, tag, repo_id=None):
+        self.calls.append(("repo_files_by_tag", tag, repo_id))
+        return []
+
+
+class TestTagScope:
+
+    @pytest.fixture
+    def tagfake(self, monkeypatch):
+        f = _TagFake()
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: f)
+        return f
+
+    def _tag(self, query=b""):
+        return kweb2.repo_with_tag(_request("/tag/AI", query), tag="AI")
+
+    def test_org_key_reaches_the_lookups_and_the_breadcrumb(self, tagfake):
+        html = self._tag(b"org_key=github.com~acme").body.decode()
+
+        assert ("repos_with_tag", "AI", "github.com~acme") in tagfake.calls
+        assert ("count", "github.com~acme") in tagfake.calls
+        assert 'href="/org/github.com~acme"' in html
+        assert "Tag: AI" in _text(html)
+        assert "absent=true&amp;org_key=github.com~acme" in html
+
+    def test_absent_view_uses_the_org(self, tagfake):
+        self._tag(b"org_key=github.com~acme&absent=true")
+
+        assert ("repos_without_tag", "AI", "github.com~acme") in tagfake.calls
+
+    def test_repo_id_drills_down_and_wins_over_org_key(self, tagfake):
+        html = self._tag(
+            b"repo_id=github.com~acme~one&org_key=github.com~acme").body.decode()
+
+        assert ("repo_files_by_tag", "AI", "github.com~acme~one") in tagfake.calls
+        assert not [c for c in tagfake.calls if c[0] == "repos_with_tag"]
+        assert 'href="/repo/github.com~acme~one"' in html
+
+    def test_unknown_org_is_a_404(self, monkeypatch):
+        f = _TagFake(known=False)
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: f)
+
+        with pytest.raises(HTTPException) as caught:
+            self._tag(b"org_key=github.com~nope")
+
+        assert caught.value.status_code == 404

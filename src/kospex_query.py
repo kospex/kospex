@@ -316,7 +316,7 @@ class KospexQuery:
 
         return data
 
-    def repos_with_tag(self, tag):
+    def repos_with_tag(self, tag, org_key=None):
         """Find repos with the given panopticas tag, and how many files carry it.
 
         The tag counterpart of repos_with_tech(), which filters `Language`. The
@@ -335,6 +335,8 @@ class KospexQuery:
         kd.select_as("count(*)", "count")
         kd.where("latest", "=", 1)
         kd.where_tag(tag)
+        if org_key:
+            kd.where_org_key(org_key)
         kd.group_by("_repo_id")
         kd.order_by("count")
 
@@ -386,7 +388,7 @@ class KospexQuery:
 
         return rows[0]["count"] if rows else 0
 
-    def repos_without_tag(self, tag):
+    def repos_without_tag(self, tag, org_key=None):
         """Repositories with current file metadata and no file carrying the tag.
 
         The negative of repos_with_tag(), for adoption questions -- which
@@ -401,9 +403,10 @@ class KospexQuery:
         tagged files, which would be zero for every row. It is the context for
         whether a missing file matters.
         """
-        tagged = {row["_repo_id"] for row in self.repos_with_tag(tag)}
+        tagged = {row["_repo_id"]
+                  for row in self.repos_with_tag(tag, org_key=org_key)}
 
-        return [row for row in self.repos_with_file_metadata()
+        return [row for row in self.repos_with_file_metadata(org_key=org_key)
                 if row["_repo_id"] not in tagged]
 
     def has_tech(self, tech):
@@ -1257,11 +1260,12 @@ class KospexQuery:
         return bool(kd.execute()[0]["repos"])
 
     @KospexUtils.timer(logger=log)
-    def authors(self, days=None, org_key=None, request_id=None):
+    def authors(self, days=None, org_key=None, request_id=None, repo_id=None):
         """
         Provide a summary of authors in the known repositories.
         days: Number of days ago to query from, e.g. 90 is last 90 days
         org_key: Organization key to filter by (e.g. github.com~kospex)
+        repo_id: Repository to filter by (e.g. github.com~kospex~kospex)
         """
 
         # Used to hold the date value calculated from days
@@ -1280,6 +1284,9 @@ class KospexQuery:
         if days:
             from_date = KospexUtils.days_ago_iso_date(days)
             kd.where("committer_when", ">", from_date)
+
+        if repo_id:
+            kd.where("_repo_id", "=", repo_id)
 
         if org_key:
             kd.where_org_key(org_key)

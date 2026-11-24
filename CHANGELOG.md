@@ -12,7 +12,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   have" view and its counts), and the Organisation page's Tech links use it. A
   Top 5 / 10 / 20 / All selector, above the chart and in the Technology Breakdown,
   limits both chart and table. The chart has a fixed height, and the Download link
-  no longer renders `/landscape/None` for a `?repo_id=` scope.
+  no longer renders `/landscape/None` for a `?repo_id=` scope. `/tag/{tag}` also
+  accepts `?org_key=`, and `/developers/` accepts `?repo_id=` / `?org_key=` with
+  scoped Download and related links.
 
 - **`kospex sca -package TYPE:NAME@VERSION -osv`** adds OSV's advisories for that
   version after deps.dev's: the fixed version, the worst severity with where it came

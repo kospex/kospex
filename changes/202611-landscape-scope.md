@@ -14,6 +14,10 @@ estate-wide, and its Download link rendered `/landscape/None` when scoped by
   Top-N selectors, status line, "entries per page".
 - `src/templates/repos-tech.html` - breadcrumb for the org-scoped list.
 - `src/templates/org_view.html` - Tech links carry `?org_key=`.
+- `/tag/{tag}` takes `?org_key=` like `/tech/` (`repos_with_tag` / `repos_without_tag`).
+- `/developers/` takes `?repo_id=` / `?org_key=` (or a path id) and its Download,
+  View More and active-90-days links keep the scope (and the `days` window on Download).
+  `KospexQuery.authors()` gained `repo_id`.
 - `tests/test_landscape_scope.py`.
 
 ## Usage
@@ -23,4 +27,5 @@ estate-wide, and its Download link rendered `/landscape/None` when scoped by
 ## Notes
 - Top-N is client-side: rows carry `data-rank` from the server's count ordering, so a
   re-sort in DataTables does not change which rows are in the top N.
-- `/tag/` does not take `org_key`.
+- `/tag/{tag}?repo_id=` already listed that tag's files in one repo.
+- The Developers page has no breadcrumb yet.
