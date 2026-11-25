@@ -1,0 +1,6 @@
+{# Shared "bot" label for an email detected as a bot. Usage:
+   {% from '_bot_badge.html' import bot_badge %}{{ bot_badge(row.is_bot, row.bot_type) }}
+   Inline style, not Tailwind: the compiled CSS has no yellow utilities. #}
+{% macro bot_badge(is_bot, bot_type) -%}
+{%- if is_bot -%}<span class="ml-2 text-xs font-medium rounded px-2" style="background: rgba(251, 191, 36, 0.3); color: #92400e" title="Detected as a bot{% if bot_type %}: {{ bot_type }}{% endif %}">bot</span>{%- endif -%}
+{%- endmacro %}

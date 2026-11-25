@@ -17,6 +17,31 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   The old `-ecosystem E -package NAME` form still works. It replaces the version that
   crashed with `IndexError` on scoped npm, Maven and Go packages and was disabled in
   0.2.0. OSV is asked once per 1000 releases, not once per release.
+- **Developers page breadcrumb.** `/developers/` scoped by `?repo_id=` or `?org_key=`
+  now shows the server / org / repo breadcrumb and a scope label under the heading.
+  The unscoped page is unchanged. The page also says which window it shows ("All time"
+  or "Active (last N days)", from `?days=`), the active view links back to "Show all
+  time" in the same scope, and a `days` that is not a whole number of 1 or more is now a
+  400 rather than a 500.
+- **Committers view.** `/developers/?view=committers` lists committers (the people who
+  applied a commit, often not its author: 26,504 committers against 79,929 authors in
+  one 5000-repo estate), keeping `repo_id` / `org_key` and the `days` window. The
+  Committers card's View More goes there, and the card for the view being shown reads
+  "Shown below" instead of linking to itself. Committer rows link to
+  `/commits/?committer_email=`. Bot identities, as detected by the same
+  `EmailAnalyzer` that `krunner key-person` uses, carry a "bot" label, and both CSV
+  downloads gain `is_bot` and `bot_type` columns. A repo-scoped page also links to
+  Author / Committer collaborators. The collaboration table
+  (`/collab/{repo_id}`) labels bot authors and committers the same way, and its
+  committer links now reach `/commits/` in that repository instead of a Developers
+  URL that ignored them. An unknown `view` is a 400.
+- **Repo page quick links.** A Developers link (scoped to the repository) sits before
+  "Explore the graph", and a "What do these options do?" show / hide link under the
+  list describes each one.
+- **Collaboration breadcrumbs.** `/collab/{repo_id}` shows the server / org / repo /
+  Collaboration breadcrumb, and `/collab/graph/{repo_id}` shows the server / org /
+  repo / Collaboration / Network graph breadcrumb in place of the raw `Repository:
+  <repo_id>` line.
 
 ## 0.5.1 - 2026-11-25
 

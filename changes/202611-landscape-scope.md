@@ -18,6 +18,12 @@ estate-wide, and its Download link rendered `/landscape/None` when scoped by
 - `/developers/` takes `?repo_id=` / `?org_key=` (or a path id) and its Download,
   View More and active-90-days links keep the scope (and the `days` window on Download).
   `KospexQuery.authors()` gained `repo_id`.
+- Committers view (`/developers/?view=committers`): `KospexQuery.committers()` shares a
+  `_commit_people()` helper with `authors()`. The detector behind the "bot" label is
+  `EmailAnalyzer`, shared with `krunner key-person` and `orphans`, so the label agrees
+  with them. It misses Gerrit, TeamCity, copybara, the Android automergers, JetBrains'
+  noreply and similar; widening it would change those commands' output too, so it is a
+  separate change.
 - `tests/test_landscape_scope.py`.
 
 ## Usage
@@ -28,4 +34,6 @@ estate-wide, and its Download link rendered `/landscape/None` when scoped by
 - Top-N is client-side: rows carry `data-rank` from the server's count ordering, so a
   re-sort in DataTables does not change which rows are in the top N.
 - `/tag/{tag}?repo_id=` already listed that tag's files in one repo.
-- The Developers page has no breadcrumb yet.
+- Developers page breadcrumb and scope label (follow-up): `developers.html` includes the
+  shared breadcrumb above the stat cards, and the scope label under its existing heading,
+  for a repo or org scope only.

@@ -405,8 +405,8 @@ class TestDevelopersScope:
         html = _developers(b"org_key=github.com~acme&days=90")
 
         assert ("authors", "90", "github.com~acme", None) in devfake.calls
-        assert ('href="/developers/?org_key=github.com~acme&amp;download=true'
-                '&amp;days=90"') in html
+        assert ('href="/developers/?org_key=github.com~acme&amp;days=90'
+                '&amp;download=true"') in html
 
     def test_repo_id_wins_over_org_key(self, devfake):
         _developers(b"repo_id=github.com~acme~one&org_key=github.com~acme")
@@ -492,3 +492,388 @@ class TestTagScope:
             self._tag(b"org_key=github.com~nope")
 
         assert caught.value.status_code == 404
+
+
+class TestDevelopersBreadcrumb:
+
+    def test_unscoped_has_no_header_block(self, devfake):
+        html = _developers()
+
+        assert 'aria-label="Breadcrumb"' not in html
+        assert "uppercase tracking-wider text-gray-500\">Repository" not in html
+        assert html.count("<h1") == 1
+
+    def test_repo_scope_breadcrumb_heading_and_label(self, devfake):
+        html = _developers(b"repo_id=github.com~acme~one")
+
+        assert 'aria-label="Breadcrumb"' in html
+        assert 'href="/org/github.com~acme"' in html
+        assert 'href="/repo/github.com~acme~one"' in html
+        text = _text(html)
+        assert "Developers" in text
+        assert "Repository acme/one" in text
+        # The crumb names the page, so it is the current (unlinked) item.
+        assert 'aria-current="page">Developers<' in html
+        # One heading, not a second one added for the scope.
+        assert html.count("<h1") == 1
+
+    def test_org_scope_breadcrumb_and_label(self, devfake):
+        html = _developers(b"org_key=github.com~acme")
+
+        assert 'href="/orgs/github.com"' in html
+        assert 'href="/org/github.com~acme"' in html
+        assert "Organisation acme" in _text(html)
+
+    def test_scoped_links_survive_the_context_merge(self, devfake):
+        """scope_context() returns its own keys; none may shadow the page's URLs."""
+        html = _developers(b"repo_id=github.com~acme~one")
+
+        assert ('href="/developers/?repo_id=github.com~acme~one&amp;download=true"'
+                in html)
+
+
+class TestDevelopersWindow:
+
+    def test_all_time_is_labelled_and_offers_the_active_view(self, devfake):
+        html = _developers()
+
+        assert "All time" in _text(html)
+        assert 'href="/developers/?days=90"' in html
+        assert "Show all time" not in html
+
+    def test_label_shows_the_days_in_the_url(self, devfake):
+        for days, word in (("30", "days"), ("90", "days"), ("1", "day")):
+            html = _developers(f"days={days}".encode())
+
+            assert f"Active (last {days} {word})" in _text(html)
+
+    def test_active_view_links_back_to_all_time_in_the_same_scope(self, devfake):
+        html = _developers(b"repo_id=github.com~acme~one&days=30")
+
+        assert "Show all time" in _text(html)
+        assert 'href="/developers/?repo_id=github.com~acme~one"' in html
+        assert "Show active developers" not in html
+
+    @pytest.mark.parametrize("bad", ["abc", "0", "-5", "1.5", ""])
+    def test_a_bad_window_is_a_400_not_a_500(self, devfake, bad):
+        with pytest.raises(HTTPException) as caught:
+            _developers(f"days={bad}".encode())
+
+        assert caught.value.status_code == 400
+
+    def test_days_reaches_the_queries_as_a_clean_number(self, devfake):
+        _developers(b"days=030")
+
+        assert ("authors", "30", None, None) in devfake.calls
+
+
+class TestRepoQuickLinks:
+    """The repo page's quick links: a Developers link and a collapsible help."""
+
+    @staticmethod
+    def _src():
+        from pathlib import Path
+        return (Path(__file__).parent.parent / "src/templates/repo_view.html"
+                ).read_text()
+
+    def test_developers_link_is_scoped_and_precedes_the_graph(self):
+        src = self._src()
+
+        dev = src.index('href="/developers/?repo_id={{ repo_id }}"')
+        graph = src.index('href="/graph/?repo_id={{ repo_id }}"')
+        assert dev < graph
+        assert src.index('href="/landscape/?repo_id={{ repo_id }}"') < dev
+
+    def test_every_quick_link_is_described(self):
+        src = self._src()
+        links = src[src.index("View repo:"):src.index('id="options-help-toggle"')]
+        labels = re.findall(r">\s*([^<>]+?)\s*</a\s*>", links)
+        help_block = src[src.index('id="options-help"'):]
+
+        assert len(labels) == 7
+        for label in labels:
+            assert f">{label}</dt>" in re.sub(r"\s+", " ", help_block).replace(
+                "> ", ">").replace(" <", "<"), label
+
+    def test_help_starts_hidden_and_has_a_toggle(self):
+        src = self._src()
+
+        assert 'id="options-help"' in src
+        assert re.search(r'id="options-help"\s+class="hidden', src)
+        assert "What do these options do?" in src
+        assert '$("#options-help-toggle").on("click"' in src
+
+    def test_help_toggle_is_styled_apart_from_the_navigation_links(self):
+        src = self._src()
+        toggle = src[src.index('id="options-help-toggle"'):]
+        toggle = toggle[:toggle.index(">What do these")]
+
+        assert "text-blue-600" not in toggle
+        assert "text-gray-600" in toggle
+        assert "underline dotted" in toggle
+
+
+class TestCollabGraphBreadcrumb:
+
+    def _page(self, monkeypatch, repo_id="github.com~acme~one"):
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: _FakeQuery())
+        return kweb2.collab_graph(
+            _request(f"/collab/graph/{repo_id}"), repo_id=repo_id
+        ).body.decode()
+
+    def test_breadcrumb_replaces_the_raw_repo_id_line(self, monkeypatch):
+        html = self._page(monkeypatch)
+
+        assert 'aria-label="Breadcrumb"' in html
+        assert 'href="/repo/github.com~acme~one"' in html
+        # "Collaboration" links back to the table; the graph is the current page.
+        assert 'href="/collab/github.com~acme~one"' in html
+        assert 'aria-current="page">Network graph<' in html
+        assert "Repository:" not in html
+
+    def test_the_graph_still_loads_its_data(self, monkeypatch):
+        html = self._page(monkeypatch)
+
+        assert "/api/collab/graph/github.com~acme~one" in html
+
+
+class TestCollabBreadcrumb:
+
+    class _Query(_FakeQuery):
+        def get_repo_by_id(self, repo_id):
+            return {"_repo_id": repo_id}
+
+        def get_collabs(self, repo_id=None):
+            return []
+
+    def test_breadcrumb_ends_at_the_current_page(self, monkeypatch):
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: self._Query())
+
+        html = kweb2.collab(
+            _request("/collab/github.com~acme~one"),
+            repo_id="github.com~acme~one").body.decode()
+
+        assert 'aria-label="Breadcrumb"' in html
+        assert 'href="/org/github.com~acme"' in html
+        assert 'href="/repo/github.com~acme~one"' in html
+        assert 'aria-current="page">Collaboration<' in html
+        # The graph link is still there.
+        assert 'href="/collab/graph/github.com~acme~one"' in html
+
+
+class _PeopleQuery(_DevFake):
+    """Authors and committers that differ, one of each a bot."""
+
+    def authors(self, days=None, org_key=None, repo_id=None):
+        self.calls.append(("authors", days, org_key, repo_id))
+        return [{"author_email": "dev@example.com", "commits": 3, "repos": 1,
+                 "last_seen": 2},
+                {"author_email": "49699333+dependabot[bot]@users.noreply.github.com",
+                 "commits": 9, "repos": 1, "last_seen": 1}]
+
+    def committers(self, days=None, org_key=None, repo_id=None):
+        self.calls.append(("committers", days, org_key, repo_id))
+        return [{"committer_email": "noreply@github.com", "commits": 12,
+                 "repos": 1, "last_seen": 1},
+                {"committer_email": "lead@example.com", "commits": 2,
+                 "repos": 1, "last_seen": 4}]
+
+
+@pytest.fixture
+def people(monkeypatch):
+    f = _PeopleQuery()
+    monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: f)
+    return f
+
+
+class TestCommittersView:
+
+    def test_default_view_is_authors_and_labels_bots(self, people):
+        html = _developers()
+
+        assert ("authors", None, None, None) in people.calls
+        assert not [c for c in people.calls if c[0] == "committers"]
+        assert "dev@example.com" in html
+        assert html.count(">bot</span>") == 1   # dependabot only
+        assert "Shown below" in html
+
+    def test_committers_view_has_its_own_heading_and_rows(self, people):
+        html = _developers(b"view=committers")
+        text = _text(html)
+
+        assert ("committers", None, None, None) in people.calls
+        assert "Committers" in text and "Committer" in text
+        assert "<h1" in html and ">Committers</h1>" in html
+        assert "noreply@github.com" in html
+        assert "lead@example.com" in html
+        # GitHub's web-flow identity is the detector's github-system bot.
+        assert html.count(">bot</span>") == 1
+        assert 'title="Detected as a bot: github-system"' in html
+
+    def test_committer_rows_link_to_the_commits_page(self, people):
+        html = _developers(b"view=committers")
+
+        assert 'href="/commits/?committer_email=lead%40example.com"' in html
+        assert 'href="/developers/?author_email=' not in html
+
+    def test_scope_is_kept_in_every_link(self, people):
+        html = _developers(b"view=committers&repo_id=github.com~acme~one&days=30")
+
+        assert ("committers", "30", None, "github.com~acme~one") in people.calls
+        # Rows reach the commits page in the same repository.
+        assert ("href=\"/commits/?committer_email=lead%40example.com"
+                "&amp;repo_id=github.com~acme~one\"") in html
+        # The cards switch view, keeping the repo and the window.
+        assert ('href="/developers/?repo_id=github.com~acme~one&amp;days=30"'
+                in html)
+        # All time drops the window and stays on the committers view.
+        assert ('href="/developers/?repo_id=github.com~acme~one'
+                '&amp;view=committers"') in html
+        assert ('href="/developers/?repo_id=github.com~acme~one&amp;view=committers'
+                '&amp;days=30&amp;download=true"') in html
+
+    def test_authors_card_links_to_committers_with_the_scope(self, people):
+        html = _developers(b"org_key=github.com~acme")
+
+        assert ('href="/developers/?org_key=github.com~acme&amp;view=committers"'
+                in html)
+
+    def test_breadcrumb_names_the_committers_view(self, people):
+        html = _developers(b"view=committers&repo_id=github.com~acme~one")
+
+        assert 'aria-current="page">Committers<' in html
+        # Developers is a link back to the authors view in the same scope.
+        assert 'href="/developers/?repo_id=github.com~acme~one"' in html
+
+    def test_bad_view_is_a_400(self, people):
+        with pytest.raises(HTTPException) as caught:
+            _developers(b"view=everyone")
+
+        assert caught.value.status_code == 400
+
+    def test_committers_download_is_a_csv_with_the_bot_flag(self, people):
+        response = kweb2.developers(
+            _request("/developers/", b"view=committers&download=true"), id=None)
+        body = response.body.decode() if hasattr(response, "body") else ""
+
+        header = body.splitlines()[0].split(",")
+        # The page's helper key never leaks into the file; the bot flag does.
+        assert header[0] == "committer_email"
+        assert "email" not in header
+        assert header[-2:] == ["is_bot", "bot_type"]
+        assert "noreply@github.com" in body
+        assert ("committers", None, None, None) in people.calls
+
+
+class TestCommittersQuery:
+
+    def _kq(self):
+        db = sqlite_utils.Database(memory=True)
+        db.execute(KospexSchema.SQL_CREATE_COMMITS)
+        rows = []
+        for i, (author, committer, repo) in enumerate([
+            ("a@example.com", "noreply@github.com", "one"),
+            ("b@example.com", "noreply@github.com", "two"),
+            ("a@example.com", "A@Example.com", "one"),
+        ]):
+            row = _commit("acme", repo, author)
+            row["hash"] = f"h{i}"
+            row["committer_email"] = committer
+            rows.append(row)
+        db[KospexSchema.TBL_COMMITS].insert_all(rows, pk=["hash", "_repo_id"])
+        return KospexQuery(kospex_db=db)
+
+    def test_committers_are_grouped_case_insensitively(self):
+        rows = {r["committer_email"]: r for r in self._kq().committers()}
+
+        assert set(rows) == {"noreply@github.com", "a@example.com"}
+        assert rows["noreply@github.com"]["commits"] == 2
+        assert rows["noreply@github.com"]["repos"] == 2
+
+    def test_committers_respect_the_repo_scope(self):
+        rows = self._kq().committers(repo_id="github.com~acme~two")
+
+        assert [r["committer_email"] for r in rows] == ["noreply@github.com"]
+
+    def test_authors_and_committers_differ(self):
+        kq = self._kq()
+
+        assert ({r["author_email"] for r in kq.authors()}
+                != {r["committer_email"] for r in kq.committers()})
+
+
+class TestBotBadgeStyle:
+
+    def test_bot_badge_is_highlighted_not_plain_gray(self, people):
+        html = _developers()
+        badge = re.search(r'<span class="[^"]*"[^>]*>bot</span>', html).group(0)
+
+        assert "rgba(251, 191, 36" in badge      # translucent amber
+        assert "bg-gray-100" not in badge
+
+
+class TestDevelopersCollabLink:
+
+    def test_repo_scope_links_to_the_collaborators_page(self, people):
+        for query in (b"repo_id=github.com~acme~one",
+                      b"view=committers&repo_id=github.com~acme~one&days=30"):
+            html = _developers(query)
+
+            assert ('href="/collab/github.com~acme~one"' in html)
+            assert "Author / Committer collaborators" in _text(html)
+
+    def test_it_sits_after_the_active_link(self, people):
+        html = _developers(b"repo_id=github.com~acme~one")
+
+        assert (html.index("Show active developers")
+                < html.index("Author / Committer collaborators"))
+
+    def test_org_and_estate_scope_have_no_collaborators_link(self, people):
+        # /collab/ exists per repository only.
+        assert "/collab/" not in _developers(b"org_key=github.com~acme")
+        assert "/collab/" not in _developers()
+
+
+class TestCollabBotLabels:
+
+    class _Query(_FakeQuery):
+        def get_repo_by_id(self, repo_id):
+            return {"_repo_id": repo_id}
+
+        def get_collabs(self, repo_id=None):
+            return [
+                {"author_email": "dev@example.com",
+                 "committer_email": "noreply@github.com", "commits": 7},
+                {"author_email": "49699333+dependabot[bot]@users.noreply.github.com",
+                 "committer_email": "noreply@github.com", "commits": 4},
+                {"author_email": "dev@example.com",
+                 "committer_email": "dev@example.com", "commits": 2},
+            ]
+
+    def _html(self, monkeypatch):
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: self._Query())
+        return kweb2.collab(
+            _request("/collab/github.com~acme~one"),
+            repo_id="github.com~acme~one").body.decode()
+
+    def test_both_columns_are_labelled(self, monkeypatch):
+        html = self._html(monkeypatch)
+
+        # row 1: committer only; row 2: author and committer; row 3: neither
+        assert html.count(">bot</span>") == 3
+        assert 'title="Detected as a bot: github-system"' in html
+        assert 'title="Detected as a bot: dependabot"' in html
+
+    def test_label_sits_beside_the_right_email(self, monkeypatch):
+        html = self._html(monkeypatch)
+
+        human = html.index("dev@example.com")
+        # The first human author cell is followed by the next cell, not a badge.
+        assert ">bot</span>" not in html[human:human + 160].split("</td>")[0]
+
+    def test_committer_links_reach_the_commits_page_in_this_repo(self, monkeypatch):
+        html = self._html(monkeypatch)
+
+        assert ('href="/commits/?committer_email=noreply%40github.com'
+                '&repo_id=github.com~acme~one"') in html
+        assert "/developers/?committer_email=" not in html

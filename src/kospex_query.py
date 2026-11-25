@@ -1267,19 +1267,34 @@ class KospexQuery:
         org_key: Organization key to filter by (e.g. github.com~kospex)
         repo_id: Repository to filter by (e.g. github.com~kospex~kospex)
         """
+        return self._commit_people("author_email", days, org_key, repo_id)
+
+    def committers(self, days=None, org_key=None, repo_id=None):
+        """
+        The committer counterpart of authors(): one row per committer_email.
+
+        A committer is whoever applied the commit, which is often not who wrote
+        it (a merge button, Gerrit, an automerger), so this is a different list
+        from authors(): across one estate, 79,929 authors but 26,504 committers.
+        """
+        return self._commit_people("committer_email", days, org_key, repo_id)
+
+    def _commit_people(self, column, days, org_key, repo_id):
+        """Group commits by a lower-cased email column, with the same filters."""
+        if column not in ("author_email", "committer_email"):
+            raise ValueError(f"not an email column: {column}")
 
         # Used to hold the date value calculated from days
         from_date = None
 
         kd = KospexData(self.kospex_db)
         kd.from_table(KospexSchema.TBL_COMMITS)
-        kd.select_raw("DISTINCT(LOWER(author_email)) as author_email")
+        kd.select_raw(f"DISTINCT(LOWER({column})) as {column}")
         kd.select_as("count(*)", "commits")
         kd.select_raw("COUNT(DISTINCT(_repo_id)) as repos")
         kd.select_earliest_date("committer_when", "first_commit")
         kd.select_latest_date("committer_when", "last_commit")
-        # kd.group_by("author_email",lower=True)
-        kd.group_by("author_email")
+        kd.group_by(column)
 
         if days:
             from_date = KospexUtils.days_ago_iso_date(days)

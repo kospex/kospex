@@ -137,6 +137,12 @@
                         >
                         <span class="text-gray-500">|</span>
                         <a
+                            href="/developers/?repo_id={{ repo_id }}"
+                            class="text-blue-600 hover:text-blue-800 underline"
+                            >Developers</a
+                        >
+                        <span class="text-gray-500">|</span>
+                        <a
                             href="/graph/?repo_id={{ repo_id }}"
                             class="text-blue-600 hover:text-blue-800 underline"
                             >Explore the graph</a
@@ -159,6 +165,80 @@
                             class="text-blue-600 hover:text-blue-800 underline"
                             >Commit and Tenure statistics</a
                         >
+                    </div>
+                    <div class="mt-3 text-sm">
+                        <a
+                            href="#"
+                            id="options-help-toggle"
+                            class="text-gray-600 hover:text-blue-800 italic cursor-pointer"
+                            style="text-decoration: underline dotted"
+                            aria-expanded="false"
+                            aria-controls="options-help"
+                            >What do these options do? (show)</a
+                        >
+                        <dl
+                            id="options-help"
+                            class="hidden mt-3 space-y-2 text-gray-700"
+                        >
+                            <div>
+                                <dt class="inline font-semibold">Dependencies</dt>
+                                <dd class="inline">
+                                    &ndash; the packages this repository
+                                    declares, with versions, licences and known
+                                    advisories where kospex has looked them up.
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="inline font-semibold">Developers</dt>
+                                <dd class="inline">
+                                    &ndash; the people who have committed to
+                                    this repository, with commit counts and
+                                    when they were last seen. Can be limited to
+                                    recently active developers.
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="inline font-semibold">Tech Landscape</dt>
+                                <dd class="inline">
+                                    &ndash; the languages and technologies
+                                    found in this repository's files, ranked by
+                                    number of files.
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="inline font-semibold">Explore the graph</dt>
+                                <dd class="inline">
+                                    &ndash; an interactive graph showing
+                                    which developers have committed to which
+                                    files.
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="inline font-semibold">Graph developer contributions</dt>
+                                <dd class="inline">
+                                    &ndash; a bubble chart of each
+                                    developer's contribution to this
+                                    repository.
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="inline font-semibold">Author / Committer collaborators</dt>
+                                <dd class="inline">
+                                    &ndash; the relationships between
+                                    authors and committers: who wrote the
+                                    work and who committed it, with commit
+                                    counts.
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="inline font-semibold">Commit and Tenure statistics</dt>
+                                <dd class="inline">
+                                    &ndash; how long each developer has been
+                                    active in the codebase, the spread of
+                                    tenure, and recent leavers.
+                                </dd>
+                            </div>
+                        </dl>
                     </div>
                 </div>
             </div>
@@ -420,6 +500,15 @@
 
         <script>
             $(document).ready(function () {
+                // "What do these options do?" expand / hide
+                $("#options-help-toggle").on("click", function (e) {
+                    e.preventDefault();
+                    const open = $("#options-help").toggleClass("hidden")
+                        .hasClass("hidden") === false;
+                    $(this)
+                        .attr("aria-expanded", open)
+                        .text("What do these options do? (" + (open ? "hide" : "show") + ")");
+                });
                 $("#author_table").DataTable({
                     order: [[1, "desc"]],
                     responsive: true,
