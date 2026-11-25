@@ -275,3 +275,34 @@ class TestOrder:
         result = run("-package", "pypi:demo", "-json", releases=releases)
         data = json.loads(result.stdout)
         assert [v["version"] for v in data["versions"]] == ["2.26.1", "2.26.0", "2.25.5"]
+
+
+class TestAll:
+    def test_all_lists_every_stable_release_newer_and_older_than_the_start(self, run):
+        result = run("-package", "pypi:demo@2.0.0", "-all", "-json", releases=DEMO)
+        data = json.loads(result.stdout)
+        assert [v["version"] for v in data["versions"]] == ["3.0.0", "2.1.0", "2.0.0", "1.0.0"]
+        assert data["limit"] is None
+        assert [v["version"] for v in data["versions"] if v["is_current"]] == ["2.0.0"]
+
+    def test_all_with_pre_includes_prereleases(self, run):
+        result = run("-package", "pypi:demo@2.0.0", "-all", "-pre", "-json", releases=DEMO)
+        assert json.loads(result.stdout)["versions"][0]["version"] == "3.1.0b1"
+
+    def test_all_ignores_the_default_limit(self, run):
+        releases = [rel(f"1.{i}.0", default=(i == 29)) for i in range(30)]
+        result = run("-package", "pypi:demo", "-all", "-json", releases=releases)
+        assert len(json.loads(result.stdout)["versions"]) == 30
+
+    def test_all_with_an_explicit_limit_is_a_usage_error(self, run):
+        result = run("-package", "pypi:demo", "-all", "-limit", "5", releases=DEMO)
+        assert result.exit_code == 2 and "-all" in result.output
+        assert FakeOsv.batch_calls == []
+
+    def test_table_marks_the_next_release_without_known_advisories(self, run):
+        result = run("-package", "pypi:demo@2.0.0", "-all", releases=DEMO,
+                     batch={"2.0.0": ["A"], "2.1.0": ["A"]})
+        line = next(l for l in result.output.splitlines() if "3.0.0" in l and "│" in l)
+        assert "next" in line
+        other = next(l for l in result.output.splitlines() if "2.1.0" in l and "│" in l)
+        assert "next" not in other

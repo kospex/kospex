@@ -361,13 +361,16 @@ kospex advisory-history -ecosystem npm -package @babel/core
 | Option | |
 |---|---|
 | `-limit N` | How many releases to list, going back from the start. Default 20. |
+| `-all` | List every release, newer and older than the start, instead of `-limit` of them going back. Use it to see what lies between your version and the next one without known advisories. Cannot be combined with `-limit`. |
 | `-pre` | Include pre-releases and Go pseudo-versions. They are left out by default and the count of those left out is printed. |
 | `-json` | The result as JSON on stdout and nothing else. |
 
 The table starts at `@VERSION`, or the latest release when there is none, and goes
-back by version number, not publish date, so a backport published later (log4j-core
+back by version number, not publish date (the Published column is when the
+registry received that version), so a backport published later (log4j-core
 2.25.5 after 2.26.1) sorts where its number puts it. A release whose lookup failed
-shows `?`: unknown is never zero.
+shows `?`: unknown is never zero. The next release without known advisories is
+marked `next` in the Notes column when it is in the table.
 
 Under the table:
 
