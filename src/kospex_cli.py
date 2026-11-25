@@ -7,6 +7,7 @@ import logging
 import os
 import os.path
 import socket
+import urllib.parse
 import ssl
 import tempfile
 import time
@@ -777,7 +778,7 @@ def _split_package_version(name):
     return head, tail
 
 
-def _explain_no_package_record(package_type, package_name):
+def _explain_no_package_record(package_type, package_name, to_stderr=False):
     """Say why deps.dev gave no package record: only a 404 means it has none.
 
     A failed request also comes back as "no record", so without this a TLS
@@ -801,8 +802,9 @@ def _explain_no_package_record(package_type, package_name):
         err.print(f"deps.dev returned HTTP {status} for {package_type} {package_name}, "
                   "so it was not looked up.", markup=False)
     else:
-        console.print(Text.assemble("deps.dev has no record of ", (package_name, "bold"),
-                                    f" ({package_type})."))
+        (err if to_stderr else console).print(
+            Text.assemble("deps.dev has no record of ", (package_name, "bold"),
+                          f" ({package_type})."))
 
 
 def _sca_dependabot(dependabot_path, out, file_path, save, as_json, package_spec):
@@ -2040,25 +2042,237 @@ def upgrade_db(apply):
         migrator.print_status()
 
 
-ADVISORY_HISTORY_NOTICE = (
-    "advisory-history is being redesigned; a fixed implementation is planned "
-    "for Q4 2026. See https://github.com/kospex/kospex/issues/282"
-)
+OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
+
+
+def _advisory_history_data(package_type, package_name, start_version, limit, include_pre,
+                           show_all=False, upgrade=False):
+    """Everything `advisory-history` shows, as the document `-json` prints.
+
+    Exits 1 with one line on stderr when the package cannot be looked up or OSV does
+    not answer. A release whose advisories could not be read is unknown (None), never 0.
+    """
+    err = Console(stderr=True, soft_wrap=True, markup=False)
+    ecosystem = osv_queries.ecosystem_for(package_type)
+    if ecosystem is None:
+        err.print(f"OSV has no ecosystem for {package_type}.")
+        raise SystemExit(1)
+    permitted, reason = kospex.dependencies.lookup_permitted(package_type, package_name)
+    if not permitted:
+        err.print(f"{package_type} {package_name} is private ({reason}), so it is never "
+                  "looked up.")
+        raise SystemExit(1)
+
+    releases = kospex.dependencies.release_list(package_type, package_name)
+    if not releases:
+        _explain_no_package_record(package_type, package_name, to_stderr=True)
+        raise SystemExit(1)
+
+    def order_key(version):
+        return KospexDependencies._version_order_key(package_type, version)
+
+    if start_version is None:
+        start = (KospexDependencies._latest_release(package_type, releases)
+                 or max(releases, key=lambda r: order_key(r["version"])))
+        start_version = start["version"]
+    try:
+        window = osv_queries.select_window(releases, start_version,
+                                           len(releases) if show_all or upgrade else limit,
+                                           include_pre, order_key)
+    except ValueError:
+        raise click.UsageError(f"deps.dev has no version {start_version} of "
+                               f"{package_name} ({package_type}).")
+
+    considered = [r for r in releases
+                  if include_pre or not r["is_prerelease"] or r["version"] == start_version]
+    spelled = {r["version"]: osv_queries.osv_version(ecosystem, r["version"])
+               for r in considered}
+    query_cache = kospex.dependencies.kospex_query
+    client = OsvClient(cached_get=getattr(query_cache, "url_request_with_status", None))
+    try:
+        answers = client.querybatch(ecosystem, package_name, list(spelled.values()))
+    except OsvError as error:
+        err.print(f"OSV did not answer: {KospexUtils.terminal_safe(error)}.")
+        raise SystemExit(1)
+    ids_by_version = {version: answers.get(osv) for version, osv in spelled.items()}
+
+    records = {}
+    for osv_id in sorted({i for ids in ids_by_version.values() for i in ids or []}):
+        try:
+            records[osv_id] = client.vuln(osv_id)
+        except OsvError:
+            records[osv_id] = None
+
+    rows = osv_queries.release_rows(considered, ids_by_version, records, ecosystem,
+                                    package_name, start_version)
+    clean = osv_queries.next_clean(rows, start_version, order_key)
+    found = clean["release"]
+    by_version = {r["version"]: r for r in rows}
+    if show_all:
+        # Every release, newest first, newer than the start included: the point of -all
+        # is to see what lies between the version in use and the next one without advisories.
+        shown = sorted(considered, key=lambda r: order_key(r["version"]), reverse=True)
+    elif upgrade:
+        # The way up: the start, then every release newer than it, ending at the next
+        # "clean" one (or at the newest when there is none).
+        low = order_key(start_version)
+        high = order_key(found["version"]) if found else None
+        shown = sorted((r for r in considered
+                        if order_key(r["version"]) >= low
+                        and (high is None or order_key(r["version"]) <= high)),
+                       key=lambda r: order_key(r["version"]), reverse=True)
+    else:
+        shown = window["rows"]
+    return {
+        "package": {"type": package_type, "name": package_name},
+        "start": start_version,
+        "limit": None if show_all or upgrade else limit,
+        "include_prereleases": include_pre,
+        "skipped_prereleases": window["skipped_prereleases"],
+        "summary": osv_queries.summarise(rows, include_pre),
+        "next_clean": {"status": clean["status"],
+                       "version": found["version"] if found else None,
+                       "published_at": next((r["published_at"] for r in considered
+                                             if found and r["version"] == found["version"]),
+                                            None),
+                       "skipped_unknown": clean["skipped_unknown"],
+                       "skipped_affected": clean["skipped_affected"]},
+        "versions": [by_version[r["version"]] for r in shown],
+        "sources": {"deps_dev": "https://api.deps.dev/v3alpha/systems/"
+                                f"{package_type}/packages/"
+                                f"{urllib.parse.quote(package_name, safe='')}",
+                    "osv": OSV_BATCH_URL},
+    }
+
+
+def _print_advisory_history(data):
+    safe = KospexUtils.terminal_safe
+    # Blank line above and below the heading; the package name sits on its own line and
+    # the source under it, so a long Maven or Go name is never wrapped mid-heading.
+    table = Table(title=f"\nAdvisories by release: {safe(data['package']['type'])}\n"
+                        f"{safe(data['package']['name'])}\nSource: osv.dev\n")
+    for column in ("Version", "Published", "Advisories", "Severity", "Notes"):
+        table.add_column(column)
+    for row in data["versions"]:
+        notes = [n for n, on in (("current", row["is_current"]),
+                                 ("next clean", data["next_clean"]["status"] == "found"
+                                  and row["version"] == data["next_clean"]["version"]),
+                                 ("deprecated", row["is_deprecated"]),
+                                 ("pre-release", row["is_prerelease"])) if on]
+        count = "?" if row["advisory_count"] is None else str(row["advisory_count"])
+        table.add_row(safe(row["version"]), safe(row["published_at"][:10]), count,
+                      safe(row["worst_severity"]), ", ".join(notes))
+    KospexUtils.print_table(table, console)
+    if data["skipped_prereleases"]:
+        count = data["skipped_prereleases"]
+        console.print(f"{count} pre-release{'s' if count != 1 else ''} not shown "
+                      "(-pre includes them).")
+
+    summary = data["summary"]
+    kind = "releases" if data["include_prereleases"] else "stable releases"
+    console.print()
+    if summary["releases"]:
+        console.print(f"{summary['affected']} of {summary['releases']} {kind} "
+                      f"({summary['percent']:.0f}%) have a known advisory.")
+        console.print("Major versions with known advisories:")
+        for major in summary["by_major"]:
+            percent = major["affected"] / major["releases"] * 100
+            console.print(f"  {safe(major['major'])}.x  {major['affected']}/"
+                          f"{major['releases']} ({percent:.0f}%)")
+    else:
+        console.print(f"No {kind} to count.")
+    if summary["unknown"]:
+        console.print(f"{summary['unknown']} release(s) not counted: their advisories "
+                      "could not all be read.")
+
+    console.print()
+    nxt = data["next_clean"]
+    start = safe(data["start"])
+    count = nxt["skipped_affected"]
+    versions = f"{count} version{'s' if count != 1 else ''} with a known advisory"
+    if nxt["status"] == "start_clean":
+        console.print(f'{start} is "clean": it has no known advisories.')
+    elif nxt["status"] == "found":
+        found = safe(nxt["version"])
+        console.print(f'Next "clean" release with no known advisories: {found}'
+                      + (f" ({safe(nxt['published_at'][:10])})" if nxt["published_at"] else ""))
+        if count:
+            console.print(f"  {versions} between {start} and {found}")
+        if osv_queries.major_of(nxt["version"]) != osv_queries.major_of(data["start"]):
+            console.print(f"  crosses to {safe(osv_queries.major_of(nxt['version']))}.x")
+    else:
+        console.print(f'No newer "clean" release than {start}.')
+        if count:
+            console.print(f"  {versions} after {start}")
+    if nxt["skipped_unknown"]:
+        console.print("Skipped, advisories unknown: "
+                      + ", ".join(safe(v) for v in nxt["skipped_unknown"]))
+    console.print()
+    console.print("Clean means no known advisories: OSV lists none for that release.")
+    console.print("It is not a claim the release is free of vulnerabilities.")
+    console.print()
 
 
 @cli.command("advisory-history")
-@click.option("-ecosystem", type=click.STRING, help="E.g. npm, pypi")
-@click.option("-package", type=click.STRING, help="Name of package")
-def advisory_history(ecosystem, package):
+@click.option("-ecosystem", type=click.STRING,
+              help="E.g. npm, pypi. With it, -package is just NAME[@VERSION].")
+@click.option("-package", type=click.STRING,
+              help="TYPE:NAME[@VERSION], e.g. maven:org.apache.logging.log4j:log4j-core")
+@click.option("-limit", type=click.IntRange(min=1), default=20, show_default=True,
+              help="How many releases to list, going back from the start version.")
+@click.option("-all", "show_all", is_flag=True, default=False,
+              help="List every release, newer and older than the start, not just -limit "
+                   "of them going back.")
+@click.option("-upgrade", "upgrade", is_flag=True, default=False,
+              help="List the releases from @VERSION up to and including the next \"clean\" "
+                   "one: the versions an upgrade passes.")
+@click.option("-pre", "include_pre", is_flag=True, default=False,
+              help="Include pre-releases and pseudo-versions.")
+@click.option("-json", "as_json", is_flag=True, default=False,
+              help="Print the result as JSON on stdout and nothing else.")
+def advisory_history(ecosystem, package, limit, show_all, upgrade, include_pre, as_json):
     """
-    (Being redesigned) Advisory history for a package's recent versions.
+    Advisories for a package's recent releases, from OSV.
+
+    Lists the last releases (stable by default) with their advisory counts, what
+    share of all stable releases have a known advisory (overall and per major
+    version), and the next release after the start with none. The start is
+    @VERSION, else the latest release.
+
+    "No known advisories" means OSV lists none for that release, at any severity.
+    It does not mean the release is safe.
     """
-    # Disabled rather than left running: it crashed on scoped npm and Maven
-    # packages and fetched every version in deps.dev's lexical order. The
-    # options stay so existing invocations reach this notice instead of a
-    # usage error. Redesign: #282.
-    click.echo(ADVISORY_HISTORY_NOTICE, err=True)
-    raise SystemExit(1)
+    if not package:
+        raise click.UsageError("-package TYPE:NAME[@VERSION] is required.")
+    limit_given = (click.get_current_context().get_parameter_source("limit")
+                   == ParameterSource.COMMANDLINE)
+    if show_all and limit_given:
+        raise click.UsageError("-all lists every release, so it cannot be combined with -limit.")
+    if upgrade and (show_all or limit_given):
+        raise click.UsageError("-upgrade picks its own releases, so it cannot be combined "
+                               "with -all or -limit.")
+    if ecosystem:
+        package_type, name_spec = ecosystem.lower(), package
+    else:
+        package_type, _, name_spec = package.partition(":")
+        package_type = package_type.lower()
+    types = package_types()
+    if not name_spec or package_type not in types:
+        raise click.UsageError(
+            f"-package expects TYPE:NAME[@VERSION], with TYPE one of {', '.join(types)} "
+            f"(got {package!r}).")
+    package_name, version = _split_package_version(name_spec)
+    if version == "":
+        raise click.UsageError(f"-package {package!r} has an empty version after '@'.")
+
+    if upgrade and version is None:
+        raise click.UsageError("-upgrade needs a version: -package TYPE:NAME@VERSION.")
+    data = _advisory_history_data(package_type, package_name, version, limit, include_pre,
+                                  show_all, upgrade)
+    if as_json:
+        click.echo(json.dumps(data, indent=2))
+    else:
+        _print_advisory_history(data)
 
 
 @cli.command("system-status")

@@ -342,6 +342,70 @@ Compared with deps.dev: 4 in both, 0 only in OSV, 0 only in deps.dev.
 [krunner osi, Private packages](krunner.md#private-packages) for how
 prefixes match.
 
+## advisory-history
+
+Which releases of one package have a known advisory, and which release to move to.
+It reads deps.dev for the release list and OSV for the advisories, and writes nothing
+to the kospex database.
+
+```bash
+kospex advisory-history -package maven:org.apache.logging.log4j:log4j-core
+kospex advisory-history -package pypi:requests@2.25.0 -limit 10
+kospex advisory-history -package maven:org.apache.logging.log4j:log4j-core@2.14.0 -upgrade
+kospex advisory-history -package npm:@babel/core -pre -json
+kospex advisory-history -ecosystem npm -package @babel/core
+```
+
+`-package` takes `TYPE:NAME[@VERSION]`, as [`sca -package`](#sca) does. With
+`-ecosystem`, it is just `NAME[@VERSION]`.
+
+| Option | |
+|---|---|
+| `-limit N` | How many releases to list, going back from the start. Default 20. |
+| `-all` | List every release, newer and older than the start, instead of `-limit` of them going back. Use it to see what lies between your version and the next one without known advisories. Cannot be combined with `-limit`. |
+| `-upgrade` | Needs `@VERSION`. Lists the releases from that version up to and including the next "clean" one, so you see every version an upgrade passes and what each has. If no later release is clean it lists every later release. Cannot be combined with `-all` or `-limit`. |
+| `-pre` | Include pre-releases and Go pseudo-versions. They are left out by default and the count of those left out is printed. |
+| `-json` | The result as JSON on stdout and nothing else. |
+
+The table starts at `@VERSION`, or the latest release when there is none, and goes
+back by version number, not publish date (the Published column is when the
+registry received that version), so a backport published later (log4j-core
+2.25.5 after 2.26.1) sorts where its number puts it. A release whose lookup failed
+shows `?`: unknown is never zero. The next "clean" release is
+marked `next clean` in the Notes column when it is in the table.
+
+Under the table:
+
+- **A summary** of how many stable releases have a known advisory, overall and for
+  each major version (`2.x  57/61 (93%)`). It covers every stable release, not just
+  the ones in the table. Releases OSV gave only a partial answer for are counted
+  separately, not in the percentage.
+- **The next "clean" release** (one with no known advisories) after the start: the first stable,
+  non-deprecated release with none. It says how many versions with a known advisory
+  lie between the start and it, and when it crosses to another major version. Releases that are
+  unknown are skipped and named.
+  If the start itself has none, it says so. If every later release has one, it says that.
+
+**"No known advisories" (shown as "clean") is a statement about OSV, not about the release.** It means
+OSV lists no advisory for it, at any severity, withdrawn ones excluded. It says nothing
+about vulnerabilities nobody has reported or databases OSV does not carry. A release
+that fixes one advisory can still carry others, which is why this is counted per release
+and not taken from a fixed version.
+
+`-json` has `package`, `start`, `limit`, `include_prereleases`, `skipped_prereleases`,
+`summary`, `next_clean` (`status` is `found`, `none` or `start_clean`; `skipped_affected` and
+`skipped_unknown` say what lies between), `versions` and
+`sources`. Each version has `version`, `published_at`, `advisory_count` (`null` when
+unknown), `advisory_ids`, `worst_severity`, `is_current`, `is_deprecated` and
+`is_prerelease`.
+
+Each run asks OSV for the advisories, so a new one shows at once. The advisory
+records themselves and deps.dev's release list are cached for `KOSPEX_URL_CACHE_SECONDS`
+(a day by default), so a withdrawal or re-rating can take up to that long to appear. Only
+the package name, ecosystem and versions are sent, and never for a name that matches
+`KOSPEX_DEPS_PRIVATE`. Maven versions are ordered by their numbers only, so releases
+with the same numbers and different qualifiers are ordered as text.
+
 ## orphans
 
 A repo is orphaned when no one who authored its code is still here: none of
