@@ -207,3 +207,63 @@ class TestVuln:
         client, session, _ = make([FakeResponse(200, {})], cached_get=cached_get)
         client.query("npm", "x", "1")
         assert len(session.calls) == 1
+
+
+class TestQuerybatch:
+    def test_posts_one_query_per_version(self):
+        client, session, _ = make([FakeResponse(200, {"results": [
+            {"vulns": [{"id": "GHSA-a", "modified": "x"}]}, {}]})])
+
+        assert client.querybatch("PyPI", "requests", ["1.0", "2.0"]) == {
+            "1.0": ["GHSA-a"], "2.0": []}
+
+        (call,) = session.calls
+        assert call["method"] == "POST"
+        assert call["url"] == "https://api.osv.dev/v1/querybatch"
+        assert call["json"] == {"queries": [
+            {"package": {"name": "requests", "ecosystem": "PyPI"}, "version": "1.0"},
+            {"package": {"name": "requests", "ecosystem": "PyPI"}, "version": "2.0"}]}
+
+    def test_chunks_at_batch_size(self, monkeypatch):
+        import kospex.integrations.osv.client as osv_client
+        monkeypatch.setattr(osv_client, "BATCH_SIZE", 2)
+        client, session, _ = make([FakeResponse(200, {"results": [{}, {}]}),
+                                   FakeResponse(200, {"results": [{}, {}]}),
+                                   FakeResponse(200, {"results": [{}]})])
+
+        result = client.querybatch("npm", "x", ["1", "2", "3", "4", "5"])
+
+        assert [len(c["json"]["queries"]) for c in session.calls] == [2, 2, 1]
+        assert list(result) == ["1", "2", "3", "4", "5"]
+
+    def test_follows_next_page_token_per_query(self):
+        client, session, _ = make([
+            FakeResponse(200, {"results": [
+                {"vulns": [{"id": "A"}], "next_page_token": "t"}, {"vulns": [{"id": "C"}]}]}),
+            FakeResponse(200, {"results": [{"vulns": [{"id": "B"}]}]}),
+        ])
+
+        assert client.querybatch("npm", "x", ["1", "2"]) == {"1": ["A", "B"], "2": ["C"]}
+
+        assert session.calls[1]["json"]["queries"] == [
+            {"package": {"name": "x", "ecosystem": "npm"}, "version": "1",
+             "page_token": "t"}]
+
+    def test_failed_followup_page_gives_none_for_that_version_only(self):
+        client, _, _ = make([
+            FakeResponse(200, {"results": [
+                {"vulns": [{"id": "A"}], "next_page_token": "t"}, {"vulns": [{"id": "C"}]}]}),
+            *[FakeResponse(500) for _ in range(4)],
+        ])
+
+        assert client.querybatch("npm", "x", ["1", "2"]) == {"1": None, "2": ["C"]}
+
+    def test_whole_batch_failure_raises(self):
+        client, _, _ = make([FakeResponse(500) for _ in range(4)])
+        with pytest.raises(OsvError):
+            client.querybatch("npm", "x", ["1"])
+
+    def test_empty_versions_makes_no_request(self):
+        client, session, _ = make([])
+        assert client.querybatch("npm", "x", []) == {}
+        assert session.calls == []

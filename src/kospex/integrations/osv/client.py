@@ -24,6 +24,7 @@ TIMEOUT = 30
 MAX_RETRIES = 3
 MAX_RATE_LIMIT_WAIT = 60
 MAX_TOTAL_WAIT = 20   # seconds slept across one call's retries: a CLI should not hang
+BATCH_SIZE = 1000   # OSV accepts at most 1000 queries per /querybatch
 MAX_PAGES = 20   # a package with this many pages of advisories has other problems
 
 
@@ -65,6 +66,54 @@ class OsvClient:
                 return vulns
             body = dict(body, page_token=token)
         raise OsvError(f"more than {MAX_PAGES} pages of results", path="/query")
+
+    def querybatch(self, ecosystem, name, versions):
+        """Advisory IDs for each of `versions` of one package: {version: [ids] | None}.
+
+        One POST per BATCH_SIZE versions. `[]` means OSV knows of no advisory for that
+        version; `None` means a follow-up page for it failed, so its list is
+        incomplete and must be read as unknown, never as empty. Raises OsvError when a
+        batch request itself fails. POST cannot be cached by URL, so this always asks.
+        """
+        results = {}
+        for start in range(0, len(versions), BATCH_SIZE):
+            results.update(self._batch(ecosystem, name, versions[start:start + BATCH_SIZE]))
+        return results
+
+    def _batch(self, ecosystem, name, versions):
+        package = {"name": name, "ecosystem": ecosystem}
+        found = {version: [] for version in versions}
+        pending = {version: None for version in versions}   # version -> page token
+        for page in range(MAX_PAGES):
+            asking = list(pending)
+            queries = []
+            for version in asking:
+                query = {"package": package, "version": version}
+                if pending[version]:
+                    query["page_token"] = pending[version]
+                queries.append(query)
+            try:
+                data = self._request("POST", "/querybatch", json={"queries": queries})
+                answers = data.get("results")
+                if not isinstance(answers, list) or len(answers) != len(queries):
+                    raise OsvError("/querybatch returned an unexpected shape",
+                                   path="/querybatch")
+            except OsvError:
+                if page == 0:
+                    raise
+                for version in asking:
+                    found[version] = None
+                return found
+            pending = {}
+            for version, answer in zip(asking, answers):
+                found[version].extend(v["id"] for v in (answer or {}).get("vulns") or [])
+                if (answer or {}).get("next_page_token"):
+                    pending[version] = answer["next_page_token"]
+            if not pending:
+                return found
+        for version in pending:
+            found[version] = None
+        return found
 
     def vuln(self, osv_id):
         """One full vulnerability record, or None when OSV has no such ID (404)."""
