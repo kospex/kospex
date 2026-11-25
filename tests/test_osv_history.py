@@ -150,7 +150,8 @@ class TestNextClean:
 
     def test_none_when_every_later_release_is_affected(self):
         got = q.next_clean([row("2.0.0", 1), row("2.1.0", 3), row("2.2.0", 2)], "2.0.0", order)
-        assert got == {"status": "none", "release": None, "skipped_unknown": []}
+        assert got == {"status": "none", "release": None, "skipped_unknown": [],
+                       "skipped_affected": 2}
 
     def test_start_clean(self):
         got = q.next_clean([row("1.0.0", 0), row("1.1.0", 0)], "1.0.0", order)
@@ -160,3 +161,14 @@ class TestNextClean:
         rows = [row("0.9.0", 0), row("1.0.0", 1), row("1.1.0", 0, pre=True), row("1.2.0", 0)]
         got = q.next_clean(rows, "1.0.0", order)
         assert got["release"]["version"] == "1.2.0"
+
+    def test_counts_the_affected_releases_it_skips(self):
+        rows = [row("1.0.0", 2), row("1.1.0", 1), row("1.2.0", None), row("1.3.0", 3),
+                row("1.4.0", 0)]
+        got = q.next_clean(rows, "1.0.0", order)
+        assert got["release"]["version"] == "1.4.0"
+        assert got["skipped_affected"] == 2          # 1.1.0 and 1.3.0; 1.2.0 is unknown
+        assert got["skipped_unknown"] == ["1.2.0"]
+
+    def test_start_clean_skips_nothing(self):
+        assert q.next_clean([row("1.0.0", 0)], "1.0.0", order)["skipped_affected"] == 0

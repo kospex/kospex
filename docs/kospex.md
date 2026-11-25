@@ -376,7 +376,9 @@ Under the table:
   the ones in the table. Releases OSV gave only a partial answer for are counted
   separately, not in the percentage.
 - **The next release without known advisories** after the start: the first stable,
-  non-deprecated release with none. Releases that are unknown are skipped and named.
+  non-deprecated release with none. It says how many releases with a known advisory
+  lie in between, and when it crosses to another major version. Releases that are
+  unknown are skipped and named.
   If the start itself has none, it says so. If every later release has one, it says that.
 
 **"No known advisories" is a statement about OSV, not about the release.** It means
@@ -386,7 +388,8 @@ that fixes one advisory can still carry others, which is why this is counted per
 and not taken from a fixed version.
 
 `-json` has `package`, `start`, `limit`, `include_prereleases`, `skipped_prereleases`,
-`summary`, `next_clean` (`status` is `found`, `none` or `start_clean`), `versions` and
+`summary`, `next_clean` (`status` is `found`, `none` or `start_clean`; `skipped_affected` and
+`skipped_unknown` say what lies between), `versions` and
 `sources`. Each version has `version`, `published_at`, `advisory_count` (`null` when
 unknown), `advisory_ids`, `worst_severity`, `is_current`, `is_deprecated` and
 `is_prerelease`.

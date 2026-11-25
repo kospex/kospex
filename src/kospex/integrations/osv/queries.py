@@ -322,8 +322,12 @@ def release_rows(releases, ids_by_version, records, ecosystem, name, current_ver
     return rows
 
 
-def _major(version):
+def major_of(version):
+    """The major version as text: what precedes the first `.`, without a leading `v`."""
     return version.lstrip("v").split(".")[0]
+
+
+_major = major_of
 
 
 def _major_key(major):
@@ -356,21 +360,28 @@ def next_clean(rows, start_version, order_key):
     """The first release after `start_version` with no known advisories.
 
     {"status": "start_clean" | "found" | "none", "release": row | None,
-    "skipped_unknown": [versions]}. Only stable, non-deprecated releases newer than
+    "skipped_unknown": [versions], "skipped_affected": n}, where `skipped_affected`
+    counts the candidates with a known advisory that lie between the start and the
+    release returned (all of them when there is none). Only stable, non-deprecated releases newer than
     the start by `order_key` are candidates. A release OSV did not answer for is
     skipped and named, never returned: unknown is not clean.
     """
     start = next((r for r in rows if r["version"] == start_version), None)
     if start is not None and start["advisory_count"] == 0:
-        return {"status": "start_clean", "release": start, "skipped_unknown": []}
+        return {"status": "start_clean", "release": start, "skipped_unknown": [],
+                "skipped_affected": 0}
     floor = order_key(start_version)
     later = sorted((r for r in rows if not r["is_prerelease"] and not r["is_deprecated"]
                     and order_key(r["version"]) > floor),
                    key=lambda r: order_key(r["version"]))
-    skipped = []
+    skipped, affected = [], 0
     for candidate in later:
         if candidate["advisory_count"] is None:
             skipped.append(candidate["version"])
         elif candidate["advisory_count"] == 0:
-            return {"status": "found", "release": candidate, "skipped_unknown": skipped}
-    return {"status": "none", "release": None, "skipped_unknown": skipped}
+            return {"status": "found", "release": candidate, "skipped_unknown": skipped,
+                    "skipped_affected": affected}
+        else:
+            affected += 1
+    return {"status": "none", "release": None, "skipped_unknown": skipped,
+            "skipped_affected": affected}

@@ -778,7 +778,7 @@ def _split_package_version(name):
     return head, tail
 
 
-def _explain_no_package_record(package_type, package_name):
+def _explain_no_package_record(package_type, package_name, to_stderr=False):
     """Say why deps.dev gave no package record: only a 404 means it has none.
 
     A failed request also comes back as "no record", so without this a TLS
@@ -802,8 +802,9 @@ def _explain_no_package_record(package_type, package_name):
         err.print(f"deps.dev returned HTTP {status} for {package_type} {package_name}, "
                   "so it was not looked up.", markup=False)
     else:
-        console.print(Text.assemble("deps.dev has no record of ", (package_name, "bold"),
-                                    f" ({package_type})."))
+        (err if to_stderr else console).print(
+            Text.assemble("deps.dev has no record of ", (package_name, "bold"),
+                          f" ({package_type})."))
 
 
 def _sca_dependabot(dependabot_path, out, file_path, save, as_json, package_spec):
@@ -2063,7 +2064,7 @@ def _advisory_history_data(package_type, package_name, start_version, limit, inc
 
     releases = kospex.dependencies.release_list(package_type, package_name)
     if not releases:
-        _explain_no_package_record(package_type, package_name)
+        _explain_no_package_record(package_type, package_name, to_stderr=True)
         raise SystemExit(1)
 
     def order_key(version):
@@ -2117,7 +2118,8 @@ def _advisory_history_data(package_type, package_name, start_version, limit, inc
                        "published_at": next((r["published_at"] for r in considered
                                              if found and r["version"] == found["version"]),
                                             None),
-                       "skipped_unknown": clean["skipped_unknown"]},
+                       "skipped_unknown": clean["skipped_unknown"],
+                       "skipped_affected": clean["skipped_affected"]},
         "versions": [by_version[r["version"]] for r in window["rows"]],
         "sources": {"deps_dev": "https://api.deps.dev/v3alpha/systems/"
                                 f"{package_type}/packages/"
@@ -2158,16 +2160,25 @@ def _print_advisory_history(data):
     else:
         console.print(f"No {kind} to count.")
     if summary["unknown"]:
-        console.print(f"{summary['unknown']} release(s) not counted: OSV's answer for them "
-                      "was incomplete.")
+        console.print(f"{summary['unknown']} release(s) not counted: their advisories "
+                      "could not all be read.")
 
     nxt = data["next_clean"]
     start = safe(data["start"])
     if nxt["status"] == "start_clean":
         console.print(f"{start} itself has no known advisories.")
     elif nxt["status"] == "found":
+        notes = []
+        if nxt["skipped_affected"]:
+            count = nxt["skipped_affected"]
+            notes.append(f"skips {count} release{'s' if count != 1 else ''} with a known "
+                         "advisory")
+        if osv_queries.major_of(nxt["version"]) != osv_queries.major_of(data["start"]):
+            notes.append(f"crosses to {safe(osv_queries.major_of(nxt['version']))}.x")
         console.print(f"Next release without known advisories: {safe(nxt['version'])}"
                       + (f" ({safe(nxt['published_at'][:10])})" if nxt["published_at"] else ""))
+        if notes:
+            console.print(f"  {'; '.join(notes)}")
     else:
         console.print(f"No newer release without known advisories than {start}.")
     if nxt["skipped_unknown"]:

@@ -132,6 +132,12 @@ class TestFlow:
         assert result.deps_asked == [("pypi", "demo")]
         assert FakeOsv.batch_calls == []
 
+    def test_no_deps_dev_record_writes_nothing_to_stdout_in_json_mode(self, run):
+        result = run("-package", "pypi:demo", "-json", releases=None)
+        assert result.exit_code == 1
+        assert result.stdout == ""
+        assert "no record" in result.stderr
+
     def test_unknown_start_version_is_a_usage_error_naming_it(self, run):
         result = run("-package", "pypi:demo@9.9.9", releases=DEMO)
         assert result.exit_code == 2 and "9.9.9" in result.output
@@ -202,6 +208,24 @@ class TestOutput:
                      batch={"2.0.0": ["A"], "2.1.0": ["A"]})
         assert "Next release without known advisories: 3.0.0" in result.output
 
+    def test_next_release_says_what_it_skips_and_a_major_change(self, run):
+        result = run("-package", "pypi:demo@2.0.0", releases=DEMO,
+                     batch={"2.0.0": ["A"], "2.1.0": ["A"]})
+        assert "skips 1 release with a known advisory" in result.output
+        assert "crosses to 3.x" in result.output
+        same_major = run("-package", "pypi:demo@2.0.0", "-json", releases=DEMO,
+                         batch={"2.0.0": ["A"]})
+        data = json.loads(same_major.stdout)["next_clean"]
+        assert data["version"] == "2.1.0" and data["skipped_affected"] == 0
+        assert "crosses" not in run("-package", "pypi:demo@2.0.0", releases=DEMO,
+                                    batch={"2.0.0": ["A"]}).output
+
+    def test_failed_record_fetch_is_not_described_as_an_incomplete_osv_answer(self, run):
+        result = run("-package", "pypi:demo", releases=DEMO, batch={"3.0.0": ["A"]},
+                     vulns={"A": OsvError("boom")})
+        assert "could not all be read" in result.output
+        assert "incomplete" not in result.output
+
     def test_every_later_release_affected(self, run):
         result = run("-package", "pypi:demo@2.0.0", releases=DEMO,
                      batch={"2.0.0": ["A"], "2.1.0": ["A"], "3.0.0": ["A"]})
@@ -236,7 +260,7 @@ class TestJson:
         assert by["2.1.0"]["advisory_ids"] == ["A"] and by["2.1.0"]["worst_severity"] == "HIGH"
         assert by["2.0.0"]["advisory_count"] == 0
         assert set(data["next_clean"]) == {"status", "version", "published_at",
-                                           "skipped_unknown"}
+                                           "skipped_unknown", "skipped_affected"}
         assert data["next_clean"]["skipped_unknown"] == ["3.0.0"]
         assert data["sources"]["osv"].endswith("/querybatch")
         assert "deps.dev" in data["sources"]["deps_dev"]
