@@ -2175,22 +2175,22 @@ def _print_advisory_history(data):
 
     nxt = data["next_clean"]
     start = safe(data["start"])
+    count = nxt["skipped_affected"]
+    versions = f"{count} version{'s' if count != 1 else ''} with a known advisory"
     if nxt["status"] == "start_clean":
-        console.print(f"{start} itself has no known advisories.")
+        console.print(f'{start} is "clean": it has no known advisories.')
     elif nxt["status"] == "found":
-        notes = []
-        if nxt["skipped_affected"]:
-            count = nxt["skipped_affected"]
-            notes.append(f"skips {count} release{'s' if count != 1 else ''} with a known "
-                         "advisory")
-        if osv_queries.major_of(nxt["version"]) != osv_queries.major_of(data["start"]):
-            notes.append(f"crosses to {safe(osv_queries.major_of(nxt['version']))}.x")
-        console.print(f"Next release without known advisories: {safe(nxt['version'])}"
+        found = safe(nxt["version"])
+        console.print(f'Next "clean" release with no known advisories: {found}'
                       + (f" ({safe(nxt['published_at'][:10])})" if nxt["published_at"] else ""))
-        if notes:
-            console.print(f"  {'; '.join(notes)}")
+        if count:
+            console.print(f"  {versions} between {start} and {found}")
+        if osv_queries.major_of(nxt["version"]) != osv_queries.major_of(data["start"]):
+            console.print(f"  crosses to {safe(osv_queries.major_of(nxt['version']))}.x")
     else:
-        console.print(f"No newer release without known advisories than {start}.")
+        console.print(f'No newer "clean" release than {start}.')
+        if count:
+            console.print(f"  {versions} after {start}")
     if nxt["skipped_unknown"]:
         console.print("Skipped, advisories unknown: "
                       + ", ".join(safe(v) for v in nxt["skipped_unknown"]))

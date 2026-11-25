@@ -369,7 +369,7 @@ The table starts at `@VERSION`, or the latest release when there is none, and go
 back by version number, not publish date (the Published column is when the
 registry received that version), so a backport published later (log4j-core
 2.25.5 after 2.26.1) sorts where its number puts it. A release whose lookup failed
-shows `?`: unknown is never zero. The next release without known advisories is
+shows `?`: unknown is never zero. The next "clean" release is
 marked `next clean` in the Notes column when it is in the table.
 
 Under the table:
@@ -378,9 +378,9 @@ Under the table:
   each major version (`2.x  57/61 (93%)`). It covers every stable release, not just
   the ones in the table. Releases OSV gave only a partial answer for are counted
   separately, not in the percentage.
-- **The next release without known advisories** after the start: the first stable,
-  non-deprecated release with none. It says how many releases with a known advisory
-  lie in between, and when it crosses to another major version. Releases that are
+- **The next "clean" release** (one with no known advisories) after the start: the first stable,
+  non-deprecated release with none. It says how many versions with a known advisory
+  lie between the start and it, and when it crosses to another major version. Releases that are
   unknown are skipped and named.
   If the start itself has none, it says so. If every later release has one, it says that.
 

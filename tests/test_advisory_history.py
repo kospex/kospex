@@ -199,19 +199,19 @@ class TestOutput:
         assert "1 pre-release" in out                     # excluded, and counted
         assert "3 of 3 stable releases (100%) have a known advisory" in out
         assert "2.x  2/2" in out and "1.x  1/1" in out
-        assert "without known advisories" in out
+        assert 'No newer "clean" release than 3.0.0' in out
         assert "safe" not in out.lower()
         assert "Clean means no known advisories" in out
 
     def test_next_release_found(self, run):
         result = run("-package", "pypi:demo@2.0.0", releases=DEMO,
                      batch={"2.0.0": ["A"], "2.1.0": ["A"]})
-        assert "Next release without known advisories: 3.0.0" in result.output
+        assert 'Next "clean" release with no known advisories: 3.0.0' in result.output
 
-    def test_next_release_says_what_it_skips_and_a_major_change(self, run):
+    def test_next_release_says_how_many_affected_versions_come_before_it(self, run):
         result = run("-package", "pypi:demo@2.0.0", releases=DEMO,
                      batch={"2.0.0": ["A"], "2.1.0": ["A"]})
-        assert "skips 1 release with a known advisory" in result.output
+        assert "1 version with a known advisory between 2.0.0 and 3.0.0" in result.output
         assert "crosses to 3.x" in result.output
         same_major = run("-package", "pypi:demo@2.0.0", "-json", releases=DEMO,
                          batch={"2.0.0": ["A"]})
@@ -229,7 +229,8 @@ class TestOutput:
     def test_every_later_release_affected(self, run):
         result = run("-package", "pypi:demo@2.0.0", releases=DEMO,
                      batch={"2.0.0": ["A"], "2.1.0": ["A"], "3.0.0": ["A"]})
-        assert "No newer release without known advisories" in result.output
+        assert 'No newer "clean" release than 2.0.0' in result.output
+        assert "2 versions with a known advisory after 2.0.0" in result.output
 
     def test_third_party_text_is_not_markup(self, run):
         result = run("-package", "pypi:demo", releases=[rel("[red]x[/red]1.0", default=True)])
