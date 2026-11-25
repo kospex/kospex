@@ -6,7 +6,9 @@ The main command is _kospex_ however there are some other helper commands as wel
 
 The main "do-er" of tasks.
 
-See [kospex](kospex) for more details.
+See [kospex](kospex) for more details. For example, `kospex advisory-history -package
+pypi:requests` shows which releases of a package have known advisories; see
+[advisory-history](kospex#advisory-history).
 
 ## kgit
 

@@ -37,8 +37,8 @@ kospex sca -package maven:io.netty:netty-handler@4.2.18.Final -osv
 - `-osv` requires `@VERSION`; without it, it is a usage error. OSV answers "which
   advisories affect this version". The other question, "every advisory this package
   has had", is advisory history and belongs in its own command. `kospex
-  advisory-history` already exists as a stub ("being redesigned"), and OSV can feed
-  it later. It is not part of this change.
+  advisory-history` is that command: see `changes/202611-advisory-history.md`. It is
+  not part of this change.
 - `-osv` is refused without `-package`: with a file, there is no section to append
   to, and a per-row OSV lookup is the phase-2 estate work below.
 - The existing `-package` refusals (`-repo`, `-save`, `-out`, `-json`, `-scope`,
