@@ -27,6 +27,7 @@
         </style>
     </head>
     <body class="bg-white">
+        {% from '_bot_badge.html' import bot_badge %}
         {% include '_header.html' %}
 
         <!-- Main content area -->
@@ -52,14 +53,16 @@
                                 {% for row in collabs %}
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <a href="/developers/?author_email={{ row['author_email'] }}" class="text-blue-600 hover:text-blue-800 underline">
+                                        <a href="/developers/?author_email={{ row['author_email'] | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">
                                             {{ row['author_email'] }}
                                         </a>
+                                        {{ bot_badge(row['author_is_bot'], row['author_bot_type']) }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        <a href="/developers/?committer_email={{ row['committer_email'] }}" class="text-blue-600 hover:text-blue-800 underline">
+                                        <a href="/commits/?committer_email={{ row['committer_email'] | urlencode }}&repo_id={{ repo_id | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">
                                             {{ row['committer_email'] }}
                                         </a>
+                                        {{ bot_badge(row['committer_is_bot'], row['committer_bot_type']) }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
                                         <a href="/commits/?author_email={{ row['author_email'] }}" class="text-blue-600 hover:text-blue-800 underline">

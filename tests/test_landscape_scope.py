@@ -832,3 +832,48 @@ class TestDevelopersCollabLink:
         # /collab/ exists per repository only.
         assert "/collab/" not in _developers(b"org_key=github.com~acme")
         assert "/collab/" not in _developers()
+
+
+class TestCollabBotLabels:
+
+    class _Query(_FakeQuery):
+        def get_repo_by_id(self, repo_id):
+            return {"_repo_id": repo_id}
+
+        def get_collabs(self, repo_id=None):
+            return [
+                {"author_email": "dev@example.com",
+                 "committer_email": "noreply@github.com", "commits": 7},
+                {"author_email": "49699333+dependabot[bot]@users.noreply.github.com",
+                 "committer_email": "noreply@github.com", "commits": 4},
+                {"author_email": "dev@example.com",
+                 "committer_email": "dev@example.com", "commits": 2},
+            ]
+
+    def _html(self, monkeypatch):
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: self._Query())
+        return kweb2.collab(
+            _request("/collab/github.com~acme~one"),
+            repo_id="github.com~acme~one").body.decode()
+
+    def test_both_columns_are_labelled(self, monkeypatch):
+        html = self._html(monkeypatch)
+
+        # row 1: committer only; row 2: author and committer; row 3: neither
+        assert html.count(">bot</span>") == 3
+        assert 'title="Detected as a bot: github-system"' in html
+        assert 'title="Detected as a bot: dependabot"' in html
+
+    def test_label_sits_beside_the_right_email(self, monkeypatch):
+        html = self._html(monkeypatch)
+
+        human = html.index("dev@example.com")
+        # The first human author cell is followed by the next cell, not a badge.
+        assert ">bot</span>" not in html[human:human + 160].split("</td>")[0]
+
+    def test_committer_links_reach_the_commits_page_in_this_repo(self, monkeypatch):
+        html = self._html(monkeypatch)
+
+        assert ('href="/commits/?committer_email=noreply%40github.com'
+                '&repo_id=github.com~acme~one"') in html
+        assert "/developers/?committer_email=" not in html

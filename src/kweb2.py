@@ -741,6 +741,7 @@ def collab(request: Request, repo_id: str):
                 detail=f"Repository not in the kospex database: {repo_id}")
 
         collabs = kquery.get_collabs(repo_id=repo_id)
+        _label_bots(collabs, ("author", "committer"))
 
         return templates.TemplateResponse(
             request, "collab.html",
@@ -1221,6 +1222,21 @@ def landscape(request: Request, id: Optional[str] = None):
     except Exception as e:
         logger.error(f"Error in landscape endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+def _label_bots(rows, prefixes):
+    """Add `<prefix>_is_bot` / `<prefix>_bot_type` to each row for each
+    `<prefix>_email` column, using the same detector as `krunner key-person`.
+    """
+    from kospex_email import EmailAnalyzer
+
+    analyzer = EmailAnalyzer()
+    for row in rows:
+        for prefix in prefixes:
+            info = analyzer.analyze(row[f"{prefix}_email"])
+            row[f"{prefix}_is_bot"] = bool(info.is_bot)
+            row[f"{prefix}_bot_type"] = info.bot_type or ""
+    return rows
 
 
 def _developer_rows(view, days, org_key, repo_id):
