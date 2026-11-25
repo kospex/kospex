@@ -761,8 +761,15 @@ def collab_graph(request: Request, repo_id: str):
         logger.info(f"Collaboration graph page requested for repo: {repo_id}")
         _require_known_scope({"repo_id": repo_id}, repo_id)
 
+        # Breadcrumb: server / org / repo / Collaboration / Network graph.
+        crumbs = {
+            **KospexWeb.scope_context({"repo_id": repo_id}, "Collaboration"),
+            "sub_page": "Network graph",
+            "page_url": f"/collab/{repo_id}",
+        }
+
         return templates.TemplateResponse(
-            request, "collab_graph.html", {"repo_id": repo_id}
+            request, "collab_graph.html", {"repo_id": repo_id, **crumbs}
         )
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any

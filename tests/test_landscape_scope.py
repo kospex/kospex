@@ -602,3 +602,27 @@ class TestRepoQuickLinks:
         assert re.search(r'id="options-help"\s+class="hidden', src)
         assert "What do these options do?" in src
         assert '$("#options-help-toggle").on("click"' in src
+
+
+class TestCollabGraphBreadcrumb:
+
+    def _page(self, monkeypatch, repo_id="github.com~acme~one"):
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: _FakeQuery())
+        return kweb2.collab_graph(
+            _request(f"/collab/graph/{repo_id}"), repo_id=repo_id
+        ).body.decode()
+
+    def test_breadcrumb_replaces_the_raw_repo_id_line(self, monkeypatch):
+        html = self._page(monkeypatch)
+
+        assert 'aria-label="Breadcrumb"' in html
+        assert 'href="/repo/github.com~acme~one"' in html
+        # "Collaboration" links back to the table; the graph is the current page.
+        assert 'href="/collab/github.com~acme~one"' in html
+        assert 'aria-current="page">Network graph<' in html
+        assert "Repository:" not in html
+
+    def test_the_graph_still_loads_its_data(self, monkeypatch):
+        html = self._page(monkeypatch)
+
+        assert "/api/collab/graph/github.com~acme~one" in html

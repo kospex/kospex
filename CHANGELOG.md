@@ -26,6 +26,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 - **Repo page quick links.** A Developers link (scoped to the repository) sits before
   "Explore the graph", and a "What do these options do?" show / hide link under the
   list describes each one.
+- **Collaboration graph breadcrumb.** `/collab/graph/{repo_id}` shows the server / org /
+  repo / Collaboration / Network graph breadcrumb in place of the raw `Repository:
+  <repo_id>` line.
 
 ## 0.5.1 - 2026-11-25
 

@@ -117,11 +117,11 @@
             <!-- Collaboration Network Graph -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
+                    {% if git_server %}{% include '_breadcrumb.html' %}{% endif %}
                     <div class="flex justify-between items-center mb-6">
                         <div>
                             <h1 class="text-3xl font-bold text-gray-900">Collaboration Network</h1>
                             <p class="text-gray-600 mt-2">Network visualization of author and committer relationships</p>
-                            <p class="text-sm text-gray-500 mt-1">Repository: <code class="bg-gray-100 px-2 py-1 rounded">{{ repo_id }}</code></p>
                         </div>
                         <div class="text-right flex gap-2">
                             <button id="downloadGraph" class="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
