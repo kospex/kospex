@@ -11,7 +11,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   with their OSV advisories, says what share of all stable releases have a known
   advisory, overall and per major version, and names the next release after the
   start with none. Releases are ordered by version number, not publish date, and one
-  that OSV could not answer for shows `?`, never 0. `-all` lists every release, newer and older than the start. `-json` prints the same
+  that OSV could not answer for shows `?`, never 0. `-all` lists every release, newer and older than the start. `-upgrade` (with `@VERSION`) lists the
+  releases from that version up to the next release with no known advisories. `-json` prints the same
   result.
   The old `-ecosystem E -package NAME` form still works. It replaces the version that
   crashed with `IndexError` on scoped npm, Maven and Go packages and was disabled in

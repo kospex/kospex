@@ -2046,7 +2046,7 @@ OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 
 
 def _advisory_history_data(package_type, package_name, start_version, limit, include_pre,
-                           show_all=False):
+                           show_all=False, upgrade=False):
     """Everything `advisory-history` shows, as the document `-json` prints.
 
     Exits 1 with one line on stderr when the package cannot be looked up or OSV does
@@ -2077,7 +2077,7 @@ def _advisory_history_data(package_type, package_name, start_version, limit, inc
         start_version = start["version"]
     try:
         window = osv_queries.select_window(releases, start_version,
-                                           len(releases) if show_all else limit,
+                                           len(releases) if show_all or upgrade else limit,
                                            include_pre, order_key)
     except ValueError:
         raise click.UsageError(f"deps.dev has no version {start_version} of "
@@ -2105,19 +2105,28 @@ def _advisory_history_data(package_type, package_name, start_version, limit, inc
 
     rows = osv_queries.release_rows(considered, ids_by_version, records, ecosystem,
                                     package_name, start_version)
+    clean = osv_queries.next_clean(rows, start_version, order_key)
+    found = clean["release"]
     by_version = {r["version"]: r for r in rows}
     if show_all:
         # Every release, newest first, newer than the start included: the point of -all
         # is to see what lies between the version in use and the next one without advisories.
         shown = sorted(considered, key=lambda r: order_key(r["version"]), reverse=True)
+    elif upgrade:
+        # The way up: the start, then every release newer than it, ending at the next
+        # "clean" one (or at the newest when there is none).
+        low = order_key(start_version)
+        high = order_key(found["version"]) if found else None
+        shown = sorted((r for r in considered
+                        if order_key(r["version"]) >= low
+                        and (high is None or order_key(r["version"]) <= high)),
+                       key=lambda r: order_key(r["version"]), reverse=True)
     else:
         shown = window["rows"]
-    clean = osv_queries.next_clean(rows, start_version, order_key)
-    found = clean["release"]
     return {
         "package": {"type": package_type, "name": package_name},
         "start": start_version,
-        "limit": None if show_all else limit,
+        "limit": None if show_all or upgrade else limit,
         "include_prereleases": include_pre,
         "skipped_prereleases": window["skipped_prereleases"],
         "summary": osv_queries.summarise(rows, include_pre),
@@ -2208,11 +2217,14 @@ def _print_advisory_history(data):
 @click.option("-all", "show_all", is_flag=True, default=False,
               help="List every release, newer and older than the start, not just -limit "
                    "of them going back.")
+@click.option("-upgrade", "upgrade", is_flag=True, default=False,
+              help="List the releases from @VERSION up to and including the next \"clean\" "
+                   "one: the versions an upgrade passes.")
 @click.option("-pre", "include_pre", is_flag=True, default=False,
               help="Include pre-releases and pseudo-versions.")
 @click.option("-json", "as_json", is_flag=True, default=False,
               help="Print the result as JSON on stdout and nothing else.")
-def advisory_history(ecosystem, package, limit, show_all, include_pre, as_json):
+def advisory_history(ecosystem, package, limit, show_all, upgrade, include_pre, as_json):
     """
     Advisories for a package's recent releases, from OSV.
 
@@ -2226,9 +2238,13 @@ def advisory_history(ecosystem, package, limit, show_all, include_pre, as_json):
     """
     if not package:
         raise click.UsageError("-package TYPE:NAME[@VERSION] is required.")
-    if show_all and (click.get_current_context().get_parameter_source("limit")
-                     == ParameterSource.COMMANDLINE):
+    limit_given = (click.get_current_context().get_parameter_source("limit")
+                   == ParameterSource.COMMANDLINE)
+    if show_all and limit_given:
         raise click.UsageError("-all lists every release, so it cannot be combined with -limit.")
+    if upgrade and (show_all or limit_given):
+        raise click.UsageError("-upgrade picks its own releases, so it cannot be combined "
+                               "with -all or -limit.")
     if ecosystem:
         package_type, name_spec = ecosystem.lower(), package
     else:
@@ -2243,8 +2259,10 @@ def advisory_history(ecosystem, package, limit, show_all, include_pre, as_json):
     if version == "":
         raise click.UsageError(f"-package {package!r} has an empty version after '@'.")
 
+    if upgrade and version is None:
+        raise click.UsageError("-upgrade needs a version: -package TYPE:NAME@VERSION.")
     data = _advisory_history_data(package_type, package_name, version, limit, include_pre,
-                                  show_all)
+                                  show_all, upgrade)
     if as_json:
         click.echo(json.dumps(data, indent=2))
     else:

@@ -351,6 +351,7 @@ to the kospex database.
 ```bash
 kospex advisory-history -package maven:org.apache.logging.log4j:log4j-core
 kospex advisory-history -package pypi:requests@2.25.0 -limit 10
+kospex advisory-history -package maven:org.apache.logging.log4j:log4j-core@2.14.0 -upgrade
 kospex advisory-history -package npm:@babel/core -pre -json
 kospex advisory-history -ecosystem npm -package @babel/core
 ```
@@ -362,6 +363,7 @@ kospex advisory-history -ecosystem npm -package @babel/core
 |---|---|
 | `-limit N` | How many releases to list, going back from the start. Default 20. |
 | `-all` | List every release, newer and older than the start, instead of `-limit` of them going back. Use it to see what lies between your version and the next one without known advisories. Cannot be combined with `-limit`. |
+| `-upgrade` | Needs `@VERSION`. Lists the releases from that version up to and including the next "clean" one, so you see every version an upgrade passes and what each has. If no later release is clean it lists every later release. Cannot be combined with `-all` or `-limit`. |
 | `-pre` | Include pre-releases and Go pseudo-versions. They are left out by default and the count of those left out is printed. |
 | `-json` | The result as JSON on stdout and nothing else. |
 

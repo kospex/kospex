@@ -307,3 +307,40 @@ class TestAll:
         assert "next clean" in line
         other = next(l for l in result.output.splitlines() if "2.1.0" in l and "│" in l)
         assert "next clean" not in other
+
+
+class TestUpgrade:
+    def versions(self, result):
+        return [v["version"] for v in json.loads(result.stdout)["versions"]]
+
+    def test_needs_a_version(self, run):
+        result = run("-package", "pypi:demo", "-upgrade", releases=DEMO)
+        assert result.exit_code == 2 and "-upgrade needs a version" in result.output
+        assert FakeOsv.batch_calls == []
+
+    @pytest.mark.parametrize("other", [["-all"], ["-limit", "5"]])
+    def test_cannot_be_combined_with_all_or_limit(self, run, other):
+        result = run("-package", "pypi:demo@1.0.0", "-upgrade", *other, releases=DEMO)
+        assert result.exit_code == 2 and "-upgrade" in result.output
+        assert FakeOsv.batch_calls == []
+
+    def test_lists_the_start_up_to_and_including_the_next_clean_release(self, run):
+        result = run("-package", "pypi:demo@1.0.0", "-upgrade", "-json", releases=DEMO,
+                     batch={"1.0.0": ["A"], "2.0.0": ["A"]})
+        data = json.loads(result.stdout)
+        assert self.versions(result) == ["2.1.0", "2.0.0", "1.0.0"]     # 3.0.0 is past it
+        assert data["next_clean"]["version"] == "2.1.0" and data["limit"] is None
+
+    def test_when_nothing_is_clean_it_lists_every_later_release(self, run):
+        result = run("-package", "pypi:demo@2.0.0", "-upgrade", "-json", releases=DEMO,
+                     batch={"2.0.0": ["A"], "2.1.0": ["A"], "3.0.0": ["A"]})
+        assert self.versions(result) == ["3.0.0", "2.1.0", "2.0.0"]
+
+    def test_when_the_start_is_clean_it_lists_only_the_start(self, run):
+        result = run("-package", "pypi:demo@2.0.0", "-upgrade", "-json", releases=DEMO)
+        assert self.versions(result) == ["2.0.0"]
+
+    def test_the_summary_still_covers_every_release(self, run):
+        result = run("-package", "pypi:demo@2.0.0", "-upgrade", "-json", releases=DEMO,
+                     batch={"2.0.0": ["A"]})
+        assert json.loads(result.stdout)["summary"]["releases"] == 4
