@@ -15,6 +15,8 @@ import json
 import os
 
 from kospex.dependencies.version_diff import change_level, version_diff
+from kospex.integrations.osv import queries as osv_queries
+from kospex.integrations.osv.client import OsvClient, OsvError
 from kospex.prerelease import is_prerelease
 
 # GitHub ecosystem name (lower case) -> kospex / deps.dev package type.
@@ -65,6 +67,26 @@ SCA_FIELDS = (
     "sca_patched_ghsa_ids",
 )
 
+# Added after SCA_FIELDS, only when -next-clean is given. Null when not attempted.
+NEXT_CLEAN_FIELDS = (
+    "sca_next_clean_version",
+    "sca_next_clean_age_days",
+    "sca_next_clean_affected_between",
+    "sca_next_clean_status",
+)
+
+NC_FOUND = "found"
+NC_START_CLEAN = "start_clean"
+NC_NONE = "none"
+NC_NO_CURRENT = "no_current_version"
+NC_PRERELEASE = "current_is_prerelease"
+NC_NOT_LISTED = "not_in_release_list"
+NC_ERROR = "lookup_error"
+
+# Failed OSV batches in a row before a run stops asking OSV (a blocked host would
+# otherwise cost the full retry time on every package).
+MAX_OSV_FAILURES = 3
+
 # HTTP statuses meaning deps.dev answered: found, or has no such record.
 _ANSWERED = (200, 404)
 
@@ -79,16 +101,24 @@ def _deps_dev_version(package_type, version):
 class Enricher:
     """Adds SCA_FIELDS to Dependabot alerts using `kdeps` (KospexDependencies)."""
 
-    def __init__(self, kdeps, now=None):
+    def __init__(self, kdeps, now=None, next_clean=False, osv_client=None):
         self.kdeps = kdeps
         self.now = now
+        self.next_clean = next_clean
+        self.osv_stopped = False                       # set after MAX_OSV_FAILURES
+        self.next_clean_counts = collections.Counter()  # sca_next_clean_status -> rows
+        self._osv = osv_client
+        self._osv_failures = 0
         self._releases = {}   # (type, name) -> (releases | None, status)
         self._details = {}    # (type, name, version) -> detail | None
+        self._advisory_rows = {}   # (type, name) -> rows | None (OSV did not answer)
 
     def enrich(self, alert):
         """A new dict: the alert's keys, then every SCA_FIELDS key."""
         out = dict(alert)
         fields = dict.fromkeys(SCA_FIELDS)
+        if self.next_clean:
+            fields.update(dict.fromkeys(NEXT_CLEAN_FIELDS))
         fields["sca_status"] = self._fill(alert, fields)
         out.update(fields)
         return out
@@ -125,6 +155,10 @@ class Enricher:
             if detail:
                 fields["sca_current_age_days"] = detail.get("age_days")
 
+        if self.next_clean:
+            self._fill_next_clean(package_type, name, current, current_lookup, releases,
+                                  fields)
+
         patched_status = OK
         if patched:
             detail, status = self._detail(package_type, name, patched_lookup, releases)
@@ -159,6 +193,84 @@ class Enricher:
         if not patched:
             return NO_PATCHED_VERSION
         return patched_status
+
+    def _fill_next_clean(self, package_type, name, current, current_lookup, releases,
+                         fields):
+        """Fill the sca_next_clean_* fields: the first stable, non-deprecated release
+        above `current` with no known advisories in OSV. Never changes sca_status."""
+        status = self._next_clean(package_type, name, current, current_lookup, releases,
+                                  fields)
+        fields["sca_next_clean_status"] = status
+        self.next_clean_counts[status] += 1
+
+    def _next_clean(self, package_type, name, current, current_lookup, releases, fields):
+        if not current:
+            return NC_NO_CURRENT
+        if is_prerelease(package_type, current_lookup):
+            return NC_PRERELEASE
+        if not any(r["version"] == current_lookup for r in releases):
+            return NC_NOT_LISTED
+        rows = self._advisory_rows_for(package_type, name, releases)
+        if rows is None:
+            return NC_ERROR
+
+        def order_key(version):
+            return self.kdeps._version_order_key(package_type, version)
+
+        clean = osv_queries.next_clean(rows, current_lookup, order_key)
+        fields["sca_next_clean_affected_between"] = clean["skipped_affected"]
+        if clean["status"] == "start_clean":
+            return NC_START_CLEAN
+        if clean["status"] == "none":
+            return NC_NONE
+        found = clean["release"]["version"]
+        fields["sca_next_clean_version"] = found
+        fields["sca_next_clean_age_days"] = self._release_age_days(releases, found)
+        return NC_FOUND
+
+    def _advisory_rows_for(self, package_type, name, releases):
+        """OSV advisory rows for every stable release of the package, or None.
+
+        One OSV batch and one cached fetch per distinct advisory, per package: the
+        result is kept for every alert on it. None when OSV did not answer, or when
+        the run has stopped asking after MAX_OSV_FAILURES batch failures in a row.
+        """
+        key = (package_type, name)
+        if key in self._advisory_rows:
+            return self._advisory_rows[key]
+        if self.osv_stopped:
+            return None
+        ecosystem = osv_queries.ecosystem_for(package_type)
+        considered = [r for r in releases if not r["is_prerelease"]]
+        spelled = {r["version"]: osv_queries.osv_version(ecosystem, r["version"])
+                   for r in considered}
+        client = self._osv_client()
+        try:
+            answers = client.querybatch(ecosystem, name, list(spelled.values()))
+        except OsvError:
+            self._osv_failures += 1
+            if self._osv_failures >= MAX_OSV_FAILURES:
+                self.osv_stopped = True
+            self._advisory_rows[key] = None
+            return None
+        self._osv_failures = 0
+        ids_by_version = {version: answers.get(osv) for version, osv in spelled.items()}
+        records = {}
+        for osv_id in sorted({i for ids in ids_by_version.values() for i in ids or []}):
+            try:
+                records[osv_id] = client.vuln(osv_id)
+            except OsvError:
+                records[osv_id] = None
+        rows = osv_queries.release_rows(considered, ids_by_version, records, ecosystem,
+                                        name, current_version=None)
+        self._advisory_rows[key] = rows
+        return rows
+
+    def _osv_client(self):
+        if self._osv is None:
+            query = getattr(self.kdeps, "kospex_query", None)
+            self._osv = OsvClient(cached_get=getattr(query, "url_request_with_status", None))
+        return self._osv
 
     def _releases_to_patched(self, package_type, name, current, patched, releases):
         """Releases deps.dev lists above `current`, up to and including `patched`.

@@ -807,7 +807,8 @@ def _explain_no_package_record(package_type, package_name, to_stderr=False):
                           f" ({package_type})."))
 
 
-def _sca_dependabot(dependabot_path, out, file_path, save, as_json, package_spec):
+def _sca_dependabot(dependabot_path, out, file_path, save, as_json, package_spec,
+                    next_clean=False):
     """`kospex sca -dependabot FILE -out OUT`: enrich Dependabot alerts (JSONL)."""
     from kospex.dependabot_enrich import (  # pylint: disable=import-outside-toplevel
         DependabotInputError, Enricher, enrich_file)
@@ -837,8 +838,9 @@ def _sca_dependabot(dependabot_path, out, file_path, save, as_json, package_spec
         if done % 25 == 0:
             err.print(f"{done} alerts enriched...", markup=False)
 
+    enricher = Enricher(kdeps, next_clean=next_clean)
     try:
-        counts = enrich_file(dependabot_path, out, Enricher(kdeps), on_progress=progress)
+        counts = enrich_file(dependabot_path, out, enricher, on_progress=progress)
     except DependabotInputError as e:
         err.print(f"Error: {dependabot_path}: {e}. {out} was not written.",
                   style="red", markup=False)
@@ -864,6 +866,13 @@ def _sca_dependabot(dependabot_path, out, file_path, save, as_json, package_spec
     err.print(f"Wrote {sum(counts.values())} alerts to {out}", markup=False)
     for status in sorted(counts):
         err.print(f"  {status}: {counts[status]}", markup=False)
+    for status in sorted(enricher.next_clean_counts):
+        err.print(f"  next clean {status}: {enricher.next_clean_counts[status]}",
+                  markup=False)
+    if enricher.osv_stopped:
+        err.print("OSV did not answer 3 times in a row, so kospex stopped asking OSV: the "
+                  "remaining packages have sca_next_clean_status lookup_error. If api.osv.dev "
+                  "is blocked here, leave -next-clean off.", style="yellow", markup=False)
 
 
 def _sca_package(package_spec, file_path, save, out, as_json, osv=False):
@@ -1225,12 +1234,16 @@ def _print_osv_section(package_type, package_name, requested):
               help="With -package TYPE:NAME@VERSION, also list OSV's advisories for "
               "that version after deps.dev's, with the fixed version, and say where "
               "the two sources differ.")
+@click.option("-next-clean", "next_clean", is_flag=True, default=False,
+              help="With -dependabot, also look up the first release above each alert's "
+              "current version that OSV lists no advisory for (sca_next_clean_* fields). "
+              "Sends package names and versions to api.osv.dev.")
 @click.option("-enrich/-no-enrich", "enrich", default=None,
               help="Look packages up on deps.dev, or only parse the file. "
                    "Overrides KOSPEX_DEPS_ENRICH (default: enrich).")
 @click.argument("file_path", required=False, type=click.Path(exists=True))
 def sca(repo, scope, save, malware, as_json, out, dependabot_path, package_spec, osv,
-        enrich, file_path):
+        next_clean, enrich, file_path):
     """
     Run a lightweight software composition analysis (SCA) of a dependency file
     (e.g. requirements.txt, package.json), using deps.dev.
@@ -1262,7 +1275,9 @@ def sca(repo, scope, save, malware, as_json, out, dependabot_path, package_spec,
     columns added: the latest release and its age, how far behind the current
     version is and its age, the size of the upgrade to the patched version
     (and how many releases it spans) and the patched version's age, and the
-    deps.dev advisories still on the patched version. A line
+    deps.dev advisories still on the patched version. With -next-clean it also adds
+    the first release above the current version that OSV lists no advisory for
+    (sca_next_clean_*; sends package names and versions to api.osv.dev). A line
     that is not a JSON object, or whose package_name is not a non-empty
     string or whose versions are neither strings nor null, stops the run,
     names the line, and leaves no OUT. Needs lookups on (-enrich if KOSPEX_DEPS_ENRICH=false), and cannot
@@ -1284,6 +1299,8 @@ def sca(repo, scope, save, malware, as_json, out, dependabot_path, package_spec,
 
     if osv and not package_spec:
         raise click.UsageError("-osv only applies to -package TYPE:NAME@VERSION.")
+    if next_clean and not dependabot_path:
+        raise click.UsageError("-next-clean only applies to -dependabot.")
 
     if dependabot_path:
         if not enrich:
@@ -1291,7 +1308,8 @@ def sca(repo, scope, save, malware, as_json, out, dependabot_path, package_spec,
                       f"({why_not}). Add -enrich to look it up anyway.", markup=False)
             exit(1)
         _sca_dependabot(dependabot_path, out=out, file_path=file_path, save=save,
-                        as_json=as_json, package_spec=package_spec)
+                        as_json=as_json, package_spec=package_spec,
+                        next_clean=next_clean)
         return
 
     if package_spec:

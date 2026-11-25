@@ -22,7 +22,7 @@ database.
 ## Usage
 
 ```bash
-kospex sca -dependabot alerts.jsonl -out alerts-enriched.jsonl [-enrich]
+kospex sca -dependabot alerts.jsonl -out alerts-enriched.jsonl [-enrich] [-next-clean]
 ```
 
 - `-out` is required. The output is JSONL: same number of lines, same order, every input
@@ -129,6 +129,45 @@ into one entry each.
 Null when `patched_version` is missing or its lookup failed. `0` / null / `[]` means
 deps.dev knows the patched version and lists no advisories for it. These fields are set
 when `patched_version` is present even if `current_version` is not.
+
+### Next release with no known advisories (`-next-clean`)
+
+Only with `-next-clean`: the four fields below are added to every row (null when not
+attempted). Without the flag the output has none of them, so leaving it off is how you
+avoid sending anything to `api.osv.dev`, for example where it is blocked.
+
+For the alert's `current_version`, the first **stable, non-deprecated** release above it that
+OSV lists no non-withdrawn advisory for, at any severity. The release list comes from deps.dev
+and the advisories from OSV, the same definition as
+[`kospex advisory-history`](kospex.md#advisory-history). "Clean" means OSV lists none: it is
+not a claim the release is safe. It is looked up per package, not per alert: one OSV batch and
+one cached fetch per advisory, whatever the number of alerts on that package. The package name
+and versions are sent only after the private-package check passes.
+
+| Field | Meaning |
+|---|---|
+| `sca_next_clean_version` | The release, spelled as deps.dev spells it (Go keeps its `v`). Null when the status is anything but `found` |
+| `sca_next_clean_age_days` | Days since it was published; null when deps.dev lists it undated |
+| `sca_next_clean_affected_between` | How many stable releases with a known advisory lie between `current_version` and it. With `none`, all later ones. 0 with `start_clean` |
+| `sca_next_clean_status` | See below |
+
+`sca_next_clean_status`: `found`; `start_clean` (the installed version itself has none, so there
+is nothing to move to); `none` (every later release has a known advisory); `no_current_version`;
+`current_is_prerelease` (as with `behind_*`, a pre-release is not placed among releases);
+`not_in_release_list` (deps.dev does not list `current_version`); `lookup_error` (OSV did not
+answer). Null when the row never reached a release list, which `sca_status` explains
+(`private_skipped`, `unsupported_ecosystem`, `not_found`, `lookup_error`).
+
+- **It never changes `sca_status`.** An OSV failure only sets `sca_next_clean_status`.
+- **Unknown is never clean.** A release whose advisories could not all be read is skipped,
+  not offered. So `found` means the version really has none, though a nearer one may be unknown.
+- **A blocked OSV does not stall the run.** After 3 failed OSV batches in a row kospex stops
+  asking OSV, prints one warning on stderr, and the remaining packages are `lookup_error`.
+- **Ordering** is by version number (`_version_order_key`). Maven ordering uses the leading
+  numbers only, so releases with the same numbers and different qualifiers are ordered as text.
+- **It differs from `sca_patched_version_vulnerabilities`** on purpose: that count is deps.dev's
+  advisories on the patched version. The two sources can disagree.
+- **A summary** of the `sca_next_clean_status` counts goes to stderr with the `sca_status` ones.
 
 ## Statuses
 
