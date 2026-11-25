@@ -378,3 +378,15 @@ class TestSummaryLayout:
         assert lines[at] == "Clean means no known advisories: OSV lists none for that release."
         assert lines[at + 1] == "It is not a claim the release is free of vulnerabilities."
         assert lines[at + 2] == ""
+
+    def test_blank_line_before_the_next_clean_release_and_before_the_disclaimer(self, run):
+        lines = self.lines(run)
+        nxt = next(i for i, line in enumerate(lines) if line.startswith("No newer"))
+        assert lines[nxt - 1] == ""
+        assert lines[nxt - 2] == "  3.x  1/1 (100%)"
+        clean = next(i for i, line in enumerate(lines) if line.startswith("Clean means"))
+        assert lines[clean - 1] == ""
+        found = run("-package", "pypi:demo@2.0.0", releases=DEMO,
+                    batch={"2.0.0": ["A"], "2.1.0": ["A"]}).output.splitlines()
+        at = next(i for i, line in enumerate(found) if line.startswith('Next "clean"'))
+        assert found[at - 1] == ""

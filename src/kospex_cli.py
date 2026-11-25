@@ -2185,6 +2185,7 @@ def _print_advisory_history(data):
         console.print(f"{summary['unknown']} release(s) not counted: their advisories "
                       "could not all be read.")
 
+    console.print()
     nxt = data["next_clean"]
     start = safe(data["start"])
     count = nxt["skipped_affected"]
@@ -2206,6 +2207,7 @@ def _print_advisory_history(data):
     if nxt["skipped_unknown"]:
         console.print("Skipped, advisories unknown: "
                       + ", ".join(safe(v) for v in nxt["skipped_unknown"]))
+    console.print()
     console.print("Clean means no known advisories: OSV lists none for that release.")
     console.print("It is not a claim the release is free of vulnerabilities.")
     console.print()
