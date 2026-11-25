@@ -260,3 +260,117 @@ def compare(osv_rows, depsdev_advisories):
     only_osv = [row for row in live if row not in in_both]
     only_deps = [a for a in deps if not any(deps_ids(a) & osv_ids(row) for row in live)]
     return in_both, only_osv, only_deps
+
+
+# --- advisory history: per-release rows, summary, next release without advisories ---
+
+def osv_version(ecosystem, version):
+    """The version as OSV spells it. deps.dev writes Go versions with a leading `v`
+    (`v1.8.0`); OSV's Go entries do not (`1.8.0`). Other ecosystems are unchanged."""
+    if ecosystem == "Go" and version.startswith("v"):
+        return version[1:]
+    return version
+
+
+def select_window(releases, start_version, limit, include_pre, order_key):
+    """The `limit` releases from `start_version` going back by version number.
+
+    Ordered by `order_key`, never publish date: a backport (2.17.1 after 2.18.0) is
+    older than 2.18.0. Pre-releases are left out unless `include_pre`, but the start
+    release is always kept, since it is what the reader asked about or what installs.
+    Returns {"rows": [...], "skipped_prereleases": n, "start": release}; the count
+    is of pre-releases excluded. Raises ValueError(start_version) when it is not listed.
+    """
+    start = next((r for r in releases if r["version"] == start_version), None)
+    if start is None:
+        raise ValueError(start_version)
+    kept = [r for r in releases
+            if include_pre or not r["is_prerelease"] or r is start]
+    kept.sort(key=lambda r: order_key(r["version"]), reverse=True)
+    at = kept.index(start)
+    return {"rows": kept[at:at + limit],
+            "skipped_prereleases": len(releases) - len(kept),
+            "start": start}
+
+
+def release_rows(releases, ids_by_version, records, ecosystem, name, current_version):
+    """One row per release: its advisories with withdrawn ones dropped.
+
+    `ids_by_version[v]` is OSV's advisory IDs for v, or None when OSV did not give a
+    full answer. `records` is {id: record, or None when the record could not be
+    fetched}. A release is unknown (count and ids None) when its list is None or any
+    advisory it cites has no record: withdrawn status cannot be told, and unknown is
+    never zero.
+    """
+    rows = []
+    for release in releases:
+        ids = ids_by_version.get(release["version"])
+        count, shown, worst = None, None, ""
+        if ids is not None and all(records.get(i) is not None for i in ids):
+            live = [records[i] for i in ids if not records[i].get("withdrawn")]
+            count, shown = len(live), [r["id"] for r in live]
+            ranked = [s for s in (severity(r) for r in live) if s]
+            if ranked:
+                worst = max(ranked, key=lambda s: _worst(s.label, s.score)).label
+        rows.append({"version": release["version"],
+                     "published_at": release.get("published_at", ""),
+                     "advisory_count": count, "advisory_ids": shown,
+                     "worst_severity": worst,
+                     "is_current": release["version"] == current_version,
+                     "is_deprecated": release["is_deprecated"],
+                     "is_prerelease": release["is_prerelease"]})
+    return rows
+
+
+def _major(version):
+    return version.lstrip("v").split(".")[0]
+
+
+def _major_key(major):
+    return (0, int(major), "") if major.isdigit() else (1, 0, major)
+
+
+def summarise(rows, include_pre):
+    """How many releases have a known advisory, overall and per major version.
+
+    Stable releases only unless `include_pre`. Unknown releases are counted in
+    `unknown` and left out of everything else, so a failed lookup cannot lower the
+    percentage. `percent` is None when there is nothing to divide.
+    """
+    counted = [r for r in rows if include_pre or not r["is_prerelease"]]
+    known = [r for r in counted if r["advisory_count"] is not None]
+    majors = {}
+    for r in known:
+        entry = majors.setdefault(_major(r["version"]), {"releases": 0, "affected": 0})
+        entry["releases"] += 1
+        entry["affected"] += 1 if r["advisory_count"] else 0
+    affected = sum(1 for r in known if r["advisory_count"])
+    return {"releases": len(known), "affected": affected,
+            "unknown": len(counted) - len(known),
+            "percent": affected / len(known) * 100 if known else None,
+            "by_major": [{"major": m, **majors[m]}
+                         for m in sorted(majors, key=_major_key)]}
+
+
+def next_clean(rows, start_version, order_key):
+    """The first release after `start_version` with no known advisories.
+
+    {"status": "start_clean" | "found" | "none", "release": row | None,
+    "skipped_unknown": [versions]}. Only stable, non-deprecated releases newer than
+    the start by `order_key` are candidates. A release OSV did not answer for is
+    skipped and named, never returned: unknown is not clean.
+    """
+    start = next((r for r in rows if r["version"] == start_version), None)
+    if start is not None and start["advisory_count"] == 0:
+        return {"status": "start_clean", "release": start, "skipped_unknown": []}
+    floor = order_key(start_version)
+    later = sorted((r for r in rows if not r["is_prerelease"] and not r["is_deprecated"]
+                    and order_key(r["version"]) > floor),
+                   key=lambda r: order_key(r["version"]))
+    skipped = []
+    for candidate in later:
+        if candidate["advisory_count"] is None:
+            skipped.append(candidate["version"])
+        elif candidate["advisory_count"] == 0:
+            return {"status": "found", "release": candidate, "skipped_unknown": skipped}
+    return {"status": "none", "release": None, "skipped_unknown": skipped}
