@@ -357,3 +357,24 @@ class TestHeading:
         assert lines[at + 2].strip() == "Source: osv.dev"
         assert lines[at + 3].strip() == ""
         assert lines[at + 4].startswith("┏")
+
+
+class TestSummaryLayout:
+    def lines(self, run):
+        result = run("-package", "pypi:demo", releases=DEMO,
+                     batch={"3.0.0": ["A"], "2.1.0": ["A"], "2.0.0": ["B"]})
+        return result.output.splitlines()
+
+    def test_per_major_lines_sit_under_a_heading(self, run):
+        lines = self.lines(run)
+        at = next(i for i, line in enumerate(lines) if "have a known advisory" in line)
+        assert lines[at + 1] == "Major versions with known advisories:"
+        assert lines[at + 2:at + 5] == ["  1.x  0/1 (0%)", "  2.x  2/2 (100%)",
+                                        "  3.x  1/1 (100%)"]
+
+    def test_the_two_disclaimer_sentences_are_on_separate_lines_then_a_blank_line(self, run):
+        lines = self.lines(run)
+        at = next(i for i, line in enumerate(lines) if line.startswith("Clean means"))
+        assert lines[at] == "Clean means no known advisories: OSV lists none for that release."
+        assert lines[at + 1] == "It is not a claim the release is free of vulnerabilities."
+        assert lines[at + 2] == ""

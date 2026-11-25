@@ -2174,6 +2174,7 @@ def _print_advisory_history(data):
     if summary["releases"]:
         console.print(f"{summary['affected']} of {summary['releases']} {kind} "
                       f"({summary['percent']:.0f}%) have a known advisory.")
+        console.print("Major versions with known advisories:")
         for major in summary["by_major"]:
             percent = major["affected"] / major["releases"] * 100
             console.print(f"  {safe(major['major'])}.x  {major['affected']}/"
@@ -2205,8 +2206,9 @@ def _print_advisory_history(data):
     if nxt["skipped_unknown"]:
         console.print("Skipped, advisories unknown: "
                       + ", ".join(safe(v) for v in nxt["skipped_unknown"]))
-    console.print("Clean means no known advisories: OSV lists none for that release. It "
-                  "is not a claim the release is free of vulnerabilities.")
+    console.print("Clean means no known advisories: OSV lists none for that release.")
+    console.print("It is not a claim the release is free of vulnerabilities.")
+    console.print()
 
 
 @cli.command("advisory-history")
