@@ -109,9 +109,11 @@ class TestFields:
         assert row["sca_next_clean_age_days"] == (NOW - datetime.datetime(
             2026, 4, 1, tzinfo=datetime.timezone.utc)).days
 
-    def test_the_installed_version_is_already_clean(self):
+    def test_osv_lists_nothing_for_the_installed_version_so_the_sources_disagree(self):
+        # Every alert row is a version GitHub calls vulnerable, so OSV finding none for
+        # it is a disagreement, not "nothing to move to".
         row = enricher(PKG, FakeOsv({"pkg": {"1.0.0": []}})).enrich(alert(current="1.0.0"))
-        assert row["sca_next_clean_status"] == "start_clean"
+        assert row["sca_next_clean_status"] == "current_has_no_osv_advisory"
         assert row["sca_next_clean_version"] is None
         assert row["sca_next_clean_affected_between"] == 0
 
@@ -212,3 +214,46 @@ class TestFailures:
         e.enrich(alert(current="1.0.0"))
         e.enrich(alert(current=None))
         assert dict(e.next_clean_counts) == {"found": 1, "no_current_version": 1}
+
+
+class TestStatusesThatCouldMislead:
+    def test_later_releases_that_could_not_be_read_are_not_none(self):
+        osv = FakeOsv({"pkg": {"1.0.0": ["A"], "1.1.0": ["X"], "1.2.0": ["X"],
+                               "1.3.0": ["X"], "1.4.0": ["X"]}},
+                      vulns={"X": OsvError("boom")})
+        row = enricher(PKG, osv).enrich(alert(current="1.0.0"))
+        assert row["sca_next_clean_status"] == "lookup_error"
+        assert row["sca_next_clean_affected_between"] is None
+        assert row["sca_next_clean_version"] is None
+
+    def test_one_unreadable_release_among_affected_ones_is_still_not_none(self):
+        osv = FakeOsv({"pkg": {"1.0.0": ["A"], "1.1.0": ["A"], "1.2.0": ["X"],
+                               "1.3.0": ["A"], "1.4.0": ["A"]}},
+                      vulns={"X": OsvError("boom")})
+        row = enricher(PKG, osv).enrich(alert(current="1.0.0"))
+        assert row["sca_next_clean_status"] == "lookup_error"
+
+    def test_none_still_means_every_later_release_is_known_to_be_affected(self):
+        osv = FakeOsv({"pkg": {v["version"]: ["A"] for v in LINE}})
+        row = enricher(PKG, osv).enrich(alert(current="1.0.0"))
+        assert row["sca_next_clean_status"] == "none"
+        assert row["sca_next_clean_affected_between"] == 4
+
+    def test_a_clean_release_below_the_alerts_patched_version_is_flagged(self):
+        osv = FakeOsv({"pkg": {"1.0.0": ["A"]}})          # 1.1.0 has no advisory in OSV
+        row = enricher(PKG, osv).enrich(alert(current="1.0.0", patched="1.3.0"))
+        assert row["sca_next_clean_status"] == "found_below_patched"
+        assert row["sca_next_clean_version"] == "1.1.0"   # still reported, so it can be read
+
+    def test_a_clean_release_at_or_above_the_patched_version_is_found(self):
+        osv = FakeOsv({"pkg": {"1.0.0": ["A"], "1.1.0": ["A"], "1.2.0": ["A"]}})
+        for patched in ("1.3.0", "1.2.0"):
+            row = enricher(PKG, osv).enrich(alert(current="1.0.0", patched=patched))
+            assert row["sca_next_clean_status"] == "found"
+            assert row["sca_next_clean_version"] == "1.3.0"
+
+    def test_no_patched_version_means_no_comparison(self):
+        osv = FakeOsv({"pkg": {"1.0.0": ["A"]}})
+        row = enricher(PKG, osv).enrich(alert(current="1.0.0", patched=None))
+        assert row["sca_next_clean_status"] == "found"
+        assert row["sca_next_clean_version"] == "1.1.0"

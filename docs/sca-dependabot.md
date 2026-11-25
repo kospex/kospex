@@ -148,14 +148,19 @@ and versions are sent only after the private-package check passes.
 |---|---|
 | `sca_next_clean_version` | The release, spelled as deps.dev spells it (Go keeps its `v`). Null when the status is anything but `found` |
 | `sca_next_clean_age_days` | Days since it was published; null when deps.dev lists it undated |
-| `sca_next_clean_affected_between` | How many stable releases with a known advisory lie between `current_version` and it. With `none`, all later ones. 0 with `start_clean` |
+| `sca_next_clean_affected_between` | How many stable, non-deprecated releases with a known advisory lie between `current_version` and it. With `none`, all later ones. 0 with `current_has_no_osv_advisory`. Null with `lookup_error` |
 | `sca_next_clean_status` | See below |
 
-`sca_next_clean_status`: `found`; `start_clean` (the installed version itself has none, so there
-is nothing to move to); `none` (every later release has a known advisory); `no_current_version`;
+`sca_next_clean_status`: `found`; `found_below_patched` (the release is reported but lies below the
+alert's own `patched_version`, so OSV and Dependabot disagree about the alert: read the version
+as "OSV lists nothing here", not as a place to move to); `current_has_no_osv_advisory` (OSV lists
+nothing for the installed version, although Dependabot raised an alert on it: a disagreement
+between the sources, not "nothing to move to"); `none` (every later release is known to have an
+advisory); `no_current_version`;
 `current_is_prerelease` (as with `behind_*`, a pre-release is not placed among releases);
 `not_in_release_list` (deps.dev does not list `current_version`); `lookup_error` (OSV did not
-answer). Null when the row never reached a release list, which `sca_status` explains
+answer, or some later release's advisories could not be read and none of the readable ones is
+clean, so `none` would claim more than was seen). Null when the row never reached a release list, which `sca_status` explains
 (`private_skipped`, `unsupported_ecosystem`, `not_found`, `lookup_error`).
 
 - **It never changes `sca_status`.** An OSV failure only sets `sca_next_clean_status`.

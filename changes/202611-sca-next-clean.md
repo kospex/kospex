@@ -32,10 +32,10 @@ unknown):
 
 | Field | Meaning |
 |---|---|
-| `sca_next_clean_version` | The release. Null when `none`, `start_clean` or not looked up |
+| `sca_next_clean_version` | The release. Null when `none`, `current_has_no_osv_advisory` or not looked up |
 | `sca_next_clean_age_days` | Days since it was published; null when undated |
 | `sca_next_clean_affected_between` | Releases with a known advisory between the current version and it (all later ones when `none`) |
-| `sca_next_clean_status` | `found`, `start_clean` (the installed version has none), `none` (every later release has one), `no_current_version`, `current_is_prerelease`, `not_in_release_list`, `lookup_error`. Null when the row never got as far as a release list (see `sca_status`) |
+| `sca_next_clean_status` | `found`, `found_below_patched` (OSV is clean at a version below the alert's own fixed version), `current_has_no_osv_advisory` (OSV lists nothing for the installed version, though Dependabot raised an alert on it), `none` (every later release is known to have an advisory), `no_current_version`, `current_is_prerelease`, `not_in_release_list`, `lookup_error`. Null when the row never got as far as a release list (see `sca_status`) |
 
 An OSV failure sets only `sca_next_clean_status`; `sca_status` is untouched. After 3
 failed OSV batches in a row the run stops calling OSV, says so once on stderr, and the
@@ -58,3 +58,12 @@ skipped, never offered as clean.
 2. `-next-clean` on `sca`, usage error without `-dependabot`, stderr summary of
    `sca_next_clean_status` counts and the stopped-OSV warning.
 3. `docs/sca-dependabot.md`, CHANGELOG `## Unreleased`, CLAUDE.md bullet.
+
+## Changes after review
+
+An independent review of #494 found two ways a status could mislead, both fixed in
+`next-clean-status-fixes`: `none` was returned when later releases were merely unreadable
+(now `lookup_error`), and a release below the alert's `patched_version`, or an installed
+version OSV has no advisory for, gave no sign that OSV and Dependabot disagree (now
+`found_below_patched` and `current_has_no_osv_advisory`; `start_clean` is no longer a value of this
+field). Seven smaller points are tracked in a follow-up issue.

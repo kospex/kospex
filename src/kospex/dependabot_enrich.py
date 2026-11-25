@@ -76,7 +76,11 @@ NEXT_CLEAN_FIELDS = (
 )
 
 NC_FOUND = "found"
-NC_START_CLEAN = "start_clean"
+# Every alert row is a version GitHub says is vulnerable, so OSV listing nothing for it is
+# a disagreement between the sources, not "nothing to move to".
+NC_CURRENT_NO_ADVISORY = "current_has_no_osv_advisory"
+# OSV is clean at a version below the alert's own first fixed version.
+NC_BELOW_PATCHED = "found_below_patched"
 NC_NONE = "none"
 NC_NO_CURRENT = "no_current_version"
 NC_PRERELEASE = "current_is_prerelease"
@@ -156,8 +160,8 @@ class Enricher:
                 fields["sca_current_age_days"] = detail.get("age_days")
 
         if self.next_clean:
-            self._fill_next_clean(package_type, name, current, current_lookup, releases,
-                                  fields)
+            self._fill_next_clean(package_type, name, current, current_lookup,
+                                  patched_lookup, releases, fields)
 
         patched_status = OK
         if patched:
@@ -194,16 +198,17 @@ class Enricher:
             return NO_PATCHED_VERSION
         return patched_status
 
-    def _fill_next_clean(self, package_type, name, current, current_lookup, releases,
-                         fields):
+    def _fill_next_clean(self, package_type, name, current, current_lookup, patched_lookup,
+                         releases, fields):
         """Fill the sca_next_clean_* fields: the first stable, non-deprecated release
         above `current` with no known advisories in OSV. Never changes sca_status."""
-        status = self._next_clean(package_type, name, current, current_lookup, releases,
-                                  fields)
+        status = self._next_clean(package_type, name, current, current_lookup,
+                                  patched_lookup, releases, fields)
         fields["sca_next_clean_status"] = status
         self.next_clean_counts[status] += 1
 
-    def _next_clean(self, package_type, name, current, current_lookup, releases, fields):
+    def _next_clean(self, package_type, name, current, current_lookup, patched_lookup,
+                    releases, fields):
         if not current:
             return NC_NO_CURRENT
         if is_prerelease(package_type, current_lookup):
@@ -218,14 +223,21 @@ class Enricher:
             return self.kdeps._version_order_key(package_type, version)
 
         clean = osv_queries.next_clean(rows, current_lookup, order_key)
-        fields["sca_next_clean_affected_between"] = clean["skipped_affected"]
         if clean["status"] == "start_clean":
-            return NC_START_CLEAN
+            fields["sca_next_clean_affected_between"] = 0
+            return NC_CURRENT_NO_ADVISORY
+        if clean["status"] == "none" and clean["skipped_unknown"]:
+            # Some later releases could not be read, and one of them may be clean: that is
+            # not "every later release is affected".
+            return NC_ERROR
+        fields["sca_next_clean_affected_between"] = clean["skipped_affected"]
         if clean["status"] == "none":
             return NC_NONE
         found = clean["release"]["version"]
         fields["sca_next_clean_version"] = found
         fields["sca_next_clean_age_days"] = self._release_age_days(releases, found)
+        if patched_lookup and order_key(found) < order_key(patched_lookup):
+            return NC_BELOW_PATCHED
         return NC_FOUND
 
     def _advisory_rows_for(self, package_type, name, releases):
