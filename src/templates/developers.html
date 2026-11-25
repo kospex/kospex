@@ -111,7 +111,7 @@
                                         {% else %}
                                         <a href="/developers/?author_email={{ dev['email'] | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ dev['email'] }}</a>
                                         {% endif %}
-                                        {% if dev['is_bot'] %}<span class="ml-2 text-xs text-gray-600 bg-gray-100 rounded px-2" title="Detected as a bot{% if dev['bot_type'] %}: {{ dev['bot_type'] }}{% endif %}">bot</span>{% endif %}
+                                        {% if dev['is_bot'] %}<span class="ml-2 text-xs font-medium rounded px-2" style="background: rgba(251, 191, 36, 0.3); color: #92400e" title="Detected as a bot{% if dev['bot_type'] %}: {{ dev['bot_type'] }}{% endif %}">bot</span>{% endif %}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
                                         <a href="/commits/?{{ 'committer_email' if view == 'committers' else 'author_email' }}={{ dev['email'] | urlencode }}{{ row_scope }}" class="text-blue-600 hover:text-blue-800 underline">{{ dev['commits'] }}</a>

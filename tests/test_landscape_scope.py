@@ -800,3 +800,13 @@ class TestCommittersQuery:
 
         assert ({r["author_email"] for r in kq.authors()}
                 != {r["committer_email"] for r in kq.committers()})
+
+
+class TestBotBadgeStyle:
+
+    def test_bot_badge_is_highlighted_not_plain_gray(self, people):
+        html = _developers()
+        badge = re.search(r'<span class="[^"]*"[^>]*>bot</span>', html).group(0)
+
+        assert "rgba(251, 191, 36" in badge      # translucent amber
+        assert "bg-gray-100" not in badge
