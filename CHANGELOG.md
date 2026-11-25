@@ -23,6 +23,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   or "Active (last N days)", from `?days=`), the active view links back to "Show all
   time" in the same scope, and a `days` that is not a whole number of 1 or more is now a
   400 rather than a 500.
+- **Repo page quick links.** A Developers link (scoped to the repository) sits before
+  "Explore the graph", and a "What do these options do?" show / hide link under the
+  list describes each one.
 
 ## 0.5.1 - 2026-11-25
 

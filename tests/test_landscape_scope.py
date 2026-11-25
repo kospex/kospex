@@ -565,3 +565,40 @@ class TestDevelopersWindow:
         _developers(b"days=030")
 
         assert ("authors", "30", None, None) in devfake.calls
+
+
+class TestRepoQuickLinks:
+    """The repo page's quick links: a Developers link and a collapsible help."""
+
+    @staticmethod
+    def _src():
+        from pathlib import Path
+        return (Path(__file__).parent.parent / "src/templates/repo_view.html"
+                ).read_text()
+
+    def test_developers_link_is_scoped_and_precedes_the_graph(self):
+        src = self._src()
+
+        dev = src.index('href="/developers/?repo_id={{ repo_id }}"')
+        graph = src.index('href="/graph/?repo_id={{ repo_id }}"')
+        assert dev < graph
+        assert src.index('href="/landscape/?repo_id={{ repo_id }}"') < dev
+
+    def test_every_quick_link_is_described(self):
+        src = self._src()
+        links = src[src.index("View repo:"):src.index('id="options-help-toggle"')]
+        labels = re.findall(r">\s*([^<>]+?)\s*</a\s*>", links)
+        help_block = src[src.index('id="options-help"'):]
+
+        assert len(labels) == 7
+        for label in labels:
+            assert f">{label}</dt>" in re.sub(r"\s+", " ", help_block).replace(
+                "> ", ">").replace(" <", "<"), label
+
+    def test_help_starts_hidden_and_has_a_toggle(self):
+        src = self._src()
+
+        assert 'id="options-help"' in src
+        assert re.search(r'id="options-help"\s+class="hidden', src)
+        assert "What do these options do?" in src
+        assert '$("#options-help-toggle").on("click"' in src
