@@ -2147,8 +2147,10 @@ def _advisory_history_data(package_type, package_name, start_version, limit, inc
 
 def _print_advisory_history(data):
     safe = KospexUtils.terminal_safe
-    name = f"{safe(data['package']['type'])} {safe(data['package']['name'])}"
-    table = Table(title=f"Advisories by release: {name}")
+    # Blank line above and below the heading; the package name sits on its own line and
+    # the source under it, so a long Maven or Go name is never wrapped mid-heading.
+    table = Table(title=f"\nAdvisories by release: {safe(data['package']['type'])}\n"
+                        f"{safe(data['package']['name'])}\nSource: osv.dev\n")
     for column in ("Version", "Published", "Advisories", "Severity", "Notes"):
         table.add_column(column)
     for row in data["versions"]:

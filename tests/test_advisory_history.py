@@ -344,3 +344,16 @@ class TestUpgrade:
         result = run("-package", "pypi:demo@2.0.0", "-upgrade", "-json", releases=DEMO,
                      batch={"2.0.0": ["A"]})
         assert json.loads(result.stdout)["summary"]["releases"] == 4
+
+
+class TestHeading:
+    def test_blank_line_around_the_heading_and_the_source_under_the_name(self, run):
+        result = run("-package", "pypi:demo", releases=DEMO)
+        lines = result.output.splitlines()
+        at = next(i for i, line in enumerate(lines) if "Advisories by release" in line)
+        assert lines[at - 1].strip() == ""
+        assert "pypi" in lines[at]
+        assert lines[at + 1].strip() == "demo"
+        assert lines[at + 2].strip() == "Source: osv.dev"
+        assert lines[at + 3].strip() == ""
+        assert lines[at + 4].startswith("┏")
