@@ -1223,6 +1223,33 @@ def landscape(request: Request, id: Optional[str] = None):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _developer_rows(view, days, org_key, repo_id):
+    """The people table for a view, each row labelled when it is a bot.
+
+    Uses the same detector as `krunner key-person` / `orphans`
+    (EmailAnalyzer), so the label agrees with them. It covers the common
+    bots -- GitHub's web-flow identity, Dependabot, several build accounts --
+    and misses others (Gerrit, TeamCity, copybara), which show unlabelled.
+    """
+    from kospex_email import EmailAnalyzer
+
+    kq = KospexQuery()
+    if view == "committers":
+        rows = kq.committers(days=days, org_key=org_key, repo_id=repo_id)
+        column = "committer_email"
+    else:
+        rows = kq.authors(days=days, org_key=org_key, repo_id=repo_id)
+        column = "author_email"
+
+    analyzer = EmailAnalyzer()
+    for row in rows:
+        row["email"] = row[column]
+        info = analyzer.analyze(row[column])
+        row["is_bot"] = bool(info.is_bot)
+        row["bot_type"] = info.bot_type or ""
+    return rows
+
+
 @app.get("/developers/", response_class=HTMLResponse)
 @app.get("/developers/{id}", response_class=HTMLResponse)
 def developers(request: Request, id: Optional[str] = None):
@@ -1234,6 +1261,11 @@ def developers(request: Request, id: Optional[str] = None):
 
         author_email = request.query_params.get("author_email")
         download = request.query_params.get("download")
+        view = request.query_params.get("view", "authors")
+        if view not in ("authors", "committers"):
+            raise HTTPException(
+                status_code=400,
+                detail="view must be 'authors' or 'committers'.")
         days = request.query_params.get("days")
         if days is not None:
             # A window is a positive whole number of days. Anything else used
@@ -1249,8 +1281,6 @@ def developers(request: Request, id: Optional[str] = None):
             org_key = None
         debug = locals()
         logger.info(debug)
-
-        devs = KospexQuery().authors(days=days, org_key=org_key, repo_id=repo_id)
 
         if author_email:
             logger.info(f"Developer view requested for: {author_email}")
@@ -1284,8 +1314,12 @@ def developers(request: Request, id: Optional[str] = None):
             )
 
         elif download:
-            return download_csv_fastapi(devs, "developers.csv")
+            people = _developer_rows(view, days, org_key, repo_id)
+            for row in people:
+                row.pop("email", None)  # a template helper, not a CSV column
+            return download_csv_fastapi(people, f"{view if view == 'committers' else 'developers'}.csv")
         else:
+            people = _developer_rows(view, days, org_key, repo_id)
             data = KospexQuery().summary(
                 days=days, org_key=org_key, repo_id=repo_id)
 
@@ -1293,20 +1327,39 @@ def developers(request: Request, id: Optional[str] = None):
             scope = ({"repo_id": repo_id} if repo_id else
                      {"org_key": org_key} if org_key else {})
 
-            def _url(**extra):
-                query = urlencode({**scope, **extra})
+            def _url(view_name=None, keep_days=False, **extra):
+                """A /developers/ URL in this scope. Authors is the default
+                view, so it carries no `view`; a window is kept only on request.
+                """
+                query = urlencode({
+                    **scope,
+                    **({"view": view_name} if view_name == "committers" else {}),
+                    **({"days": days} if keep_days and days else {}),
+                    **extra,
+                })
                 return "/developers/" + (f"?{query}" if query else "")
+
+            crumbs = {}
+            if scope:
+                crumbs = KospexWeb.scope_context(scope, "Developers")
+                if view == "committers":
+                    # server / org / repo / Developers / Committers
+                    crumbs["sub_page"] = "Committers"
+                    crumbs["page_url"] = _url()
 
             return templates.TemplateResponse(
                 request, "developers.html",
-                {"authors": devs, "data": data,
-                 "more_url": _url(),
-                 "download_url": _url(download="true",
-                                      **({"days": days} if days else {})),
-                 "active_url": _url(days=90),
+                {"people": people, "data": data, "view": view,
+                 # Row links reach the commits page, which takes a repo_id.
+                 "row_scope": f"&repo_id={quote(repo_id, safe='')}" if repo_id else "",
+                 "authors_url": _url(keep_days=True),
+                 "committers_url": _url("committers", keep_days=True),
+                 # "Show all time" drops the window, and stays on this view.
+                 "more_url": _url(view),
+                 "download_url": _url(view, keep_days=True, download="true"),
+                 "active_url": _url(view, days=90),
                  "days": days,
-                 **(KospexWeb.scope_context(scope, "Developers")
-                    if scope else {})},
+                 **crumbs},
             )
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any

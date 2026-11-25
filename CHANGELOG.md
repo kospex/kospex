@@ -23,6 +23,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   or "Active (last N days)", from `?days=`), the active view links back to "Show all
   time" in the same scope, and a `days` that is not a whole number of 1 or more is now a
   400 rather than a 500.
+- **Committers view.** `/developers/?view=committers` lists committers (the people who
+  applied a commit, often not its author: 26,504 committers against 79,929 authors in
+  one 5000-repo estate), keeping `repo_id` / `org_key` and the `days` window. The
+  Committers card's View More goes there, and the card for the view being shown reads
+  "Shown below" instead of linking to itself. Committer rows link to
+  `/commits/?committer_email=`. Bot identities, as detected by the same
+  `EmailAnalyzer` that `krunner key-person` uses, carry a "bot" label, and both CSV
+  downloads gain `is_bot` and `bot_type` columns. An unknown `view` is a 400.
 - **Repo page quick links.** A Developers link (scoped to the repository) sits before
   "Explore the graph", and a "What do these options do?" show / hide link under the
   list describes each one.
