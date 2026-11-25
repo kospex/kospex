@@ -603,6 +603,15 @@ class TestRepoQuickLinks:
         assert "What do these options do?" in src
         assert '$("#options-help-toggle").on("click"' in src
 
+    def test_help_toggle_is_styled_apart_from_the_navigation_links(self):
+        src = self._src()
+        toggle = src[src.index('id="options-help-toggle"'):]
+        toggle = toggle[:toggle.index(">What do these")]
+
+        assert "text-blue-600" not in toggle
+        assert "text-gray-600" in toggle
+        assert "underline dotted" in toggle
+
 
 class TestCollabGraphBreadcrumb:
 
