@@ -200,8 +200,8 @@ class TestOutput:
         assert "3 of 3 stable releases (100%) have a known advisory" in out
         assert "2.x  2/2" in out and "1.x  1/1" in out
         assert "without known advisories" in out
-        lowered = out.lower()
-        assert "safe" not in lowered and "clean" not in lowered
+        assert "safe" not in out.lower()
+        assert "Clean means no known advisories" in out
 
     def test_next_release_found(self, run):
         result = run("-package", "pypi:demo@2.0.0", releases=DEMO,
@@ -303,6 +303,6 @@ class TestAll:
         result = run("-package", "pypi:demo@2.0.0", "-all", releases=DEMO,
                      batch={"2.0.0": ["A"], "2.1.0": ["A"]})
         line = next(l for l in result.output.splitlines() if "3.0.0" in l and "│" in l)
-        assert "next" in line
+        assert "next clean" in line
         other = next(l for l in result.output.splitlines() if "2.1.0" in l and "│" in l)
-        assert "next" not in other
+        assert "next clean" not in other

@@ -2144,7 +2144,7 @@ def _print_advisory_history(data):
         table.add_column(column)
     for row in data["versions"]:
         notes = [n for n, on in (("current", row["is_current"]),
-                                 ("next", data["next_clean"]["status"] == "found"
+                                 ("next clean", data["next_clean"]["status"] == "found"
                                   and row["version"] == data["next_clean"]["version"]),
                                  ("deprecated", row["is_deprecated"]),
                                  ("pre-release", row["is_prerelease"])) if on]
@@ -2194,8 +2194,8 @@ def _print_advisory_history(data):
     if nxt["skipped_unknown"]:
         console.print("Skipped, advisories unknown: "
                       + ", ".join(safe(v) for v in nxt["skipped_unknown"]))
-    console.print("No known advisories means OSV lists none for that release. It is not "
-                  "a claim the release is free of vulnerabilities.")
+    console.print("Clean means no known advisories: OSV lists none for that release. It "
+                  "is not a claim the release is free of vulnerabilities.")
 
 
 @cli.command("advisory-history")

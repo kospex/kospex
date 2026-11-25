@@ -370,7 +370,7 @@ back by version number, not publish date (the Published column is when the
 registry received that version), so a backport published later (log4j-core
 2.25.5 after 2.26.1) sorts where its number puts it. A release whose lookup failed
 shows `?`: unknown is never zero. The next release without known advisories is
-marked `next` in the Notes column when it is in the table.
+marked `next clean` in the Notes column when it is in the table.
 
 Under the table:
 
@@ -384,7 +384,7 @@ Under the table:
   unknown are skipped and named.
   If the start itself has none, it says so. If every later release has one, it says that.
 
-**"No known advisories" is a statement about OSV, not about the release.** It means
+**"No known advisories" (shown as "clean") is a statement about OSV, not about the release.** It means
 OSV lists no advisory for it, at any severity, withdrawn ones excluded. It says nothing
 about vulnerabilities nobody has reported or databases OSV does not carry. A release
 that fixes one advisory can still carry others, which is why this is counted per release
