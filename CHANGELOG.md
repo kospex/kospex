@@ -6,6 +6,12 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ### Added
 
+- **`kospex sca -dependabot FILE -out OUT -next-clean`** adds the first release above each
+  alert's `current_version` that OSV lists no advisory for: `sca_next_clean_version`,
+  `_age_days`, `_affected_between` and `_status`. Off by default: without the flag the
+  output is unchanged and nothing is sent to `api.osv.dev`. It works per package, never
+  changes `sca_status`, and stops asking OSV after three failed batches in a row.
+
 - **`kospex advisory-history -package TYPE:NAME[@VERSION]`** is back. It lists a
   package's recent stable releases (`-limit`, default 20; `-pre` adds pre-releases)
   with their OSV advisories, says what share of all stable releases have a known
