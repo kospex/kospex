@@ -530,3 +530,38 @@ class TestDevelopersBreadcrumb:
 
         assert ('href="/developers/?repo_id=github.com~acme~one&amp;download=true"'
                 in html)
+
+
+class TestDevelopersWindow:
+
+    def test_all_time_is_labelled_and_offers_the_active_view(self, devfake):
+        html = _developers()
+
+        assert "All time" in _text(html)
+        assert 'href="/developers/?days=90"' in html
+        assert "Show all time" not in html
+
+    def test_label_shows_the_days_in_the_url(self, devfake):
+        for days, word in (("30", "days"), ("90", "days"), ("1", "day")):
+            html = _developers(f"days={days}".encode())
+
+            assert f"Active (last {days} {word})" in _text(html)
+
+    def test_active_view_links_back_to_all_time_in_the_same_scope(self, devfake):
+        html = _developers(b"repo_id=github.com~acme~one&days=30")
+
+        assert "Show all time" in _text(html)
+        assert 'href="/developers/?repo_id=github.com~acme~one"' in html
+        assert "Show active developers" not in html
+
+    @pytest.mark.parametrize("bad", ["abc", "0", "-5", "1.5", ""])
+    def test_a_bad_window_is_a_400_not_a_500(self, devfake, bad):
+        with pytest.raises(HTTPException) as caught:
+            _developers(f"days={bad}".encode())
+
+        assert caught.value.status_code == 400
+
+    def test_days_reaches_the_queries_as_a_clean_number(self, devfake):
+        _developers(b"days=030")
+
+        assert ("authors", "30", None, None) in devfake.calls

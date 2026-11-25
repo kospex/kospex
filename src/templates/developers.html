@@ -64,7 +64,11 @@
                     <div class="flex flex-wrap gap-4 text-sm">
                         <a href="{{ download_url }}" class="text-blue-600 hover:text-blue-800 underline">Download</a>
                         <span class="text-gray-500">|</span>
+                        {% if days %}
+                        <a href="{{ more_url }}" class="text-blue-600 hover:text-blue-800 underline">Show all time</a>
+                        {% else %}
                         <a href="{{ active_url }}" class="text-blue-600 hover:text-blue-800 underline">Show active developers (last 90 days)</a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -74,6 +78,11 @@
                 <div class="p-6">
                     <h1 class="text-3xl font-bold text-gray-900 {{ 'mb-2' if scope_name else 'mb-6' }}">Developers</h1>
                     {% if scope_name %}{% include '_scope_label.html' %}{% endif %}
+                    <p class="text-sm text-gray-700 mb-4" data-window>
+                        {% if days %}<span class="font-semibold">Active (last {{ days }} {{ 'day' if days == '1' else 'days' }})</span>:
+                        developers with a commit in that window.
+                        {% else %}<span class="font-semibold">All time</span>{% endif %}
+                    </p>
                     
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200" id="myTable">

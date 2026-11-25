@@ -19,7 +19,10 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   0.2.0. OSV is asked once per 1000 releases, not once per release.
 - **Developers page breadcrumb.** `/developers/` scoped by `?repo_id=` or `?org_key=`
   now shows the server / org / repo breadcrumb and a scope label under the heading.
-  The unscoped page is unchanged.
+  The unscoped page is unchanged. The page also says which window it shows ("All time"
+  or "Active (last N days)", from `?days=`), the active view links back to "Show all
+  time" in the same scope, and a `days` that is not a whole number of 1 or more is now a
+  400 rather than a 500.
 
 ## 0.5.1 - 2026-11-25
 

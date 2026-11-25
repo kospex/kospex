@@ -1225,6 +1225,14 @@ def developers(request: Request, id: Optional[str] = None):
         author_email = request.query_params.get("author_email")
         download = request.query_params.get("download")
         days = request.query_params.get("days")
+        if days is not None:
+            # A window is a positive whole number of days. Anything else used
+            # to reach int() in the query and come back as a 500.
+            if not days.isascii() or not days.isdigit() or int(days) < 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="days must be a whole number of days, 1 or more.")
+            days = str(int(days))
         repo_id = request.query_params.get("repo_id") or params.get("repo_id")
         org_key = request.query_params.get("org_key") or params.get("org_key")
         if repo_id:
@@ -1286,6 +1294,7 @@ def developers(request: Request, id: Optional[str] = None):
                  "download_url": _url(download="true",
                                       **({"days": days} if days else {})),
                  "active_url": _url(days=90),
+                 "days": days,
                  **(KospexWeb.scope_context(scope, "Developers")
                     if scope else {})},
             )
