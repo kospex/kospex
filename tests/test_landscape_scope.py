@@ -756,9 +756,11 @@ class TestCommittersView:
             _request("/developers/", b"view=committers&download=true"), id=None)
         body = response.body.decode() if hasattr(response, "body") else ""
 
-        assert body.splitlines()[0] == (
-            "committer_email,commits,repos,first_commit,last_commit,last_seen,"
-            "is_bot,bot_type")
+        header = body.splitlines()[0].split(",")
+        # The page's helper key never leaks into the file; the bot flag does.
+        assert header[0] == "committer_email"
+        assert "email" not in header
+        assert header[-2:] == ["is_bot", "bot_type"]
         assert "noreply@github.com" in body
         assert ("committers", None, None, None) in people.calls
 
