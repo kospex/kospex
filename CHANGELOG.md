@@ -30,7 +30,8 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   "Shown below" instead of linking to itself. Committer rows link to
   `/commits/?committer_email=`. Bot identities, as detected by the same
   `EmailAnalyzer` that `krunner key-person` uses, carry a "bot" label, and both CSV
-  downloads gain `is_bot` and `bot_type` columns. An unknown `view` is a 400.
+  downloads gain `is_bot` and `bot_type` columns. A repo-scoped page also links to
+  Author / Committer collaborators. An unknown `view` is a 400.
 - **Repo page quick links.** A Developers link (scoped to the repository) sits before
   "Explore the graph", and a "What do these options do?" show / hide link under the
   list describes each one.

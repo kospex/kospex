@@ -810,3 +810,25 @@ class TestBotBadgeStyle:
 
         assert "rgba(251, 191, 36" in badge      # translucent amber
         assert "bg-gray-100" not in badge
+
+
+class TestDevelopersCollabLink:
+
+    def test_repo_scope_links_to_the_collaborators_page(self, people):
+        for query in (b"repo_id=github.com~acme~one",
+                      b"view=committers&repo_id=github.com~acme~one&days=30"):
+            html = _developers(query)
+
+            assert ('href="/collab/github.com~acme~one"' in html)
+            assert "Author / Committer collaborators" in _text(html)
+
+    def test_it_sits_after_the_active_link(self, people):
+        html = _developers(b"repo_id=github.com~acme~one")
+
+        assert (html.index("Show active developers")
+                < html.index("Author / Committer collaborators"))
+
+    def test_org_and_estate_scope_have_no_collaborators_link(self, people):
+        # /collab/ exists per repository only.
+        assert "/collab/" not in _developers(b"org_key=github.com~acme")
+        assert "/collab/" not in _developers()

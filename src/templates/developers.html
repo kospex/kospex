@@ -77,6 +77,10 @@
                         {% else %}
                         <a href="{{ active_url }}" class="text-blue-600 hover:text-blue-800 underline">Show active developers (last 90 days)</a>
                         {% endif %}
+                        {% if collab_url %}
+                        <span class="text-gray-500">|</span>
+                        <a href="{{ collab_url }}" class="text-blue-600 hover:text-blue-800 underline">Author / Committer collaborators</a>
+                        {% endif %}
                     </div>
                 </div>
             </div>

@@ -1359,6 +1359,8 @@ def developers(request: Request, id: Optional[str] = None):
                  "download_url": _url(view, keep_days=True, download="true"),
                  "active_url": _url(view, days=90),
                  "days": days,
+                 # The collaboration pages are per repository only.
+                 "collab_url": f"/collab/{repo_id}" if repo_id else None,
                  **crumbs},
             )
     except HTTPException:
