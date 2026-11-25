@@ -626,3 +626,27 @@ class TestCollabGraphBreadcrumb:
         html = self._page(monkeypatch)
 
         assert "/api/collab/graph/github.com~acme~one" in html
+
+
+class TestCollabBreadcrumb:
+
+    class _Query(_FakeQuery):
+        def get_repo_by_id(self, repo_id):
+            return {"_repo_id": repo_id}
+
+        def get_collabs(self, repo_id=None):
+            return []
+
+    def test_breadcrumb_ends_at_the_current_page(self, monkeypatch):
+        monkeypatch.setattr(kweb2, "KospexQuery", lambda *a, **k: self._Query())
+
+        html = kweb2.collab(
+            _request("/collab/github.com~acme~one"),
+            repo_id="github.com~acme~one").body.decode()
+
+        assert 'aria-label="Breadcrumb"' in html
+        assert 'href="/org/github.com~acme"' in html
+        assert 'href="/repo/github.com~acme~one"' in html
+        assert 'aria-current="page">Collaboration<' in html
+        # The graph link is still there.
+        assert 'href="/collab/graph/github.com~acme~one"' in html

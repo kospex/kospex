@@ -743,7 +743,10 @@ def collab(request: Request, repo_id: str):
         collabs = kquery.get_collabs(repo_id=repo_id)
 
         return templates.TemplateResponse(
-            request, "collab.html", {"repo_id": repo_id, "collabs": collabs}
+            request, "collab.html",
+            {"repo_id": repo_id, "collabs": collabs,
+             # Breadcrumb: server / org / repo / Collaboration.
+             **KospexWeb.scope_context({"repo_id": repo_id}, "Collaboration")},
         )
     except HTTPException:
         # A deliberate 4xx must not be swallowed by the handler below and
