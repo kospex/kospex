@@ -492,3 +492,41 @@ class TestTagScope:
             self._tag(b"org_key=github.com~nope")
 
         assert caught.value.status_code == 404
+
+
+class TestDevelopersBreadcrumb:
+
+    def test_unscoped_has_no_header_block(self, devfake):
+        html = _developers()
+
+        assert 'aria-label="Breadcrumb"' not in html
+        assert "uppercase tracking-wider text-gray-500\">Repository" not in html
+        assert html.count("<h1") == 1
+
+    def test_repo_scope_breadcrumb_heading_and_label(self, devfake):
+        html = _developers(b"repo_id=github.com~acme~one")
+
+        assert 'aria-label="Breadcrumb"' in html
+        assert 'href="/org/github.com~acme"' in html
+        assert 'href="/repo/github.com~acme~one"' in html
+        text = _text(html)
+        assert "Developers" in text
+        assert "Repository acme/one" in text
+        # The crumb names the page, so it is the current (unlinked) item.
+        assert 'aria-current="page">Developers<' in html
+        # One heading, not a second one added for the scope.
+        assert html.count("<h1") == 1
+
+    def test_org_scope_breadcrumb_and_label(self, devfake):
+        html = _developers(b"org_key=github.com~acme")
+
+        assert 'href="/orgs/github.com"' in html
+        assert 'href="/org/github.com~acme"' in html
+        assert "Organisation acme" in _text(html)
+
+    def test_scoped_links_survive_the_context_merge(self, devfake):
+        """scope_context() returns its own keys; none may shadow the page's URLs."""
+        html = _developers(b"repo_id=github.com~acme~one")
+
+        assert ('href="/developers/?repo_id=github.com~acme~one&amp;download=true"'
+                in html)

@@ -28,4 +28,6 @@ estate-wide, and its Download link rendered `/landscape/None` when scoped by
 - Top-N is client-side: rows carry `data-rank` from the server's count ordering, so a
   re-sort in DataTables does not change which rows are in the top N.
 - `/tag/{tag}?repo_id=` already listed that tag's files in one repo.
-- The Developers page has no breadcrumb yet.
+- Developers page breadcrumb and scope label (follow-up): `developers.html` includes the
+  shared breadcrumb above the stat cards, and the scope label under its existing heading,
+  for a repo or org scope only.

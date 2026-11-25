@@ -17,6 +17,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   The old `-ecosystem E -package NAME` form still works. It replaces the version that
   crashed with `IndexError` on scoped npm, Maven and Go packages and was disabled in
   0.2.0. OSV is asked once per 1000 releases, not once per release.
+- **Developers page breadcrumb.** `/developers/` scoped by `?repo_id=` or `?org_key=`
+  now shows the server / org / repo breadcrumb and a scope label under the heading.
+  The unscoped page is unchanged.
 
 ## 0.5.1 - 2026-11-25
 

@@ -31,6 +31,12 @@
 
         <!-- Main content area -->
         <div class="container mx-auto px-4 mt-12">
+            {% if git_server %}
+            <!-- Breadcrumb: only for a repo or org scope -->
+            <div class="mb-4">
+                {% include '_breadcrumb.html' %}
+            </div>
+            {% endif %}
             <!-- Statistics Cards -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <!-- # of Authors -->
@@ -66,7 +72,8 @@
             <!-- Developers Table -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-6">Developers</h1>
+                    <h1 class="text-3xl font-bold text-gray-900 {{ 'mb-2' if scope_name else 'mb-6' }}">Developers</h1>
+                    {% if scope_name %}{% include '_scope_label.html' %}{% endif %}
                     
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200" id="myTable">

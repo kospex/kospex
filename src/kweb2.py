@@ -1285,7 +1285,9 @@ def developers(request: Request, id: Optional[str] = None):
                  "more_url": _url(),
                  "download_url": _url(download="true",
                                       **({"days": days} if days else {})),
-                 "active_url": _url(days=90)},
+                 "active_url": _url(days=90),
+                 **(KospexWeb.scope_context(scope, "Developers")
+                    if scope else {})},
             )
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any
