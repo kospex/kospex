@@ -1700,6 +1700,70 @@ class KospexQuery:
 
         return results
 
+    def author_languages(self, author_email):
+        """
+        Return an author's technology by language, most commits first.
+
+        Each historical path is named by panopticas, as file_metadata.Language
+        is, so files since deleted or moved are still counted. A commit counts
+        once under each language it touched.
+        """
+        sql = f"""SELECT c._repo_id AS _repo_id, c.hash AS hash,
+        cf.file_path AS file_path,
+        CAST(strftime('%s', c.author_when) AS INTEGER) AS authored
+        FROM {KospexSchema.TBL_COMMIT_FILES} cf, {KospexSchema.TBL_COMMITS} c
+        WHERE cf._repo_id = c._repo_id
+        AND cf.hash = c.hash
+        AND c.author_email = ?
+        """
+
+        names = {}  # path -> language: one file recurs across many commits
+        grouped = defaultdict(
+            lambda: {"commits": set(), "files": set(), "repos": set(),
+                     "first": None, "last": None})
+
+        for row in self.kospex_db.query(sql, [author_email]):
+            repo_id, path, authored = row["_repo_id"], row["file_path"], row["authored"]
+            if path not in names:
+                names[path] = (Panopticas.get_language(path, skip_shebang=True)
+                               if path else "Unknown")
+            group = grouped[names[path]]
+            group["commits"].add((repo_id, row["hash"]))
+            group["files"].add((repo_id, path))
+            group["repos"].add(repo_id)
+            if authored is not None:
+                if group["first"] is None or authored < group["first"]:
+                    group["first"] = authored
+                if group["last"] is None or authored > group["last"]:
+                    group["last"] = authored
+
+        def iso(epoch):
+            if epoch is None:
+                return None
+            return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        results = []
+        for language, group in grouped.items():
+            first_commit, last_commit = iso(group["first"]), iso(group["last"])
+            first_seen = KospexUtils.days_ago(first_commit)
+            last_seen = KospexUtils.days_ago(last_commit)
+            days_active = int(first_seen) - int(last_seen)
+            results.append({
+                "language": language,
+                "commits": len(group["commits"]),
+                "files": len(group["files"]),
+                "repos": len(group["repos"]),
+                "first_commit": first_commit,
+                "last_commit": last_commit,
+                "first_seen": first_seen,
+                "last_seen": last_seen,
+                "days_active": days_active,
+                "years_active": f"{days_active / 365:.3f}",
+            })
+
+        results.sort(key=lambda row: (-row["commits"], row["language"]))
+        return results
+
     # def summarise_dev_commits(self, commits):
     #     """
     #     Summarize commits by author_email and language.
