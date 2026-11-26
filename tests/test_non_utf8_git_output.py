@@ -223,11 +223,9 @@ def test_kgit_pull_survives_a_non_utf8_path_in_the_diffstat(tmp_path, monkeypatc
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 
-# Strict decoding still allowed: the parked DuckDB proof of concept, and the
-# TODO grep, which decodes file contents and is fixed separately (#478).
+# Strict decoding still allowed: only the parked DuckDB proof of concept.
 STRICT_ALLOWED = {
     ("kospex/git_ingest.py", None),
-    ("krunner.py", "grep"),
 }
 
 

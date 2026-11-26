@@ -1880,9 +1880,16 @@ def todo(save, directory):
         # operand relied on grep defaulting to '.' under -R. Excluding .git
         # keeps git's own shipped hook samples, which contain TODOs, out of the
         # observations.
+        #
+        # grep prints the matching lines of file content, which needn't be
+        # UTF-8 (#478). LC_ALL=C makes every byte text, so GNU grep doesn't
+        # call a Latin-1 file binary and silently drop its TODOs under a UTF-8
+        # locale; only files with NUL bytes stay binary, as with macOS grep.
+        # SUBPROCESS_TEXT then decodes those bytes without raising.
         cmd = ["grep", "-Rn", "--exclude-dir=.git", "TODO", "."]
         result = subprocess.run(
-            cmd, cwd=d, capture_output=True, text=True
+            cmd, cwd=d, capture_output=True, env={**os.environ, "LC_ALL": "C"},
+            **KospexUtils.SUBPROCESS_TEXT,
         ).stdout.split("\n")
         for raw in result:
             obs = details.copy()
