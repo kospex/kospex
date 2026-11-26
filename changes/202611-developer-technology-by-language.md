@@ -1,6 +1,7 @@
 # Developer view: show technology by language
 
-**Status:** design, awaiting approval. Not built.
+**Status:** design approved 2026-11-26. Not built. Plan:
+`202611-developer-technology-by-language-plan.md`.
 
 ## Why
 
