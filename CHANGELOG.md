@@ -11,6 +11,9 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   deleted or moved are still counted; paths that can't be named show as `Unknown`.
   "# Commits" now counts commits rather than file changes, and "# Files" is new.
   The `/api` routes and `kospex author-tech` are unchanged.
+  The two views can still differ for a file: scripts named only by a shebang line show as
+  `Unknown` on the developer view, and the repo view shows languages as stored until
+  `krunner file-metadata -force` is run.
 
 ## 0.5.2 - 2026-11-25
 
