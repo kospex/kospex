@@ -2,6 +2,23 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+No database migration.
+
+### Changed
+
+- **kweb `/repos/` loads faster on large estates.** Commits, authors, last commit,
+  developer statuses and active developers are read from `developer_stats`. Committers are
+  still counted from commits. While any repository's stats are missing or out of date
+  (`kospex system-status` shows this) the page reads commits as before.
+
+### Fixed
+
+- The active developer count on `/repos/` compared commit timestamps as text, so timezone
+  offsets could miscount commits near the 90-day cutoff. This is fixed on `/repos/` when it
+  reads `developer_stats`, not yet on other pages that count active developers.
+
 ## 0.5.2 - 2026-11-25
 
 No database migration: `pip install -U kospex` is all that is needed.
