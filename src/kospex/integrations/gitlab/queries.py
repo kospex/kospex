@@ -15,6 +15,8 @@ _STABLE_ORDER = {"order_by": "id", "sort": "asc"}
 SKIP_EMPTY = "empty"
 SKIP_FORK = "fork"
 SKIP_ARCHIVED = "archived"
+SKIP_NO_URL = "no clone URL"
+SKIP_UNSAFE_URL = "unsafe clone URL"
 
 # Fields GitLab returns to maintainers that must not be written to a file.
 _SECRET_FIELDS = {"runners_token"}
@@ -80,21 +82,33 @@ def active_projects(projects, days, now=None):
     return [p for p in projects if active(p)]
 
 
-def skip_reason(project, include_forks=False, skip_archived=False):
-    """Why a project is left out of the clone list, or None if it goes in."""
+def _url_field(ssh):
+    return "ssh_url_to_repo" if ssh else "http_url_to_repo"
+
+
+def skip_reason(project, include_forks=False, skip_archived=False, ssh=False):
+    """Why a project is left out of the clone list, or None if it goes in.
+
+    The list is one URL per line, so a URL with whitespace or a control
+    character could add a line of its own (CWE-93): it is left out.
+    """
     if project.get("empty_repo"):
         return SKIP_EMPTY
     if project.get("forked_from_project") and not include_forks:
         return SKIP_FORK
     if project.get("archived") and skip_archived:
         return SKIP_ARCHIVED
+    url = project.get(_url_field(ssh))
+    if not url:
+        return SKIP_NO_URL
+    if any(c.isspace() for c in url) or printable(url) != url:
+        return SKIP_UNSAFE_URL
     return None
 
 
 def clone_urls(projects, ssh=False, include_forks=False, skip_archived=False):
-    field = "ssh_url_to_repo" if ssh else "http_url_to_repo"
-    return [p[field] for p in projects
-            if p.get(field) and not skip_reason(p, include_forks, skip_archived)]
+    return [p[_url_field(ssh)] for p in projects
+            if not skip_reason(p, include_forks, skip_archived, ssh)]
 
 
 def without_secrets(items):

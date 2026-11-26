@@ -171,6 +171,24 @@ def test_clone_filename_stops_on_ctrl_c(tmp_path, monkeypatch):
     assert result.exit_code != 0
 
 
+def test_clone_filename_summary_lists_refused_repos(tmp_path, monkeypatch):
+    """A refusal is not a failure, but it must not vanish from a long run."""
+    cloned = []
+    monkeypatch.setattr(kgit_module, "Kospex", _FakeKospex)
+    monkeypatch.setattr(kgit_module, "clone_path_conflict",
+                        lambda kospex, url, force=False: "two" in url)
+    monkeypatch.setattr(kgit_module.kgit, "clone_repo",
+                        lambda url: cloned.append(url) or "/code/x")
+    repo_list = tmp_path / "repos.txt"
+    repo_list.write_text("".join(f"{url}\n" for url in URLS))
+
+    result = CliRunner().invoke(kgit_module.cli, ["clone", "-filename", str(repo_list)])
+
+    assert cloned == [URLS[0], URLS[2]]
+    assert result.exit_code == 0
+    assert URLS[1] in result.output.split("1 refused")[1]
+
+
 def test_clone_filename_summary_leaves_out_url_credentials(tmp_path, monkeypatch):
     url = "https://user:s3cret@gitlab.example.com/acme/one.git"
     result, _ = _clone_file(tmp_path, monkeypatch, [url], clone=lambda u: None)

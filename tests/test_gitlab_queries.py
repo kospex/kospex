@@ -126,6 +126,22 @@ def test_clone_urls_ssh_and_missing():
         "git@gitlab.example.com:acme/a.git"]
 
 
+@pytest.mark.parametrize("url, reason", [
+    (None, "no clone URL"),
+    ("", "no clone URL"),
+    (f"{SERVER}/acme/a.git\nhttps://other.example.com/x.git", "unsafe clone URL"),
+    (f"{SERVER}/acme/\x1b[31ma.git", "unsafe clone URL"),
+    (f"{SERVER}/acme/a b.git", "unsafe clone URL"),
+])
+def test_a_project_without_a_usable_url_is_left_out_with_a_reason(url, reason):
+    item = project("a", http_url_to_repo=url)
+    assert skip_reason(item) == reason
+    assert clone_urls([item]) == []
+    # The other protocol's URL is fine, so SSH still takes it.
+    assert skip_reason(item, ssh=True) is None
+    assert len(clone_urls([item], ssh=True)) == 1
+
+
 def test_without_secrets():
     item = project("a", runners_token="s1",
                    forked_from_project={"id": 1, "runners_token": "s2"})

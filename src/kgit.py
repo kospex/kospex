@@ -318,7 +318,7 @@ def clone(ctx, sync, filename, force, repo):
             kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
 
     elif filename:
-        failed = []
+        failed, refused = [], []
         with open(filename, "r", encoding='utf-8') as file:
             for line in file:
                 repo = line.strip()
@@ -331,6 +331,7 @@ def clone(ctx, sync, filename, force, repo):
                 # One bad URL must not stop the rest of the file, however it fails.
                 try:
                     if clone_path_conflict(kospex, repo, force):
+                        refused.append(repo)
                         continue
                     repo_path = kgit.clone_repo(repo)
                     if not repo_path:
@@ -348,11 +349,14 @@ def clone(ctx, sync, filename, force, repo):
                         ("ERROR", "bold red"), f" with {shown}: {type(e).__name__}: {e}"))
                     failed.append(repo)
 
+        for urls, what, style in ((refused, "refused (see above)", "yellow"),
+                                  (failed, "failed", "red")):
+            if urls:
+                console.print(f"\n{len(urls)} {what}:", style=style)
+                for repo in urls:
+                    # Without any 'user:password@' (CWE-532).
+                    console.print(f"  {KospexGit._without_userinfo(repo)}", soft_wrap=True)
         if failed:
-            console.print(f"\n{len(failed)} failed:", style="red")
-            for repo in failed:
-                # Without any 'user:password@' (CWE-532).
-                console.print(f"  {KospexGit._without_userinfo(repo)}", soft_wrap=True)
             ctx.exit(1)
 
 
@@ -1576,7 +1580,7 @@ def _gitlab_projects(client, group, active, include_forks, skip_archived,
     # The whole listing first: nothing is written unless all of it was read.
     projects = GitLabQueries.list_projects(client, group)
     shown = projects if active is None else GitLabQueries.active_projects(projects, active)
-    reasons = [GitLabQueries.skip_reason(p, include_forks, skip_archived) for p in shown]
+    reasons = [GitLabQueries.skip_reason(p, include_forks, skip_archived, ssh) for p in shown]
 
     _gitlab_table(
         ["project", "last activity", "visibility", "fork", "archived", "left out"],

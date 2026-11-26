@@ -158,6 +158,19 @@ def test_groups_under_a_group(gitlab):
     assert gitlab.calls == ["/groups/acme/descendant_groups"]
 
 
+def test_every_project_left_out_is_accounted_for(gitlab, tmp_path):
+    gitlab.projects = [
+        project("good"),
+        {**project("nourl"), "http_url_to_repo": None},
+        project("bad", http=f"{HOST}/acme/bad.git\nhttps://other.example.com/x.git"),
+    ]
+    out_file = tmp_path / "repos.txt"
+    out = run("--group", "acme", "-out-repo-list", str(out_file))
+    assert lines(out_file) == [f"{HOST}/acme/good.git"]
+    assert "1 in the clone list" in out
+    assert "1 no clone URL" in out and "1 unsafe clone URL" in out
+
+
 def test_a_failed_listing_writes_nothing(gitlab, tmp_path):
     gitlab.error = GitLabError("page 2 failed")
     keep = tmp_path / "repos.txt"
