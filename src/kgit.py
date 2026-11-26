@@ -318,25 +318,42 @@ def clone(ctx, sync, filename, force, repo):
             kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
 
     elif filename:
+        failed = []
         with open(filename, "r", encoding='utf-8') as file:
             for line in file:
                 repo = line.strip()
+                if not repo:
+                    continue
                 if repo.startswith("#"):
                     log.debug(f"Skipping commented line in config: {repo}")
                     print(f"\n\nSkipping commented line: {repo}\n\n")
-                elif clone_path_conflict(kospex, repo, force):
-                    # One bad URL must not stop the rest of the file.
                     continue
-                else:
+                # One bad URL must not stop the rest of the file, however it fails.
+                try:
+                    if clone_path_conflict(kospex, repo, force):
+                        continue
                     repo_path = kgit.clone_repo(repo)
                     if not repo_path:
                         print(f"\n\nERROR with {repo}\n\n")
-
-                    if sync and repo_path:
+                        failed.append(repo)
+                    elif sync:
                         print("Syncing: " + repo)
                         kospex = Kospex()
                         kospex.sync_repo(repo_path, force=force)
                         kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
+                except Exception as e:
+                    shown = KospexGit._without_userinfo(repo)
+                    log.error(f"clone -filename: {shown} failed: {type(e).__name__}: {e}")
+                    console.print(Text.assemble(
+                        ("ERROR", "bold red"), f" with {shown}: {type(e).__name__}: {e}"))
+                    failed.append(repo)
+
+        if failed:
+            console.print(f"\n{len(failed)} failed:", style="red")
+            for repo in failed:
+                # Without any 'user:password@' (CWE-532).
+                console.print(f"  {KospexGit._without_userinfo(repo)}", soft_wrap=True)
+            ctx.exit(1)
 
 
 @cli.command("sync")
