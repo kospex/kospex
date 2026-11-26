@@ -792,6 +792,54 @@ class KospexQuery:
 
         return data
 
+    def repo_summaries(self, org_key=None, server=None):
+        """The rows repos() returns, with the per-author figures from developer_stats.
+
+        Committers are not in developer_stats, so they are counted from commits,
+        which also decides which repos are listed. Only correct while
+        developer_stats_coverage() reports no gaps.
+        """
+        where, params = "", []
+        if org_key:
+            where = "WHERE _git_server = ? AND _git_owner = ?"
+            params = list(_org_key_parts(org_key))
+        elif server:
+            where = "WHERE _git_server = ?"
+            params = [server]
+
+        data = list(self.kospex_db.query(
+            f"""SELECT _repo_id, _git_server, _git_owner, _git_repo,
+            COUNT(DISTINCT(committer_email)) AS committers
+            FROM {KospexSchema.TBL_COMMITS} {where}
+            GROUP BY _repo_id
+            ORDER BY _repo_id""",
+            params,
+        ))
+        # last_commit is always UTC 'Z' text, so MAX over strings is MAX over time
+        stats = {row["_repo_id"]: row for row in self.kospex_db.query(
+            f"""SELECT _repo_id, SUM(total_commits) AS commits,
+            COUNT(author_email) AS authors, MAX(last_commit) AS last_commit
+            FROM {KospexSchema.TBL_DEVELOPER_STATS}
+            WHERE stat_type = 'ALL_TIME'
+            GROUP BY _repo_id"""
+        )}
+        for row in data:
+            row.update(stats.get(row["_repo_id"], {}))
+            row["days_ago"] = KospexUtils.days_ago(row.get("last_commit"))
+            row["status"] = KospexUtils.development_status(row.get("last_commit"))
+        return data
+
+    def active_devs_from_stats(self, days=90):
+        """{repo_id: authors with a commit in the last 'days'}, from developer_stats.
+
+        Counts last_commit against a cutoff taken now. commits_last_90_days is
+        as of when the row was built, so it is not used.
+        """
+        sql = f"""SELECT _repo_id, COUNT(author_email) FROM {KospexSchema.TBL_DEVELOPER_STATS}
+            WHERE stat_type = 'ALL_TIME' AND julianday(last_commit) > julianday(?)
+            GROUP BY _repo_id"""
+        return dict(self.kospex_db.execute(sql, [KospexUtils.days_ago_iso_date(days)]).fetchall())
+
     def orgs(self):
         """Provide a summary of the known orgs."""
         summary_sql = """SELECT _git_server, _git_owner, count(*) 'commits',
