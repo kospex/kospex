@@ -33,6 +33,13 @@ No database migration.
   as UTF-8 whatever the locale: on a machine with a non-UTF-8 locale, a
   re-sync stores non-ASCII names correctly where earlier syncs garbled them.
 
+- **`krunner todo` records TODOs in files that aren't UTF-8** (#478). It
+  failed for the whole repository on one Latin-1 line containing a TODO. On
+  Linux with a UTF-8 locale it didn't fail: GNU grep called such a file binary
+  and its TODOs were left out without a message. grep now runs with
+  `LC_ALL=C`, so those lines are recorded, with each invalid byte as U+FFFD.
+  Files with NUL bytes are still skipped as binary.
+
 ## 0.5.2 - 2026-11-25
 
 No database migration: `pip install -U kospex` is all that is needed.

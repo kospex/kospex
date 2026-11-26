@@ -107,3 +107,66 @@ def test_todo_greps_each_repo_not_the_process_directory(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert len(seen) == 1
     assert "TODO here" in seen[0]["data"]
+
+
+# --- files that aren't UTF-8 (#478) -------------------------------------------
+#
+# grep prints the matching line of file content. A Latin-1 line used to reach a
+# strict decode and raise, so no TODO was recorded for the whole repo. GNU grep
+# under a UTF-8 locale instead treats such a file as binary and prints nothing
+# on stdout, so its TODO was lost without an error. krunner now runs grep with
+# LC_ALL=C (every byte is text; only files with NUL bytes are binary, as with
+# macOS grep) and decodes with KospexUtils.SUBPROCESS_TEXT.
+
+def _repo_bytes(path, files):
+    """Like _repo(), but writes each file's content as bytes."""
+    path.mkdir(parents=True)
+    env = {**os.environ, **_GIT_ENV}
+    run = lambda *a: subprocess.run(
+        ["git", "-C", str(path), *a], check=True, capture_output=True, env=env)
+    run("init", "-q")
+    run("remote", "add", "origin", "https://github.com/test/repo.git")
+    for name, content in files.items():
+        (path / name).write_bytes(content)
+    run("add", "-A")
+    run("commit", "-q", "-m", "init")
+    return path
+
+
+@pytest.mark.parametrize("locale", [None, "C", "C.UTF-8"])
+def test_todo_in_a_latin1_file_is_recorded(tmp_path, monkeypatch, locale):
+    """Whatever the caller's locale: under C.UTF-8, GNU grep would otherwise
+    call the file binary and drop the TODO."""
+    for var in ("LC_ALL", "LC_CTYPE", "LANG"):
+        monkeypatch.delenv(var, raising=False)
+    if locale:
+        monkeypatch.setenv("LC_ALL", locale)
+    repo = _repo_bytes(tmp_path / "repo", {
+        "legacy.py": b"# TODO: caf\xe9 fix\nx = 1\n",
+        "app.py": b"# TODO plain\n",
+    })
+    monkeypatch.setattr(KospexUtils, "find_repos", lambda directory: [str(repo)])
+    seen = _observations(monkeypatch)
+
+    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path), "-save"])
+
+    assert result.exit_code == 0, result.output
+    by_file = {o["file_path"]: o["data"] for o in seen}
+    assert "TODO: caf" + chr(0xFFFD) + " fix" in by_file["legacy.py"]
+    assert "TODO plain" in by_file["app.py"]
+
+
+def test_todo_still_skips_binary_files(tmp_path, monkeypatch):
+    """LC_ALL=C makes grep read every byte as text, but a file with NUL bytes
+    is still binary: grep reports it without a line, which isn't recorded."""
+    repo = _repo_bytes(tmp_path / "repo", {
+        "blob.bin": b"abc\x00def TODO ghi\x00\n",
+        "app.py": b"# TODO plain\n",
+    })
+    monkeypatch.setattr(KospexUtils, "find_repos", lambda directory: [str(repo)])
+    seen = _observations(monkeypatch)
+
+    result = CliRunner().invoke(krunner.cli, ["todo", str(tmp_path), "-save"])
+
+    assert result.exit_code == 0, result.output
+    assert [o["file_path"] for o in seen] == ["app.py"]

@@ -81,7 +81,8 @@ macOS. With the setting switched to strict decoding, the same container fails
 
 ## Not done
 
-- #478, the TODO scan's `grep`.
+- #478, the TODO scan's `grep`: fixed afterwards, see
+  `changes/202611-todo-scan-non-utf8.md`.
 - The androidx path is still stored quoted in `commit_files`
   (`"�l�\004"`, with the quotes and a literal `\004`) because
   `parse_commit_log` doesn't unquote control characters, while
