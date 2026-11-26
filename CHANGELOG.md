@@ -2,6 +2,16 @@
 
 The format of this changelog is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## Unreleased
+
+### Changed
+
+- **The developer view lists technology by language**, as the repo view does, instead of
+  by file extension. Each path in the developer's history is named, so files since
+  deleted or moved are still counted; paths that can't be named show as `Unknown`.
+  "# Commits" now counts commits rather than file changes, and "# Files" is new.
+  The `/api` routes and `kospex author-tech` are unchanged.
+
 ## 0.5.2 - 2026-11-25
 
 No database migration: `pip install -U kospex` is all that is needed.

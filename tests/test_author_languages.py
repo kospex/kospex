@@ -5,12 +5,16 @@ author_languages() names each historical path the way the repo view would, so
 files since deleted or moved are still counted.
 """
 import os
+import re
 
 import pytest
 import sqlite_utils
+from starlette.requests import Request
 
 import kospex_schema as KospexSchema
 from kospex_query import KospexQuery
+
+import kweb2
 
 DEV = "dev@example.com"
 WHEN = "2026-01-01T00:00:00+00:00"
@@ -140,3 +144,62 @@ def test_ordered_by_commits():
     _change(db, "s~o~r", "h3", "b.go")
 
     assert [row["language"] for row in _languages(db)] == ["Go", "Python"]
+
+
+# --- the two handlers that render developer_view.html ---------------------
+
+HANDLERS = [("developers", "/developers/"), ("developer_view", "/developer/")]
+
+
+def _page(monkeypatch, db, handler, path, query_string):
+    monkeypatch.setattr(kweb2, "KospexQuery", lambda: KospexQuery(kospex_db=db))
+    request = Request({
+        "type": "http", "method": "GET", "path": path, "headers": [],
+        "query_string": query_string.encode(), "app": kweb2.app,
+        "router": kweb2.app.router, "server": ("localhost", 8000),
+        "scheme": "http", "root_path": "",
+    })
+    response = getattr(kweb2, handler)(request)
+    return response.status_code, response.body.decode()
+
+
+def _technology_table(body):
+    return body.split('id="devTable"', 1)[1].split("</table>", 1)[0]
+
+
+def _cells(table):
+    return [cell.strip() for cell in re.findall(r"<td[^>]*>(.*?)</td>", table, re.S)]
+
+
+@pytest.mark.parametrize("handler,path", HANDLERS)
+def test_page_shows_languages_and_file_count(monkeypatch, handler, path):
+    db = _db()
+    _change(db, "s~o~r", "h1", "a.py")
+
+    status, body = _page(monkeypatch, db, handler, path, f"author_email={DEV}")
+
+    table = _technology_table(body)
+    assert status == 200
+    assert "# Files" in table
+    assert _cells(table)[:4] == ["Python", "1", "1", "1"]
+
+
+@pytest.mark.parametrize("handler,path", HANDLERS)
+def test_author_with_no_changes_renders(monkeypatch, handler, path):
+    status, body = _page(monkeypatch, _db(), handler, path,
+                         "author_email=nobody@example.com")
+
+    assert status == 200
+    assert _cells(_technology_table(body)) == []
+
+
+@pytest.mark.parametrize("handler,path", HANDLERS)
+def test_plus_in_email_survives(monkeypatch, handler, path):
+    email = "1+dev@users.noreply.github.com"
+    db = _db()
+    _change(db, "s~o~r", "h1", "a.py", email=email)
+
+    status, body = _page(monkeypatch, db, handler, path, f"author_email={email}")
+
+    assert status == 200
+    assert "Python" in _cells(_technology_table(body))
