@@ -32,6 +32,13 @@ from kospex_bitbucket import (
     MODE_NONE,
     REQUIRED_SCOPES,
 )
+from kospex.integrations.gitlab.client import (
+    GitLabClient as KospexGitlabClient,
+    GitLabError,
+    has_path_prefix,
+    server_url,
+)
+import kospex.integrations.gitlab.queries as GitLabQueries
 from rich.table import Table
 from rich.text import Text
 
@@ -311,25 +318,46 @@ def clone(ctx, sync, filename, force, repo):
             kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
 
     elif filename:
+        failed, refused = [], []
         with open(filename, "r", encoding='utf-8') as file:
             for line in file:
                 repo = line.strip()
+                if not repo:
+                    continue
                 if repo.startswith("#"):
                     log.debug(f"Skipping commented line in config: {repo}")
                     print(f"\n\nSkipping commented line: {repo}\n\n")
-                elif clone_path_conflict(kospex, repo, force):
-                    # One bad URL must not stop the rest of the file.
                     continue
-                else:
+                # One bad URL must not stop the rest of the file, however it fails.
+                try:
+                    if clone_path_conflict(kospex, repo, force):
+                        refused.append(repo)
+                        continue
                     repo_path = kgit.clone_repo(repo)
                     if not repo_path:
                         print(f"\n\nERROR with {repo}\n\n")
-
-                    if sync and repo_path:
+                        failed.append(repo)
+                    elif sync:
                         print("Syncing: " + repo)
                         kospex = Kospex()
                         kospex.sync_repo(repo_path, force=force)
                         kospex.kospex_query.set_repo_last_fetch(kospex.git.get_repo_id())
+                except Exception as e:
+                    shown = KospexGit._without_userinfo(repo)
+                    log.error(f"clone -filename: {shown} failed: {type(e).__name__}: {e}")
+                    console.print(Text.assemble(
+                        ("ERROR", "bold red"), f" with {shown}: {type(e).__name__}: {e}"))
+                    failed.append(repo)
+
+        for urls, what, style in ((refused, "refused (see above)", "yellow"),
+                                  (failed, "failed", "red")):
+            if urls:
+                console.print(f"\n{len(urls)} {what}:", style=style)
+                for repo in urls:
+                    # Without any 'user:password@' (CWE-532).
+                    console.print(f"  {KospexGit._without_userinfo(repo)}", soft_wrap=True)
+        if failed:
+            ctx.exit(1)
 
 
 @cli.command("sync")
@@ -1506,6 +1534,159 @@ def bitbucket(workspace, out_repo_list, test_auth, out_raw):
     if out_raw:
         with open(out_raw, "w", encoding='utf-8') as raw_file:
             raw_file.write(json.dumps(repos))
+
+
+def _gitlab_table(columns, rows):
+    table = Table()
+    for column in columns:
+        table.add_column(column, overflow="fold")
+    for row in rows:
+        table.add_row(*[GitLabQueries.printable(value) for value in row])
+    KospexUtils.print_table(table, console)
+
+
+def _gitlab_write(path, text, what):
+    with open(path, "w", encoding="utf-8") as out:
+        out.write(text)
+    console.print(f"{what} written to {path}")
+
+
+def _gitlab_auth(client):
+    who = client.identity()
+    console.print("Authentication successful.", style="green")
+    scopes = ", ".join(who["scopes"]) if who["scopes"] else None
+    for label, value in (("User", who["username"]), ("GitLab version", who["version"]),
+                         ("Token scopes", scopes), ("Token expires", who["expires_at"])):
+        if value:
+            console.print(f"  {label}: {GitLabQueries.printable(value)}")
+
+
+def _gitlab_write_raw(path, items):
+    if path:
+        data = GitLabQueries.without_secrets(items)
+        _gitlab_write(path, json.dumps(data, indent=2) + "\n", "Raw JSON")
+
+
+def _gitlab_groups(client, group, out_raw):
+    groups = GitLabQueries.list_groups(client, group)
+    _gitlab_table(["full_path", "id", "visibility"],
+                  [(g.get("full_path"), g.get("id"), g.get("visibility")) for g in groups])
+    console.print(f"{len(groups)} groups")
+    _gitlab_write_raw(out_raw, groups)
+
+
+def _gitlab_projects(client, group, active, include_forks, skip_archived,
+                     out_repo_list, ssh, out_raw):
+    # The whole listing first: nothing is written unless all of it was read.
+    projects = GitLabQueries.list_projects(client, group)
+    shown = projects if active is None else GitLabQueries.active_projects(projects, active)
+    reasons = [GitLabQueries.skip_reason(p, include_forks, skip_archived, ssh) for p in shown]
+
+    _gitlab_table(
+        ["project", "last activity", "visibility", "fork", "archived", "left out"],
+        [(p.get("path_with_namespace"), (p.get("last_activity_at") or "")[:10],
+          p.get("visibility"), "yes" if p.get("forked_from_project") else "",
+          "yes" if p.get("archived") else "", reason)
+         for p, reason in zip(shown, reasons)])
+
+    console.print(f"{len(projects)} projects")
+    if active is not None:
+        console.print(f"{len(shown)} active in the last {active} days "
+                      "(GitLab's last activity, not last push)")
+    urls = GitLabQueries.clone_urls(shown, ssh=ssh, include_forks=include_forks,
+                                    skip_archived=skip_archived)
+    left_out = ", ".join(f"{reasons.count(r)} {r}" for r in sorted(set(reasons) - {None}))
+    console.print(f"{len(urls)} in the clone list"
+                  + (f"; left out: {left_out}" if left_out else ""))
+
+    if out_repo_list:
+        _gitlab_write(out_repo_list, "".join(f"{url}\n" for url in urls), "Clone URLs")
+    _gitlab_write_raw(out_raw, projects)
+
+
+@cli.command("gitlab")
+@click.option("-test-auth", "test_auth", is_flag=True, default=False,
+              help="Check the token works, and show its user, scopes and expiry.")
+@click.option("--groups", "groups", is_flag=True, default=False,
+              help="List the groups you're a member of, or with --group, every level under it.")
+@click.option("--group", "--org", "-group", "group", default=None,
+              help="A group's full path (acme/platform), id or URL. Lists its projects, "
+                   "including all subgroups.")
+@click.option("--server", "-server", "server", default=None,
+              help="Host, host:port or https URL. Default: GITLAB_URL, else gitlab.com.")
+@click.option("-active", "active", type=click.INT, is_flag=False, flag_value=90, default=None,
+              metavar="[DAYS]", help="Only projects with activity in the last 90 (or DAYS) days.")
+@click.option("-include-forks", "include_forks", is_flag=True, default=False,
+              help="Put forks in the clone list (left out by default).")
+@click.option("-skip-archived", "skip_archived", is_flag=True, default=False,
+              help="Leave archived projects out of the clone list.")
+@click.option("-out-repo-list", "out_repo_list", type=click.Path(dir_okay=False),
+              help="Write clone URLs to this file, for `kgit clone -filename`.")
+@click.option("-ssh-clone-url", "ssh_clone_url", is_flag=True, default=False,
+              help="Write SSH clone URLs instead of HTTPS.")
+@click.option("-out-raw", "out_raw", type=click.Path(dir_okay=False),
+              help="Write everything listed as JSON, without secret fields.")
+@click.pass_context
+def gitlab(ctx, test_auth, groups, group, server, active, include_forks, skip_archived,
+           out_repo_list, ssh_clone_url, out_raw):
+    """
+    List GitLab groups and projects, on gitlab.com or your own server.
+
+    \b
+    Settings (environment or ~/kospex/kospex.env):
+      GITLAB_TOKEN        personal access token with read_api
+      GITLAB_URL          default server, e.g. https://gitlab.example.com:8929
+      REQUESTS_CA_BUNDLE  CA bundle for an internal certificate
+
+    \b
+    Cloning over HTTPS uses git's own credentials, not GITLAB_TOKEN, and needs a
+    token with read_repository. -ssh-clone-url uses your SSH key.
+
+    \b
+    Examples:
+      kgit gitlab -test-auth --server gitlab.example.com
+      kgit gitlab --groups
+      kgit gitlab --groups --group acme
+      kgit gitlab --group acme/platform -active -out-repo-list repos.txt
+      kgit clone -filename repos.txt
+    """
+    project_only = [name for name, value in (
+        ("-active", active is not None), ("-include-forks", include_forks),
+        ("-skip-archived", skip_archived), ("-out-repo-list", out_repo_list),
+        ("-ssh-clone-url", ssh_clone_url)) if value]
+    if test_auth and (groups or group or out_raw or project_only):
+        raise click.UsageError("Use -test-auth on its own (with --server if needed).")
+    if groups and project_only:
+        raise click.UsageError(f"{', '.join(project_only)} only apply to projects "
+                               "(--group without --groups).")
+    if ssh_clone_url and not out_repo_list:
+        raise click.UsageError("-ssh-clone-url needs -out-repo-list.")
+    if active is not None and active < 1:
+        raise click.UsageError("-active needs a positive number of days.")
+    if not (test_auth or groups or group):
+        click.echo(ctx.get_help())
+        return
+
+    try:
+        url = server_url(server)
+        # Said before any request: the token is about to go there.
+        console.print(f"GitLab server: {url}")
+        if has_path_prefix(url):
+            console.print("This GitLab is under a path: clone URLs will put that prefix "
+                          "into the group part of each repo ID.", style="yellow")
+        client = KospexGitlabClient(server=url)
+        if test_auth:
+            _gitlab_auth(client)
+        elif groups:
+            _gitlab_groups(client, group, out_raw)
+        else:
+            _gitlab_projects(client, group, active, include_forks, skip_archived,
+                             out_repo_list, ssh_clone_url, out_raw)
+    except (GitLabError, OSError) as e:
+        message = "\n".join(GitLabQueries.printable(part) for part in str(e).split("\n"))
+        log.error(f"kgit gitlab: {message}")
+        console.print(Text.assemble(("Error:", "bold red"), f" {message}"))
+        ctx.exit(1)
 
 
 # Parked: DuckDB proof of concept, being researched further for feasibility and
