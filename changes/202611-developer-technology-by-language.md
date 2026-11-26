@@ -66,6 +66,11 @@ A new `KospexQuery` method returns one row per language for an author:
 
 - SQL must run on SQLite 3.26.
 - A rename recorded under an old path is classified by that path.
+- The new method filters `commits` on `author_email`, which has no index leading with
+  that column, so it is as slow as `author_tech()` is today. The index, and whether to
+  match email case-insensitively, are left to
+  [#492](https://github.com/kospex/kospex/issues/492). Whatever it settles should apply
+  to the new method too, since the developer pages will no longer call `author_tech()`.
 
 ## Files
 
