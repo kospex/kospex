@@ -501,7 +501,7 @@ class KospexGit:
         result_total = subprocess.run(
             ["du", "-sk", str(directory)],
             capture_output=True,
-            text=True,
+            **KospexUtils.SUBPROCESS_TEXT,
             check=True,
             timeout=300,
         )
@@ -512,7 +512,7 @@ class KospexGit:
         result_git = subprocess.run(
             ["du", "-sk", git_dir],
             capture_output=True,
-            text=True,
+            **KospexUtils.SUBPROCESS_TEXT,
             check=True,
             timeout=300,
         )
@@ -538,7 +538,7 @@ class KospexGit:
         # A missing directory or a failing git command used to leave the process
         # cwd stranded inside (or pointing at) the repo, breaking later commands.
         result = subprocess.run(
-            ["git", "branch", "-r"], cwd=directory, capture_output=True, text=True, check=True
+            ["git", "branch", "-r"], cwd=directory, capture_output=True, **KospexUtils.SUBPROCESS_TEXT, check=True
         )
 
         # Parse the output
@@ -735,7 +735,7 @@ class KospexGit:
             out = subprocess.check_output(
                 cmd,
                 cwd=str(Path(self.repo_dir).resolve()),
-                text=True,
+                **KospexUtils.SUBPROCESS_TEXT,
                 stderr=subprocess.DEVNULL,
             )
         except (subprocess.CalledProcessError, OSError) as exc:

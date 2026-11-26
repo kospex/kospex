@@ -1271,7 +1271,7 @@ class KospexDependencies:
         def git_out(*args):
             return subprocess.run(
                 ["git", "-C", git_base, *args],
-                capture_output=True, text=True, check=False,
+                capture_output=True, **KospexUtils.SUBPROCESS_TEXT, check=False,
             )
 
         in_repos = self.kospex_db.execute(
