@@ -201,7 +201,7 @@ class KospexAgent:
                     # and skips the sync.
                     argv, env = KospexGit.pull_command(git_base, no_prompt=True)
                     pull = subprocess.run(argv, env={**os.environ, **env},
-                                          capture_output=True, text=True, check=False)
+                                          capture_output=True, **KospexUtils.SUBPROCESS_TEXT, check=False)
                     if pull.returncode != 0:
                         detail = (pull.stderr or pull.stdout).strip().splitlines()
                         log.warning(f"git pull --ff-only failed for {git_base}, not synced: "

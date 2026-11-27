@@ -939,6 +939,28 @@ def syncs_run(request: Request, run_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+def _repos_page_figures(kospex, org_key, server):
+    """(repo rows, {repo_id: active developers}, developers) for /repos/.
+
+    Read from developer_stats, or from commits while any repo's stats are
+    missing or out of date (see developer_stats_coverage()). Both methods of
+    each pair take the same arguments and give rows the page reads alike.
+    """
+    scope = {"org_key": org_key, "server": server}
+    if any(kospex.developer_stats_coverage().values()):
+        repos_name, devs_name, active_name = "repos", "developers", "active_devs"
+    else:
+        repos_name, devs_name, active_name = (
+            "repo_summaries", "developer_statuses", "active_devs_from_stats")
+
+    rows = cached_query(
+        repos_name, lambda: getattr(kospex, repos_name)(**scope), **scope)
+    active_devs = cached_query(active_name, getattr(kospex, active_name))
+    developers = cached_query(
+        devs_name, lambda: getattr(kospex, devs_name)(**scope), **scope)
+    return rows, active_devs, developers
+
+
 @app.get("/repos/", response_class=HTMLResponse)
 @app.get("/repos/{id}", response_class=HTMLResponse)
 def repos(request: Request, id: Optional[str] = None):
@@ -977,23 +999,12 @@ def repos(request: Request, id: Optional[str] = None):
         elif server:
             page["git_server"] = server
 
-        # The repos method handles null values for parameters.
+        rows, active_devs, developers = _repos_page_figures(kospex, org_key, server)
         # Copy the cached rows: the loops below add keys to them.
-        data = [
-            dict(row)
-            for row in cached_query(
-                "repos", lambda: kospex.repos(org_key=org_key, server=server),
-                org_key=org_key, server=server,
-            )
-        ]
-        active_devs = cached_query("active_devs", kospex.active_devs)
+        data = [dict(row) for row in rows]
         for row in data:
             row["active_devs"] = active_devs.get(row["_repo_id"], 0)
 
-        developers = cached_query(
-            "developers", lambda: kospex.developers(org_key=org_key, server=server),
-            org_key=org_key, server=server,
-        )
         developer_status = KospexUtils.repo_stats(developers, "last_commit")
 
         for repo in data:

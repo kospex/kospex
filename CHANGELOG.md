@@ -4,6 +4,14 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 ## Unreleased
 
+No database migration.
+
+### Added
+
+- **Experimental `kgit gitlab`** lists GitLab groups and projects, on gitlab.com or a
+  self-managed server, and writes a clone list for `kgit clone -filename`. It needs
+  `GITLAB_TOKEN` with the `read_api` scope. See [kgit](https://docs.kospex.io/kgit#gitlab).
+
 ### Changed
 
 - **The developer view lists technology by language**, as the repo view does, instead of
@@ -14,6 +22,42 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
   The two views can still differ for a file: scripts named only by a shebang line show as
   `Unknown` on the developer view, and the repo view shows languages as stored until
   `krunner file-metadata -force` is run.
+
+- **`kgit clone -filename` carries on past a failing repository.** It lists failed and
+  refused repositories at the end, skips blank lines, and exits 1 if any failed (it
+  exited 0 before).
+
+- **kweb `/repos/` loads faster on large estates.** Commits, authors, last commit,
+  developer statuses and active developers are read from `developer_stats`. Committers are
+  still counted from commits. While any repository's stats are missing or out of date
+  (`kospex system-status` shows this) the page reads commits as before.
+
+### Fixed
+
+- The active developer count on `/repos/` compared commit timestamps as text, so timezone
+  offsets could miscount commits near the 90-day cutoff. This is fixed on `/repos/` when it
+  reads `developer_stats`, not yet on other pages that count active developers.
+
+- **One filename or author name that isn't UTF-8 no longer fails a whole
+  repository** (#479). git prints such bytes as they are, and kospex decoded
+  its output strictly, so a single path anywhere in the history, even a file
+  deleted years ago, made `krunner file-metadata` raise `UnicodeDecodeError`
+  and rebuild nothing for that repository. Seen on androidx/androidx after 16
+  minutes. Commit sync, `scc`, the author queries, `kgit pull` (with
+  `core.quotePath=false`) and the background agent's pull decoded the same
+  way. Each invalid byte is now replaced with U+FFFD, which is how
+  `commit_files` already stores such a path, so the paths still match. On an
+  existing database, run `krunner file-metadata -force REPO_ID` for a
+  repository that failed, then `krunner osi REPO_ID`. Output is now decoded
+  as UTF-8 whatever the locale: on a machine with a non-UTF-8 locale, a
+  re-sync stores non-ASCII names correctly where earlier syncs garbled them.
+
+- **`krunner todo` records TODOs in files that aren't UTF-8** (#478). It
+  failed for the whole repository on one Latin-1 line containing a TODO. On
+  Linux with a UTF-8 locale it didn't fail: GNU grep called such a file binary
+  and its TODOs were left out without a message. grep now runs with
+  `LC_ALL=C`, so those lines are recorded, with each invalid byte as U+FFFD.
+  Files with NUL bytes are still skipped as binary.
 
 ## 0.5.2 - 2026-11-25
 
