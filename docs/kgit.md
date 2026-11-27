@@ -386,8 +386,9 @@ use `kgit sync` directly. `-sync` can't be combined with `-include-member`,
 
 `kgit gitlab` lists GitLab groups and projects, on gitlab.com or your own server,
 and writes a list of clone URLs for [`kgit clone -filename`](#cloning-a-list-of-repos-in-a-file).
-It only reads from GitLab, and saves nothing to the kospex database. `kgit sync`
-doesn't support GitLab yet.
+It only reads from GitLab, and saves nothing to the kospex database. `kgit sync URL`
+works for one GitLab repository, but `kgit sync --org` doesn't support GitLab groups
+yet.
 
 ### Setting up
 
@@ -475,7 +476,7 @@ kgit gitlab --group acme -out-raw projects.json
 
 ### Limitations
 
-- `kgit sync` doesn't support GitLab: use a clone list.
+- `kgit sync --org` doesn't support GitLab groups: use a clone list.
 - To update clones later, use `kgit pull --server HOST` or `kgit pull --all`.
   `kgit pull --org` covers one group, not its subgroups.
 - A GitLab installed under a path (`https://example.com/gitlab`) works for
