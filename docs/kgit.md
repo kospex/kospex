@@ -36,6 +36,11 @@ https://github.com/kospex/kospex
 https://github.com/mergestat/mergestat-lite
 ```
 
+Blank lines and lines starting with `#` are skipped. A repository already in
+`KOSPEX_CODE` is pulled instead of cloned. One that fails doesn't stop the rest:
+kgit lists the failed and refused repositories at the end, and exits 1 if any
+failed.
+
 ## sync
 
 `kgit sync --org` clones (or pulls) and syncs every repository in a GitHub
@@ -373,6 +378,108 @@ kgit github acme -sync      # the same as: kgit sync --org acme
 For that command's other options (`-next`, `-include-forks`, `-ssh` and so on),
 use `kgit sync` directly. `-sync` can't be combined with `-include-member`,
 `-out-repo-list` or `-ssh-clone-url`, which only apply to the listing.
+
+## gitlab
+
+> **Experimental.** `kgit gitlab` is new, and its options and output may change.
+> It has been tried against gitlab.com, not yet against a self-managed GitLab.
+
+`kgit gitlab` lists GitLab groups and projects, on gitlab.com or your own server,
+and writes a list of clone URLs for [`kgit clone -filename`](#cloning-a-list-of-repos-in-a-file).
+It only reads from GitLab, and saves nothing to the kospex database. `kgit sync`
+doesn't support GitLab yet.
+
+### Setting up
+
+Set these in the environment or `~/kospex/kospex.env`:
+
+- `GITLAB_TOKEN`: a personal access token with the `read_api` scope
+- `GITLAB_URL`: your server, such as `https://gitlab.example.com`. Without it,
+  kgit uses `https://gitlab.com`
+
+`--server` overrides `GITLAB_URL` for one command, as a host, `host:port` or
+https URL. Only https is accepted, and redirects aren't followed, so give the
+server's own address. kgit prints the server before sending the token to it.
+
+```bash
+kgit gitlab -test-auth
+kgit gitlab -test-auth --server gitlab.example.com:8929
+```
+
+`-test-auth` shows the token's user, and its scopes, expiry and the GitLab version
+where the server reports them. It never prints the token.
+
+If your server's certificate comes from an internal certificate authority, set
+`REQUESTS_CA_BUNDLE` to its CA bundle for `kgit gitlab`, and `GIT_SSL_CAINFO` for
+git itself when cloning over HTTPS.
+
+### Groups
+
+```bash
+kgit gitlab --groups                  # the groups you're a member of
+kgit gitlab --groups --group acme     # every level of subgroups under acme
+```
+
+An administrator's token lists every group on the server.
+
+### Projects
+
+```bash
+kgit gitlab --group acme                      # includes all subgroups
+kgit gitlab --group acme/platform -active     # activity in the last 90 days
+kgit gitlab --group acme -active 365
+```
+
+`--group` takes a group's full path, its numeric id or its URL. `--org` is the
+same option. Projects only shared into the group are not listed.
+
+`-active` uses GitLab's *last activity* date, which counts more than pushes, such
+as issues and merge requests. GitLab has no last-push date in its project listing,
+so this is not the same as `kgit sync --org ... -active` on GitHub.
+
+### Cloning a group
+
+```bash
+kgit gitlab --group acme -active -out-repo-list repos.txt
+kgit clone -filename repos.txt
+```
+
+`-out-repo-list` writes HTTPS clone URLs, or SSH URLs with `-ssh-clone-url`.
+
+- **Forks are left out** unless `-include-forks`.
+- **Empty projects are left out.**
+- **Archived projects are included** unless `-skip-archived`.
+- The table's `left out` column says why a project isn't in the list.
+
+Cloning uses **git's own credentials, not `GITLAB_TOKEN`**. Over HTTPS, give git a
+token with `read_repository`: your account password usually won't work, though a
+browser sign-in through Git Credential Manager may. With `-ssh-clone-url`, git
+uses your SSH key. Try a few repositories before a large list.
+
+Subgroups become nested directories, `KOSPEX_CODE/SERVER/GROUP/SUBGROUP/REPO`,
+and their repo ids use `~~` between groups:
+`gitlab.example.com~acme~~platform~app`. A port in the server address is not part
+of the repo id.
+
+### Saving the raw data
+
+`-out-raw FILE` writes everything GitLab returned for the listing as JSON, with
+secret fields such as runner registration tokens removed. It includes every
+project, whatever `-active` shows. The file can describe private projects, so
+treat it as you would the code.
+
+```bash
+kgit gitlab --groups -out-raw groups.json
+kgit gitlab --group acme -out-raw projects.json
+```
+
+### Limitations
+
+- `kgit sync` doesn't support GitLab: use a clone list.
+- To update clones later, use `kgit pull --server HOST` or `kgit pull --all`.
+  `kgit pull --org` covers one group, not its subgroups.
+- A GitLab installed under a path (`https://example.com/gitlab`) works for
+  listing, but the path becomes part of the group in each repo id. kgit warns you.
 
 ## pull
 
