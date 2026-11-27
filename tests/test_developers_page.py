@@ -68,11 +68,11 @@ def test_default_shows_active_developers_only(estate):
 
 def test_counts_link_to_each_list_in_path_form(estate):
     context = _get(estate, id="github.com~acme").context
-    links = {s["key"]: (s["count"], s["url"]) for s in context["status_links"]}
+    links = {c["status"]: (c["count"], c["url"]) for c in context["circles"]}
     assert links == {
         key: (count, f"/developers/github.com~acme?status={key}")
         for key, count in
-        [("active", 2), ("aging", 1), ("stale", 0), ("unmaintained", 1), ("all", 4)]}
+        [("active", 2), ("aging", 1), ("stale", 0), ("unmaintained", 1)]}
     html = _html(estate, id="github.com~acme")
     assert 'href="/developers/github.com~acme?status=aging"' in html
     assert context["data"] == {"authors": 4, "committers": 3}
@@ -228,7 +228,6 @@ def test_days_and_committers_views_ignore_status_and_search(estate):
     committers = _get(estate, "view=committers&status=stale&q=zzz")
     assert "merge@example.com" in [p["email"] for p in committers.context["people"]]
     assert 'name="q"' not in committers.body.decode()
-    assert re.search(r"Shown below", committers.body.decode())
 
 
 def test_the_repo_active_developers_page_lists_the_window(estate):
@@ -266,16 +265,64 @@ def test_a_download_with_no_rows_is_a_csv_with_headings(estate, query):
         "is_bot", "bot_type"]]
 
 
-@pytest.mark.parametrize("query, shown", [
-    ("status=all", True), ("", False), ("status=active", False), ("q=paul", False),
-    ("view=committers", True), ("days=90", True)])
-def test_shown_below_only_when_the_list_is_that_total(estate, query, shown):
-    assert ("Shown below" in _html(estate, query)) is shown
+# --- layout ------------------------------------------------------------------
+
+def _circles(html):
+    """{name: (url, current)} for the status circles on the page."""
+    return {
+        name: (url, bool(current))
+        for url, current, name in re.findall(
+            r'<a href="([^"]*)"[^>]*?data-status-circle( aria-current="page")?[^>]*>'
+            r'.*?data-circle-name[^>]*>([^<]*)<', html, re.S)
+    }
 
 
-def test_the_overview_does_not_say_shown_below(tmp_path, monkeypatch, kweb):
+def test_the_circles_use_the_summary_names_and_mark_the_open_list(estate):
+    assert _circles(_html(estate, "status=unmaintained")) == {
+        "Active": ("/developers/?status=active", False),
+        "Aging": ("/developers/?status=aging", False),
+        "Stale": ("/developers/?status=stale", False),
+        "Dormant": ("/developers/?status=unmaintained", True),
+    }
+
+
+def test_circles_are_smaller_than_the_summary_ones(estate):
+    sizes = [c["size"] for c in _get(estate).context["circles"]]
+    assert all(48 <= size <= 96 for size in sizes)
+
+
+@pytest.mark.parametrize("query", ["q=paul", "days=90", "view=committers"])
+def test_no_circles_where_their_counts_would_mislead(estate, query):
+    assert _circles(_html(estate, query)) == {}
+
+
+@pytest.mark.parametrize("query", ["status=unmaintained", "q=old"])
+def test_unmaintained_reads_as_dormant(estate, query):
+    html = _html(estate, query)
+    assert "Dormant" in html
+    assert "Unmaintained" not in html
+
+
+def test_one_line_of_totals_replaces_the_cards(estate):
+    html = _html(estate, id="github.com~acme")
+    assert "# of Authors" not in html and "# of Committers" not in html
+    assert re.search(
+        r'<a href="/developers/github\.com~acme\?status=all"[^>]*>4 developers</a>', html)
+    assert re.search(
+        r'<a href="/developers/github\.com~acme\?view=committers"[^>]*>3 committers</a>', html)
+
+
+def test_a_total_of_one_is_singular(estate):
+    html = _html(estate, "days=90", id="github.com~acme~web")
+    assert ">1 developer</a>" in html
+
+
+def test_the_overview_has_one_download_link_and_a_table_of_busiest(
+        tmp_path, monkeypatch, kweb):
     _big(tmp_path, monkeypatch, 251)
-    assert "Shown below" not in _html(kweb)
+    html = _html(kweb)
+    assert html.count("download=true") == 1
+    assert re.search(r"<th[^>]*>Busiest orgs</th>\s*<th[^>]*>Active developers</th>", html)
 
 
 # --- overview ----------------------------------------------------------------
@@ -301,10 +348,11 @@ def test_over_250_active_gives_the_overview(tmp_path, monkeypatch, kweb):
         ("beta", 51, "/developers/github.com~beta?status=active"),
     ]
     assert 'href="/developers/?status=active"' in html
-    assert "List all active" in html
+    assert "List all 251 active" in html
     assert 'href="/developers/?status=active&amp;download=true"' in html
     assert 'name="q"' in html
-    assert "<table" not in html.split("Busiest")[0]
+    # one table, of orgs: no developer list
+    assert html.count("<table") == 1 and "Last Seen" not in html
     assert "@example.com</a>" not in html
 
 
@@ -337,6 +385,18 @@ def test_at_most_ten_busiest(tmp_path, monkeypatch, kweb):
         (repo_id, f"d{n}-{j}@example.com", 1, "c@example.com")
         for n, repo_id in enumerate(repos) for j in range(21)], repos=repos)
     assert len(_get(kweb).context["busiest"]) == 10
+
+
+def test_a_busiest_server_with_no_org_is_named_and_links_to_the_server(
+        tmp_path, monkeypatch, kweb):
+    repos = {"go.example.com~~crypto": ("go.example.com", "", "crypto"),
+             "github.com~acme~api": ("github.com", "acme", "api")}
+    _make_db(tmp_path, monkeypatch, [
+        (repo_id, f"d{n}-{i}@example.com", 1, "c@example.com")
+        for n, repo_id in enumerate(repos) for i in range(130 - n)], repos=repos)
+    first = _get(kweb).context["busiest"][0]
+    assert (first["name"], first["url"]) == (
+        "go.example.com (no org)", "/developers/go.example.com?status=active")
 
 
 def test_nobody_active_says_so_and_keeps_the_counts(tmp_path, monkeypatch, kweb):

@@ -707,7 +707,6 @@ class TestCommittersView:
         assert not [c for c in people.calls if c[0] == "committers"]
         assert "dev@example.com" in html
         assert html.count(">bot</span>") == 1   # dependabot only
-        assert "Shown below" in html
 
     def test_committers_view_has_its_own_heading_and_rows(self, people):
         html = _developers(b"view=committers")

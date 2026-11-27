@@ -462,10 +462,11 @@ def circle_label_px(label, diameter):
     return max(LABEL_MIN_PX, min(LABEL_MAX_PX, int(fit)))
 
 
-def status_circles(stats):
+def status_circles(stats, min_px=CIRCLE_MIN_PX, px_per_percent=1.0):
     """One dict per summary status, in display order, for the summary circles.
 
     stats maps status key -> count, as from KospexUtils.count_key_occurrences.
+    A circle's diameter is min_px plus px_per_percent for each percent.
     """
     counts = {key: stats.get(key, 0) for key, _, _ in SUMMARY_STATUSES}
     percentages = KospexUtils.convert_to_percentage(counts)
@@ -473,7 +474,7 @@ def status_circles(stats):
     for key, name, colour in SUMMARY_STATUSES:
         count = counts[key]
         percentage = round(percentages.get(key, 0))
-        size = percentage + CIRCLE_MIN_PX
+        size = round(min_px + percentage * px_per_percent)
         label = compact_count(count)
         circles.append({
             "key": key,

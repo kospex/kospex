@@ -52,9 +52,8 @@ developer by part of their email.
 - The server check comes before any base64 test: a server name with no dot, such as `git1`,
   also passes `is_base64()`. Test it with such a name.
 
-**Always at the top:** the author and committer cards, an email search box, and counts for
-Active (90 days or less), Aging (91–180), Stale (181–365), Unmaintained and All. Each
-count links to its list.
+**Always at the top:** totals, an email search box and the status circles (see Layout):
+Active (90 days or less), Aging (91–180), Stale (181–365) and Dormant (over a year).
 
 **With no `status` or `q`:**
 
@@ -63,17 +62,18 @@ count links to its list.
   scoped to an org; nothing for a repo), a "List all active" link and the CSV download.
 
 ```
-Developers · All repositories
-Search email: [ paul________ ]
+Developers
+80,149 developers · 26,576 committers
+Search email in all repositories [ paul________ ] [Search]
 
-  Active   Aging   Stale   Unmaintained   All
-  6,218    3,374   3,614   66,723         79,929
+     (6.2k)    (3.4k)    (3.6k)    (  67k  )
+     Active    Aging     Stale      Dormant
 
-Busiest orgs (by active developers)
-  org-a    3,665  >
-  org-b      ...  >
+Busiest orgs                      Active developers
+  org-a                                       3,665
+  org-b                                         ...
 
-[ List all active ]   [ Download CSV ]
+List all 6,218 active  |  Download CSV
 ```
 
 **Lists** (`?status=active|aging|stale|unmaintained|all`, case-insensitive, so the
@@ -96,6 +96,16 @@ scope.
 
 **CSV** (`download=true`): everyone in the current scope, status and search, not just the
 visible page. Columns are unchanged.
+
+## Layout
+
+Heading, a line of totals (developers and committers, each opening its list), the search
+box, then a half-size version of the summary page's status circles. Each circle opens its
+list, and the open one is ringed. "Unmaintained" reads as **Dormant**, as on the summary
+(`?status=unmaintained` is unchanged). The circles are hidden during a search, with
+`?days=` and on the committers view, where all-time counts are not what is listed. This
+replaces the author and committer cards. Busiest orgs are a table, and repos with no org
+appear as "SERVER (no org)", linking to the server.
 
 ## Repos with missing or old stats
 

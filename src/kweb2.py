@@ -1437,11 +1437,15 @@ def _developers_context(kq, scope, view, days, params, download):
                     scope, by=by, limit=developers_view.BUSIEST_LIMIT),
                 by=by, **scope)
             key = "repo_id" if by == "repo" else "org_key"
-            busiest = [
-                {**row, "url": developers_view.developers_url(
-                    {key: row["id"]}, status="active")}
-                for row in found
-            ]
+            busiest = []
+            for row in found:
+                name, target = row["name"], {key: row["id"]}
+                if by == "org" and not name:
+                    # Repos with no org (go.googlesource.com): the id is "server~"
+                    server = row["id"].removesuffix("~")
+                    name, target = f"{server} (no org)", {"server": server}
+                busiest.append({**row, "name": name, "url": developers_view.developers_url(
+                    target, status="active")})
     else:
         rows, total = listing(status=chosen, limit=developers_view.PAGE_SIZE,
                               offset=(params["page"] - 1) * developers_view.PAGE_SIZE)
@@ -1484,12 +1488,18 @@ def _developers_context(kq, scope, view, days, params, download):
             direction = "desc" if params["dir"] == "asc" else "asc"
         sort_links[key] = link(sort=key, dir=direction, page=1)
 
-    status_links = [
-        {"key": key, "label": key.capitalize(), "count": counts[key],
-         "current": key == status and not overview,
-         "url": developers_view.developers_url(scope, status=key)}
-        for key in developers_view.STATUSES
-    ]
+    # Half-size versions of the summary's circles, hidden where all-time
+    # status counts are not what is listed: a search, a window, committers
+    circles = []
+    if filtered and not search:
+        circles = KospexWeb.status_circles(
+            {key.capitalize(): counts[key] for key in developers_view.STATUSES[:-1]},
+            min_px=48, px_per_percent=0.48)
+        for circle in circles:
+            key = circle["key"].lower()
+            circle.update(
+                status=key, current=key == status and not overview,
+                url=developers_view.developers_url(scope, status=key))
 
     crumbs = {}
     if scope:
@@ -1503,13 +1513,13 @@ def _developers_context(kq, scope, view, days, params, download):
     return {
         "people": rows, "data": data, "view": view, "days": days,
         "mode": "overview" if overview else "list",
-        # False when the list is narrowed by status or search, or not shown
-        "lists_everyone": not overview and (not filtered or (status == "all" and not search)),
         "busiest": busiest, "busiest_label": busiest_label,
         "active_url": developers_view.developers_url(scope, status="active"),
         "all_url": developers_view.developers_url(scope, status="all"),
         "status": status, "q": search, "filtered": filtered,
-        "status_links": status_links, "sort_links": sort_links,
+        "circles": circles, "sort_links": sort_links,
+        # What the page calls each status, as on the summary page
+        "status_names": {key.lower(): name for key, name, _ in KospexWeb.SUMMARY_STATUSES},
         "sort": params["sort"], "direction": params["dir"],
         "pager": pager, "total": total,
         "prev_url": link(page=pager["page"] - 1) if pager["page"] > 1 else None,

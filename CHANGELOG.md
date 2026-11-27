@@ -15,10 +15,12 @@ No database migration.
 ### Changed
 
 - **kweb `/developers/` opens on active developers**, not on everyone. With more than 250
-  active developers it shows status counts and the busiest orgs (repos within an org)
+  active developers it shows status circles and the busiest orgs (repos within an org)
   instead of a list. Lists over 250 rows are paged and sorted on the server.
 - **Scopes are in the path** (`/developers/github.com~acme`); `?org_key=` and `?repo_id=`
   still work, and an unknown one is now a 404.
+- The developers page has a line of totals in place of the two cards, and clickable status
+  circles like the summary's, which names "Unmaintained" developers **Dormant**.
 - **Search developers by part of their email** (`?q=`). The search covers the page's scope,
   which the search box names, with a link to search all repositories.
 - The Active list counts commits and repos for all time. The old "active developers (last

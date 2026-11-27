@@ -42,3 +42,23 @@
     </div>
 </div>
 {% endmacro %}
+
+{#
+  The smaller row on /developers/: each circle opens that status's list.
+  circles: KospexWeb.status_circles() plus url and current per circle.
+#}
+{% macro status_links(circles) %}
+<div class="flex flex-wrap justify-center items-end gap-8">
+    {% for c in circles %}
+    <a href="{{ c.url }}" class="flex flex-col items-center w-32" data-status-circle{% if c.current %} aria-current="page"{% endif %}>
+        <div class="rounded-full {{ c.colour }} flex items-center justify-center text-black font-bold whitespace-nowrap mb-2"
+             style="width: {{ c.size }}px; height: {{ c.size }}px; font-size: {{ c.font_px }}px; line-height: 1;{% if c.current %} box-shadow: 0 0 0 3px #fff, 0 0 0 5px #111827;{% endif %}">
+            {{ c.label }}
+        </div>
+        <div class="text-sm font-semibold text-gray-900{{ ' underline' if c.current }}" data-circle-name>{{ c.name }}</div>
+        <div class="text-sm text-gray-900">{{ c.title }}</div>
+        <div class="text-xs text-gray-500">{{ c.percentage }}%</div>
+    </a>
+    {% endfor %}
+</div>
+{% endmacro %}
