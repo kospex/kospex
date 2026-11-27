@@ -232,6 +232,53 @@ def test_busiest_leaves_out_scopes_with_nobody_active(tmp_path, monkeypatch):
     assert [o["id"] for o in kq.busiest_scopes({}, now=NOW)] == ["github.com~beta"]
 
 
+def _mark(kq, repo_id, commits=999):
+    """Make a repo's stats disagree with its commits, to show which was read."""
+    kq.kospex_db.execute(
+        "UPDATE developer_stats SET total_commits = ? WHERE _repo_id = ?", [commits, repo_id])
+
+
+def _drop_stats(kq, repo_id):
+    kq.kospex_db.execute("DELETE FROM developer_stats WHERE _repo_id = ?", [repo_id])
+
+
+def _unbuild_stats(kq, repo_id):
+    _mark(kq, repo_id, 555)
+    kq.kospex_db.execute(
+        "UPDATE developer_stats SET last_authored = NULL WHERE _repo_id = ?", [repo_id])
+
+
+@pytest.mark.parametrize("spoil", [_drop_stats, _unbuild_stats])
+def test_only_a_repo_with_a_stats_gap_is_read_from_commits(kq, spoil):
+    truth = kq.developer_list({}, use_stats=False, now=NOW)
+    spoil(kq, "github.com~acme~web")
+    # The gap repo comes from commits, so nothing is lost or taken from old rows
+    assert kq.developer_list({}, now=NOW) == truth
+    assert kq.developer_status_counts({}, now=NOW) == kq.developer_status_counts(
+        {}, use_stats=False, now=NOW)
+    assert kq.busiest_scopes({}, now=NOW) == kq.busiest_scopes({}, use_stats=False, now=NOW)
+
+    # ... and every other repo still comes from developer_stats
+    _mark(kq, "github.com~acme~api")
+    rows, _ = kq.developer_list({}, now=NOW)
+    assert max(r["commits"] for r in rows) >= 999
+
+
+def test_a_gap_outside_the_scope_changes_nothing(kq):
+    _drop_stats(kq, "github.com~acme~web")
+    _mark(kq, "github.com~acme~api")
+    rows, _ = kq.developer_list({"repo_id": "github.com~acme~api"}, now=NOW)
+    assert rows and all(r["commits"] == 999 for r in rows)
+
+
+def test_too_many_gaps_to_name_reads_commits(kq, monkeypatch):
+    monkeypatch.setattr(KospexQuery, "_MAX_GAP_REPOS", 0)
+    truth = kq.developer_list({}, use_stats=False, now=NOW)
+    _drop_stats(kq, "github.com~acme~web")
+    _mark(kq, "github.com~acme~api")
+    assert kq.developer_list({}, now=NOW) == truth
+
+
 @pytest.mark.parametrize("kwargs", [
     {"column": "author_name"}, {"sort": "hash"}, {"direction": "up"},
 ])

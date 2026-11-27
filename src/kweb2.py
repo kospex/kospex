@@ -1399,11 +1399,10 @@ def _developers_context(kq, scope, view, days, params, download):
     filtered = view == "authors" and not days
     search = params["q"] if filtered else None
     status = (params["status"] or ("all" if search else "active")) if filtered else None
-    use_stats = not any(kq.developer_stats_coverage().values())
 
     def listing(**kwargs):
         return kq.developer_list(
-            scope, use_stats=use_stats, column=column, days=days, search=search,
+            scope, column=column, days=days, search=search,
             sort=params["sort"], direction=params["dir"], **kwargs)
 
     if download:
@@ -1419,8 +1418,7 @@ def _developers_context(kq, scope, view, days, params, download):
 
     counts = cached_query(
         "developer_status_counts",
-        lambda: kq.developer_status_counts(scope, use_stats=use_stats),
-        use_stats=use_stats, **scope)
+        lambda: kq.developer_status_counts(scope), **scope)
     # Too many active developers to list, and nothing asked for: an overview
     overview = (filtered and not params["status"] and not search
                 and counts["active"] > developers_view.LIST_THRESHOLD)
@@ -1436,9 +1434,8 @@ def _developers_context(kq, scope, view, days, params, download):
             found = cached_query(
                 "busiest_scopes",
                 lambda: kq.busiest_scopes(
-                    scope, by=by, use_stats=use_stats,
-                    limit=developers_view.BUSIEST_LIMIT),
-                by=by, use_stats=use_stats, **scope)
+                    scope, by=by, limit=developers_view.BUSIEST_LIMIT),
+                by=by, **scope)
             key = "repo_id" if by == "repo" else "org_key"
             busiest = [
                 {**row, "url": developers_view.developers_url(

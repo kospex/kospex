@@ -2695,6 +2695,20 @@ class KospexQuery:
             "WHERE stat_type = 'ALL_TIME'")}
         return with_commits - with_stats
 
+    # Rows written before last_commit moved to committer time
+    _NOT_REBUILT = "stat_type IS NULL OR (stat_type = 'ALL_TIME' AND last_authored IS NULL)"
+
+    # Gap repos are named in the SQL, twice: SQLite 3.26 allows 999 parameters.
+    # With more gaps than this, the developer queries read commits for everything.
+    _MAX_GAP_REPOS = 400
+
+    def _stats_gap_repos(self):
+        """repo_ids whose developer_stats are missing or out of date."""
+        not_rebuilt = {r[0] for r in self.kospex_db.execute(
+            f"SELECT DISTINCT _repo_id FROM {KospexSchema.TBL_DEVELOPER_STATS} "
+            f"WHERE {self._NOT_REBUILT}")}
+        return sorted(not_rebuilt | self._repos_without_stats())
+
     def developer_stats_coverage(self):
         """Repos whose developer_stats the summary pages would read wrongly.
 
@@ -2707,7 +2721,7 @@ class KospexQuery:
         """
         (not_rebuilt,) = self.kospex_db.execute(
             f"SELECT COUNT(DISTINCT _repo_id) FROM {KospexSchema.TBL_DEVELOPER_STATS} "
-            "WHERE stat_type IS NULL OR (stat_type = 'ALL_TIME' AND last_authored IS NULL)"
+            f"WHERE {self._NOT_REBUILT}"
         ).fetchone()
         return {"repos_not_rebuilt": not_rebuilt,
                 "repos_without_stats": len(self._repos_without_stats())}
@@ -2782,26 +2796,43 @@ class KospexQuery:
                 [(cutoff - timedelta(days=2)).date().isoformat(), cutoff.isoformat()])
 
     def _developer_source(self, scope, use_stats, column, days, now):
-        """SQL and params for one row per (repo, email)."""
+        """SQL and params for one row per (repo, email).
+
+        With use_stats, all-time authors come from developer_stats, and from
+        commits only for the repos whose stats are missing or out of date.
+        """
         if column not in self._DEVELOPER_COLUMNS:
             raise ValueError(f"not an email column: {column}")
         where, params = self._stats_scope(**scope)
 
-        if use_stats and not days and column == "author_email":
-            return (f"""SELECT COALESCE(author_email, '') AS email, _repo_id AS repo,
-                _git_server, _git_owner, _git_repo, total_commits AS commits,
-                first_commit, last_commit
-                FROM {KospexSchema.TBL_DEVELOPER_STATS}
-                WHERE stat_type = 'ALL_TIME' AND {where}""", params)
+        def from_commits(extra="", extra_params=()):
+            return (f"""SELECT COALESCE({column}, '') AS email, _repo_id AS repo,
+                _git_server, _git_owner, _git_repo, COUNT(*) AS commits,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') AS first_commit,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') AS last_commit
+                FROM {KospexSchema.TBL_COMMITS}
+                WHERE {where}{extra}
+                GROUP BY _repo_id, {column}""", params + list(extra_params))
 
-        window, window_params = self._window_filter(days, now)
-        return (f"""SELECT COALESCE({column}, '') AS email, _repo_id AS repo,
-            _git_server, _git_owner, _git_repo, COUNT(*) AS commits,
-            strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') AS first_commit,
-            strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') AS last_commit
-            FROM {KospexSchema.TBL_COMMITS}
-            WHERE {where}{window}
-            GROUP BY _repo_id, {column}""", params + window_params)
+        if not (use_stats and not days and column == "author_email"):
+            return from_commits(*self._window_filter(days, now))
+
+        gaps = self._stats_gap_repos()
+        if len(gaps) > self._MAX_GAP_REPOS:
+            return from_commits()
+
+        marks = ", ".join("?" * len(gaps))
+        skip = f" AND _repo_id NOT IN ({marks})" if gaps else ""
+        stats = f"""SELECT COALESCE(author_email, '') AS email, _repo_id AS repo,
+            _git_server, _git_owner, _git_repo, total_commits AS commits,
+            first_commit, last_commit
+            FROM {KospexSchema.TBL_DEVELOPER_STATS}
+            WHERE stat_type = 'ALL_TIME' AND {where}{skip}"""
+        if not gaps:
+            return stats, params
+
+        rest, rest_params = from_commits(f" AND _repo_id IN ({marks})", gaps)
+        return f"{stats} UNION ALL {rest}", params + gaps + rest_params
 
     @staticmethod
     def _status_case(column):

@@ -97,6 +97,12 @@ scope.
 **CSV** (`download=true`): everyone in the current scope, status and search, not just the
 visible page. Columns are unchanged.
 
+## Repos with missing or old stats
+
+A repo whose `developer_stats` are missing or out of date (a sync in progress or one that
+failed, or rows not rebuilt) is read from `commits`. Every other repo still comes from
+`developer_stats`. With more than 400 such repos the whole page reads `commits`.
+
 ## Other views
 
 - **Committers** (`?view=committers`): paged and sorted the same way, still read from

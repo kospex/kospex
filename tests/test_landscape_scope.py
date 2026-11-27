@@ -371,9 +371,6 @@ class _DevFake(_FakeQuery):
     def get_last_sync_datetime(self):
         return None
 
-    def developer_stats_coverage(self):
-        return {"repos_not_rebuilt": 0, "repos_without_stats": 0}
-
     def developer_status_counts(self, scope, use_stats=True):
         self.calls.append(("counts", scope.get("org_key"), scope.get("repo_id")))
         return {"active": 0, "aging": 0, "stale": 0, "unmaintained": 0, "all": 0}
