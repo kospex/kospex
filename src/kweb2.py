@@ -179,15 +179,19 @@ def favicon():
     return FileResponse(Path(__file__).parent / "static/favicon.ico")
 
 
-def download_csv_fastapi(dict_data, filename=None):
-    """FastAPI-compatible CSV download function"""
-    if not dict_data:
+def download_csv_fastapi(dict_data, filename=None, fieldnames=None):
+    """FastAPI-compatible CSV download function
+
+    With fieldnames, no rows gives a file of headings; without, it is a 400.
+    """
+    if not dict_data and not fieldnames:
         raise HTTPException(status_code=400, detail="No data to download")
 
     # Create CSV content
     with StringIO() as output:
         # Use the keys of the first dictionary for the header
-        fieldnames = dict_data[0].keys()
+        if dict_data:
+            fieldnames = dict_data[0].keys()
 
         # Create a CSV writer object
         writer = csv.DictWriter(output, fieldnames=fieldnames)
@@ -440,7 +444,7 @@ def active_developers(request: Request, repo_id: str):
 
         context = _developers_context(
             KospexQuery(), {"repo_id": repo_id}, "authors", "90",
-            developers_view.parse_list_params(request.query_params), None)
+            _list_params(request.query_params), None)
         return templates.TemplateResponse(request, "developers.html", context)
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any
@@ -1268,6 +1272,19 @@ def _label_people(rows, column):
     return rows
 
 
+# The developers CSV, after its email column
+DEVELOPER_CSV_COLUMNS = ("commits", "repos", "first_commit", "last_commit",
+                         "last_seen", "is_bot", "bot_type")
+
+
+def _list_params(query_params):
+    """parse_list_params(), with a bad value as a 400."""
+    try:
+        return developers_view.parse_list_params(query_params)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 def _developers_scope(kq, id, query_params):
     """{} or one of repo_id, org_key, server for /developers/. Unknown is a 404.
 
@@ -1354,17 +1371,16 @@ def developers(request: Request, id: Optional[str] = None):
                     status_code=400,
                     detail="days must be a whole number of days, 1 or more.")
             days = str(int(days))
-        try:
-            params = developers_view.parse_list_params(request.query_params)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+        params = _list_params(request.query_params)
 
         kq = KospexQuery()
         scope = _developers_scope(kq, id, request.query_params)
         context = _developers_context(kq, scope, view, days, params, download)
         if download:
+            column = "committer_email" if view == "committers" else "author_email"
             return download_csv_fastapi(
-                context, f"{view if view == 'committers' else 'developers'}.csv")
+                context, f"{view if view == 'committers' else 'developers'}.csv",
+                fieldnames=[column, *DEVELOPER_CSV_COLUMNS])
         return templates.TemplateResponse(request, "developers.html", context)
     except HTTPException:
         # Re-raise the route's own 4xx. The handler below converts any
@@ -1490,8 +1506,11 @@ def _developers_context(kq, scope, view, days, params, download):
     return {
         "people": rows, "data": data, "view": view, "days": days,
         "mode": "overview" if overview else "list",
+        # False when the list is narrowed by status or search, or not shown
+        "lists_everyone": not overview and (not filtered or (status == "all" and not search)),
         "busiest": busiest, "busiest_label": busiest_label,
         "active_url": developers_view.developers_url(scope, status="active"),
+        "all_url": developers_view.developers_url(scope, status="all"),
         "status": status, "q": search, "filtered": filtered,
         "status_links": status_links, "sort_links": sort_links,
         "sort": params["sort"], "direction": params["dir"],

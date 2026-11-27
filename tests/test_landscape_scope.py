@@ -704,7 +704,7 @@ def people(monkeypatch):
 class TestCommittersView:
 
     def test_default_view_is_authors_and_labels_bots(self, people):
-        html = _developers()
+        html = _developers(b"status=all")
 
         assert ("authors", None, None, None) in people.calls
         assert not [c for c in people.calls if c[0] == "committers"]

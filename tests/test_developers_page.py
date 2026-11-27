@@ -243,6 +243,41 @@ def test_the_repo_active_developers_page_lists_the_window(estate):
     assert "Active (last 90 days)" in response.body.decode()
 
 
+@pytest.mark.parametrize("query", [
+    "page=abc", "sort=bogus", "dir=up", "status=bogus"])
+def test_bad_parameters_on_the_repo_active_page_are_a_400(estate, query):
+    repo_id = "github.com~acme~web"
+    request = Request({"type": "http", "method": "GET",
+                       "path": f"/developers/active/{repo_id}",
+                       "headers": [], "query_string": query.encode(), "app": estate.app})
+    with pytest.raises(HTTPException) as caught:
+        estate.active_developers(request, repo_id=repo_id)
+    assert caught.value.status_code == 400
+
+
+@pytest.mark.parametrize("query", [
+    "status=stale&download=true", "q=zzzz&download=true",
+    "view=committers&days=1&download=true"])
+def test_a_download_with_no_rows_is_a_csv_with_headings(estate, query):
+    column = "committer_email" if "committers" in query else "author_email"
+    id = "github.com~acme~api"
+    assert _csv(estate, query, id=id) == [[
+        column, "commits", "repos", "first_commit", "last_commit", "last_seen",
+        "is_bot", "bot_type"]]
+
+
+@pytest.mark.parametrize("query, shown", [
+    ("status=all", True), ("", False), ("status=active", False), ("q=paul", False),
+    ("view=committers", True), ("days=90", True)])
+def test_shown_below_only_when_the_list_is_that_total(estate, query, shown):
+    assert ("Shown below" in _html(estate, query)) is shown
+
+
+def test_the_overview_does_not_say_shown_below(tmp_path, monkeypatch, kweb):
+    _big(tmp_path, monkeypatch, 251)
+    assert "Shown below" not in _html(kweb)
+
+
 # --- overview ----------------------------------------------------------------
 
 def _two_orgs(tmp_path, monkeypatch, acme, beta):

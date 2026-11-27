@@ -26,10 +26,10 @@
                     <div class="p-6 text-center">
                         <h4 class="text-lg font-medium text-gray-900 mb-2"># of Authors</h4>
                         <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ data['authors'] }}</h2>
-                        {% if view == 'authors' %}
+                        {% if view == 'authors' and lists_everyone %}
                         <span class="text-sm text-gray-500">Shown below</span>
                         {% else %}
-                        <a href="{{ authors_url }}" class="text-blue-600 hover:text-blue-800 underline">View More</a>
+                        <a href="{{ all_url if view == 'authors' else authors_url }}" class="text-blue-600 hover:text-blue-800 underline">View More</a>
                         {% endif %}
                     </div>
                 </div>
