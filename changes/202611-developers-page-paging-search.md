@@ -33,8 +33,24 @@ developer by part of their email.
 
 ## Behaviour (authors view)
 
-**Scope.** `/developers/{id}` or `?server=`, `?org_key=`, `?repo_id=`, for server, org or
-repo. The narrowest wins. An unknown scope is a 404. Server scope is ignored today.
+**Scope** is in the path, and every link the page generates uses that form:
+
+```
+/developers/github.com                      server
+/developers/github.com~kospex               org
+/developers/github.com~kospex~kospex        repo
+/developers/github.com~kospex?status=active&page=2
+```
+
+- Everything else (`status`, `q`, `sort`, `dir`, `page`, `view`, `days`, `download`) stays
+  in the query string.
+- `?org_key=`, `?repo_id=` and `?server=` keep working for existing links. A path ID wins.
+- An org or repo ID is recognised by its `~`. Any other ID is a server if the `repos` table
+  has it, otherwise a 404. Server scope is ignored today.
+- A base64 email is not a `/developers/` scope (today it shows everyone). It is a 404 that
+  points to `?author_email=`. Base64 developer links go to `/developer/{id}`, unchanged.
+- The server check comes before any base64 test: a server name with no dot, such as `git1`,
+  also passes `is_base64()`. Test it with such a name.
 
 **Always at the top:** the author and committer cards, an email search box, and counts for
 Active (90 days or less), Aging (91–180), Stale (181–365), Unmaintained and All. Each
