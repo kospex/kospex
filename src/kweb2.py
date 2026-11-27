@@ -1498,7 +1498,8 @@ def _developers_context(kq, scope, view, days, params, download):
         for circle in circles:
             key = circle["key"].lower()
             circle.update(
-                status=key, current=key == status and not overview,
+                # The overview is of the active developers, so Active is marked
+                status=key, current=key == status,
                 url=developers_view.developers_url(scope, status=key))
 
     crumbs = {}

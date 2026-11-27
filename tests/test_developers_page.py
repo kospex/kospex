@@ -286,6 +286,20 @@ def test_the_circles_use_the_summary_names_and_mark_the_open_list(estate):
     }
 
 
+def test_the_default_page_marks_active_whether_a_list_or_the_overview(
+        estate, tmp_path_factory, monkeypatch):
+    def marked():
+        estate.request_cache.clear()
+        return [name for name, (_, current) in _circles(_html(estate)).items() if current]
+
+    assert _get(estate).context["mode"] == "list"
+    assert marked() == ["Active"]
+    _big(tmp_path_factory.mktemp("big"), monkeypatch, 251)
+    estate.request_cache.clear()
+    assert _get(estate).context["mode"] == "overview"
+    assert marked() == ["Active"]
+
+
 def test_circles_are_smaller_than_the_summary_ones(estate):
     sizes = [c["size"] for c in _get(estate).context["circles"]]
     assert all(48 <= size <= 96 for size in sizes)
