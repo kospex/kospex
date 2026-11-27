@@ -1,6 +1,6 @@
 # /developers/: overview, server-side pages and email search
 
-Status: design, awaiting approval.
+Status: implemented. Plan: `202611-developers-page-paging-search-plan.md`.
 
 ## Intent
 

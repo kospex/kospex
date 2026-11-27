@@ -79,6 +79,32 @@
                 </div>
             </div>
 
+            {% if mode == 'overview' %}
+            <!-- Overview: too many active developers to list -->
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-900 {{ 'mb-2' if scope_name else 'mb-6' }}">Developers</h1>
+                    {% if scope_name %}{% include '_scope_label.html' %}{% endif %}
+                    <p class="text-sm text-gray-700 mb-4"><span class="font-semibold">{{ "{:,}".format(total) }}</span> active developers, too many to list here. Search by email, or choose a list.</p>
+                    {% if busiest %}
+                    <h2 class="text-lg font-medium text-gray-900 mb-2">Busiest {{ busiest_label }} (by active developers)</h2>
+                    <ul class="mb-4">
+                        {% for b in busiest %}
+                        <li class="flex gap-4 text-sm py-2">
+                            <a href="{{ b.url }}" class="text-blue-600 hover:text-blue-800 underline">{{ b.name }}</a>
+                            <span class="text-gray-700">{{ "{:,}".format(b.active) }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    <div class="flex flex-wrap gap-4 text-sm">
+                        <a href="{{ active_url }}" class="text-blue-600 hover:text-blue-800 underline">List all active</a>
+                        <span class="text-gray-500">|</span>
+                        <a href="{{ download_url }}" class="text-blue-600 hover:text-blue-800 underline">Download CSV</a>
+                    </div>
+                </div>
+            </div>
+            {% else %}
             <!-- Developers Table -->
             {% macro sort_heading(key, label, align) %}
             <th class="px-6 py-3 text-{{ align }} text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -150,6 +176,7 @@
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
         </div>
 
         {% include '_footer_scripts.html' %}

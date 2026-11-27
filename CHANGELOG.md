@@ -14,6 +14,14 @@ No database migration.
 
 ### Changed
 
+- **kweb `/developers/` opens on active developers**, not on everyone. With more than 250
+  active developers it shows status counts and the busiest orgs (repos within an org)
+  instead of a list. Lists over 250 rows are paged and sorted on the server.
+- **Scopes are in the path** (`/developers/github.com~acme`); `?org_key=` and `?repo_id=`
+  still work, and an unknown one is now a 404.
+- **Search developers by part of their email** (`?q=`).
+- The Active list counts commits and repos for all time. The old "active developers (last
+  90 days)" link counted only commits in those 90 days; `?days=90` still does.
 - **`kgit clone -filename` carries on past a failing repository.** It lists failed and
   refused repositories at the end, skips blank lines, and exits 1 if any failed (it
   exited 0 before).
@@ -25,6 +33,8 @@ No database migration.
 
 ### Fixed
 
+- `/developers/` ignored a server scope and listed every developer.
+- `/developers/active/{repo_id}` listed nobody.
 - The active developer count on `/repos/` compared commit timestamps as text, so timezone
   offsets could miscount commits near the 90-day cutoff. This is fixed on `/repos/` when it
   reads `developer_stats`, not yet on other pages that count active developers.

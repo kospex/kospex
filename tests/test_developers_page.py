@@ -241,3 +241,72 @@ def test_the_repo_active_developers_page_lists_the_window(estate):
     assert [p["email"] for p in response.context["people"]] == ["mrpaul@example.com"]
     assert response.context["data"]["authors"] == 1
     assert "Active (last 90 days)" in response.body.decode()
+
+
+# --- overview ----------------------------------------------------------------
+
+def _two_orgs(tmp_path, monkeypatch, acme, beta):
+    """acme and beta developers, all active."""
+    commits = [("github.com~acme~api", f"a{i:04d}@example.com", 1, "c@example.com")
+               for i in range(acme)]
+    commits += [("github.com~beta~cli", f"b{i:04d}@example.com", 1, "c@example.com")
+                for i in range(beta)]
+    _make_db(tmp_path, monkeypatch, commits)
+
+
+def test_over_250_active_gives_the_overview(tmp_path, monkeypatch, kweb):
+    _two_orgs(tmp_path, monkeypatch, acme=200, beta=51)
+    response = _get(kweb)
+    context, html = response.context, response.body.decode()
+    assert context["mode"] == "overview"
+    assert context["people"] == []
+    assert context["busiest_label"] == "orgs"
+    assert [(b["name"], b["active"], b["url"]) for b in context["busiest"]] == [
+        ("acme", 200, "/developers/github.com~acme?status=active"),
+        ("beta", 51, "/developers/github.com~beta?status=active"),
+    ]
+    assert 'href="/developers/?status=active"' in html
+    assert "List all active" in html
+    assert 'href="/developers/?status=active&amp;download=true"' in html
+    assert 'name="q"' in html
+    assert "<table" not in html.split("Busiest")[0]
+    assert "@example.com</a>" not in html
+
+
+def test_250_active_is_a_list_not_an_overview(tmp_path, monkeypatch, kweb):
+    _two_orgs(tmp_path, monkeypatch, acme=200, beta=50)
+    assert _get(kweb).context["mode"] == "list"
+
+
+@pytest.mark.parametrize("query", [
+    "status=active", "status=all", "q=a0", "days=90", "view=committers"])
+def test_asking_for_a_list_skips_the_overview(tmp_path, monkeypatch, kweb, query):
+    _two_orgs(tmp_path, monkeypatch, acme=200, beta=51)
+    assert _get(kweb, query).context["mode"] == "list"
+
+
+def test_busiest_follows_the_scope(tmp_path, monkeypatch, kweb):
+    _two_orgs(tmp_path, monkeypatch, acme=251, beta=1)
+    org = _get(kweb, id="github.com~acme").context
+    assert (org["mode"], org["busiest_label"]) == ("overview", "repos")
+    assert [(b["name"], b["url"]) for b in org["busiest"]] == [
+        ("api", "/developers/github.com~acme~api?status=active")]
+    repo = _get(kweb, id="github.com~acme~api").context
+    assert (repo["mode"], repo["busiest"]) == ("overview", [])
+
+
+def test_at_most_ten_busiest(tmp_path, monkeypatch, kweb):
+    repos = {f"github.com~org{i:02d}~r": ("github.com", f"org{i:02d}", "r")
+             for i in range(12)}
+    _make_db(tmp_path, monkeypatch, [
+        (repo_id, f"d{n}-{j}@example.com", 1, "c@example.com")
+        for n, repo_id in enumerate(repos) for j in range(21)], repos=repos)
+    assert len(_get(kweb).context["busiest"]) == 10
+
+
+def test_nobody_active_says_so_and_keeps_the_counts(tmp_path, monkeypatch, kweb):
+    _make_db(tmp_path, monkeypatch,
+             [("github.com~acme~api", "old@example.com", 500, "old@example.com")])
+    html = _html(kweb)
+    assert "No developers to show" in html
+    assert 'href="/developers/?status=unmaintained"' in html

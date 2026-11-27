@@ -1401,18 +1401,42 @@ def _developers_context(kq, scope, view, days, params, download):
             row.pop("email")  # a template helper, not a CSV column
         return rows
 
-    chosen = status if status != "all" else None
-    rows, total = listing(status=chosen, limit=developers_view.PAGE_SIZE,
-                          offset=(params["page"] - 1) * developers_view.PAGE_SIZE)
-    if total <= developers_view.LIST_THRESHOLD:
-        rows, total = listing(status=chosen)
-    pager = developers_view.page_window(total, params["page"])
-    _label_people(rows, column)
-
     counts = cached_query(
         "developer_status_counts",
         lambda: kq.developer_status_counts(scope, use_stats=use_stats),
         use_stats=use_stats, **scope)
+    # Too many active developers to list, and nothing asked for: an overview
+    overview = (filtered and not params["status"] and not search
+                and counts["active"] > developers_view.LIST_THRESHOLD)
+
+    chosen = status if status != "all" else None
+    busiest, busiest_label = [], None
+    if overview:
+        rows, total = [], counts["active"]
+        pager = developers_view.page_window(0, 1)
+        if not scope.get("repo_id"):
+            by = "repo" if scope.get("org_key") else "org"
+            busiest_label = f"{by}s"
+            found = cached_query(
+                "busiest_scopes",
+                lambda: kq.busiest_scopes(
+                    scope, by=by, use_stats=use_stats,
+                    limit=developers_view.BUSIEST_LIMIT),
+                by=by, use_stats=use_stats, **scope)
+            key = "repo_id" if by == "repo" else "org_key"
+            busiest = [
+                {**row, "url": developers_view.developers_url(
+                    {key: row["id"]}, status="active")}
+                for row in found
+            ]
+    else:
+        rows, total = listing(status=chosen, limit=developers_view.PAGE_SIZE,
+                              offset=(params["page"] - 1) * developers_view.PAGE_SIZE)
+        if total <= developers_view.LIST_THRESHOLD:
+            rows, total = listing(status=chosen)
+        pager = developers_view.page_window(total, params["page"])
+        _label_people(rows, column)
+
     # The cards: authors and committers, within the window when there is one
     if not days:
         data = {"authors": counts["all"],
@@ -1449,7 +1473,7 @@ def _developers_context(kq, scope, view, days, params, download):
 
     status_links = [
         {"key": key, "label": key.capitalize(), "count": counts[key],
-         "current": key == status,
+         "current": key == status and not overview,
          "url": developers_view.developers_url(scope, status=key)}
         for key in developers_view.STATUSES
     ]
@@ -1464,7 +1488,10 @@ def _developers_context(kq, scope, view, days, params, download):
 
     repo_id = scope.get("repo_id")
     return {
-        "people": rows, "data": data, "view": view, "days": days, "mode": "list",
+        "people": rows, "data": data, "view": view, "days": days,
+        "mode": "overview" if overview else "list",
+        "busiest": busiest, "busiest_label": busiest_label,
+        "active_url": developers_view.developers_url(scope, status="active"),
         "status": status, "q": search, "filtered": filtered,
         "status_links": status_links, "sort_links": sort_links,
         "sort": params["sort"], "direction": params["dir"],
