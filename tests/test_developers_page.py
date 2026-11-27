@@ -303,6 +303,24 @@ def test_unmaintained_reads_as_dormant(estate, query):
     assert "Unmaintained" not in html
 
 
+@pytest.mark.parametrize("status, name, colour, count", [
+    ("active", "Active", "bg-green-500", 6),
+    ("aging", "Aging", "bg-yellow-400", 1),
+    ("stale", "Stale", "bg-orange-400", 1),
+    ("unmaintained", "Dormant", "bg-gray-300", 1),
+])
+def test_the_list_title_carries_its_circle_colour(estate, status, name, colour, count):
+    title = re.search(r"<h2[^>]*data-status-title[^>]*>(.*?)</h2>",
+                      _html(estate, f"status={status}"), re.S).group(1)
+    assert re.search(rf'<span class="[^"]*rounded-full {colour}[^"]*"', title)
+    assert " ".join(re.sub(r"<[^>]+>", " ", title).split()) == f"{name}: {count}"
+
+
+@pytest.mark.parametrize("query", ["status=all", "q=paul"])
+def test_a_list_of_mixed_statuses_has_no_status_title(estate, query):
+    assert "data-status-title" not in _html(estate, query)
+
+
 def test_one_line_of_totals_replaces_the_cards(estate):
     html = _html(estate, id="github.com~acme")
     assert "# of Authors" not in html and "# of Committers" not in html

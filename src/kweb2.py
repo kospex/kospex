@@ -1520,6 +1520,7 @@ def _developers_context(kq, scope, view, days, params, download):
         "circles": circles, "sort_links": sort_links,
         # What the page calls each status, as on the summary page
         "status_names": {key.lower(): name for key, name, _ in KospexWeb.SUMMARY_STATUSES},
+        "status_colours": {key.lower(): colour for key, _, colour in KospexWeb.SUMMARY_STATUSES},
         "sort": params["sort"], "direction": params["dir"],
         "pager": pager, "total": total,
         "prev_url": link(page=pager["page"] - 1) if pager["page"] > 1 else None,

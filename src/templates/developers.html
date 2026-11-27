@@ -96,13 +96,21 @@
             {% endmacro %}
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
+                    {% if not days and not q and status and status != 'all' %}
+                    <!-- One status: titled in the colour of its circle -->
+                    <h2 class="flex items-center gap-2 text-xl font-bold text-gray-900 mb-2" data-status-title>
+                        <span class="inline-block w-4 h-4 rounded-full {{ status_colours[status] }}"></span>
+                        {{ status_names[status] }}: {{ "{:,}".format(total) }}
+                    </h2>
+                    <p class="text-sm text-gray-700 mb-4" data-window>Commits and repos are all time.</p>
+                    {% else %}
                     <p class="text-sm text-gray-700 mb-4" data-window>
                         {% if days %}<span class="font-semibold">Active (last {{ days }} {{ 'day' if days == '1' else 'days' }})</span>:
                         {{ 'committers' if view == 'committers' else 'developers' }} with a commit in that window.
                         {% elif q %}<span class="font-semibold">{{ "{:,}".format(total) }}</span> matching &ldquo;{{ q }}&rdquo;{% if status != 'all' %} ({{ status_names[status]|lower }}){% endif %}
-                        {% elif status and status != 'all' %}<span class="font-semibold">{{ status_names[status] }}</span>: {{ "{:,}".format(total) }}. Commits and repos are all time.
                         {% else %}<span class="font-semibold">All time</span>{% endif %}
                     </p>
+                    {% endif %}
                     <div class="flex flex-wrap gap-4 text-sm mb-4">
                         <a href="{{ download_url }}" class="text-blue-600 hover:text-blue-800 underline">Download</a>
                         {% if days %}
