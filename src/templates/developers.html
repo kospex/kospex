@@ -53,9 +53,12 @@
                 <div class="p-4">
                     {% if search_action %}
                     <form method="get" action="{{ search_action }}" class="flex flex-wrap gap-2 mb-4">
-                        <label for="q" class="text-sm text-gray-700 py-2">Search email</label>
+                        <label for="q" class="text-sm text-gray-700 py-2">Search email in {{ search_where }}</label>
                         <input type="search" id="q" name="q" value="{{ q or '' }}" class="border border-gray-300 rounded px-3 py-2 text-sm">
                         <button type="submit" class="border border-gray-300 rounded px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Search</button>
+                        {% if search_all_url %}
+                        <a href="{{ search_all_url }}" class="text-sm text-blue-600 hover:text-blue-800 underline py-2">Search all repositories</a>
+                        {% endif %}
                     </form>
                     {% endif %}
                     {% if view == 'authors' %}

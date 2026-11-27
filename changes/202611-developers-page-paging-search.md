@@ -90,6 +90,10 @@ Busiest orgs (by active developers)
 scope unless `status` is also given. `%` and `_` are literal. An exact match is listed
 first. Results show each developer's status and follow the same paging.
 
+The box names where it searches ("Search email in acme", or "in all repositories"). Inside
+a server, org or repo, a "Search all repositories" link repeats the search without the
+scope.
+
 **CSV** (`download=true`): everyone in the current scope, status and search, not just the
 visible page. Columns are unchanged.
 

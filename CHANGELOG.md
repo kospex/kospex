@@ -19,7 +19,8 @@ No database migration.
   instead of a list. Lists over 250 rows are paged and sorted on the server.
 - **Scopes are in the path** (`/developers/github.com~acme`); `?org_key=` and `?repo_id=`
   still work, and an unknown one is now a 404.
-- **Search developers by part of their email** (`?q=`).
+- **Search developers by part of their email** (`?q=`). The search covers the page's scope,
+  which the search box names, with a link to search all repositories.
 - The Active list counts commits and repos for all time. The old "active developers (last
   90 days)" link counted only commits in those 90 days; `?days=90` still does.
 - **`kgit clone -filename` carries on past a failing repository.** It lists failed and

@@ -345,3 +345,32 @@ def test_nobody_active_says_so_and_keeps_the_counts(tmp_path, monkeypatch, kweb)
     html = _html(kweb)
     assert "No developers to show" in html
     assert 'href="/developers/?status=unmaintained"' in html
+
+
+@pytest.mark.parametrize("id, where", [
+    (None, "all repositories"),
+    ("github.com", "github.com"),
+    ("github.com~acme", "acme"),
+    ("github.com~acme~api", "acme/api"),
+])
+def test_the_search_box_names_where_it_searches(estate, id, where):
+    assert f">Search email in {where}</label>" in _html(estate, id=id)
+
+
+def _wider_link(html):
+    found = re.search(r'<a href="([^"]*)"[^>]*>Search all repositories</a>', html)
+    return found.group(1) if found else None
+
+
+@pytest.mark.parametrize("query, id, url", [
+    ("q=nobody", "github.com~acme", "/developers/?q=nobody"),
+    ("q=a%26b&status=stale", "github.com~acme~api", "/developers/?q=a%26b"),
+    ("", "github.com", "/developers/"),
+    ("org_key=github.com~acme&q=paul", None, "/developers/?q=paul"),
+])
+def test_a_scoped_page_offers_to_search_all_repositories(estate, query, id, url):
+    assert _wider_link(_html(estate, query, id)) == url
+
+
+def test_no_wider_search_link_when_already_everywhere(estate):
+    assert _wider_link(_html(estate, "q=paul")) is None

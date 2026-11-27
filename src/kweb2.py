@@ -1519,6 +1519,9 @@ def _developers_context(kq, scope, view, days, params, download):
         "next_url": link(page=pager["page"] + 1) if pager["page"] < pager["pages"] else None,
         "first_url": link(page=1),
         "search_action": developers_view.developers_url(scope) if filtered else None,
+        # A search stays inside the scope, so the box names it and offers wider
+        "search_where": crumbs.get("scope_name") or "all repositories",
+        "search_all_url": developers_view.developers_url({}, q=search) if scope else None,
         # Row links reach the commits page, which takes a repo_id.
         "row_scope": f"&repo_id={quote(repo_id, safe='')}" if repo_id else "",
         "authors_url": developers_view.developers_url(scope, days=days),
