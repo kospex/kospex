@@ -6,7 +6,17 @@ The format of this changelog is based on [Keep a Changelog](https://keepachangel
 
 No database migration.
 
+### Added
+
+- **Experimental `kgit gitlab`** lists GitLab groups and projects, on gitlab.com or a
+  self-managed server, and writes a clone list for `kgit clone -filename`. It needs
+  `GITLAB_TOKEN` with the `read_api` scope. See [kgit](https://docs.kospex.io/kgit#gitlab).
+
 ### Changed
+
+- **`kgit clone -filename` carries on past a failing repository.** It lists failed and
+  refused repositories at the end, skips blank lines, and exits 1 if any failed (it
+  exited 0 before).
 
 - **kweb `/repos/` loads faster on large estates.** Commits, authors, last commit,
   developer statuses and active developers are read from `developer_stats`. Committers are

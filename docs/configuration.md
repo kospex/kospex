@@ -117,6 +117,7 @@ These all follow the same order: environment, then `kospex.env`, then the defaul
 |---|---|
 | `GITHUB_AUTH_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` | GitHub API calls (`kgit github`, `kgit sync --org`). The first non-empty one wins, in that order. See [GitHub rate limits](github-rate-limits). |
 | `BITBUCKET_API_TOKEN` with `BITBUCKET_EMAIL` or `BITBUCKET_USERNAME` | `kgit bitbucket` |
+| `GITLAB_TOKEN`, `GITLAB_URL` | `kgit gitlab` (experimental). The token needs `read_api`; the URL defaults to `https://gitlab.com`. See [kgit](kgit#gitlab). |
 | `SNYK_TOKEN` | `kospex snyk` |
 | `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE` | A CA bundle for HTTPS lookups behind a TLS-inspecting proxy. See [Troubleshooting](troubleshooting). |
 
