@@ -1,41 +1,35 @@
-<div class="container mt-5">
-    <h1 class="mb-4">Tech Radar</h1>
-    <canvas id="radarChart"></canvas>
+<div style="width: 340px; height: 250px; max-width: 100%">
+    <canvas id="radarChart" role="img" aria-label="Commits by language"></canvas>
 </div>
 
 <!-- Chart.js - Local static version -->
 <script src="/static/js/chart.min.js"></script>
 <script>
-    const ctx = document.getElementById('radarChart').getContext('2d');
-    new Chart(ctx, {
+    new Chart(document.getElementById('radarChart').getContext('2d'), {
         type: 'radar',
         data: {
             labels: {{ labels|list|tojson }},
             datasets: [{
-                label: 'Current',
+                label: 'Commits',
                 data: {{ datapoints|list|tojson }},
                 fill: true,
                 backgroundColor: 'rgba(255, 99, 132, 0.2)',
                 borderColor: 'rgb(255, 99, 132)',
-                pointBackgroundColor: 'rgb(255, 99, 132)',
-                pointBorderColor: '#fff',
-                pointHoverBackgroundColor: '#fff',
-                pointHoverBorderColor: 'rgb(255, 99, 132)'
-                }]
+                borderWidth: 2,
+                pointRadius: 2,
+                pointBackgroundColor: 'rgb(255, 99, 132)'
+            }]
         },
         options: {
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
             scales: {
-                y: {
-                    beginAtZero: true
-                },
                 r: {
-                    pointLabels: {
-                    font: {
-                        size: 20
-                    }
+                    beginAtZero: true,
+                    ticks: { display: false },
+                    pointLabels: { font: { size: 11 } }
                 }
             }
         }
-    }
     });
 </script>

@@ -4,6 +4,7 @@ The developer view listed file extensions while the repo view listed languages.
 author_languages() names each historical path the way the repo view would, so
 files since deleted or moved are still counted.
 """
+import json
 import os
 import re
 
@@ -12,6 +13,7 @@ import sqlite_utils
 from starlette.requests import Request
 
 import kospex_schema as KospexSchema
+import kospex_utils as KospexUtils
 from kospex_query import KospexQuery
 
 import kweb2
@@ -203,3 +205,90 @@ def test_plus_in_email_survives(monkeypatch, handler, path):
 
     assert status == 200
     assert "Python" in _cells(_technology_table(body))
+
+
+# --- the header: name, GitHub link, radar ----------------------------------
+
+PRIVACY = "users.noreply.github.com"
+
+
+@pytest.mark.parametrize("email,expected", [
+    (f"123+octo-dev@{PRIVACY}", ("octo-dev", "octo-dev")),
+    (f"octo-dev@{PRIVACY}", ("octo-dev", "octo-dev")),
+    ("123+octo-dev@Users.NoReply.GitHub.com", ("octo-dev", "octo-dev")),
+    # An ordinary address is never assumed to be a GitHub account.
+    ("jane.doe@example.com", ("jane.doe", None)),
+    ("jane+work@example.com", ("jane+work", None)),
+    ("dev@github.com", ("dev", None)),
+    ("dev@users.noreply.github.com.example.com", ("dev", None)),
+    # GitHub marks app accounts with [bot].
+    (f"49699333+dependabot[bot]@{PRIVACY}", ("dependabot[bot]", None)),
+    (f"renovate[BOT]@{PRIVACY}", ("renovate[BOT]", None)),
+    # git accepts any text as an email; only a GitHub login is linked.
+    (f"1+../settings@{PRIVACY}", ("../settings", None)),
+    (f"1+a?tab=x@{PRIVACY}", ("a?tab=x", None)),
+    ("no-at-sign", ("no-at-sign", None)),
+    ("", ("", None)),
+    (None, ("", None)),
+])
+def test_developer_identity(email, expected):
+    assert KospexUtils.developer_identity(email) == expected
+
+
+def _author_page(monkeypatch, handler, path, email, files=("a.py",)):
+    db = _db()
+    for number, name in enumerate(files):
+        _change(db, "s~o~r", f"h{number}", name, email=email)
+    status, body = _page(monkeypatch, db, handler, path, f"author_email={email}")
+    assert status == 200
+    return body
+
+
+@pytest.mark.parametrize("handler,path", HANDLERS)
+def test_header_shows_name_email_and_link(monkeypatch, handler, path):
+    email = f"123+octo-dev@{PRIVACY}"
+    body = _author_page(monkeypatch, handler, path, email)
+
+    assert re.search(r"<h1[^>]*>\s*octo-dev\s*</h1>", body)
+    assert re.search(r'id="developerEmail"[^>]*>\s*' + re.escape(email), body)
+    assert 'href="https://github.com/octo-dev"' in body
+
+
+@pytest.mark.parametrize("handler,path", HANDLERS)
+@pytest.mark.parametrize("email", [
+    "jane.doe@example.com", f"1+dependabot[bot]@{PRIVACY}"])
+def test_no_github_link(monkeypatch, handler, path, email):
+    body = _author_page(monkeypatch, handler, path, email)
+
+    assert "https://github.com/" not in body.split("Repository Activity")[0].split(
+        "developerHeader", 1)[1]
+
+
+def _radar_labels(body):
+    return json.loads(re.search(r"labels: (\[.*?\])", body).group(1))
+
+
+@pytest.mark.parametrize("handler,path", HANDLERS)
+def test_radar_sits_in_the_header_with_eight_named_languages(
+        monkeypatch, handler, path):
+    files = ["a.py", "a.go", "a.rb", "a.rs", "a.js", "a.java", "a.c", "a.md",
+             "a.html", "a.sql", "nothing.zzz-unknown"]
+    body = _author_page(monkeypatch, handler, path, DEV, files)
+
+    assert body.index('id="radarChart"') < body.index("Repository Activity")
+    labels = _radar_labels(body)
+    assert len(labels) == 8
+    assert "Unknown" not in labels
+    assert "Unknown" in _cells(_technology_table(body))
+
+
+@pytest.mark.parametrize("handler,path", HANDLERS)
+@pytest.mark.parametrize("files,shown", [
+    (("a.py", "a.go"), False),
+    (("a.py", "a.go", "nothing.zzz-unknown"), False),
+    (("a.py", "a.go", "a.rb"), True),
+])
+def test_radar_needs_three_languages(monkeypatch, handler, path, files, shown):
+    body = _author_page(monkeypatch, handler, path, DEV, files)
+
+    assert ('id="radarChart"' in body) is shown
