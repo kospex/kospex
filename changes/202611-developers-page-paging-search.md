@@ -111,6 +111,7 @@ appear as "SERVER (no org)", linking to the server.
 The developer circles on `/summary/` (and `/`) link to the same lists, in the summary's
 scope, and its developer "Total" keeps that scope. The repository circles are not links. A linked circle is
 ringed and its status underlined under the pointer or keyboard focus.
+A summary for a server, org or repo shows a breadcrumb.
 
 ## Repos with missing or old stats
 

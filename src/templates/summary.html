@@ -28,6 +28,13 @@
             {% import '_id_header_macro.html' as header %}
             {% import '_status_circles_macro.html' as circles %}
 
+            {% if git_server %}
+            <!-- Breadcrumb: what these counts are of -->
+            <div class="mb-4">
+                {% include '_breadcrumb.html' %}
+            </div>
+            {% endif %}
+
             <!-- Developers Summary -->
             <div class="bg-white rounded-lg mb-8">
                 <div class="p-6">

@@ -27,6 +27,7 @@ No database migration.
   90 days)" link counted only commits in those 90 days; `?days=90` still does.
 - **The developer circles on the summary page (and `/`) are links** to that status's list,
   in the same repo, org or server. The "Total" above them now keeps that scope too.
+- A summary for a server, org or repo has a breadcrumb saying so.
 - **The developer view lists technology by language**, as the repo view does, instead of
   by file extension. Each path in the developer's history is named, so files since
   deleted or moved are still counted; paths that can't be named show as `Unknown`.

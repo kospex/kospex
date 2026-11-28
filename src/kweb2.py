@@ -339,6 +339,8 @@ def summary(request: Request, id: Optional[str] = None):
                 "repo_total": sum(repo_stats.values()),
                 "repo_circles": KospexWeb.status_circles(repo_stats),
                 "id": params,
+                # Breadcrumb, for a server, org or repo scope only
+                **(KospexWeb.scope_context(params, "Summary") if params else {}),
             },
         )
     except HTTPException:

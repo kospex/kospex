@@ -538,3 +538,26 @@ def test_hovering_a_summary_developer_circle_marks_it(estate):
     # in the repository circles, which are not links
     for marker in ("data-circle ", "data-circle-name>"):
         assert len(re.findall(rf"<div [^<]*{marker}", html)) == 4, marker
+
+
+def _crumbs(html):
+    """(links, the current crumb) of the breadcrumb, or None without one."""
+    nav = re.search(r'<nav [^>]*aria-label="Breadcrumb">(.*?)</nav>', html, re.S)
+    if not nav:
+        return None
+    links = re.findall(r'<a href="([^"]*)"[^>]*>([^<]*)</a>', nav.group(1))
+    current = re.search(r'aria-current="page">([^<]*)<', nav.group(1)).group(1)
+    return links, current
+
+
+@pytest.mark.parametrize("id, expected", [
+    (None, None),
+    ("github.com", ([("/orgs/github.com", "github.com")], "Summary")),
+    ("github.com~acme", ([("/orgs/github.com", "github.com"),
+                          ("/org/github.com~acme", "acme")], "Summary")),
+    ("github.com~acme~api", ([("/orgs/github.com", "github.com"),
+                              ("/org/github.com~acme", "acme"),
+                              ("/repo/github.com~acme~api", "api")], "Summary")),
+])
+def test_a_scoped_summary_has_a_breadcrumb(estate, id, expected):
+    assert _crumbs(_summary(estate, id)) == expected
