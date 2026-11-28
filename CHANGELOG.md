@@ -14,6 +14,15 @@ No database migration.
 
 ### Changed
 
+- **The developer view lists technology by language**, as the repo view does, instead of
+  by file extension. Each path in the developer's history is named, so files since
+  deleted or moved are still counted; paths that can't be named show as `Unknown`.
+  "# Commits" now counts commits rather than file changes, and "# Files" is new.
+  The `/api` routes and `kospex author-tech` are unchanged.
+  The two views can still differ for a file: scripts named only by a shebang line show as
+  `Unknown` on the developer view, and the repo view shows languages as stored until
+  `krunner file-metadata -force` is run.
+
 - **`kgit clone -filename` carries on past a failing repository.** It lists failed and
   refused repositories at the end, skips blank lines, and exits 1 if any failed (it
   exited 0 before).
