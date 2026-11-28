@@ -466,3 +466,40 @@ def test_a_scoped_page_offers_to_search_all_repositories(estate, query, id, url)
 
 def test_no_wider_search_link_when_already_everywhere(estate):
     assert _wider_link(_html(estate, "q=paul")) is None
+
+
+# --- the summary page'''s circles ---------------------------------------------
+
+def _summary(kweb, id=None):
+    request = Request({"type": "http", "method": "GET", "path": "/summary/",
+                       "headers": [], "query_string": b"", "app": kweb.app})
+    response = kweb.summary(request, id=id)
+    assert response.status_code == 200
+    return response.body.decode()
+
+
+@pytest.mark.parametrize("id, base", [
+    (None, "/developers/"),
+    ("github.com", "/developers/github.com"),
+    ("github.com~acme", "/developers/github.com~acme"),
+    ("github.com~acme~api", "/developers/github.com~acme~api"),
+])
+def test_summary_developer_circles_open_the_list_in_the_same_scope(estate, id, base):
+    html = _summary(estate, id)
+    links = re.findall(r'<a href="([^"]*)"[^>]*data-status-circle', html)
+    # Developers only: there is no repository list per status to link to
+    assert links == [f"{base}?status={status}"
+                     for status in ("active", "aging", "stale", "unmaintained")]
+    # The total above them stays in the same scope too
+    assert re.search(rf'Total:\s*<a href="{re.escape(base)}"', html)
+
+
+def test_a_summary_circle_opens_a_list_of_the_size_it_shows(estate):
+    html = _summary(estate, "github.com~acme")
+    shown = re.findall(
+        r'<a href="[^"]*status=(\w+)"[^>]*data-status-circle.*?title="([\d,]+) \w+"',
+        html, re.S)
+    assert len(shown) == 4
+    for status, count in shown:
+        listed = _emails(estate, f"status={status}", id="github.com~acme")
+        assert len(listed) == int(count.replace(",", "")), status

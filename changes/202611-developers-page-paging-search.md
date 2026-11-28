@@ -107,6 +107,9 @@ list, and the open one is ringed. "Unmaintained" reads as **Dormant**, as on the
 replaces the author and committer cards. Busiest orgs are a table, and repos with no org
 appear as "SERVER (no org)", linking to the server.
 
+The developer circles on `/summary/` (and `/`) link to the same lists, in the summary's
+scope, and its developer "Total" keeps that scope. The repository circles are not links.
+
 ## Repos with missing or old stats
 
 A repo whose `developer_stats` are missing or out of date (a sync in progress or one that

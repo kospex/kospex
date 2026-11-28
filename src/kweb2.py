@@ -323,12 +323,19 @@ def summary(request: Request, id: Optional[str] = None):
         dev_stats = KospexUtils.count_key_occurrences(devs, "status")
         repo_stats = KospexUtils.count_key_occurrences(repos, "status")
 
+        # Each developer circle opens that status's list, in the same scope
+        dev_circles = KospexWeb.status_circles(dev_stats)
+        for circle in dev_circles:
+            circle["url"] = developers_view.developers_url(
+                params, status=circle["key"].lower())
+
         return templates.TemplateResponse(
             request,
             "summary.html",
             {
                 "dev_total": sum(dev_stats.values()),
-                "dev_circles": KospexWeb.status_circles(dev_stats),
+                "dev_url": developers_view.developers_url(params),
+                "dev_circles": dev_circles,
                 "repo_total": sum(repo_stats.values()),
                 "repo_circles": KospexWeb.status_circles(repo_stats),
                 "id": params,

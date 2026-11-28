@@ -25,6 +25,8 @@ No database migration.
   which the search box names, with a link to search all repositories.
 - The Active list counts commits and repos for all time. The old "active developers (last
   90 days)" link counted only commits in those 90 days; `?days=90` still does.
+- **The developer circles on the summary page (and `/`) are links** to that status's list,
+  in the same repo, org or server. The "Total" above them now keeps that scope too.
 - **The developer view lists technology by language**, as the repo view does, instead of
   by file extension. Each path in the developer's history is named, so files since
   deleted or moved are still counted; paths that can't be named show as `Unknown`.
