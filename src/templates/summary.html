@@ -28,12 +28,9 @@
             {% import '_id_header_macro.html' as header %}
             {% import '_status_circles_macro.html' as circles %}
 
-            {% if git_server %}
-            <!-- Breadcrumb: what these counts are of -->
-            <div class="mb-4">
-                {% include '_breadcrumb.html' %}
-            </div>
-            {% endif %}
+            {# Breadcrumb: what these counts are of. It goes inside the developer
+               row's column, to share the heading's left edge. #}
+            {% set crumbs %}{% if git_server %}{% include '_breadcrumb.html' %}{% endif %}{% endset %}
 
             <!-- Developers Summary -->
             <div class="bg-white rounded-lg mb-8">
@@ -41,7 +38,7 @@
                     {% set id = 'developers' %}
                     {{ header.id_headings(id) if id }}
 
-                    {{ circles.status_row("Developers", dev_total, dev_url, dev_circles) }}
+                    {{ circles.status_row("Developers", dev_total, dev_url, dev_circles, above=crumbs if git_server else "") }}
                 </div>
             </div>
 

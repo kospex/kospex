@@ -4,9 +4,10 @@
   label font by font_px, so a large count stays inside a small circle; the
   exact count is in the tooltip. A circle with a url is a link.
 #}
-{% macro status_row(heading, total, total_href, circles) %}
+{% macro status_row(heading, total, total_href, circles, above="") %}
 <div class="flex justify-center gap-8 lg:gap-12">
     <div class="flex flex-col">
+        {% if above %}<div class="mb-4">{{ above }}</div>{% endif %}
         <!-- Header aligned with first circle -->
         <div class="flex gap-8 lg:gap-12 mb-6">
             <div class="w-32">

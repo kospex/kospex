@@ -561,3 +561,14 @@ def _crumbs(html):
 ])
 def test_a_scoped_summary_has_a_breadcrumb(estate, id, expected):
     assert _crumbs(_summary(estate, id)) == expected
+
+
+def test_the_summary_breadcrumb_sits_in_the_developers_column(estate):
+    # The circle rows are centred, so only a breadcrumb inside the same column
+    # as the heading shares its left edge
+    html = _summary(estate, "github.com~acme")
+    row = html.index('class="flex justify-center')
+    crumb = html.index('aria-label="Breadcrumb"')
+    heading = html.index(">Developers</h2>")
+    assert row < crumb < heading
+    assert html.count('aria-label="Breadcrumb"') == 1
