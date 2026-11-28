@@ -286,18 +286,24 @@ def test_the_circles_use_the_summary_names_and_mark_the_open_list(estate):
     }
 
 
-def test_the_default_page_marks_active_whether_a_list_or_the_overview(
+def test_no_circle_is_marked_until_a_status_is_asked_for(
         estate, tmp_path_factory, monkeypatch):
-    def marked():
+    def marked(query=""):
         estate.request_cache.clear()
-        return [name for name, (_, current) in _circles(_html(estate)).items() if current]
+        html = _html(estate, query)
+        found = [name for name, (_, current) in _circles(html).items() if current]
+        # The ring and the underline are what the reader sees of the mark
+        assert html.count("box-shadow: 0 0 0 3px") == len(found)
+        return found
 
     assert _get(estate).context["mode"] == "list"
-    assert marked() == ["Active"]
+    assert marked() == []
+    assert marked("status=active") == ["Active"]
     _big(tmp_path_factory.mktemp("big"), monkeypatch, 251)
     estate.request_cache.clear()
     assert _get(estate).context["mode"] == "overview"
-    assert marked() == ["Active"]
+    assert marked() == []
+    assert marked("status=active") == ["Active"]
 
 
 def test_circles_are_smaller_than_the_summary_ones(estate):

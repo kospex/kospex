@@ -1505,8 +1505,8 @@ def _developers_context(kq, scope, view, days, params, download):
         for circle in circles:
             key = circle["key"].lower()
             circle.update(
-                # The overview is of the active developers, so Active is marked
-                status=key, current=key == status,
+                # Marked only when asked for, not for the default active view
+                status=key, current=key == params["status"],
                 url=developers_view.developers_url(scope, status=key))
 
     crumbs = {}
