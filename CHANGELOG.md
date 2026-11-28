@@ -23,6 +23,12 @@ No database migration.
   `Unknown` on the developer view, and the repo view shows languages as stored until
   `krunner file-metadata -force` is run.
 
+- **The developer view's header is rearranged.** It is headed by the user name with the
+  full email beneath, and the technology radar sits beside it, showing up to eight
+  named languages (hidden below three). The GitHub link now appears only for a person's
+  `users.noreply.github.com` address; before, any address was linked as if the part
+  before the `@` were a GitHub account.
+
 - **`kgit clone -filename` carries on past a failing repository.** It lists failed and
   refused repositories at the end, skips blank lines, and exits 1 if any failed (it
   exited 0 before).

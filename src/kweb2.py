@@ -1280,7 +1280,8 @@ def _developer_rows(view, days, org_key, repo_id):
 def _developer_technology(author_email):
     """An author's languages, with the radar chart's labels and datapoints."""
     techs = KospexQuery().author_languages(author_email)
-    top = techs[:11]
+    # The chart is small: eight named languages. The table keeps them all.
+    top = [t for t in techs if t["language"] != "Unknown"][:8]
     return techs, [t["language"] for t in top], [t["commits"] for t in top]
 
 
@@ -1323,7 +1324,8 @@ def developers(request: Request, id: Optional[str] = None):
             repo_list = KospexQuery().repos_by_author(author_email)
             techs, labels, datapoints = _developer_technology(author_email)
 
-            github_handle = KospexUtils.extract_github_username(author_email)
+            developer_name, github_handle = KospexUtils.developer_identity(
+                author_email)
 
             return templates.TemplateResponse(
                 request, "developer_view.html",
@@ -1332,6 +1334,7 @@ def developers(request: Request, id: Optional[str] = None):
                     "tech": techs,
                     "author_email": author_email,
                     "labels": labels,
+                    "developer_name": developer_name,
                     "github_handle": github_handle,
                     "datapoints": datapoints,
                 },
@@ -1844,6 +1847,8 @@ def developer_view(request: Request, id: Optional[str] = None):
 
         repo_list = KospexQuery().repos_by_author(author_email)
         techs, labels, datapoints = _developer_technology(author_email)
+        developer_name, github_handle = KospexUtils.developer_identity(
+            author_email)
 
         return templates.TemplateResponse(
             request, "developer_view.html",
@@ -1851,6 +1856,8 @@ def developer_view(request: Request, id: Optional[str] = None):
                 "repos": repo_list,
                 "tech": techs,
                 "author_email": author_email,
+                "developer_name": developer_name,
+                "github_handle": github_handle,
                 "labels": labels,
                 "datapoints": datapoints,
             },
