@@ -1317,6 +1317,14 @@ def _developers_scope(kq, id, query_params):
     return scope
 
 
+def _developer_technology(author_email):
+    """An author's languages, with the radar chart's labels and datapoints."""
+    techs = KospexQuery().author_languages(author_email)
+    # The chart is small: eight named languages. The table keeps them all.
+    top = [t for t in techs if t["language"] != "Unknown"][:8]
+    return techs, [t["language"] for t in top], [t["commits"] for t in top]
+
+
 @app.get("/developers/", response_class=HTMLResponse)
 @app.get("/developers/{id}", response_class=HTMLResponse)
 def developers(request: Request, id: Optional[str] = None):
@@ -1330,19 +1338,10 @@ def developers(request: Request, id: Optional[str] = None):
             # Github uses +, which get interpreted as a " " in the URL.
             author_email = author_email.replace(" ", "+")
             repo_list = KospexQuery().repos_by_author(author_email)
-            techs = KospexQuery().author_tech(author_email=author_email)
-            labels = []
-            datapoints = []
+            techs, labels, datapoints = _developer_technology(author_email)
 
-            github_handle = KospexUtils.extract_github_username(author_email)
-
-            count = 0
-            for tech in techs:
-                labels.append(tech["_ext"])
-                datapoints.append(tech["commits"])
-                count += 1
-                if count > 10:
-                    break
+            developer_name, github_handle = KospexUtils.developer_identity(
+                author_email)
 
             return templates.TemplateResponse(
                 request, "developer_view.html",
@@ -1351,6 +1350,7 @@ def developers(request: Request, id: Optional[str] = None):
                     "tech": techs,
                     "author_email": author_email,
                     "labels": labels,
+                    "developer_name": developer_name,
                     "github_handle": github_handle,
                     "datapoints": datapoints,
                 },
@@ -1992,17 +1992,9 @@ def developer_view(request: Request, id: Optional[str] = None):
             author_email = author_email.replace(" ", "+")
 
         repo_list = KospexQuery().repos_by_author(author_email)
-        techs = KospexQuery().author_tech(author_email=author_email)
-        labels = []
-        datapoints = []
-
-        count = 0
-        for tech in techs:
-            labels.append(tech["_ext"])
-            datapoints.append(tech["commits"])
-            count += 1
-            if count > 10:
-                break
+        techs, labels, datapoints = _developer_technology(author_email)
+        developer_name, github_handle = KospexUtils.developer_identity(
+            author_email)
 
         return templates.TemplateResponse(
             request, "developer_view.html",
@@ -2010,6 +2002,8 @@ def developer_view(request: Request, id: Optional[str] = None):
                 "repos": repo_list,
                 "tech": techs,
                 "author_email": author_email,
+                "developer_name": developer_name,
+                "github_handle": github_handle,
                 "labels": labels,
                 "datapoints": datapoints,
             },

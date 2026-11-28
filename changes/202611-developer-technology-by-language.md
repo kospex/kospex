@@ -1,6 +1,6 @@
 # Developer view: show technology by language
 
-**Status:** design approved 2026-11-26. Not built. Plan:
+**Status:** design approved and built 2026-11-26. Plan:
 `202611-developer-technology-by-language-plan.md`.
 
 ## Why
@@ -67,6 +67,11 @@ A new `KospexQuery` method returns one row per language for an author:
 
 - SQL must run on SQLite 3.26.
 - A rename recorded under an old path is classified by that path.
+- The two views can still name a file differently. A script named only by its shebang
+  line (such as `gradlew`) is `Unknown` on the developer view, because file contents are
+  not read. The repo view shows the language stored when the repository's file metadata
+  was last built, which an older panopticas may have named differently until
+  `krunner file-metadata -force` is run.
 - The new method filters `commits` on `author_email`, which has no index leading with
   that column, so it is as slow as `author_tech()` is today. The index, and whether to
   match email case-insensitively, are left to

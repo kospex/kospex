@@ -527,6 +527,22 @@ def extract_github_username(author_email):
         return author_email.split("@")[0].split("+")[-1]
 
 
+def developer_identity(author_email):
+    """
+    (name, github_login) to head a developer's page with.
+
+    github_login is set only for a GitHub privacy address of a person: any
+    other address says nothing about a GitHub account, and a [bot] name is an
+    app, not a user. git accepts any text as an email, so a name that isn't
+    shaped like a login is not linked either.
+    """
+    local, _, domain = (author_email or "").partition("@")
+    if domain.lower() != "users.noreply.github.com":
+        return local, None
+    name = re.sub(r"^\d+\+", "", local)
+    return name, name if re.fullmatch(r"[A-Za-z0-9_-]+", name) else None
+
+
 
 
 def find_repos(directory):

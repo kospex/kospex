@@ -25,6 +25,21 @@ No database migration.
   which the search box names, with a link to search all repositories.
 - The Active list counts commits and repos for all time. The old "active developers (last
   90 days)" link counted only commits in those 90 days; `?days=90` still does.
+- **The developer view lists technology by language**, as the repo view does, instead of
+  by file extension. Each path in the developer's history is named, so files since
+  deleted or moved are still counted; paths that can't be named show as `Unknown`.
+  "# Commits" now counts commits rather than file changes, and "# Files" is new.
+  The `/api` routes and `kospex author-tech` are unchanged.
+  The two views can still differ for a file: scripts named only by a shebang line show as
+  `Unknown` on the developer view, and the repo view shows languages as stored until
+  `krunner file-metadata -force` is run.
+
+- **The developer view's header is rearranged.** It is headed by the user name with the
+  full email beneath, and the technology radar sits beside it, showing up to eight
+  named languages (hidden below three). The GitHub link now appears only for a person's
+  `users.noreply.github.com` address; before, any address was linked as if the part
+  before the `@` were a GitHub account.
+
 - **`kgit clone -filename` carries on past a failing repository.** It lists failed and
   refused repositories at the end, skips blank lines, and exits 1 if any failed (it
   exited 0 before).
