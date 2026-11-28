@@ -6,6 +6,18 @@
         <title>Kospex Web - Summary</title>
         <!-- Local static assets -->
         <link rel="stylesheet" href="/static/css/tailwind.css">
+        <!-- A circle that is a link is ringed and underlined under the pointer
+             or keyboard focus, as the open one is on /developers/ -->
+        <style>
+            a[data-status-circle]:hover [data-circle],
+            a[data-status-circle]:focus-visible [data-circle] {
+                box-shadow: 0 0 0 3px #fff, 0 0 0 5px #111827;
+            }
+            a[data-status-circle]:hover [data-circle-name],
+            a[data-status-circle]:focus-visible [data-circle-name] {
+                text-decoration: underline;
+            }
+        </style>
     </head>
 
     <body class="bg-white">

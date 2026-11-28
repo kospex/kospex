@@ -521,3 +521,20 @@ def test_a_summary_circle_opens_a_list_of_the_size_it_shows(estate):
     for status, count in shown:
         listed = _emails(estate, f"status={status}", id="github.com~acme")
         assert len(listed) == int(count.replace(",", "")), status
+
+
+def test_hovering_a_summary_developer_circle_marks_it(estate):
+    # The compiled Tailwind CSS has no hover classes for this, so the page
+    # carries the rules, and keyboard focus gets the same mark as the mouse
+    html = _summary(estate)
+    style = re.search(r"<style>(.*?)</style>", html, re.S).group(1)
+    for state in ("hover", "focus-visible"):
+        link = f"a[data-status-circle]:{state}"
+        assert f"{link} [data-circle]" in style
+        assert f"{link} [data-circle-name]" in style
+    assert "box-shadow: 0 0 0 3px #fff, 0 0 0 5px #111827" in style
+    assert "text-decoration: underline" in style
+    # What the rules point at is there once per developer circle, and nowhere
+    # in the repository circles, which are not links
+    for marker in ("data-circle ", "data-circle-name>"):
+        assert len(re.findall(rf"<div [^<]*{marker}", html)) == 4, marker

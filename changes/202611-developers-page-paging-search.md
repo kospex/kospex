@@ -109,7 +109,8 @@ replaces the author and committer cards. Busiest orgs are a table, and repos wit
 appear as "SERVER (no org)", linking to the server.
 
 The developer circles on `/summary/` (and `/`) link to the same lists, in the summary's
-scope, and its developer "Total" keeps that scope. The repository circles are not links.
+scope, and its developer "Total" keeps that scope. The repository circles are not links. A linked circle is
+ringed and its status underlined under the pointer or keyboard focus.
 
 ## Repos with missing or old stats
 

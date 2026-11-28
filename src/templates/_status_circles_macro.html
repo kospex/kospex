@@ -26,14 +26,14 @@
             {% if c.url %}<a href="{{ c.url }}" class="flex flex-col items-center w-32" data-status-circle>
             {% else %}<div class="flex flex-col items-center w-32">{% endif %}
                 <div class="flex flex-col items-center justify-end mb-3" style="height: 180px">
-                    <div class="rounded-full {{ c.colour }} flex items-center justify-center text-black font-bold whitespace-nowrap"
+                    <div {% if c.url %}data-circle {% endif %}class="rounded-full {{ c.colour }} flex items-center justify-center text-black font-bold whitespace-nowrap"
                          style="width: {{ c.size }}px; height: {{ c.size }}px; font-size: {{ c.font_px }}px; line-height: 1;"
                          title="{{ c.title }} {{ c.name | lower }}">
                         {{ c.label }}
                     </div>
                 </div>
                 <div class="text-center">
-                    <div class="font-semibold text-gray-900">{{ c.name }}</div>
+                    <div class="font-semibold text-gray-900"{% if c.url %} data-circle-name{% endif %}>{{ c.name }}</div>
                     <div class="text-sm text-gray-900">{{ c.title }}</div>
                     <div class="text-sm text-gray-600">{{ c.percentage }}%</div>
                 </div>
