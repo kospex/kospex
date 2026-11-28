@@ -405,7 +405,7 @@ class TestDevelopersScope:
     def test_unscoped_links_are_unchanged(self, devfake):
         html = _developers()
 
-        assert 'href="/developers/?status=active&amp;download=true"' in html
+        assert 'href="/developers/?download=true"' in html
         assert 'href="/developers/?status=active"' in html
 
     def test_repo_scope_reaches_the_queries_and_the_links(self, devfake):
@@ -413,7 +413,7 @@ class TestDevelopersScope:
 
         assert ("authors", None, None, "github.com~acme~one") in devfake.calls
         assert ("counts", None, "github.com~acme~one") in devfake.calls
-        assert ('href="/developers/github.com~acme~one?status=active&amp;download=true"'
+        assert ('href="/developers/github.com~acme~one?download=true"'
                 in html)
         assert 'href="/developers/github.com~acme~one?status=active"' in html
 
@@ -543,7 +543,7 @@ class TestDevelopersBreadcrumb:
         """scope_context() returns its own keys; none may shadow the page's URLs."""
         html = _developers(b"repo_id=github.com~acme~one")
 
-        assert ('href="/developers/github.com~acme~one?status=active&amp;download=true"'
+        assert ('href="/developers/github.com~acme~one?download=true"'
                 in html)
 
 

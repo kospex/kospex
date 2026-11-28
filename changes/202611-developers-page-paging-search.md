@@ -11,7 +11,7 @@ developer by part of their email.
 
 ## Goals
 
-- Active developers first; every developer still reachable.
+- Most recently seen developers first; every developer reachable.
 - Slice by server, org or repo, and by status.
 - Find a developer by partial email.
 - The all-repositories page loads in about a second and is well under 1 MB.
@@ -57,7 +57,8 @@ Active (90 days or less), Aging (91–180), Stale (181–365) and Dormant (over 
 
 **With no `status` or `q`:**
 
-- 250 or fewer active developers: the active list.
+- 250 or fewer active developers: everyone in the scope, most recently seen first,
+  50 per page when there are more than 250. No circle is marked.
 - More than 250: an overview with the 10 busiest orgs by active developers (repos when
   scoped to an org; nothing for a repo), a "List all active" link and the CSV download.
 

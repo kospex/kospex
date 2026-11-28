@@ -14,8 +14,8 @@ No database migration.
 
 ### Changed
 
-- **kweb `/developers/` opens on active developers**, not on everyone. With more than 250
-  active developers it shows status circles and the busiest orgs (repos within an org)
+- **kweb `/developers/` shows status circles above the list**, most recently seen first.
+  With more than 250 active developers it shows the busiest orgs (repos within an org)
   instead of a list. Lists over 250 rows are paged and sorted on the server.
 - **Scopes are in the path** (`/developers/github.com~acme`); `?org_key=` and `?repo_id=`
   still work, and an unknown one is now a 404.

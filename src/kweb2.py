@@ -1405,7 +1405,7 @@ def _developers_context(kq, scope, view, days, params, download):
     # Status and search apply to the all-time authors view only.
     filtered = view == "authors" and not days
     search = params["q"] if filtered else None
-    status = (params["status"] or ("all" if search else "active")) if filtered else None
+    status = (params["status"] or "all") if filtered else None
 
     def listing(**kwargs):
         return kq.developer_list(
@@ -1429,6 +1429,8 @@ def _developers_context(kq, scope, view, days, params, download):
     # Too many active developers to list, and nothing asked for: an overview
     overview = (filtered and not params["status"] and not search
                 and counts["active"] > developers_view.LIST_THRESHOLD)
+    if overview:
+        status = "active"  # what the overview and its download are of
 
     chosen = status if status != "all" else None
     busiest, busiest_label = [], None

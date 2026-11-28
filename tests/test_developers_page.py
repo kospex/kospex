@@ -61,9 +61,19 @@ ACTIVE = {"paul@example.com", "mrpaul@example.com", "a_b@example.com",
 EVERYONE = ACTIVE | {"old@example.com", "aging@example.com", "stale@example.com"}
 
 
-def test_default_shows_active_developers_only(estate):
-    assert set(_emails(estate)) == ACTIVE
+def test_default_lists_everyone(estate):
+    assert set(_emails(estate)) == EVERYONE
     assert set(_emails(estate, "status=all")) == EVERYONE
+    assert set(_emails(estate, "status=active")) == ACTIVE
+    html = _html(estate)
+    assert "All time" in html and "data-status-title" not in html
+
+
+def test_a_scope_with_nobody_active_still_lists_its_developers(
+        tmp_path, monkeypatch, kweb):
+    _make_db(tmp_path, monkeypatch,
+             [("github.com~acme~api", "old@example.com", 500, "old@example.com")])
+    assert _emails(kweb, id="github.com~acme") == ["old@example.com"]
 
 
 def test_counts_link_to_each_list_in_path_form(estate):
@@ -192,7 +202,9 @@ def test_csv_is_every_matching_row(tmp_path, monkeypatch, kweb):
 def test_csv_follows_the_status_and_defaults_to_everyone(estate):
     assert {r[0] for r in _csv(estate, "download=true")[1:]} == EVERYONE
     assert {r[0] for r in _csv(estate, "status=active&download=true")[1:]} == ACTIVE
-    assert 'href="/developers/?status=active&amp;download=true"' in _html(estate)
+    assert 'href="/developers/?download=true"' in _html(estate)
+    assert 'href="/developers/?status=active&amp;download=true"' in _html(
+        estate, "status=active")
 
 
 def test_the_old_queries_are_not_called(estate, monkeypatch):
@@ -440,7 +452,7 @@ def test_a_busiest_server_with_no_org_is_named_and_links_to_the_server(
 def test_nobody_active_says_so_and_keeps_the_counts(tmp_path, monkeypatch, kweb):
     _make_db(tmp_path, monkeypatch,
              [("github.com~acme~api", "old@example.com", 500, "old@example.com")])
-    html = _html(kweb)
+    html = _html(kweb, "status=active")
     assert "No developers to show" in html
     assert 'href="/developers/?status=unmaintained"' in html
 
