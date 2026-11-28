@@ -363,13 +363,30 @@ class TestAuthorsScope:
 class _DevFake(_FakeQuery):
 
     def authors(self, days=None, org_key=None, repo_id=None):
-        self.calls.append(("authors", days, org_key, repo_id))
         return []
 
-    def summary(self, days=None, repo_id=None, org_key=None):
-        self.calls.append(("summary", days, repo_id, org_key))
-        return {"repos": 0, "commits": 0, "authors": 0, "committers": 0,
-                "servers": 0, "orgs": 0}
+    def committers(self, days=None, org_key=None, repo_id=None):
+        return []
+
+    def get_last_sync_datetime(self):
+        return None
+
+    def developer_status_counts(self, scope, use_stats=True):
+        self.calls.append(("counts", scope.get("org_key"), scope.get("repo_id")))
+        return {"active": 0, "aging": 0, "stale": 0, "unmaintained": 0, "all": 0}
+
+    def committer_count(self, scope, days=None):
+        return 0
+
+    def developer_list(self, scope, column="author_email", days=None,
+                       limit=None, **kwargs):
+        view = "committers" if column == "committer_email" else "authors"
+        self.calls.append(
+            (view, days, scope.get("org_key"), scope.get("repo_id")))
+        people = getattr(self, view)(
+            days=days, org_key=scope.get("org_key"), repo_id=scope.get("repo_id"))
+        rows = [{**row, "status": "active"} for row in people]
+        return ([] if limit == 0 else rows), len(rows)
 
 
 def _developers(query=b"", id=None):
@@ -389,24 +406,23 @@ class TestDevelopersScope:
         html = _developers()
 
         assert 'href="/developers/?download=true"' in html
-        assert 'href="/developers/?days=90"' in html
+        assert 'href="/developers/?status=active"' in html
 
     def test_repo_scope_reaches_the_queries_and_the_links(self, devfake):
         html = _developers(b"repo_id=github.com~acme~one")
 
         assert ("authors", None, None, "github.com~acme~one") in devfake.calls
-        assert ("summary", None, "github.com~acme~one", None) in devfake.calls
-        assert ('href="/developers/?repo_id=github.com~acme~one&amp;download=true"'
+        assert ("counts", None, "github.com~acme~one") in devfake.calls
+        assert ('href="/developers/github.com~acme~one?download=true"'
                 in html)
-        assert ('href="/developers/?repo_id=github.com~acme~one&amp;days=90"'
-                in html)
+        assert 'href="/developers/github.com~acme~one?status=active"' in html
 
     def test_org_scope_download_keeps_the_window(self, devfake):
         html = _developers(b"org_key=github.com~acme&days=90")
 
         assert ("authors", "90", "github.com~acme", None) in devfake.calls
-        assert ('href="/developers/?org_key=github.com~acme&amp;days=90'
-                '&amp;download=true"') in html
+        assert ('href="/developers/github.com~acme?days=90&amp;download=true"'
+                in html)
 
     def test_repo_id_wins_over_org_key(self, devfake):
         _developers(b"repo_id=github.com~acme~one&org_key=github.com~acme")
@@ -421,7 +437,6 @@ class TestDevelopersScope:
     def test_scoped_download_is_a_csv_of_that_scope(self, monkeypatch):
         class Rows(_DevFake):
             def authors(self, days=None, org_key=None, repo_id=None):
-                self.calls.append(("authors", days, org_key, repo_id))
                 return [{"author_email": "a@example.com", "commits": 1}]
 
         rows = Rows()
@@ -528,17 +543,17 @@ class TestDevelopersBreadcrumb:
         """scope_context() returns its own keys; none may shadow the page's URLs."""
         html = _developers(b"repo_id=github.com~acme~one")
 
-        assert ('href="/developers/?repo_id=github.com~acme~one&amp;download=true"'
+        assert ('href="/developers/github.com~acme~one?download=true"'
                 in html)
 
 
 class TestDevelopersWindow:
 
     def test_all_time_is_labelled_and_offers_the_active_view(self, devfake):
-        html = _developers()
+        html = _developers(b"status=all")
 
         assert "All time" in _text(html)
-        assert 'href="/developers/?days=90"' in html
+        assert 'href="/developers/?status=active"' in html
         assert "Show all time" not in html
 
     def test_label_shows_the_days_in_the_url(self, devfake):
@@ -551,8 +566,7 @@ class TestDevelopersWindow:
         html = _developers(b"repo_id=github.com~acme~one&days=30")
 
         assert "Show all time" in _text(html)
-        assert 'href="/developers/?repo_id=github.com~acme~one"' in html
-        assert "Show active developers" not in html
+        assert 'href="/developers/github.com~acme~one"' in html
 
     @pytest.mark.parametrize("bad", ["abc", "0", "-5", "1.5", ""])
     def test_a_bad_window_is_a_400_not_a_500(self, devfake, bad):
@@ -665,14 +679,12 @@ class _PeopleQuery(_DevFake):
     """Authors and committers that differ, one of each a bot."""
 
     def authors(self, days=None, org_key=None, repo_id=None):
-        self.calls.append(("authors", days, org_key, repo_id))
         return [{"author_email": "dev@example.com", "commits": 3, "repos": 1,
                  "last_seen": 2},
                 {"author_email": "49699333+dependabot[bot]@users.noreply.github.com",
                  "commits": 9, "repos": 1, "last_seen": 1}]
 
     def committers(self, days=None, org_key=None, repo_id=None):
-        self.calls.append(("committers", days, org_key, repo_id))
         return [{"committer_email": "noreply@github.com", "commits": 12,
                  "repos": 1, "last_seen": 1},
                 {"committer_email": "lead@example.com", "commits": 2,
@@ -689,13 +701,12 @@ def people(monkeypatch):
 class TestCommittersView:
 
     def test_default_view_is_authors_and_labels_bots(self, people):
-        html = _developers()
+        html = _developers(b"status=all")
 
         assert ("authors", None, None, None) in people.calls
         assert not [c for c in people.calls if c[0] == "committers"]
         assert "dev@example.com" in html
         assert html.count(">bot</span>") == 1   # dependabot only
-        assert "Shown below" in html
 
     def test_committers_view_has_its_own_heading_and_rows(self, people):
         html = _developers(b"view=committers")
@@ -724,26 +735,23 @@ class TestCommittersView:
         assert ("href=\"/commits/?committer_email=lead%40example.com"
                 "&amp;repo_id=github.com~acme~one\"") in html
         # The cards switch view, keeping the repo and the window.
-        assert ('href="/developers/?repo_id=github.com~acme~one&amp;days=30"'
-                in html)
+        assert 'href="/developers/github.com~acme~one?days=30"' in html
         # All time drops the window and stays on the committers view.
-        assert ('href="/developers/?repo_id=github.com~acme~one'
-                '&amp;view=committers"') in html
-        assert ('href="/developers/?repo_id=github.com~acme~one&amp;view=committers'
+        assert 'href="/developers/github.com~acme~one?view=committers"' in html
+        assert ('href="/developers/github.com~acme~one?view=committers'
                 '&amp;days=30&amp;download=true"') in html
 
     def test_authors_card_links_to_committers_with_the_scope(self, people):
         html = _developers(b"org_key=github.com~acme")
 
-        assert ('href="/developers/?org_key=github.com~acme&amp;view=committers"'
-                in html)
+        assert 'href="/developers/github.com~acme?view=committers"' in html
 
     def test_breadcrumb_names_the_committers_view(self, people):
         html = _developers(b"view=committers&repo_id=github.com~acme~one")
 
         assert 'aria-current="page">Committers<' in html
         # Developers is a link back to the authors view in the same scope.
-        assert 'href="/developers/?repo_id=github.com~acme~one"' in html
+        assert 'href="/developers/github.com~acme~one"' in html
 
     def test_bad_view_is_a_400(self, people):
         with pytest.raises(HTTPException) as caught:
@@ -822,10 +830,10 @@ class TestDevelopersCollabLink:
             assert ('href="/collab/github.com~acme~one"' in html)
             assert "Author / Committer collaborators" in _text(html)
 
-    def test_it_sits_after_the_active_link(self, people):
+    def test_it_sits_after_the_download_link(self, people):
         html = _developers(b"repo_id=github.com~acme~one")
 
-        assert (html.index("Show active developers")
+        assert (html.index(">Download</a>")
                 < html.index("Author / Committer collaborators"))
 
     def test_org_and_estate_scope_have_no_collaborators_link(self, people):

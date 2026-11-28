@@ -2759,6 +2759,20 @@ class KospexQuery:
             "WHERE stat_type = 'ALL_TIME'")}
         return with_commits - with_stats
 
+    # Rows written before last_commit moved to committer time
+    _NOT_REBUILT = "stat_type IS NULL OR (stat_type = 'ALL_TIME' AND last_authored IS NULL)"
+
+    # Gap repos are named in the SQL, twice: SQLite 3.26 allows 999 parameters.
+    # With more gaps than this, the developer queries read commits for everything.
+    _MAX_GAP_REPOS = 400
+
+    def _stats_gap_repos(self):
+        """repo_ids whose developer_stats are missing or out of date."""
+        not_rebuilt = {r[0] for r in self.kospex_db.execute(
+            f"SELECT DISTINCT _repo_id FROM {KospexSchema.TBL_DEVELOPER_STATS} "
+            f"WHERE {self._NOT_REBUILT}")}
+        return sorted(not_rebuilt | self._repos_without_stats())
+
     def developer_stats_coverage(self):
         """Repos whose developer_stats the summary pages would read wrongly.
 
@@ -2771,7 +2785,7 @@ class KospexQuery:
         """
         (not_rebuilt,) = self.kospex_db.execute(
             f"SELECT COUNT(DISTINCT _repo_id) FROM {KospexSchema.TBL_DEVELOPER_STATS} "
-            "WHERE stat_type IS NULL OR (stat_type = 'ALL_TIME' AND last_authored IS NULL)"
+            f"WHERE {self._NOT_REBUILT}"
         ).fetchone()
         return {"repos_not_rebuilt": not_rebuilt,
                 "repos_without_stats": len(self._repos_without_stats())}
@@ -2819,6 +2833,199 @@ class KospexQuery:
             row["status"] = KospexUtils.development_status(row["last_commit"])
             data.append(row)
         return data
+
+    # --- /developers/ ------------------------------------------------------
+    # One developer is one lower-cased email. The per-(repo, email) source is
+    # developer_stats, or commits where the stats can't answer.
+
+    _DEVELOPER_COLUMNS = ("author_email", "committer_email")
+    _DEVELOPER_SORTS = {
+        # "last_seen asc" is the fewest days ago, so the latest commit first
+        "last_seen": ("last_commit", {"asc": "DESC", "desc": "ASC"}),
+        "commits": ("commits", {"asc": "ASC", "desc": "DESC"}),
+        "repos": ("repos", {"asc": "ASC", "desc": "DESC"}),
+        "email": ("email", {"asc": "ASC", "desc": "DESC"}),
+    }
+
+    @staticmethod
+    def _window_filter(days, now):
+        """WHERE clause and params for commits in the last 'days', or ("", [])."""
+        if not days:
+            return "", []
+        # Clamped so the cutoff stays a real date (about 270 years)
+        cutoff = now - timedelta(days=min(int(days), 100_000))
+        # Times are compared as times. The text test, two days wider than any
+        # UTC offset, only narrows what the index has to read.
+        return (" AND committer_when > ? AND julianday(committer_when) > julianday(?)",
+                [(cutoff - timedelta(days=2)).date().isoformat(), cutoff.isoformat()])
+
+    def _developer_source(self, scope, use_stats, column, days, now):
+        """SQL and params for one row per (repo, email).
+
+        With use_stats, all-time authors come from developer_stats, and from
+        commits only for the repos whose stats are missing or out of date.
+        """
+        if column not in self._DEVELOPER_COLUMNS:
+            raise ValueError(f"not an email column: {column}")
+        where, params = self._stats_scope(**scope)
+
+        def from_commits(extra="", extra_params=()):
+            return (f"""SELECT COALESCE({column}, '') AS email, _repo_id AS repo,
+                _git_server, _git_owner, _git_repo, COUNT(*) AS commits,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MIN(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') AS first_commit,
+                strftime('%Y-%m-%dT%H:%M:%SZ', MAX(CAST(strftime('%s', committer_when) AS INTEGER)), 'unixepoch') AS last_commit
+                FROM {KospexSchema.TBL_COMMITS}
+                WHERE {where}{extra}
+                GROUP BY _repo_id, {column}""", params + list(extra_params))
+
+        if not (use_stats and not days and column == "author_email"):
+            return from_commits(*self._window_filter(days, now))
+
+        gaps = self._stats_gap_repos()
+        if len(gaps) > self._MAX_GAP_REPOS:
+            return from_commits()
+
+        marks = ", ".join("?" * len(gaps))
+        skip = f" AND _repo_id NOT IN ({marks})" if gaps else ""
+        stats = f"""SELECT COALESCE(author_email, '') AS email, _repo_id AS repo,
+            _git_server, _git_owner, _git_repo, total_commits AS commits,
+            first_commit, last_commit
+            FROM {KospexSchema.TBL_DEVELOPER_STATS}
+            WHERE stat_type = 'ALL_TIME' AND {where}{skip}"""
+        if not gaps:
+            return stats, params
+
+        rest, rest_params = from_commits(f" AND _repo_id IN ({marks})", gaps)
+        return f"{stats} UNION ALL {rest}", params + gaps + rest_params
+
+    @staticmethod
+    def _status_case(column):
+        """The development_status() bands for a days-ago column."""
+        return f"""CASE
+            WHEN {column} IS NULL THEN 'unknown'
+            WHEN {column} <= {int(KospexUtils.DEV_STATUS_ACTIVE_DAYS)} THEN 'active'
+            WHEN {column} <= {int(KospexUtils.DEV_STATUS_AGING_DAYS)} THEN 'aging'
+            WHEN {column} <= {int(KospexUtils.DEV_STATUS_STALE_DAYS)} THEN 'stale'
+            ELSE 'unmaintained' END"""
+
+    def _developer_people(self, scope, use_stats, column, days, now):
+        """A WITH clause defining "people": one row per developer."""
+        source, params = self._developer_source(scope, use_stats, column, days, now)
+        sql = f"""WITH source AS ({source}),
+            grouped AS (
+                SELECT LOWER(email) AS email, SUM(commits) AS commits,
+                COUNT(DISTINCT repo) AS repos, MIN(first_commit) AS first_commit,
+                MAX(last_commit) AS last_commit
+                FROM source GROUP BY LOWER(email)
+            ),
+            aged AS (
+                SELECT *, ROUND(julianday(?) - julianday(last_commit), 2) AS last_seen
+                FROM grouped
+            ),
+            people AS (SELECT *, {self._status_case("last_seen")} AS status FROM aged)
+            """
+        return sql, params + [now.isoformat()]
+
+    def developer_status_counts(self, scope, use_stats=True, now=None):
+        """{"active", "aging", "stale", "unmaintained", "all"} developer counts."""
+        now = now or datetime.now(timezone.utc)
+        people, params = self._developer_people(scope, use_stats, "author_email", None, now)
+        found = dict(self.kospex_db.execute(
+            f"{people} SELECT status, COUNT(*) FROM people GROUP BY status", params
+        ).fetchall())
+        counts = {band: found.get(band, 0)
+                  for band in ("active", "aging", "stale", "unmaintained")}
+        counts["all"] = sum(found.values())
+        return counts
+
+    def developer_list(self, scope, use_stats=True, column="author_email", days=None,
+                       status=None, search=None, sort="last_seen", direction="asc",
+                       limit=None, offset=0, now=None):
+        """(rows, total) of developers, filtered, sorted and optionally paged.
+
+        column is author_email or committer_email, and rows are keyed by it.
+        search is a case-insensitive "contains", with an exact match first.
+        total counts the matching rows before limit and offset.
+        """
+        if sort not in self._DEVELOPER_SORTS:
+            raise ValueError(f"unknown sort: {sort}")
+        order_column, directions = self._DEVELOPER_SORTS[sort]
+        if direction not in directions:
+            raise ValueError(f"unknown sort direction: {direction}")
+
+        now = now or datetime.now(timezone.utc)
+        people, params = self._developer_people(scope, use_stats, column, days, now)
+
+        clauses, filter_params = [], []
+        if status:
+            clauses.append("status = ?")
+            filter_params.append(status)
+        order, order_params = [], []
+        if search:
+            term = search.lower()
+            escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            clauses.append("email LIKE ? ESCAPE '\\'")
+            filter_params.append(f"%{escaped}%")
+            order.append("(email = ?) DESC")
+            order_params.append(term)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        order += [f"{order_column} {directions[direction]}", "email ASC"]
+
+        total = self.kospex_db.execute(
+            f"{people} SELECT COUNT(*) FROM people {where}", params + filter_params
+        ).fetchone()[0]
+        if limit == 0:
+            return [], total
+
+        sql = f"""{people}
+            SELECT email, commits, repos, first_commit, last_commit, last_seen, status
+            FROM people {where} ORDER BY {", ".join(order)}"""
+        page_params = []
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            page_params = [limit, offset]
+
+        rows = []
+        for row in self.kospex_db.query(
+                sql, params + filter_params + order_params + page_params):
+            rows.append({column: row.pop("email"), **row})
+        return rows, total
+
+    def busiest_scopes(self, scope, by="org", use_stats=True, limit=10, now=None):
+        """The orgs or repos in scope with the most active developers.
+
+        Rows are {"id": org_key or repo_id, "name", "active"}. One with nobody
+        active is left out.
+        """
+        keys = {
+            "org": ("_git_server || '~' || REPLACE(_git_owner, '/', '~~')", "_git_owner"),
+            "repo": ("repo", "_git_repo"),
+        }
+        if by not in keys:
+            raise ValueError(f"busiest by org or repo, not {by}")
+        key, name = keys[by]
+        now = now or datetime.now(timezone.utc)
+        source, params = self._developer_source(scope, use_stats, "author_email", None, now)
+        sql = f"""WITH source AS ({source}),
+            people AS (
+                SELECT {key} AS id, MAX({name}) AS name,
+                ROUND(julianday(?) - julianday(MAX(last_commit)), 2) AS last_seen
+                FROM source GROUP BY {key}, LOWER(email)
+            )
+            SELECT id, MAX(name) AS name, COUNT(*) AS active FROM people
+            WHERE last_seen <= {int(KospexUtils.DEV_STATUS_ACTIVE_DAYS)}
+            GROUP BY id ORDER BY active DESC, id ASC LIMIT ?"""
+        return list(self.kospex_db.query(sql, params + [now.isoformat(), limit]))
+
+    def committer_count(self, scope, days=None, now=None):
+        """Distinct committers (lower-cased email) in scope, optionally windowed."""
+        where, params = self._stats_scope(**scope)
+        window, window_params = self._window_filter(days, now or datetime.now(timezone.utc))
+        return self.kospex_db.execute(
+            f"""SELECT COUNT(DISTINCT LOWER(committer_email))
+            FROM {KospexSchema.TBL_COMMITS} WHERE {where}{window}""",
+            params + window_params,
+        ).fetchone()[0]
 
     def groups(self, params=None):
         """Return a list of groups"""

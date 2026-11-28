@@ -1,6 +1,6 @@
 # /developers/: overview, server-side pages and email search
 
-Status: design, awaiting approval.
+Status: implemented. Plan: `202611-developers-page-paging-search-plan.md`.
 
 ## Intent
 
@@ -11,7 +11,7 @@ developer by part of their email.
 
 ## Goals
 
-- Active developers first; every developer still reachable.
+- Most recently seen developers first; every developer reachable.
 - Slice by server, org or repo, and by status.
 - Find a developer by partial email.
 - The all-repositories page loads in about a second and is well under 1 MB.
@@ -52,28 +52,29 @@ developer by part of their email.
 - The server check comes before any base64 test: a server name with no dot, such as `git1`,
   also passes `is_base64()`. Test it with such a name.
 
-**Always at the top:** the author and committer cards, an email search box, and counts for
-Active (90 days or less), Aging (91–180), Stale (181–365), Unmaintained and All. Each
-count links to its list.
+**Always at the top:** totals, an email search box and the status circles (see Layout):
+Active (90 days or less), Aging (91–180), Stale (181–365) and Dormant (over a year).
 
 **With no `status` or `q`:**
 
-- 250 or fewer active developers: the active list.
+- 250 or fewer active developers: everyone in the scope, most recently seen first,
+  50 per page when there are more than 250. No circle is marked.
 - More than 250: an overview with the 10 busiest orgs by active developers (repos when
   scoped to an org; nothing for a repo), a "List all active" link and the CSV download.
 
 ```
-Developers · All repositories
-Search email: [ paul________ ]
+Developers
+80,149 developers · 26,576 committers
+Search email in all repositories [ paul________ ] [Search]
 
-  Active   Aging   Stale   Unmaintained   All
-  6,218    3,374   3,614   66,723         79,929
+     (6.2k)    (3.4k)    (3.6k)    (  67k  )
+     Active    Aging     Stale      Dormant
 
-Busiest orgs (by active developers)
-  org-a    3,665  >
-  org-b      ...  >
+Busiest orgs                      Active developers
+  org-a                                       3,665
+  org-b                                         ...
 
-[ List all active ]   [ Download CSV ]
+List all 6,218 active  |  Download CSV
 ```
 
 **Lists** (`?status=active|aging|stale|unmaintained|all`, case-insensitive, so the
@@ -90,8 +91,33 @@ Busiest orgs (by active developers)
 scope unless `status` is also given. `%` and `_` are literal. An exact match is listed
 first. Results show each developer's status and follow the same paging.
 
+The box names where it searches ("Search email in acme", or "in all repositories"). Inside
+a server, org or repo, a "Search all repositories" link repeats the search without the
+scope.
+
 **CSV** (`download=true`): everyone in the current scope, status and search, not just the
 visible page. Columns are unchanged.
+
+## Layout
+
+Heading, a line of totals (developers and committers, each opening its list), the search
+box, then a half-size version of the summary page's status circles. Each circle opens its
+list, and the open one is ringed. "Unmaintained" reads as **Dormant**, as on the summary
+(`?status=unmaintained` is unchanged). The circles are hidden during a search, with
+`?days=` and on the committers view, where all-time counts are not what is listed. This
+replaces the author and committer cards. Busiest orgs are a table, and repos with no org
+appear as "SERVER (no org)", linking to the server.
+
+The developer circles on `/summary/` (and `/`) link to the same lists, in the summary's
+scope, and its developer "Total" keeps that scope. The repository circles are not links. A linked circle is
+ringed and its status underlined under the pointer or keyboard focus.
+A summary for a server, org or repo shows a breadcrumb.
+
+## Repos with missing or old stats
+
+A repo whose `developer_stats` are missing or out of date (a sync in progress or one that
+failed, or rows not rebuilt) is read from `commits`. Every other repo still comes from
+`developer_stats`. With more than 400 such repos the whole page reads `commits`.
 
 ## Other views
 

@@ -6,25 +6,6 @@
         <title>Kospex Web - Developers</title>
         <!-- Local static assets -->
         <link rel="stylesheet" href="/static/css/tailwind.css">
-        <style>
-            /* Custom styles for DataTables with Tailwind */
-            .dataTables_wrapper .dataTables_length select,
-            .dataTables_wrapper .dataTables_filter input {
-                @apply border border-gray-300 rounded px-3 py-2 text-sm;
-            }
-            .dataTables_wrapper .dataTables_length,
-            .dataTables_wrapper .dataTables_filter,
-            .dataTables_wrapper .dataTables_info,
-            .dataTables_wrapper .dataTables_paginate {
-                @apply text-sm text-gray-700;
-            }
-            .dataTables_wrapper .dataTables_paginate .paginate_button {
-                @apply px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50;
-            }
-            .dataTables_wrapper .dataTables_paginate .paginate_button.current {
-                @apply bg-blue-600 text-white border-blue-600;
-            }
-        </style>
     </head>
     <body class="bg-white">
         {% from '_bot_badge.html' import bot_badge %}
@@ -38,80 +19,125 @@
                 {% include '_breadcrumb.html' %}
             </div>
             {% endif %}
-            <!-- Statistics Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <!-- # of Authors -->
-                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
-                    <div class="p-6 text-center">
-                        <h4 class="text-lg font-medium text-gray-900 mb-2"># of Authors</h4>
-                        <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ data['authors'] }}</h2>
-                        {% if view == 'authors' %}
-                        <span class="text-sm text-gray-500">Shown below</span>
-                        {% else %}
-                        <a href="{{ authors_url }}" class="text-blue-600 hover:text-blue-800 underline">View More</a>
-                        {% endif %}
-                    </div>
-                </div>
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">{{ 'Committers' if view == 'committers' else 'Developers' }}</h1>
+            {% if scope_name %}{% include '_scope_label.html' %}{% endif %}
 
-                <!-- # of Committers -->
-                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
-                    <div class="p-6 text-center">
-                        <h4 class="text-lg font-medium text-gray-900 mb-2"># of Committers</h4>
-                        <h2 class="text-3xl font-bold text-gray-900 mb-3">{{ data['committers'] }}</h2>
-                        {% if view == 'committers' %}
-                        <span class="text-sm text-gray-500">Shown below</span>
-                        {% else %}
-                        <a href="{{ committers_url }}" class="text-blue-600 hover:text-blue-800 underline">View More</a>
-                        {% endif %}
-                    </div>
-                </div>
+            <!-- Totals: each opens its list -->
+            <p class="text-sm text-gray-700 mb-4" data-totals>
+                <a href="{{ all_url if view == 'authors' and not days else authors_url }}" class="text-blue-600 hover:text-blue-800 underline font-semibold">{{ "{:,}".format(data['authors']) }} developer{{ '' if data['authors'] == 1 else 's' }}</a>
+                &middot;
+                <a href="{{ committers_url }}" class="text-blue-600 hover:text-blue-800 underline font-semibold">{{ "{:,}".format(data['committers']) }} committer{{ '' if data['committers'] == 1 else 's' }}</a>
+            </p>
+
+            {% if search_action %}
+            <form method="get" action="{{ search_action }}" class="flex flex-wrap gap-2 mb-6">
+                <label for="q" class="text-sm text-gray-700 py-2">Search email in {{ search_where }}</label>
+                <input type="search" id="q" name="q" value="{{ q or '' }}" class="border border-gray-300 rounded px-3 py-2 text-sm">
+                <button type="submit" class="border border-gray-300 rounded px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Search</button>
+                {% if search_all_url %}
+                <a href="{{ search_all_url }}" class="text-sm text-blue-600 hover:text-blue-800 underline py-2">Search all repositories</a>
+                {% endif %}
+            </form>
+            {% endif %}
+
+            {% if circles %}
+            <div class="mb-8">
+                {% import '_status_circles_macro.html' as status_circles %}
+                {{ status_circles.status_links(circles) }}
             </div>
+            {% endif %}
 
-            <!-- Action Links -->
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-6">
-                <div class="p-4">
-                    <div class="flex flex-wrap gap-4 text-sm">
-                        <a href="{{ download_url }}" class="text-blue-600 hover:text-blue-800 underline">Download</a>
-                        <span class="text-gray-500">|</span>
-                        {% if days %}
-                        <a href="{{ more_url }}" class="text-blue-600 hover:text-blue-800 underline">Show all time</a>
-                        {% else %}
-                        <a href="{{ active_url }}" class="text-blue-600 hover:text-blue-800 underline">Show active developers (last 90 days)</a>
-                        {% endif %}
-                        {% if collab_url %}
-                        <span class="text-gray-500">|</span>
-                        <a href="{{ collab_url }}" class="text-blue-600 hover:text-blue-800 underline">Author / Committer collaborators</a>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
+            {% macro collaborators() %}
+            {% if collab_url %}
+            <span class="text-gray-500">|</span>
+            <a href="{{ collab_url }}" class="text-blue-600 hover:text-blue-800 underline">Author / Committer collaborators</a>
+            {% endif %}
+            {% endmacro %}
 
-            <!-- Developers Table -->
+            {% if mode == 'overview' %}
+            <!-- Overview: too many active developers to list -->
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="p-6">
-                    <h1 class="text-3xl font-bold text-gray-900 {{ 'mb-2' if scope_name else 'mb-6' }}">{{ 'Committers' if view == 'committers' else 'Developers' }}</h1>
-                    {% if scope_name %}{% include '_scope_label.html' %}{% endif %}
+                    <p class="text-sm text-gray-700 mb-4"><span class="font-semibold">{{ "{:,}".format(total) }}</span> active developers, too many to list here. Search by email, or choose a list.</p>
+                    {% if busiest %}
+                    <div class="overflow-x-auto mb-4">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Busiest {{ busiest_label }}</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Active developers</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                {% for b in busiest %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm"><a href="{{ b.url }}" class="text-blue-600 hover:text-blue-800 underline">{{ b.name }}</a></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ "{:,}".format(b.active) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                    <div class="flex flex-wrap gap-4 text-sm">
+                        <a href="{{ active_url }}" class="text-blue-600 hover:text-blue-800 underline">List all {{ "{:,}".format(total) }} active</a>
+                        <span class="text-gray-500">|</span>
+                        <a href="{{ download_url }}" class="text-blue-600 hover:text-blue-800 underline">Download CSV</a>
+                        {{ collaborators() }}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <!-- Developers Table -->
+            {% macro sort_heading(key, label, align) %}
+            <th class="px-6 py-3 text-{{ align }} text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <a href="{{ sort_links[key] }}" class="underline">{{ label }}{% if sort == key %} {{ '&#9650;'|safe if direction == 'asc' else '&#9660;'|safe }}{% endif %}</a>
+            </th>
+            {% endmacro %}
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="p-6">
+                    {% if not days and not q and status and status != 'all' %}
+                    <!-- One status: titled in the colour of its circle -->
+                    <h2 class="flex items-center gap-2 text-xl font-bold text-gray-900 mb-2" data-status-title>
+                        <span class="inline-block w-4 h-4 rounded-full {{ status_colours[status] }}"></span>
+                        {{ status_names[status] }}: {{ "{:,}".format(total) }}
+                    </h2>
+                    <p class="text-sm text-gray-700 mb-4" data-window>Commits and repos are all time.</p>
+                    {% else %}
                     <p class="text-sm text-gray-700 mb-4" data-window>
                         {% if days %}<span class="font-semibold">Active (last {{ days }} {{ 'day' if days == '1' else 'days' }})</span>:
                         {{ 'committers' if view == 'committers' else 'developers' }} with a commit in that window.
+                        {% elif q %}<span class="font-semibold">{{ "{:,}".format(total) }}</span> matching &ldquo;{{ q }}&rdquo;{% if status != 'all' %} ({{ status_names[status]|lower }}){% endif %}
                         {% else %}<span class="font-semibold">All time</span>{% endif %}
                     </p>
-                    
+                    {% endif %}
+                    <div class="flex flex-wrap gap-4 text-sm mb-4">
+                        <a href="{{ download_url }}" class="text-blue-600 hover:text-blue-800 underline">Download</a>
+                        {% if days %}
+                        <span class="text-gray-500">|</span>
+                        <a href="{{ more_url }}" class="text-blue-600 hover:text-blue-800 underline">Show all time</a>
+                        {% endif %}
+                        {{ collaborators() }}
+                    </div>
+
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200" id="myTable">
+                        <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ 'Committer' if view == 'committers' else 'Author' }}</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Commits</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"># Repos</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen (days)</th>
+                                    {{ sort_heading('email', 'Committer' if view == 'committers' else 'Author', 'left') }}
+                                    {{ sort_heading('commits', '# Commits', 'right') }}
+                                    {{ sort_heading('repos', '# Repos', 'right') }}
+                                    {{ sort_heading('last_seen', 'Last Seen (days)', 'right') }}
+                                    {% if q %}<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>{% endif %}
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 {% for dev in people %}
                                 <tr class="hover:bg-gray-50">
                                     <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                        {% if view == 'committers' %}
+                                        {% if not dev['email'] %}
+                                        <span class="text-gray-500">(no email)</span>
+                                        {% elif view == 'committers' %}
                                         <a href="/commits/?committer_email={{ dev['email'] | urlencode }}{{ row_scope }}" class="text-blue-600 hover:text-blue-800 underline">{{ dev['email'] }}</a>
                                         {% else %}
                                         <a href="/developers/?author_email={{ dev['email'] | urlencode }}" class="text-blue-600 hover:text-blue-800 underline">{{ dev['email'] }}</a>
@@ -119,32 +145,37 @@
                                         {{ bot_badge(dev['is_bot'], dev['bot_type']) }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                        {% if dev['email'] %}
                                         <a href="/commits/?{{ 'committer_email' if view == 'committers' else 'author_email' }}={{ dev['email'] | urlencode }}{{ row_scope }}" class="text-blue-600 hover:text-blue-800 underline">{{ dev['commits'] }}</a>
+                                        {% else %}{{ dev['commits'] }}{% endif %}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ dev['repos'] }}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ dev['last_seen'] }}</td>
+                                    {% if q %}<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ status_names.get(dev['status'], dev['status']|capitalize) }}</td>{% endif %}
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
+
+                    {% if not people %}
+                    <p class="text-sm text-gray-700 mt-4">
+                        {% if total %}There is no page {{ pager.page }}. <a href="{{ first_url }}" class="text-blue-600 hover:text-blue-800 underline">Go to page 1</a>.
+                        {% else %}No {{ 'committers' if view == 'committers' else 'developers' }} to show.{% endif %}
+                    </p>
+                    {% endif %}
+                    {% if pager.pages > 1 %}
+                    <div class="flex flex-wrap gap-4 text-sm text-gray-700 mt-4">
+                        {% if prev_url %}<a href="{{ prev_url }}" class="text-blue-600 hover:text-blue-800 underline">Previous</a>{% endif %}
+                        <span>Page {{ pager.page }} of {{ pager.pages }}</span>
+                        {% if next_url %}<a href="{{ next_url }}" class="text-blue-600 hover:text-blue-800 underline">Next</a>{% endif %}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
+            {% endif %}
         </div>
 
         {% include '_footer_scripts.html' %}
-        {% include '_datatable_scripts.html' %}
-
-        <script>
-            $(document).ready(function () {
-                $("#myTable").DataTable({
-                    order: [[3, "asc"]],
-                    responsive: true,
-                    pageLength: 25,
-                    lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
-                    dom: '<"flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4"lf>rt<"flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4"ip>',
-                });
-            });
-        </script>
     </body>
 </html>

@@ -14,6 +14,20 @@ No database migration.
 
 ### Changed
 
+- **kweb `/developers/` shows status circles above the list**, most recently seen first.
+  With more than 250 active developers it shows the busiest orgs (repos within an org)
+  instead of a list. Lists over 250 rows are paged and sorted on the server.
+- **Scopes are in the path** (`/developers/github.com~acme`); `?org_key=` and `?repo_id=`
+  still work, and an unknown one is now a 404.
+- The developers page has a line of totals in place of the two cards, and clickable status
+  circles like the summary's, which names "Unmaintained" developers **Dormant**.
+- **Search developers by part of their email** (`?q=`). The search covers the page's scope,
+  which the search box names, with a link to search all repositories.
+- The Active list counts commits and repos for all time. The old "active developers (last
+  90 days)" link counted only commits in those 90 days; `?days=90` still does.
+- **The developer circles on the summary page (and `/`) are links** to that status's list,
+  in the same repo, org or server. The "Total" above them now keeps that scope too.
+- A summary for a server, org or repo has a breadcrumb saying so.
 - **The developer view lists technology by language**, as the repo view does, instead of
   by file extension. Each path in the developer's history is named, so files since
   deleted or moved are still counted; paths that can't be named show as `Unknown`.
@@ -40,6 +54,8 @@ No database migration.
 
 ### Fixed
 
+- `/developers/` ignored a server scope and listed every developer.
+- `/developers/active/{repo_id}` listed nobody.
 - The active developer count on `/repos/` compared commit timestamps as text, so timezone
   offsets could miscount commits near the 90-day cutoff. This is fixed on `/repos/` when it
   reads `developer_stats`, not yet on other pages that count active developers.
